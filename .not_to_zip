@@ -1,0 +1,35 @@
+# .not_to_zip
+# Syntax is the same as .gitignore.
+
+# Always skip git metadata
+.git/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Node / frontend build outputs
+node_modules/
+dist/
+coverage/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Archives and generated artifacts
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+
+# Kubernetes render output
+helm-chart/charts/
+
+# Keep one file even if a broader rule matched it
+!important.log
+
+#venv files
+api/.venv/

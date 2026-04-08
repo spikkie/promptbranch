@@ -1,0 +1,5 @@
+uploaded_receipts*
+.git
+__pycache__
+.pytest_cache
+profile
