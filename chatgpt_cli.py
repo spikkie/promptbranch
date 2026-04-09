@@ -284,6 +284,13 @@ def make_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _extract_dotenv_path(argv: list[str]) -> Optional[str]:
+    bootstrap = argparse.ArgumentParser(add_help=False)
+    bootstrap.add_argument("--dotenv", default=".env")
+    args, _ = bootstrap.parse_known_args(argv)
+    return args.dotenv
+
+
 async def _async_main(args: argparse.Namespace) -> int:
     service = build_service(args)
     if args.command == "login-check":
@@ -296,14 +303,14 @@ async def _async_main(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = make_parser()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     normalized_argv = _normalize_global_options(raw_argv)
 
-    preliminary_args, _ = parser.parse_known_args(normalized_argv)
-    if preliminary_args.dotenv:
-        load_dotenv(preliminary_args.dotenv, override=False)
+    dotenv_path = _extract_dotenv_path(normalized_argv)
+    if dotenv_path:
+        load_dotenv(dotenv_path, override=False)
 
+    parser = make_parser()
     args = parser.parse_args(normalized_argv)
     _configure_logging(args.debug)
 

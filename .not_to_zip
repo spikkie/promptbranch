@@ -32,4 +32,7 @@ helm-chart/charts/
 !important.log
 
 #venv files
-api/.venv/
+venv/
+
+#profile
+profile/
