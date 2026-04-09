@@ -64,8 +64,15 @@ COMPOSER_SUBMIT_BUTTON_SELECTORS = [
     'button[data-testid="send-button"]',
     'button[aria-label="Send prompt"]',
 ]
+COMPOSER_TRAILING_BUTTON_SCOPE_SELECTORS = [
+    '#thread-bottom form button',
+    'form button',
+]
 SEND_READY_ARIA_HINTS = ('send prompt', 'send')
+SEND_READY_ID_HINTS = ('composer-submit-button', 'send-button')
+SEND_READY_CLASS_HINTS = ('composer-submit', 'send-button')
 STOP_GENERATING_ARIA_HINTS = ('stop', 'stop generating', 'stop streaming')
+STOP_GENERATING_CLASS_HINTS = ('stop', 'square')
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -881,79 +888,127 @@ class ChatGPTBrowserClient:
         )
 
     async def _probe_submit_button_state(self, page: Any) -> dict[str, Any]:
-        for selector in COMPOSER_SUBMIT_BUTTON_SELECTORS:
+        primary_match: Optional[dict[str, Any]] = None
+        visible_enabled_buttons: list[dict[str, Any]] = []
+        visible_enabled_count = 0
+        stop_visible = False
+        send_ready = False
+        idle_visible = False
+
+        for selector in COMPOSER_TRAILING_BUTTON_SCOPE_SELECTORS:
             try:
-                button = page.locator(selector).first
-                count = await button.count()
+                buttons = page.locator(selector)
+                count = await buttons.count()
             except Exception as exc:
-                self._log("submit", "submit state probe failed", selector=selector, error=str(exc))
+                self._log("submit", "submit state scope probe failed", selector=selector, error=str(exc))
                 continue
 
             if not count:
                 continue
 
-            visible = False
-            enabled = False
-            aria_label = ""
-            data_testid = ""
-            class_name = ""
-            try:
-                visible = await button.is_visible(timeout=1_000)
-            except Exception:
-                visible = False
-            try:
-                enabled = await button.is_enabled(timeout=1_500)
-            except Exception:
-                enabled = False
-            try:
-                aria_label = (await button.get_attribute("aria-label") or "").strip()
-            except Exception:
-                aria_label = ""
-            try:
-                data_testid = (await button.get_attribute("data-testid") or "").strip()
-            except Exception:
-                data_testid = ""
-            try:
-                class_name = (await button.get_attribute("class") or "").strip()
-            except Exception:
-                class_name = ""
+            limit = min(count, 8)
+            for index in range(limit):
+                button = buttons.nth(index)
+                try:
+                    visible = await button.is_visible(timeout=500)
+                except Exception:
+                    visible = False
+                if not visible:
+                    continue
 
-            normalized_aria = aria_label.lower()
-            normalized_testid = data_testid.lower()
-            send_ready = bool(
-                visible and enabled and (
-                    normalized_testid == "send-button"
-                    or any(hint in normalized_aria for hint in SEND_READY_ARIA_HINTS)
+                try:
+                    enabled = await button.is_enabled(timeout=750)
+                except Exception:
+                    enabled = False
+
+                try:
+                    aria_label = (await button.get_attribute("aria-label") or "").strip()
+                except Exception:
+                    aria_label = ""
+                try:
+                    data_testid = (await button.get_attribute("data-testid") or "").strip()
+                except Exception:
+                    data_testid = ""
+                try:
+                    class_name = (await button.get_attribute("class") or "").strip()
+                except Exception:
+                    class_name = ""
+                try:
+                    element_id = (await button.get_attribute("id") or "").strip()
+                except Exception:
+                    element_id = ""
+
+                normalized_aria = aria_label.lower()
+                normalized_testid = data_testid.lower()
+                normalized_class = class_name.lower()
+                normalized_id = element_id.lower()
+
+                button_state = {
+                    "selector": selector,
+                    "index": index,
+                    "visible": visible,
+                    "enabled": enabled,
+                    "aria_label": aria_label,
+                    "data_testid": data_testid,
+                    "class_name": class_name,
+                    "id": element_id,
+                }
+
+                if enabled:
+                    visible_enabled_buttons.append(button_state)
+                    visible_enabled_count += 1
+
+                is_sendish = bool(
+                    enabled and (
+                        normalized_testid == "send-button"
+                        or any(hint in normalized_aria for hint in SEND_READY_ARIA_HINTS)
+                        or any(hint in normalized_id for hint in SEND_READY_ID_HINTS)
+                        or any(hint in normalized_class for hint in SEND_READY_CLASS_HINTS)
+                    )
                 )
-            )
-            stop_visible = bool(
-                visible and (
-                    any(hint in normalized_aria for hint in STOP_GENERATING_ARIA_HINTS)
-                    or "stop" in class_name.lower()
+                is_stopish = bool(
+                    visible and (
+                        any(hint in normalized_aria for hint in STOP_GENERATING_ARIA_HINTS)
+                        or any(hint in normalized_class for hint in STOP_GENERATING_CLASS_HINTS)
+                    )
                 )
-            )
+
+                if is_stopish:
+                    stop_visible = True
+                if is_sendish:
+                    send_ready = True
+                    if primary_match is None:
+                        primary_match = button_state
+
+        idle_visible = bool(visible_enabled_count >= 2 and not stop_visible)
+
+        if primary_match is None and visible_enabled_buttons:
+            primary_match = visible_enabled_buttons[-1]
+
+        if primary_match is not None:
             return {
-                "selector": selector,
-                "count": count,
-                "visible": visible,
-                "enabled": enabled,
-                "aria_label": aria_label,
-                "data_testid": data_testid,
-                "class_name": class_name,
+                **primary_match,
+                "count": len(visible_enabled_buttons),
                 "send_ready": send_ready,
                 "stop_visible": stop_visible,
+                "idle_visible": idle_visible,
+                "visible_enabled_count": visible_enabled_count,
             }
 
         return {
             "selector": None,
+            "index": None,
             "count": 0,
             "visible": False,
             "enabled": False,
             "aria_label": "",
             "data_testid": "",
             "class_name": "",
+            "id": "",
             "send_ready": False,
             "stop_visible": False,
+            "idle_visible": False,
+            "visible_enabled_count": 0,
         }
 
     async def _submit_prompt(self, page: Any) -> None:
@@ -1530,7 +1585,8 @@ class ChatGPTBrowserClient:
                 if first_response_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
 
-                if submit_state.get("send_ready") and stable_polls >= stable_required and (
+                completion_ready = bool(submit_state.get("send_ready") or submit_state.get("idle_visible"))
+                if completion_ready and stable_polls >= stable_required and (
                     observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
                 ):
                     self._log(
@@ -1544,6 +1600,8 @@ class ChatGPTBrowserClient:
                         submit_selector=submit_state.get("selector"),
                         submit_aria_label=submit_state.get("aria_label"),
                         submit_data_testid=submit_state.get("data_testid"),
+                        submit_idle_visible=submit_state.get("idle_visible"),
+                        submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                         observed_non_send_ready=observed_non_send_ready,
                         preview=self._preview_text(candidate_text, 160),
                     )
@@ -1569,6 +1627,8 @@ class ChatGPTBrowserClient:
                     stable_polls=stable_polls,
                     submit_selector=submit_state.get("selector"),
                     submit_send_ready=submit_state.get("send_ready"),
+                    submit_idle_visible=submit_state.get("idle_visible"),
+                    submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                     submit_aria_label=submit_state.get("aria_label"),
                     submit_data_testid=submit_state.get("data_testid"),
                 )
@@ -1682,7 +1742,8 @@ class ChatGPTBrowserClient:
                 if first_payload_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
 
-                if submit_state.get("send_ready") and stable_polls >= stable_required and (
+                completion_ready = bool(submit_state.get("send_ready") or submit_state.get("idle_visible"))
+                if completion_ready and stable_polls >= stable_required and (
                     observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
                 ):
                     self._log(
@@ -1696,6 +1757,8 @@ class ChatGPTBrowserClient:
                         submit_selector=submit_state.get("selector"),
                         submit_aria_label=submit_state.get("aria_label"),
                         submit_data_testid=submit_state.get("data_testid"),
+                        submit_idle_visible=submit_state.get("idle_visible"),
+                        submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                         observed_non_send_ready=observed_non_send_ready,
                     )
                     if self.config.debug:
@@ -1720,6 +1783,8 @@ class ChatGPTBrowserClient:
                     stable_polls=stable_polls,
                     submit_selector=submit_state.get("selector"),
                     submit_send_ready=submit_state.get("send_ready"),
+                    submit_idle_visible=submit_state.get("idle_visible"),
+                    submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                     submit_aria_label=submit_state.get("aria_label"),
                     submit_data_testid=submit_state.get("data_testid"),
                 )
