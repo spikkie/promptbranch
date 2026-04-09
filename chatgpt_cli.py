@@ -22,7 +22,7 @@ from chatgpt_browser_auth.exceptions import (
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
-COMMANDS = {"login-check", "ask", "shell"}
+COMMANDS = {"login-check", "ask", "shell", "project-source-add", "project-source-remove"}
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
     "--email": True,
@@ -78,6 +78,38 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
 
 async def cmd_login_check(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
     result = await service.run_login_check(keep_open=args.keep_open)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+async def cmd_project_source_add(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+    source_kind = args.type
+    value = args.value
+    file_path = args.file
+    if source_kind == "file" and not file_path:
+        print("error: --file is required when --type=file", file=sys.stderr)
+        return 2
+    if source_kind in {"link", "text"} and not value:
+        print(f"error: --value is required when --type={source_kind}", file=sys.stderr)
+        return 2
+
+    result = await service.add_project_source(
+        source_kind=source_kind,
+        value=value,
+        file_path=file_path,
+        display_name=args.name,
+        keep_open=args.keep_open,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+async def cmd_project_source_remove(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+    result = await service.remove_project_source(
+        source_name=args.source_name,
+        exact=args.exact,
+        keep_open=args.keep_open,
+    )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
@@ -269,6 +301,24 @@ def make_parser() -> argparse.ArgumentParser:
     login = subparsers.add_parser("login-check", help="Open the browser and verify whether the profile is logged in.")
     login.add_argument("--keep-open", action="store_true")
 
+    source_add = subparsers.add_parser(
+        "project-source-add",
+        help="Add a source to the configured ChatGPT project (Sources tab).",
+    )
+    source_add.add_argument("--type", choices=["link", "text", "file"], required=True)
+    source_add.add_argument("--value", help="Source payload for link/text sources.")
+    source_add.add_argument("--file", help="Local file path for file sources.")
+    source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
+    source_add.add_argument("--keep-open", action="store_true")
+
+    source_remove = subparsers.add_parser(
+        "project-source-remove",
+        help="Remove a source from the configured ChatGPT project (Sources tab).",
+    )
+    source_remove.add_argument("source_name", help="Visible source name or unique snippet to remove.")
+    source_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
+    source_remove.add_argument("--keep-open", action="store_true")
+
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--file", help="Optional file to upload with the prompt.")
@@ -305,6 +355,10 @@ async def _async_main(args: argparse.Namespace) -> int:
     service = build_service(args)
     if args.command == "login-check":
         return await cmd_login_check(service, args)
+    if args.command == "project-source-add":
+        return await cmd_project_source_add(service, args)
+    if args.command == "project-source-remove":
+        return await cmd_project_source_remove(service, args)
     if args.command == "ask":
         return await cmd_ask(service, args)
     if args.command == "shell":

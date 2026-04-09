@@ -8,7 +8,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
 from .exceptions import (
@@ -98,6 +98,91 @@ THINKING_MARKER_SELECTORS = [
 THINKING_TEXT_PATTERNS = [
     re.compile(r'^\s*Thinking(?:\s|$)', re.IGNORECASE),
 ]
+PROJECT_SOURCES_TAB_SELECTORS = [
+    '[role="tab"]:has-text("Sources")',
+    'button:has-text("Sources")',
+    'a:has-text("Sources")',
+]
+PROJECT_ADD_SOURCE_BUTTON_SELECTORS = [
+    'button:has-text("Add source")',
+    'button:has-text("Add Source")',
+    '[aria-label*="Add source" i]',
+]
+PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
+    '[role="dialog"]',
+    'dialog[open]',
+]
+PROJECT_SOURCE_LINK_TYPE_SELECTORS = [
+    '[role="menuitem"]:has-text("Link")',
+    'button:has-text("Link")',
+    'button:has-text("Slack")',
+    'button:has-text("Google Drive")',
+]
+PROJECT_SOURCE_TEXT_TYPE_SELECTORS = [
+    '[role="menuitem"]:has-text("Text")',
+    'button:has-text("Text")',
+    'button:has-text("Quick text")',
+    'button:has-text("Notes")',
+]
+PROJECT_SOURCE_FILE_TYPE_SELECTORS = [
+    '[role="menuitem"]:has-text("File")',
+    'button:has-text("File")',
+    'button:has-text("Upload")',
+    'button:has-text("Files")',
+]
+PROJECT_SOURCE_LINK_INPUT_SELECTORS = [
+    '[role="dialog"] input[type="url"]',
+    '[role="dialog"] input[placeholder*="Paste" i]',
+    '[role="dialog"] input[type="text"]',
+    'dialog[open] input[type="url"]',
+    'dialog[open] input[placeholder*="Paste" i]',
+    'dialog[open] input[type="text"]',
+]
+PROJECT_SOURCE_TEXT_INPUT_SELECTORS = [
+    '[role="dialog"] textarea',
+    '[role="dialog"] [contenteditable="true"]',
+    '[role="dialog"] input[type="text"]',
+    'dialog[open] textarea',
+    'dialog[open] [contenteditable="true"]',
+    'dialog[open] input[type="text"]',
+]
+PROJECT_SOURCE_TITLE_INPUT_SELECTORS = [
+    '[role="dialog"] input[placeholder*="Title" i]',
+    '[role="dialog"] input[aria-label*="Title" i]',
+    'dialog[open] input[placeholder*="Title" i]',
+    'dialog[open] input[aria-label*="Title" i]',
+]
+PROJECT_SOURCE_FILE_INPUT_SELECTORS = [
+    '[role="dialog"] input[type="file"]',
+    'dialog[open] input[type="file"]',
+    'input[type="file"]',
+]
+PROJECT_SOURCE_SAVE_BUTTON_SELECTORS = [
+    '[role="dialog"] button:has-text("Add")',
+    '[role="dialog"] button:has-text("Save")',
+    '[role="dialog"] button:has-text("Done")',
+    'dialog[open] button:has-text("Add")',
+    'dialog[open] button:has-text("Save")',
+    'dialog[open] button:has-text("Done")',
+]
+PROJECT_SOURCE_REMOVE_ACTION_SELECTORS = [
+    '[role="menuitem"]:has-text("Remove")',
+    '[role="menuitem"]:has-text("Delete")',
+    'button:has-text("Remove")',
+    'button:has-text("Delete")',
+]
+PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS = [
+    '[role="dialog"] button:has-text("Remove")',
+    '[role="dialog"] button:has-text("Delete")',
+    'dialog[open] button:has-text("Remove")',
+    'dialog[open] button:has-text("Delete")',
+]
+PROJECT_SOURCE_OPTIONS_ARIA_HINTS = (
+    'options',
+    'more',
+    'menu',
+    'source',
+)
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -161,6 +246,58 @@ class ChatGPTBrowserClient:
             prompt=prompt,
             file_path=file_path,
             expect_json=expect_json,
+            keep_open=keep_open,
+        )
+
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-source-add",
+            "starting add_project_source",
+            project_url=self.config.project_url,
+            source_kind=source_kind,
+            value_preview=self._preview_text(value, 120) if value else None,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_source_add",
+            operation=self._add_project_source_operation,
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+        )
+
+    async def remove_project_source(
+        self,
+        *,
+        source_name: str,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-source-remove",
+            "starting remove_project_source",
+            project_url=self.config.project_url,
+            source_name=source_name,
+            exact=exact,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_source_remove",
+            operation=self._remove_project_source_operation,
+            source_name=source_name,
+            exact=exact,
             keep_open=keep_open,
         )
 
@@ -306,6 +443,114 @@ class ChatGPTBrowserClient:
                 input,
                 "Question completed. Press Enter to close the browser... ",
             )
+        return result
+
+    async def _add_project_source_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        source_kind: str,
+        value: Optional[str],
+        file_path: Optional[str],
+        display_name: Optional[str],
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-source-add-home")
+        await self._open_project_sources_tab(page)
+
+        normalized_kind = (source_kind or "").strip().lower()
+        if normalized_kind not in {"link", "text", "file"}:
+            raise ValueError(f"Unsupported source kind: {source_kind!r}")
+
+        expected_match: Optional[str]
+        if normalized_kind == "file":
+            if not file_path:
+                raise ValueError("file_path is required when source_kind='file'")
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(file_path)
+            await self._add_project_file_source(page, file_path=file_path)
+            expected_match = display_name or Path(file_path).name
+        else:
+            if not value:
+                raise ValueError(f"value is required when source_kind={normalized_kind!r}")
+            await self._add_project_textual_source(
+                page,
+                source_kind=normalized_kind,
+                value=value,
+                display_name=display_name,
+            )
+            expected_match = display_name or self._infer_source_match_text(normalized_kind, value)
+
+        await self._wait_for_source_presence(page, expected_match)
+        result = {
+            "ok": True,
+            "action": "add",
+            "project_url": project_home_url,
+            "source_kind": normalized_kind,
+            "source_match": expected_match,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-source-add", "project source added", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Source added. Press Enter to close the browser... ")
+        return result
+
+    async def _remove_project_source_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        source_name: str,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-source-remove-home")
+        await self._open_project_sources_tab(page)
+
+        container = await self._find_project_source_container(page, source_name, exact=exact)
+        if container is None:
+            raise ResponseTimeoutError(f"Project source was not found: {source_name}")
+
+        options_button = await self._find_source_options_button(container)
+        if options_button is None:
+            raise ResponseTimeoutError(f"Could not find options button for project source: {source_name}")
+        await options_button.click(timeout=5_000)
+        remove_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
+            label="project-source-remove-action",
+            total_timeout_ms=8_000,
+        )
+        if remove_button is None:
+            raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+        await remove_button.click(timeout=5_000)
+
+        confirm_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS,
+            label="project-source-remove-confirm",
+            total_timeout_ms=4_000,
+        )
+        if confirm_button is not None:
+            await confirm_button.click(timeout=5_000)
+
+        await self._wait_for_source_absence(page, source_name, exact=exact)
+        result = {
+            "ok": True,
+            "action": "remove",
+            "project_url": project_home_url,
+            "source_name": source_name,
+            "exact": exact,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-source-remove", "project source removed", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Source removed. Press Enter to close the browser... ")
         return result
 
     async def ensure_logged_in(self, page: Any, context: Any) -> bool:
@@ -1252,6 +1497,249 @@ class ChatGPTBrowserClient:
         if best_fallback is not None:
             return (*best_fallback, probes)
         return None, 0, "", probes
+
+    def _project_home_url(self) -> str:
+        parsed = urlparse(self.config.project_url)
+        path = parsed.path.rstrip("/")
+        if path.endswith("/project"):
+            return self.config.project_url
+        if "/c/" in path:
+            path = path.split("/c/", 1)[0] + "/project"
+            return urlunparse(parsed._replace(path=path, query="", fragment=""))
+        return self.config.project_url
+
+    def _infer_source_match_text(self, source_kind: str, value: str) -> str:
+        normalized = (value or "").strip()
+        if source_kind == "link":
+            parsed = urlparse(normalized)
+            return parsed.netloc or normalized
+        return self._preview_text(normalized, 80)
+
+    async def _open_project_sources_tab(self, page: Any) -> None:
+        tab = await self._wait_for_visible_locator(
+            page,
+            PROJECT_SOURCES_TAB_SELECTORS,
+            label="project-sources-tab",
+            total_timeout_ms=15_000,
+        )
+        if tab is None:
+            raise ResponseTimeoutError("Project Sources tab did not become visible")
+        await tab.click(timeout=5_000)
+        await page.wait_for_timeout(750)
+        self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
+
+    async def _click_add_source_button(self, page: Any) -> None:
+        button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
+            label="project-add-source-button",
+            total_timeout_ms=10_000,
+        )
+        if button is None:
+            raise ResponseTimeoutError("Add source button did not become visible")
+        await button.click(timeout=5_000)
+        await page.wait_for_timeout(500)
+
+    async def _click_source_kind_option(self, page: Any, source_kind: str) -> None:
+        selector_map = {
+            "link": PROJECT_SOURCE_LINK_TYPE_SELECTORS,
+            "text": PROJECT_SOURCE_TEXT_TYPE_SELECTORS,
+            "file": PROJECT_SOURCE_FILE_TYPE_SELECTORS,
+        }
+        selectors = selector_map[source_kind]
+        option = await self._wait_for_visible_locator(
+            page,
+            selectors,
+            label=f"project-source-kind-{source_kind}",
+            total_timeout_ms=2_500,
+            poll_interval_ms=250,
+        )
+        if option is None:
+            self._log("project-source", "source kind option not shown; continuing with default dialog", source_kind=source_kind)
+            return
+        await option.click(timeout=5_000)
+        await page.wait_for_timeout(500)
+
+    async def _fill_locator_text(self, locator: Any, text: str) -> None:
+        try:
+            await locator.click(timeout=3_000)
+        except Exception:
+            pass
+        try:
+            await locator.fill(text)
+            return
+        except Exception:
+            pass
+        try:
+            await locator.evaluate(
+                """
+                (el, value) => {
+                    const tag = (el.tagName || '').toLowerCase();
+                    if (tag === 'input' || tag === 'textarea') {
+                        el.value = value;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        return;
+                    }
+                    el.focus();
+                    if ('innerText' in el) {
+                        el.innerText = value;
+                    } else {
+                        el.textContent = value;
+                    }
+                    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }));
+                }
+                """,
+                text,
+            )
+            return
+        except Exception:
+            pass
+        await locator.type(text, delay=10)
+
+    async def _add_project_textual_source(
+        self,
+        page: Any,
+        *,
+        source_kind: str,
+        value: str,
+        display_name: Optional[str],
+    ) -> None:
+        await self._click_add_source_button(page)
+        await self._click_source_kind_option(page, source_kind)
+        selectors = PROJECT_SOURCE_LINK_INPUT_SELECTORS if source_kind == "link" else PROJECT_SOURCE_TEXT_INPUT_SELECTORS
+        input_locator = await self._wait_for_visible_locator(
+            page,
+            selectors,
+            label=f"project-source-{source_kind}-input",
+            total_timeout_ms=10_000,
+        )
+        if input_locator is None:
+            raise ResponseTimeoutError(f"Input for project source kind {source_kind!r} did not become visible")
+        await self._fill_locator_text(input_locator, value)
+
+        if display_name:
+            title_locator = await self._find_visible_locator(
+                page,
+                PROJECT_SOURCE_TITLE_INPUT_SELECTORS,
+                label="project-source-title-input",
+                timeout_ms=800,
+            )
+            if title_locator is not None:
+                await self._fill_locator_text(title_locator, display_name)
+
+        save_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_SOURCE_SAVE_BUTTON_SELECTORS,
+            label="project-source-save-button",
+            total_timeout_ms=10_000,
+        )
+        if save_button is None:
+            raise ResponseTimeoutError("Project source save/add button did not become visible")
+        await save_button.click(timeout=5_000)
+        await page.wait_for_timeout(1_000)
+
+    async def _add_project_file_source(self, page: Any, *, file_path: str) -> None:
+        before_count = await page.locator('input[type="file"]').count()
+        await self._click_add_source_button(page)
+        await self._click_source_kind_option(page, "file")
+        await page.wait_for_timeout(500)
+
+        target = None
+        for selector in PROJECT_SOURCE_FILE_INPUT_SELECTORS:
+            locator = page.locator(selector)
+            count = await self._safe_count(locator, selector)
+            if count:
+                target = locator.nth(count - 1)
+                break
+        if target is None:
+            raise ResponseTimeoutError(
+                f"Project source file input was not found after opening Add source (baseline file inputs={before_count})"
+            )
+        await target.set_input_files(file_path)
+        await page.wait_for_timeout(1_500)
+
+    async def _wait_for_source_presence(self, page: Any, source_match: Optional[str], *, timeout_ms: int = 20_000) -> None:
+        if not source_match:
+            await page.wait_for_timeout(1_500)
+            return
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        while asyncio.get_running_loop().time() < deadline:
+            container = await self._find_project_source_container(page, source_match, exact=False)
+            if container is not None:
+                return
+            await page.wait_for_timeout(500)
+        raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {source_match}")
+
+    async def _wait_for_source_absence(self, page: Any, source_name: str, *, exact: bool, timeout_ms: int = 20_000) -> None:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        while asyncio.get_running_loop().time() < deadline:
+            container = await self._find_project_source_container(page, source_name, exact=exact)
+            if container is None:
+                return
+            await page.wait_for_timeout(500)
+        raise ResponseTimeoutError(f"Timed out waiting for project source to disappear: {source_name}")
+
+    async def _find_project_source_container(self, page: Any, source_name: str, *, exact: bool) -> Optional[Any]:
+        needle = re.sub(r"\s+", " ", (source_name or "")).strip()
+        if not needle:
+            return None
+        handle = await page.evaluate_handle(
+            """
+            ({ needle, exact }) => {
+                const normalize = value => (value || '').replace(/\\s+/g, ' ').trim();
+                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *'));
+                for (const el of nodes) {
+                    if (!isVisible(el)) continue;
+                    const text = normalize(el.textContent);
+                    if (!text) continue;
+                    const matched = exact ? text === needle : text.includes(needle);
+                    if (!matched) continue;
+                    let current = el;
+                    while (current && current !== document.body) {
+                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
+                        if (buttons.length) return current;
+                        current = current.parentElement;
+                    }
+                }
+                return null;
+            }
+            """,
+            {"needle": needle, "exact": exact},
+        )
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
+    async def _find_source_options_button(self, container: Any) -> Optional[Any]:
+        try:
+            buttons = await container.query_selector_all('button,[role="button"]')
+        except Exception:
+            return None
+
+        visible_buttons = []
+        for button in buttons:
+            try:
+                if not await button.is_visible():
+                    continue
+                visible_buttons.append(button)
+            except Exception:
+                continue
+
+        for button in visible_buttons:
+            aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
+            data_testid = ((await button.get_attribute('data-testid')) or '').strip().lower()
+            has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            if any(hint in aria_label for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
+                return button
+            if any(hint in data_testid for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
+                return button
+            if has_popup == 'menu':
+                return button
+
+        return visible_buttons[-1] if visible_buttons else None
 
     def _is_project_home_url(self, url: str) -> bool:
         return urlparse(url).path.rstrip("/").endswith("/project")
