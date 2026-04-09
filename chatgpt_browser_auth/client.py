@@ -59,6 +59,13 @@ ASSISTANT_MESSAGE_SELECTORS = [
     'main [role="article"]',
 ]
 PRIMARY_ASSISTANT_MESSAGE_SELECTOR = ASSISTANT_MESSAGE_SELECTORS[0]
+COMPOSER_SUBMIT_BUTTON_SELECTORS = [
+    '#composer-submit-button',
+    'button[data-testid="send-button"]',
+    'button[aria-label="Send prompt"]',
+]
+SEND_READY_ARIA_HINTS = ('send prompt', 'send')
+STOP_GENERATING_ARIA_HINTS = ('stop', 'stop generating', 'stop streaming')
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -873,12 +880,83 @@ class ChatGPTBrowserClient:
             "Timed out while waiting for manual login to complete in the visible browser."
         )
 
+    async def _probe_submit_button_state(self, page: Any) -> dict[str, Any]:
+        for selector in COMPOSER_SUBMIT_BUTTON_SELECTORS:
+            try:
+                button = page.locator(selector).first
+                count = await button.count()
+            except Exception as exc:
+                self._log("submit", "submit state probe failed", selector=selector, error=str(exc))
+                continue
+
+            if not count:
+                continue
+
+            visible = False
+            enabled = False
+            aria_label = ""
+            data_testid = ""
+            class_name = ""
+            try:
+                visible = await button.is_visible(timeout=1_000)
+            except Exception:
+                visible = False
+            try:
+                enabled = await button.is_enabled(timeout=1_500)
+            except Exception:
+                enabled = False
+            try:
+                aria_label = (await button.get_attribute("aria-label") or "").strip()
+            except Exception:
+                aria_label = ""
+            try:
+                data_testid = (await button.get_attribute("data-testid") or "").strip()
+            except Exception:
+                data_testid = ""
+            try:
+                class_name = (await button.get_attribute("class") or "").strip()
+            except Exception:
+                class_name = ""
+
+            normalized_aria = aria_label.lower()
+            normalized_testid = data_testid.lower()
+            send_ready = bool(
+                visible and enabled and (
+                    normalized_testid == "send-button"
+                    or any(hint in normalized_aria for hint in SEND_READY_ARIA_HINTS)
+                )
+            )
+            stop_visible = bool(
+                visible and (
+                    any(hint in normalized_aria for hint in STOP_GENERATING_ARIA_HINTS)
+                    or "stop" in class_name.lower()
+                )
+            )
+            return {
+                "selector": selector,
+                "count": count,
+                "visible": visible,
+                "enabled": enabled,
+                "aria_label": aria_label,
+                "data_testid": data_testid,
+                "class_name": class_name,
+                "send_ready": send_ready,
+                "stop_visible": stop_visible,
+            }
+
+        return {
+            "selector": None,
+            "count": 0,
+            "visible": False,
+            "enabled": False,
+            "aria_label": "",
+            "data_testid": "",
+            "class_name": "",
+            "send_ready": False,
+            "stop_visible": False,
+        }
+
     async def _submit_prompt(self, page: Any) -> None:
-        submit_candidates = [
-            '#composer-submit-button',
-            'button[data-testid="send-button"]',
-            'button[aria-label="Send prompt"]',
-        ]
         submit_wait_timeout_s = 20.0
         poll_interval_ms = 500
         deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
@@ -887,11 +965,11 @@ class ChatGPTBrowserClient:
             "submit",
             "attempting to submit prompt",
             wait_timeout_s=submit_wait_timeout_s,
-            selectors=submit_candidates,
+            selectors=COMPOSER_SUBMIT_BUTTON_SELECTORS,
         )
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
-            for selector in submit_candidates:
+            for selector in COMPOSER_SUBMIT_BUTTON_SELECTORS:
                 try:
                     button = page.locator(selector).first
                     count = await button.count()
@@ -1188,6 +1266,8 @@ class ChatGPTBrowserClient:
             ASSISTANT_MESSAGE_SELECTORS,
         )
 
+        submit_state = await self._probe_submit_button_state(page)
+
         lines = [
             f"timestamp: {self._timestamp()}",
             f"driver: {self.driver_name}",
@@ -1199,6 +1279,14 @@ class ChatGPTBrowserClient:
             f"assistant_count: {assistant_count}",
             f"assistant_text_length: {len(assistant_text)}",
             f"assistant_preview: {self._preview_text(assistant_text, 1200)}",
+            f"submit_selector: {submit_state.get('selector')}",
+            f"submit_count: {submit_state.get('count')}",
+            f"submit_visible: {submit_state.get('visible')}",
+            f"submit_enabled: {submit_state.get('enabled')}",
+            f"submit_aria_label: {submit_state.get('aria_label')}",
+            f"submit_data_testid: {submit_state.get('data_testid')}",
+            f"submit_send_ready: {submit_state.get('send_ready')}",
+            f"submit_stop_visible: {submit_state.get('stop_visible')}",
         ]
         current_project_links = await self._extract_project_conversation_links(page)
         lines.extend([
@@ -1377,6 +1465,13 @@ class ChatGPTBrowserClient:
         attempt = 0
         last_diagnostic_dump = -30.0
         last_probe_summary = ""
+        stable_required = 3
+        poll_interval_ms = 500
+        last_candidate_text = ""
+        stable_polls = 0
+        first_response_seen_at: Optional[float] = None
+        observed_non_send_ready = False
+        min_completion_delay_s = 1.0
 
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
@@ -1394,29 +1489,76 @@ class ChatGPTBrowserClient:
                 ASSISTANT_MESSAGE_SELECTORS,
             )
             probe_summary = self._summarize_probes(probes)
+            submit_state = await self._probe_submit_button_state(page)
 
-            if self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text):
-                self._log(
-                    "response",
-                    "assistant response captured",
-                    selector=assistant_selector,
-                    attempt=attempt,
-                    elapsed_s=round(elapsed_s, 1),
-                    text_length=len(assistant_text),
-                    preview=self._preview_text(assistant_text, 160),
-                )
-                if self.config.debug:
-                    await self._save_response_diagnostics(
-                        page,
-                        probes=probes,
-                        response_context=response_context,
+            if submit_state.get("count") and not submit_state.get("send_ready"):
+                observed_non_send_ready = True
+
+            has_response = self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text)
+            candidate_text = assistant_text.strip()
+            if has_response and candidate_text:
+                if first_response_seen_at is None:
+                    first_response_seen_at = asyncio.get_running_loop().time()
+                    self._log(
+                        "response",
+                        "assistant response detected; waiting for completion signals",
+                        selector=assistant_selector,
                         attempt=attempt,
-                        elapsed_s=elapsed_s,
-                        include_page_artifacts=False,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=len(candidate_text),
+                        preview=self._preview_text(candidate_text, 160),
                     )
-                return assistant_text
 
-            if attempt == 1 or attempt % 15 == 0 or probe_summary != last_probe_summary:
+                if candidate_text == last_candidate_text:
+                    stable_polls += 1
+                else:
+                    previous_length = len(last_candidate_text)
+                    last_candidate_text = candidate_text
+                    stable_polls = 0
+                    self._log(
+                        "response",
+                        "assistant response updated",
+                        selector=assistant_selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=len(candidate_text),
+                        previous_length=previous_length,
+                        preview=self._preview_text(candidate_text, 160),
+                    )
+
+                stable_elapsed_s = 0.0
+                if first_response_seen_at is not None:
+                    stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
+
+                if submit_state.get("send_ready") and stable_polls >= stable_required and (
+                    observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
+                ):
+                    self._log(
+                        "response",
+                        "assistant response stabilized",
+                        selector=assistant_selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=len(candidate_text),
+                        stable_polls=stable_polls,
+                        submit_selector=submit_state.get("selector"),
+                        submit_aria_label=submit_state.get("aria_label"),
+                        submit_data_testid=submit_state.get("data_testid"),
+                        observed_non_send_ready=observed_non_send_ready,
+                        preview=self._preview_text(candidate_text, 160),
+                    )
+                    if self.config.debug:
+                        await self._save_response_diagnostics(
+                            page,
+                            probes=probes,
+                            response_context=response_context,
+                            attempt=attempt,
+                            elapsed_s=elapsed_s,
+                            include_page_artifacts=False,
+                        )
+                    return candidate_text
+
+            if attempt == 1 or attempt % 10 == 0 or probe_summary != last_probe_summary:
                 self._log(
                     "response",
                     "assistant wait poll",
@@ -1424,6 +1566,11 @@ class ChatGPTBrowserClient:
                     elapsed_s=round(elapsed_s, 1),
                     current_url=await self._safe_page_url(page),
                     probe_summary=probe_summary,
+                    stable_polls=stable_polls,
+                    submit_selector=submit_state.get("selector"),
+                    submit_send_ready=submit_state.get("send_ready"),
+                    submit_aria_label=submit_state.get("aria_label"),
+                    submit_data_testid=submit_state.get("data_testid"),
                 )
                 last_probe_summary = probe_summary
 
@@ -1438,7 +1585,7 @@ class ChatGPTBrowserClient:
                 )
                 last_diagnostic_dump = elapsed_s
 
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(poll_interval_ms)
 
         elapsed_s = asyncio.get_running_loop().time() - start
         await self._maybe_open_new_project_conversation(
@@ -1451,6 +1598,7 @@ class ChatGPTBrowserClient:
             page,
             ASSISTANT_MESSAGE_SELECTORS,
         )
+        submit_state = await self._probe_submit_button_state(page)
         if self.config.debug:
             await self._save_response_diagnostics(
                 page,
@@ -1461,7 +1609,7 @@ class ChatGPTBrowserClient:
                 include_page_artifacts=True,
             )
         raise ResponseTimeoutError(
-            f"Timed out waiting for an assistant response (last selector={assistant_selector}, count={assistant_count}, text_length={len(assistant_text)})"
+            f"Timed out waiting for an assistant response (last selector={assistant_selector}, count={assistant_count}, text_length={len(assistant_text)}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
         )
 
     async def _wait_and_get_json(self, page: Any, response_context: Optional[dict[str, Any]] = None) -> Any:
@@ -1476,6 +1624,13 @@ class ChatGPTBrowserClient:
         attempt = 0
         last_diagnostic_dump = -30.0
         last_probe_summary = ""
+        stable_required = 2
+        poll_interval_ms = 500
+        last_payload_signature = ""
+        stable_polls = 0
+        first_payload_seen_at: Optional[float] = None
+        observed_non_send_ready = False
+        min_completion_delay_s = 1.0
 
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
@@ -1490,27 +1645,71 @@ class ChatGPTBrowserClient:
 
             payload, selector, text_length, probes = await self._try_extract_json_payload(page)
             probe_summary = self._summarize_probes(probes)
-            if payload is not None:
-                self._log(
-                    "response",
-                    "parseable json payload captured",
-                    selector=selector,
-                    attempt=attempt,
-                    elapsed_s=round(elapsed_s, 1),
-                    text_length=text_length,
-                )
-                if self.config.debug:
-                    await self._save_response_diagnostics(
-                        page,
-                        probes=probes,
-                        response_context=response_context,
-                        attempt=attempt,
-                        elapsed_s=elapsed_s,
-                        include_page_artifacts=False,
-                    )
-                return payload
+            submit_state = await self._probe_submit_button_state(page)
 
-            if attempt == 1 or attempt % 15 == 0 or probe_summary != last_probe_summary:
+            if submit_state.get("count") and not submit_state.get("send_ready"):
+                observed_non_send_ready = True
+
+            if payload is not None:
+                payload_signature = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                if first_payload_seen_at is None:
+                    first_payload_seen_at = asyncio.get_running_loop().time()
+                    self._log(
+                        "response",
+                        "parseable json payload detected; waiting for completion signals",
+                        selector=selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=text_length,
+                    )
+
+                if payload_signature == last_payload_signature:
+                    stable_polls += 1
+                else:
+                    last_payload_signature = payload_signature
+                    stable_polls = 0
+                    self._log(
+                        "response",
+                        "parseable json payload updated",
+                        selector=selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=text_length,
+                        stable_polls=stable_polls,
+                    )
+
+                stable_elapsed_s = 0.0
+                if first_payload_seen_at is not None:
+                    stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
+
+                if submit_state.get("send_ready") and stable_polls >= stable_required and (
+                    observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
+                ):
+                    self._log(
+                        "response",
+                        "parseable json payload stabilized",
+                        selector=selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=text_length,
+                        stable_polls=stable_polls,
+                        submit_selector=submit_state.get("selector"),
+                        submit_aria_label=submit_state.get("aria_label"),
+                        submit_data_testid=submit_state.get("data_testid"),
+                        observed_non_send_ready=observed_non_send_ready,
+                    )
+                    if self.config.debug:
+                        await self._save_response_diagnostics(
+                            page,
+                            probes=probes,
+                            response_context=response_context,
+                            attempt=attempt,
+                            elapsed_s=elapsed_s,
+                            include_page_artifacts=False,
+                        )
+                    return payload
+
+            if attempt == 1 or attempt % 10 == 0 or probe_summary != last_probe_summary:
                 self._log(
                     "response",
                     "json wait poll",
@@ -1518,6 +1717,11 @@ class ChatGPTBrowserClient:
                     elapsed_s=round(elapsed_s, 1),
                     current_url=await self._safe_page_url(page),
                     probe_summary=probe_summary,
+                    stable_polls=stable_polls,
+                    submit_selector=submit_state.get("selector"),
+                    submit_send_ready=submit_state.get("send_ready"),
+                    submit_aria_label=submit_state.get("aria_label"),
+                    submit_data_testid=submit_state.get("data_testid"),
                 )
                 last_probe_summary = probe_summary
 
@@ -1532,7 +1736,7 @@ class ChatGPTBrowserClient:
                 )
                 last_diagnostic_dump = elapsed_s
 
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(poll_interval_ms)
 
         elapsed_s = asyncio.get_running_loop().time() - start
         await self._maybe_open_new_project_conversation(
@@ -1542,6 +1746,7 @@ class ChatGPTBrowserClient:
             elapsed_s=elapsed_s,
         )
         payload, selector, text_length, probes = await self._try_extract_json_payload(page)
+        submit_state = await self._probe_submit_button_state(page)
         if self.config.debug:
             await self._save_response_diagnostics(
                 page,
@@ -1551,7 +1756,9 @@ class ChatGPTBrowserClient:
                 elapsed_s=elapsed_s,
                 include_page_artifacts=True,
             )
-        raise ResponseTimeoutError("Timed out waiting for parseable JSON in the assistant response")
+        raise ResponseTimeoutError(
+            f"Timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
+        )
 
     async def _goto(self, page: Any, url: str, *, label: str) -> None:
         current_url = await self._safe_page_url(page)
