@@ -73,6 +73,14 @@ SEND_READY_ID_HINTS = ('composer-submit-button', 'send-button')
 SEND_READY_CLASS_HINTS = ('composer-submit', 'send-button')
 STOP_GENERATING_ARIA_HINTS = ('stop', 'stop generating', 'stop streaming')
 STOP_GENERATING_CLASS_HINTS = ('stop', 'square')
+THINKING_MARKER_SELECTORS = [
+    '[data-testid*="thinking"]',
+    '[aria-label*="Thinking"]',
+]
+THINKING_TEXT_PATTERNS = [
+    re.compile(r'\bThinking\b', re.IGNORECASE),
+    re.compile(r'\bExtended thinking\b', re.IGNORECASE),
+]
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -892,7 +900,7 @@ class ChatGPTBrowserClient:
         visible_enabled_buttons: list[dict[str, Any]] = []
         visible_enabled_count = 0
         stop_visible = False
-        send_ready = False
+        send_candidates: list[dict[str, Any]] = []
         idle_visible = False
 
         for selector in COMPOSER_TRAILING_BUTTON_SCOPE_SELECTORS:
@@ -906,7 +914,7 @@ class ChatGPTBrowserClient:
             if not count:
                 continue
 
-            limit = min(count, 8)
+            limit = min(count, 12)
             for index in range(limit):
                 button = buttons.nth(index)
                 try:
@@ -958,32 +966,39 @@ class ChatGPTBrowserClient:
                     visible_enabled_buttons.append(button_state)
                     visible_enabled_count += 1
 
-                is_sendish = bool(
-                    enabled and (
-                        normalized_testid == "send-button"
-                        or any(hint in normalized_aria for hint in SEND_READY_ARIA_HINTS)
-                        or any(hint in normalized_id for hint in SEND_READY_ID_HINTS)
-                        or any(hint in normalized_class for hint in SEND_READY_CLASS_HINTS)
-                    )
-                )
                 is_stopish = bool(
                     visible and (
-                        any(hint in normalized_aria for hint in STOP_GENERATING_ARIA_HINTS)
+                        normalized_testid == "stop-button"
+                        or any(hint in normalized_aria for hint in STOP_GENERATING_ARIA_HINTS)
+                        or any(hint in normalized_id for hint in STOP_GENERATING_CLASS_HINTS)
                         or any(hint in normalized_class for hint in STOP_GENERATING_CLASS_HINTS)
+                    )
+                )
+                is_sendish = bool(
+                    enabled and not is_stopish and (
+                        normalized_testid == "send-button"
+                        or (normalized_id == "composer-submit-button" and "send" in normalized_aria)
+                        or "send prompt" in normalized_aria
                     )
                 )
 
                 if is_stopish:
                     stop_visible = True
-                if is_sendish:
-                    send_ready = True
+                    if primary_match is None:
+                        primary_match = button_state
+                elif is_sendish:
+                    send_candidates.append(button_state)
                     if primary_match is None:
                         primary_match = button_state
 
-        idle_visible = bool(visible_enabled_count >= 2 and not stop_visible)
+        send_ready = bool(send_candidates) and not stop_visible
+        idle_visible = bool((send_ready or visible_enabled_count >= 2) and not stop_visible)
 
-        if primary_match is None and visible_enabled_buttons:
-            primary_match = visible_enabled_buttons[-1]
+        if primary_match is None:
+            if send_candidates:
+                primary_match = send_candidates[-1]
+            elif visible_enabled_buttons:
+                primary_match = visible_enabled_buttons[-1]
 
         if primary_match is not None:
             return {
@@ -1009,6 +1024,65 @@ class ChatGPTBrowserClient:
             "stop_visible": False,
             "idle_visible": False,
             "visible_enabled_count": 0,
+        }
+
+    async def _probe_thinking_state(self, page: Any) -> dict[str, Any]:
+        for selector in THINKING_MARKER_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+            except Exception:
+                continue
+            if not count:
+                continue
+            limit = min(count, 5)
+            for index in range(limit):
+                item = locator.nth(index)
+                try:
+                    visible = await item.is_visible(timeout=500)
+                except Exception:
+                    visible = False
+                if visible:
+                    try:
+                        text = (await item.inner_text(timeout=500) or "").strip()
+                    except Exception:
+                        text = ""
+                    return {
+                        "visible": True,
+                        "source": selector,
+                        "text": text,
+                    }
+
+        for pattern in THINKING_TEXT_PATTERNS:
+            try:
+                locator = page.get_by_text(pattern)
+                count = await locator.count()
+            except Exception:
+                continue
+            if not count:
+                continue
+            limit = min(count, 5)
+            for index in range(limit):
+                item = locator.nth(index)
+                try:
+                    visible = await item.is_visible(timeout=500)
+                except Exception:
+                    visible = False
+                if visible:
+                    try:
+                        text = (await item.inner_text(timeout=500) or "").strip()
+                    except Exception:
+                        text = ""
+                    return {
+                        "visible": True,
+                        "source": getattr(pattern, 'pattern', str(pattern)),
+                        "text": text,
+                    }
+
+        return {
+            "visible": False,
+            "source": None,
+            "text": "",
         }
 
     async def _submit_prompt(self, page: Any) -> None:
@@ -1525,7 +1599,8 @@ class ChatGPTBrowserClient:
         last_candidate_text = ""
         stable_polls = 0
         first_response_seen_at: Optional[float] = None
-        observed_non_send_ready = False
+        observed_running_state = False
+        observed_idle_after_running = False
         min_completion_delay_s = 1.0
 
         while asyncio.get_running_loop().time() < deadline:
@@ -1545,9 +1620,14 @@ class ChatGPTBrowserClient:
             )
             probe_summary = self._summarize_probes(probes)
             submit_state = await self._probe_submit_button_state(page)
+            thinking_state = await self._probe_thinking_state(page)
+            running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
+            idle_now = bool(not running_now and (submit_state.get("send_ready") or submit_state.get("idle_visible")))
 
-            if submit_state.get("count") and not submit_state.get("send_ready"):
-                observed_non_send_ready = True
+            if running_now:
+                observed_running_state = True
+            elif observed_running_state and idle_now:
+                observed_idle_after_running = True
 
             has_response = self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text)
             candidate_text = assistant_text.strip()
@@ -1585,10 +1665,13 @@ class ChatGPTBrowserClient:
                 if first_response_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
 
-                completion_ready = bool(submit_state.get("send_ready") or submit_state.get("idle_visible"))
-                if completion_ready and stable_polls >= stable_required and (
-                    observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
-                ):
+                completion_ready = bool(
+                    observed_idle_after_running
+                    and not submit_state.get("stop_visible")
+                    and not thinking_state.get("visible")
+                    and (submit_state.get("send_ready") or submit_state.get("idle_visible"))
+                )
+                if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
                     self._log(
                         "response",
                         "assistant response stabilized",
@@ -1602,7 +1685,10 @@ class ChatGPTBrowserClient:
                         submit_data_testid=submit_state.get("data_testid"),
                         submit_idle_visible=submit_state.get("idle_visible"),
                         submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
-                        observed_non_send_ready=observed_non_send_ready,
+                        thinking_visible=thinking_state.get("visible"),
+                        thinking_text=thinking_state.get("text"),
+                        observed_running_state=observed_running_state,
+                        observed_idle_after_running=observed_idle_after_running,
                         preview=self._preview_text(candidate_text, 160),
                     )
                     if self.config.debug:
@@ -1631,6 +1717,12 @@ class ChatGPTBrowserClient:
                     submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                     submit_aria_label=submit_state.get("aria_label"),
                     submit_data_testid=submit_state.get("data_testid"),
+                    submit_stop_visible=submit_state.get("stop_visible"),
+                    thinking_visible=thinking_state.get("visible"),
+                    thinking_text=thinking_state.get("text"),
+                    running_now=running_now,
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
                 )
                 last_probe_summary = probe_summary
 
@@ -1689,7 +1781,8 @@ class ChatGPTBrowserClient:
         last_payload_signature = ""
         stable_polls = 0
         first_payload_seen_at: Optional[float] = None
-        observed_non_send_ready = False
+        observed_running_state = False
+        observed_idle_after_running = False
         min_completion_delay_s = 1.0
 
         while asyncio.get_running_loop().time() < deadline:
@@ -1706,9 +1799,14 @@ class ChatGPTBrowserClient:
             payload, selector, text_length, probes = await self._try_extract_json_payload(page)
             probe_summary = self._summarize_probes(probes)
             submit_state = await self._probe_submit_button_state(page)
+            thinking_state = await self._probe_thinking_state(page)
+            running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
+            idle_now = bool(not running_now and (submit_state.get("send_ready") or submit_state.get("idle_visible")))
 
-            if submit_state.get("count") and not submit_state.get("send_ready"):
-                observed_non_send_ready = True
+            if running_now:
+                observed_running_state = True
+            elif observed_running_state and idle_now:
+                observed_idle_after_running = True
 
             if payload is not None:
                 payload_signature = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -1742,10 +1840,13 @@ class ChatGPTBrowserClient:
                 if first_payload_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
 
-                completion_ready = bool(submit_state.get("send_ready") or submit_state.get("idle_visible"))
-                if completion_ready and stable_polls >= stable_required and (
-                    observed_non_send_ready or stable_elapsed_s >= min_completion_delay_s
-                ):
+                completion_ready = bool(
+                    observed_idle_after_running
+                    and not submit_state.get("stop_visible")
+                    and not thinking_state.get("visible")
+                    and (submit_state.get("send_ready") or submit_state.get("idle_visible"))
+                )
+                if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
                     self._log(
                         "response",
                         "parseable json payload stabilized",
@@ -1759,7 +1860,10 @@ class ChatGPTBrowserClient:
                         submit_data_testid=submit_state.get("data_testid"),
                         submit_idle_visible=submit_state.get("idle_visible"),
                         submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
-                        observed_non_send_ready=observed_non_send_ready,
+                        thinking_visible=thinking_state.get("visible"),
+                        thinking_text=thinking_state.get("text"),
+                        observed_running_state=observed_running_state,
+                        observed_idle_after_running=observed_idle_after_running,
                     )
                     if self.config.debug:
                         await self._save_response_diagnostics(
@@ -1787,6 +1891,12 @@ class ChatGPTBrowserClient:
                     submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
                     submit_aria_label=submit_state.get("aria_label"),
                     submit_data_testid=submit_state.get("data_testid"),
+                    submit_stop_visible=submit_state.get("stop_visible"),
+                    thinking_visible=thinking_state.get("visible"),
+                    thinking_text=thinking_state.get("text"),
+                    running_now=running_now,
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
                 )
                 last_probe_summary = probe_summary
 
