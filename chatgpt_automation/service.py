@@ -85,6 +85,40 @@ class ChatGPTAutomationService:
             logger.info("Running ChatGPT browser login check")
             return await self._build_bot().run_login_check(keep_open=keep_open)
 
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        async with self._lock:
+            logger.info("Adding ChatGPT project source")
+            return await self._build_bot().add_project_source(
+                source_kind=source_kind,
+                value=value,
+                file_path=file_path,
+                display_name=display_name,
+                keep_open=keep_open,
+            )
+
+    async def remove_project_source(
+        self,
+        *,
+        source_name: str,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        async with self._lock:
+            logger.info("Removing ChatGPT project source")
+            return await self._build_bot().remove_project_source(
+                source_name=source_name,
+                exact=exact,
+                keep_open=keep_open,
+            )
+
     async def ask_question(
         self,
         *,

@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.7
+# ChatGPT ClaudeCode Workflow v0.0.12
 
 This reduced package is a single command-line tool that uses `chatgpt_automation` as the backbone library.
 It opens ChatGPT in a persistent browser profile, lets you verify login state, send one-off prompts, or run an interactive shell.
@@ -63,6 +63,21 @@ Interactive shell:
 python chatgpt_cli.py shell
 ```
 
+Add a source to a project (requires `CHATGPT_PROJECT_URL` to point at a project page):
+
+```bash
+python chatgpt_cli.py project-source-add --type link --value "https://drive.google.com/drive/folders/..." --dotenv .env
+python chatgpt_cli.py project-source-add --type text --value "Reference notes for this project" --name "Notes" --dotenv .env
+python chatgpt_cli.py project-source-add --type file --file ./docs/spec.pdf --dotenv .env
+```
+
+Remove a source from a project:
+
+```bash
+python chatgpt_cli.py project-source-remove "Notes" --exact --dotenv .env
+python chatgpt_cli.py project-source-remove "drive.google.com" --dotenv .env
+```
+
 ## Shell commands
 
 - `:help`
@@ -99,6 +114,8 @@ This is a browser automation proof of concept. The weak points remain the same:
 - manual re-login in headed mode when the profile loses auth state
 
 For a POC and Playwright learning exercise, that is acceptable.
+
+The new project-source commands depend on the current ChatGPT project UI. As of early 2026, Projects have a dedicated Sources tab and support adding project sources from apps, quick text, and files, but the exact labels and menus can still drift. citeturn347089search0turn347089search1turn347089search9
 
 
 ## Parser fix in v0.0.4

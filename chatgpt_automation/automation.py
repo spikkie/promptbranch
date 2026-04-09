@@ -204,6 +204,36 @@ class ChatGPTAutomation:
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         return await self.client.run_login_check(keep_open=keep_open)
 
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.add_project_source(
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+        )
+
+    async def remove_project_source(
+        self,
+        *,
+        source_name: str,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.remove_project_source(
+            source_name=source_name,
+            exact=exact,
+            keep_open=keep_open,
+        )
+
 
 async def ask_chatgpt(
     project_url: str,
