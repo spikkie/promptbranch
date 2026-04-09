@@ -101,3 +101,21 @@ The CLI now accepts root options such as `--dotenv`, `--email`, and `--password-
 - after the subcommand
 
 This fixes the `unrecognized arguments` errors from v0.0.3.
+
+
+## Env loading fix in v0.0.6
+
+The CLI now loads `--dotenv` **before** building the main parser, so environment-backed defaults such as:
+
+- `CHATGPT_EMAIL`
+- `CHATGPT_PASSWORD`
+- `CHATGPT_PASSWORD_FILE`
+- `CHATGPT_PROFILE_DIR`
+
+are available to the login flow when you run commands like:
+
+```bash
+python chatgpt_cli.py login-check --keep-open --dotenv .env
+```
+
+In earlier builds, `.env` could be loaded too late for parser defaults, which left `email=None` even though the file was present.

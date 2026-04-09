@@ -17,6 +17,19 @@ from .automation import ChatGPTAutomation
 logger = logging.getLogger(__name__)
 
 
+def _mask_email(value: Optional[str]) -> str:
+    if not value:
+        return "<unset>"
+    if "@" not in value:
+        return "***"
+    local, domain = value.split("@", 1)
+    if len(local) <= 2:
+        masked_local = "*" * len(local)
+    else:
+        masked_local = local[:2] + "***"
+    return f"{masked_local}@{domain}"
+
+
 @dataclass(slots=True)
 class ChatGPTAutomationSettings:
     project_url: str
@@ -45,6 +58,15 @@ class ChatGPTAutomationService:
         self._lock = asyncio.Lock()
 
     def _build_bot(self) -> ChatGPTAutomation:
+        logger.debug(
+            "Building ChatGPT automation bot with email=%s password_set=%s password_file=%s profile_dir=%s headed=%s driver=%s",
+            _mask_email(self.settings.email),
+            bool(self.settings.password),
+            self.settings.password_file or "<unset>",
+            self.settings.profile_dir,
+            not self.settings.headless,
+            "patchright" if self.settings.use_patchright else "playwright",
+        )
         return ChatGPTAutomation(
             project_url=self.settings.project_url,
             email=self.settings.email,
