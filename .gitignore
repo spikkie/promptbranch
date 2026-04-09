@@ -85,3 +85,9 @@ out/
 
 #zip versions
 chatgpt_claudecode_workflow*.zip
+
+#browser profile
+profile/
+
+#debug info
+debug_artifacts/
