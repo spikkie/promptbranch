@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.4
+# ChatGPT ClaudeCode Workflow v0.0.7
 
 This reduced package is a single command-line tool that uses `chatgpt_automation` as the backbone library.
 It opens ChatGPT in a persistent browser profile, lets you verify login state, send one-off prompts, or run an interactive shell.
@@ -42,6 +42,14 @@ Ask one question:
 ```bash
 python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
 ```
+
+Debugging recommendation:
+
+```bash
+python chatgpt_cli.py --max-retries 1 ask --dotenv .env "Say hello in one short sentence."
+```
+
+In debug mode, the CLI now defaults to `--max-retries 1` unless you explicitly override it or set `CHATGPT_MAX_RETRIES`. This reduces duplicate prompt submissions while you are diagnosing selector issues.
 
 Ask for JSON:
 
@@ -119,3 +127,12 @@ python chatgpt_cli.py login-check --keep-open --dotenv .env
 ```
 
 In earlier builds, `.env` could be loaded too late for parser defaults, which left `email=None` even though the file was present.
+
+
+## Response scraper update in v0.0.7
+
+The assistant-response scraper now uses a multi-selector fallback instead of relying only on:
+
+- `[data-message-author-role="assistant"]`
+
+It now probes additional conversation container selectors and returns the first non-empty trailing response block it can extract. This is intended to handle current ChatGPT DOM variations where the response is visible in the browser but the original assistant selector does not resolve.
