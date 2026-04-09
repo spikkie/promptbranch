@@ -51,7 +51,14 @@ AUTHENTICATED_INDICATORS = [
     '[data-testid="share-chat-button"]',
     'nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])',
 ]
-ASSISTANT_MESSAGE_SELECTOR = '[data-message-author-role="assistant"]'
+ASSISTANT_MESSAGE_SELECTORS = [
+    '[data-message-author-role="assistant"]',
+    'article[data-testid*="conversation-turn"]',
+    'div[data-testid*="conversation-turn"]',
+    'main article',
+    'main [role="article"]',
+]
+PRIMARY_ASSISTANT_MESSAGE_SELECTOR = ASSISTANT_MESSAGE_SELECTORS[0]
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -253,7 +260,7 @@ class ChatGPTBrowserClient:
         result = (
             await self._wait_and_get_json(page, response_context=response_context)
             if expect_json
-            else await self._wait_and_get_response(page)
+            else await self._wait_and_get_response(page, response_context=response_context)
         )
         if keep_open and self.config.is_headed:
             await asyncio.to_thread(
@@ -966,17 +973,68 @@ class ChatGPTBrowserClient:
                 "els => els.map(el => ((el.innerText || el.textContent || '').trim()))"
             )
             if texts:
-                last_text = (texts[-1] or "").strip()
-                if last_text:
-                    return count, last_text
+                for candidate in reversed(texts):
+                    normalized = (candidate or "").strip()
+                    if normalized:
+                        return count, normalized
+                return count, (texts[-1] or "").strip()
         except Exception:
             pass
 
         try:
-            last = locator.nth(count - 1)
-            return count, await self._extract_text_from_locator(last, timeout_ms=1_000)
+            for index in range(count - 1, -1, -1):
+                candidate = await self._extract_text_from_locator(locator.nth(index), timeout_ms=1_000)
+                if candidate:
+                    return count, candidate
         except Exception:
-            return count, ""
+            pass
+
+        return count, ""
+
+    async def _extract_last_text_from_selectors(
+        self,
+        page: Any,
+        selectors: list[str],
+    ) -> tuple[Optional[str], int, str, list[dict[str, Any]]]:
+        probes: list[dict[str, Any]] = []
+        first_nonempty: Optional[tuple[str, int, str]] = None
+        best_fallback: Optional[tuple[str, int, str]] = None
+
+        for selector in selectors:
+            locator = page.locator(selector)
+            try:
+                count = await locator.count()
+            except Exception:
+                count = 0
+
+            visible = False
+            if count:
+                try:
+                    visible = await locator.last.is_visible(timeout=1_000)
+                except Exception:
+                    visible = False
+
+            _, text = await self._extract_last_text_from_selector(page, selector)
+            probe = {
+                "selector": selector,
+                "count": count,
+                "visible": visible,
+                "text_length": len(text),
+                "parsed": False,
+                "preview": self._preview_text(text, 220),
+            }
+            probes.append(probe)
+
+            if count and text and first_nonempty is None:
+                first_nonempty = (selector, count, text)
+            if count and best_fallback is None:
+                best_fallback = (selector, count, text)
+
+        if first_nonempty is not None:
+            return (*first_nonempty, probes)
+        if best_fallback is not None:
+            return (*best_fallback, probes)
+        return None, 0, "", probes
 
     def _is_project_home_url(self, url: str) -> bool:
         return urlparse(url).path.rstrip("/").endswith("/project")
@@ -1080,18 +1138,24 @@ class ChatGPTBrowserClient:
         return normalized[: max_len - 3] + "..."
 
     async def _capture_response_context(self, page: Any) -> dict[str, Any]:
-        assistant_count, assistant_text = await self._extract_last_text_from_selector(page, ASSISTANT_MESSAGE_SELECTOR)
+        assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
         project_conversation_links = await self._extract_project_conversation_links(page)
         context = {
             "url": await self._safe_page_url(page),
+            "assistant_selector": assistant_selector,
             "assistant_count": assistant_count,
             "assistant_text": assistant_text,
+            "assistant_probes": assistant_probes,
             "project_conversation_links": project_conversation_links,
         }
         self._log(
             "response",
             "captured baseline response context",
             url=context["url"],
+            assistant_selector=assistant_selector,
             assistant_count=assistant_count,
             assistant_text_length=len(assistant_text),
             assistant_preview=self._preview_text(assistant_text, 160),
@@ -1119,7 +1183,10 @@ class ChatGPTBrowserClient:
         elapsed_s: float,
     ) -> str:
         current_url = await self._safe_page_url(page)
-        assistant_count, assistant_text = await self._extract_last_text_from_selector(page, ASSISTANT_MESSAGE_SELECTOR)
+        assistant_selector, assistant_count, assistant_text, live_probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
 
         lines = [
             f"timestamp: {self._timestamp()}",
@@ -1128,6 +1195,7 @@ class ChatGPTBrowserClient:
             f"current_url: {current_url}",
             f"attempt: {attempt}",
             f"elapsed_s: {elapsed_s:.1f}",
+            f"assistant_selector: {assistant_selector}",
             f"assistant_count: {assistant_count}",
             f"assistant_text_length: {len(assistant_text)}",
             f"assistant_preview: {self._preview_text(assistant_text, 1200)}",
@@ -1143,6 +1211,7 @@ class ChatGPTBrowserClient:
             opened_links = response_context.get("opened_project_conversation_links") or []
             lines.extend([
                 f"baseline_url: {response_context.get('url')}",
+                f"baseline_assistant_selector: {response_context.get('assistant_selector')}",
                 f"baseline_assistant_count: {response_context.get('assistant_count')}",
                 f"baseline_assistant_text_length: {len(baseline_text)}",
                 f"baseline_assistant_preview: {self._preview_text(baseline_text, 400)}",
@@ -1150,6 +1219,17 @@ class ChatGPTBrowserClient:
                 f"baseline_project_conversation_link_count: {len(baseline_links)}",
                 f"baseline_project_conversation_links: {' | '.join(baseline_links[:10])}",
                 f"opened_project_conversation_links: {' | '.join(opened_links[:10])}",
+            ])
+        lines.append("live_selector_probes:")
+        if not live_probes:
+            lines.append("  <no live probes>")
+        for probe in live_probes:
+            lines.extend([
+                f"  selector: {probe.get('selector')}",
+                f"    count: {probe.get('count')}",
+                f"    visible: {probe.get('visible')}",
+                f"    text_length: {probe.get('text_length')}",
+                f"    preview: {probe.get('preview')}",
             ])
         lines.append("selector_probes:")
         if not probes:
@@ -1247,59 +1327,142 @@ class ChatGPTBrowserClient:
             if parsed is not None:
                 return parsed, selector, len(payload_text), probes
 
-        assistant_count, assistant_text = await self._extract_last_text_from_selector(page, ASSISTANT_MESSAGE_SELECTOR)
+        assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
         parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
-        probes.append({
-            "selector": ASSISTANT_MESSAGE_SELECTOR,
-            "count": assistant_count,
-            "visible": bool(assistant_count),
-            "text_length": len(assistant_text),
-            "parsed": parsed is not None,
-            "preview": self._preview_text(assistant_text, 220),
-        })
+        probes.extend(assistant_probes)
         if assistant_count:
             self._log(
                 "response",
                 "assistant text fallback probe",
-                selector=ASSISTANT_MESSAGE_SELECTOR,
+                selector=assistant_selector,
                 count=assistant_count,
                 text_length=len(assistant_text),
                 parsed=parsed is not None,
             )
         if parsed is not None:
-            return parsed, ASSISTANT_MESSAGE_SELECTOR, len(assistant_text), probes
+            return parsed, assistant_selector, len(assistant_text), probes
 
         return None, None, 0, probes
 
-    async def _wait_and_get_response(self, page: Any) -> str:
-        self._log("response", "waiting for assistant response", selector=ASSISTANT_MESSAGE_SELECTOR, timeout_ms=self.config.response_timeout_ms)
-        try:
-            await page.locator(ASSISTANT_MESSAGE_SELECTOR).last.wait_for(
-                state="visible",
-                timeout=self.config.response_timeout_ms,
+    def _assistant_response_changed(self, response_context: Optional[dict[str, Any]], *, count: int, text: str) -> bool:
+        if not text.strip():
+            return False
+        if response_context is None:
+            return True
+        baseline_count = int(response_context.get("assistant_count") or 0)
+        baseline_text = (response_context.get("assistant_text") or "").strip()
+        if count > baseline_count:
+            return True
+        if text != baseline_text:
+            return True
+        return False
+
+    async def _wait_and_get_response(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]] = None,
+    ) -> str:
+        self._log(
+            "response",
+            "waiting for assistant response",
+            selectors=ASSISTANT_MESSAGE_SELECTORS,
+            timeout_ms=self.config.response_timeout_ms,
+        )
+        start = asyncio.get_running_loop().time()
+        deadline = start + (self.config.response_timeout_ms / 1000)
+        attempt = 0
+        last_diagnostic_dump = -30.0
+        last_probe_summary = ""
+
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            elapsed_s = asyncio.get_running_loop().time() - start
+
+            await self._maybe_open_new_project_conversation(
+                page,
+                response_context=response_context,
+                attempt=attempt,
+                elapsed_s=elapsed_s,
             )
-        except Exception as exc:
-            raise ResponseTimeoutError("Timed out waiting for an assistant response") from exc
 
-        assistant_locator = page.locator(ASSISTANT_MESSAGE_SELECTOR)
-        assistant_count = await assistant_locator.count()
-        assistant = assistant_locator.last
-        self._log("response", "assistant response became visible", count=assistant_count)
-        try:
-            markdown = assistant.locator(".markdown").first
-            markdown_count = await markdown.count()
-            self._log("response", "markdown probe", selector=".markdown", count=markdown_count)
-            if markdown_count:
-                text = await markdown.text_content()
-                result = (text or "").strip()
-                self._log("response", "returning markdown response text", text_length=len(result))
-                return result
-        except Exception as exc:
-            self._log("response", "markdown extraction failed", error=str(exc))
+            assistant_selector, assistant_count, assistant_text, probes = await self._extract_last_text_from_selectors(
+                page,
+                ASSISTANT_MESSAGE_SELECTORS,
+            )
+            probe_summary = self._summarize_probes(probes)
 
-        result = await self._extract_text_from_locator(assistant, timeout_ms=1_500)
-        self._log("response", "returning assistant text content", text_length=len(result))
-        return result
+            if self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text):
+                self._log(
+                    "response",
+                    "assistant response captured",
+                    selector=assistant_selector,
+                    attempt=attempt,
+                    elapsed_s=round(elapsed_s, 1),
+                    text_length=len(assistant_text),
+                    preview=self._preview_text(assistant_text, 160),
+                )
+                if self.config.debug:
+                    await self._save_response_diagnostics(
+                        page,
+                        probes=probes,
+                        response_context=response_context,
+                        attempt=attempt,
+                        elapsed_s=elapsed_s,
+                        include_page_artifacts=False,
+                    )
+                return assistant_text
+
+            if attempt == 1 or attempt % 15 == 0 or probe_summary != last_probe_summary:
+                self._log(
+                    "response",
+                    "assistant wait poll",
+                    attempt=attempt,
+                    elapsed_s=round(elapsed_s, 1),
+                    current_url=await self._safe_page_url(page),
+                    probe_summary=probe_summary,
+                )
+                last_probe_summary = probe_summary
+
+            if self.config.debug and (elapsed_s - last_diagnostic_dump >= 30.0):
+                await self._save_response_diagnostics(
+                    page,
+                    probes=probes,
+                    response_context=response_context,
+                    attempt=attempt,
+                    elapsed_s=elapsed_s,
+                    include_page_artifacts=False,
+                )
+                last_diagnostic_dump = elapsed_s
+
+            await page.wait_for_timeout(1000)
+
+        elapsed_s = asyncio.get_running_loop().time() - start
+        await self._maybe_open_new_project_conversation(
+            page,
+            response_context=response_context,
+            attempt=attempt,
+            elapsed_s=elapsed_s,
+        )
+        assistant_selector, assistant_count, assistant_text, probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
+        if self.config.debug:
+            await self._save_response_diagnostics(
+                page,
+                probes=probes,
+                response_context=response_context,
+                attempt=attempt,
+                elapsed_s=elapsed_s,
+                include_page_artifacts=True,
+            )
+        raise ResponseTimeoutError(
+            f"Timed out waiting for an assistant response (last selector={assistant_selector}, count={assistant_count}, text_length={len(assistant_text)})"
+        )
 
     async def _wait_and_get_json(self, page: Any, response_context: Optional[dict[str, Any]] = None) -> Any:
         self._log(

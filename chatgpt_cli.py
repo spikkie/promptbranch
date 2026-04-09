@@ -21,6 +21,7 @@ from chatgpt_browser_auth.exceptions import (
 
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
+DEFAULT_MAX_RETRIES = 2
 COMMANDS = {"login-check", "ask", "shell"}
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
@@ -258,7 +259,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--browser-channel", default=os.getenv("CHATGPT_BROWSER_CHANNEL"))
     parser.add_argument("--enable-fedcm", action="store_true", help="Do not disable FedCM browser flags.")
     parser.add_argument("--keep-no-sandbox", action="store_true", help="Keep default no-sandbox args instead of filtering them.")
-    parser.add_argument("--max-retries", type=int, default=int(os.getenv("CHATGPT_MAX_RETRIES", "2")))
+    parser.add_argument("--max-retries", type=int, default=int(os.getenv("CHATGPT_MAX_RETRIES", str(DEFAULT_MAX_RETRIES))))
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
@@ -291,6 +292,15 @@ def _extract_dotenv_path(argv: list[str]) -> Optional[str]:
     return args.dotenv
 
 
+def _max_retries_was_configured(argv: list[str]) -> bool:
+    if "CHATGPT_MAX_RETRIES" in os.environ:
+        return True
+    for token in argv:
+        if token == "--max-retries" or token.startswith("--max-retries="):
+            return True
+    return False
+
+
 async def _async_main(args: argparse.Namespace) -> int:
     service = build_service(args)
     if args.command == "login-check":
@@ -312,6 +322,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser = make_parser()
     args = parser.parse_args(normalized_argv)
+    if args.debug and not _max_retries_was_configured(normalized_argv):
+        args.max_retries = 1
     _configure_logging(args.debug)
 
     try:
