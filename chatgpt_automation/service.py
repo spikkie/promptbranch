@@ -80,6 +80,60 @@ class ChatGPTAutomationService:
             filter_no_sandbox=self.settings.filter_no_sandbox,
         )
 
+
+    async def _with_retries(self, operation_name: str, func):
+        max_retries = max(0, self.settings.max_retries)
+        last_error: Optional[Exception] = None
+        for attempt in range(1, max_retries + 2):
+            try:
+                return await func()
+            except (ResponseTimeoutError, BotChallengeError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Transient ChatGPT browser failure during %s on attempt %s/%s: %s",
+                    operation_name,
+                    attempt,
+                    max_retries + 1,
+                    exc,
+                )
+                if attempt >= max_retries + 1:
+                    break
+                await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
+            except (ManualLoginRequiredError, AuthenticationError):
+                raise
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                last_error = exc
+                logger.exception("Unexpected ChatGPT browser failure during %s", operation_name)
+                if attempt >= max_retries + 1:
+                    break
+                await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
+
+        if last_error is None:
+            raise RuntimeError(f"{operation_name} failed without an exception")
+        raise last_error
+
+    async def create_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Creating ChatGPT project")
+        async with self._lock:
+            return await self._with_retries(
+                "create_project",
+                lambda: self._build_bot().create_project(
+                    name=name,
+                    icon=icon,
+                    color=color,
+                    memory_mode=memory_mode,
+                    keep_open=keep_open,
+                ),
+            )
+
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         async with self._lock:
             logger.info("Running ChatGPT browser login check")
