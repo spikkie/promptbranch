@@ -220,6 +220,23 @@ PROJECT_CREATE_SUBMIT_SELECTORS = [
     'dialog[open] button:has-text("Create")',
     'dialog[open] button:has-text("Done")',
 ]
+PROJECT_REMOVE_ACTION_SELECTORS = [
+    '[role="menuitem"]:has-text("Delete project")',
+    '[role="menuitem"]:has-text("Delete")',
+    'button:has-text("Delete project")',
+    'button:has-text("Delete")',
+]
+PROJECT_CONFIRM_REMOVE_SELECTORS = [
+    '[role="dialog"] button:has-text("Delete project")',
+    '[role="dialog"] button:has-text("Delete")',
+    'dialog[open] button:has-text("Delete project")',
+    'dialog[open] button:has-text("Delete")',
+]
+PROJECT_OPTIONS_ARIA_HINTS = (
+    'project options',
+    'open project options',
+    'project menu',
+)
 PROJECT_MEMORY_PROJECT_ONLY_SELECTORS = [
     '[role="dialog"] label:has-text("Project-only memory")',
     '[role="dialog"] button:has-text("Project-only memory")',
@@ -346,6 +363,23 @@ class ChatGPTBrowserClient:
             icon=icon,
             color=color,
             memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
+    async def remove_project(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-remove",
+            "starting remove_project",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_remove",
+            operation=self._remove_project_operation,
             keep_open=keep_open,
         )
 
@@ -645,6 +679,59 @@ class ChatGPTBrowserClient:
         self._log("project-create", "project created", **result)
         if keep_open and self.config.is_headed:
             await asyncio.to_thread(input, "Project created. Press Enter to close the browser... ")
+        return result
+
+    async def _remove_project_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-remove-home")
+        await self._ensure_sidebar_open(page)
+
+        container = await self._find_current_project_sidebar_container(page)
+        if container is None:
+            raise ResponseTimeoutError("Could not find the configured project in the sidebar")
+
+        options_button = await self._find_project_options_button(container)
+        if options_button is None:
+            raise ResponseTimeoutError("Could not find the options button for the configured project")
+        await options_button.click(timeout=5_000)
+
+        delete_action = await self._wait_for_visible_locator(
+            page,
+            PROJECT_REMOVE_ACTION_SELECTORS,
+            label="project-remove-action",
+            total_timeout_ms=8_000,
+        )
+        if delete_action is None:
+            raise ResponseTimeoutError("Could not find the delete action for the configured project")
+        await delete_action.click(timeout=5_000)
+
+        confirm_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_CONFIRM_REMOVE_SELECTORS,
+            label="project-remove-confirm",
+            total_timeout_ms=8_000,
+        )
+        if confirm_button is None:
+            raise ResponseTimeoutError("Could not find the delete confirmation button for the configured project")
+        await confirm_button.click(timeout=5_000)
+
+        await self._wait_for_project_absence(page, deleted_project_url=project_home_url)
+        result = {
+            "ok": True,
+            "action": "remove_project",
+            "deleted_project_url": project_home_url,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-remove", "project removed", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project removed. Press Enter to close the browser... ")
         return result
 
     async def _add_project_source_operation(
@@ -2103,6 +2190,94 @@ class ChatGPTBrowserClient:
                 return button
 
         return visible_buttons[-1] if visible_buttons else None
+
+    async def _find_current_project_sidebar_container(self, page: Any) -> Optional[Any]:
+        project_path = urlparse(self._project_home_url()).path.rstrip('/')
+        if not project_path:
+            return None
+        handle = await page.evaluate_handle(
+            """
+            ({ projectPath, ariaHints }) => {
+                const normalizePath = value => {
+                    try {
+                        const url = new URL(value, window.location.origin);
+                        return (url.pathname || '').replace(/\\/+$/, '');
+                    } catch (_) {
+                        return '';
+                    }
+                };
+                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const anchors = Array.from(document.querySelectorAll('a[href]')).filter(isVisible);
+                for (const anchor of anchors) {
+                    const hrefPath = normalizePath(anchor.getAttribute('href') || '');
+                    if (!hrefPath || hrefPath !== projectPath) continue;
+                    let current = anchor;
+                    while (current && current !== document.body) {
+                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
+                        for (const button of buttons) {
+                            const aria = (button.getAttribute('aria-label') || '').toLowerCase();
+                            const hasPopup = (button.getAttribute('aria-haspopup') || '').toLowerCase();
+                            const trailing = button.hasAttribute('data-trailing-button');
+                            if (ariaHints.some(hint => aria.includes(hint)) || trailing || hasPopup === 'menu') {
+                                return current;
+                            }
+                        }
+                        current = current.parentElement;
+                    }
+                }
+                return null;
+            }
+            """,
+            {"projectPath": project_path, "ariaHints": list(PROJECT_OPTIONS_ARIA_HINTS)},
+        )
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
+    async def _find_project_options_button(self, container: Any) -> Optional[Any]:
+        try:
+            buttons = await container.query_selector_all('button,[role="button"]')
+        except Exception:
+            return None
+
+        visible_buttons = []
+        for button in buttons:
+            try:
+                if not await button.is_visible():
+                    continue
+                visible_buttons.append(button)
+            except Exception:
+                continue
+
+        for button in visible_buttons:
+            aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
+            has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            if any(hint in aria_label for hint in PROJECT_OPTIONS_ARIA_HINTS):
+                return button
+            if has_popup == 'menu':
+                return button
+            try:
+                if await button.get_attribute('data-trailing-button') is not None:
+                    return button
+            except Exception:
+                pass
+
+        return visible_buttons[-1] if visible_buttons else None
+
+    async def _wait_for_project_absence(self, page: Any, *, deleted_project_url: str, timeout_ms: int = 20_000) -> None:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        deleted_project_home = self._project_home_url_from_url(deleted_project_url)
+        while asyncio.get_running_loop().time() < deadline:
+            current_url = await self._safe_page_url(page)
+            current_project_home = self._project_home_url_from_url(current_url)
+            if current_project_home != deleted_project_home or not self._is_project_home_url(current_url):
+                return
+            container = await self._find_current_project_sidebar_container(page)
+            if container is None:
+                return
+            await page.wait_for_timeout(500)
+        raise ResponseTimeoutError(f"Timed out waiting for project to disappear: {deleted_project_url}")
 
     def _is_project_home_url(self, url: str) -> bool:
         path = urlparse(url).path.rstrip("/")

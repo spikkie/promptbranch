@@ -221,6 +221,15 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def remove_project(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.remove_project(
+            keep_open=keep_open,
+        )
+
     async def add_project_source(
         self,
         *,
