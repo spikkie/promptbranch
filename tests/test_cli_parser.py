@@ -46,3 +46,20 @@ def test_parser_accepts_project_create_command() -> None:
     assert args.command == "project-create"
     assert args.name == "My Project"
     assert args.memory_mode == "project-only"
+
+
+def test_global_options_after_project_remove_are_normalized() -> None:
+    argv = [
+        "project-remove",
+        "--dotenv",
+        ".env",
+    ]
+    normalized = _normalize_global_options(argv)
+    assert normalized[:2] == ["--dotenv", ".env"]
+    assert "project-remove" in normalized
+
+
+def test_parser_accepts_project_remove_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["project-remove"])
+    assert args.command == "project-remove"

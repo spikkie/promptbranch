@@ -139,6 +139,20 @@ class ChatGPTAutomationService:
             logger.info("Running ChatGPT browser login check")
             return await self._build_bot().run_login_check(keep_open=keep_open)
 
+    async def remove_project(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Removing ChatGPT project")
+        async with self._lock:
+            return await self._with_retries(
+                "remove_project",
+                lambda: self._build_bot().remove_project(
+                    keep_open=keep_open,
+                ),
+            )
+
     async def add_project_source(
         self,
         *,

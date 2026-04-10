@@ -76,6 +76,7 @@ Remove a source from a project:
 ```bash
 python chatgpt_cli.py project-source-remove "Notes" --exact --dotenv .env
 python chatgpt_cli.py project-source-remove "drive.google.com" --dotenv .env
+python chatgpt_cli.py project-remove --project-url "https://chatgpt.com/g/g-p-.../project" --dotenv .env
 ```
 
 ## Shell commands
