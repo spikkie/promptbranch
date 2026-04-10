@@ -187,9 +187,18 @@ PROJECT_SIDEBAR_OPEN_BUTTON_SELECTORS = [
     'button[aria-label="Open sidebar"]',
     'button[aria-label*="Open sidebar" i]',
 ]
+PROJECT_SIDEBAR_CLOSE_BUTTON_SELECTORS = [
+    'button[data-testid="close-sidebar-button"]',
+    'button[aria-label="Close sidebar"]',
+    'button[aria-label*="Close sidebar" i]',
+]
 PROJECT_NEW_BUTTON_SELECTORS = [
     'button:has-text("New project")',
     'a:has-text("New project")',
+    'button[data-sidebar-item="true"]:has-text("New project")',
+    'a[data-sidebar-item="true"]:has-text("New project")',
+    'nav button:has-text("New project")',
+    'aside button:has-text("New project")',
     '[data-testid="new-project-button"]',
     '[aria-label*="New project" i]',
 ]
@@ -556,7 +565,9 @@ class ChatGPTBrowserClient:
             page,
             PROJECT_NEW_BUTTON_SELECTORS,
             label="project-new-button",
-            total_timeout_ms=15_000,
+            total_timeout_ms=20_000,
+            poll_interval_ms=500,
+            visibility_timeout_ms=1_000,
         )
         if new_project_button is None:
             raise ResponseTimeoutError("New project button did not become visible")
@@ -1715,15 +1726,53 @@ class ChatGPTBrowserClient:
         )
         if new_project_button is not None:
             return
+
+        close_sidebar = await self._find_visible_locator(
+            page,
+            PROJECT_SIDEBAR_CLOSE_BUTTON_SELECTORS,
+            label='project-close-sidebar',
+            timeout_ms=800,
+        )
+        if close_sidebar is not None:
+            self._log('sidebar', 'sidebar already open for project flow')
+            await page.wait_for_timeout(400)
+            return
+
         open_sidebar = await self._find_visible_locator(
             page,
             PROJECT_SIDEBAR_OPEN_BUTTON_SELECTORS,
             label='project-open-sidebar',
             timeout_ms=800,
         )
-        if open_sidebar is not None:
-            await open_sidebar.click(timeout=5_000)
-            await page.wait_for_timeout(600)
+        if open_sidebar is None:
+            return
+
+        click_error: Optional[Exception] = None
+        try:
+            await open_sidebar.click(timeout=2_500)
+            self._log('sidebar', 'clicked open sidebar button')
+        except Exception as exc:
+            click_error = exc
+            self._log('sidebar', 'normal open sidebar click failed; retrying with force', error=str(exc))
+            try:
+                await open_sidebar.click(timeout=2_500, force=True)
+                click_error = None
+                self._log('sidebar', 'forced open sidebar click succeeded')
+            except Exception as force_exc:
+                click_error = force_exc
+                self._log('sidebar', 'forced open sidebar click failed; retrying via dom click', error=str(force_exc))
+                try:
+                    await open_sidebar.evaluate('(el) => el.click()')
+                    click_error = None
+                    self._log('sidebar', 'dom open sidebar click succeeded')
+                except Exception as dom_exc:
+                    click_error = dom_exc
+                    self._log('sidebar', 'dom open sidebar click failed', error=str(dom_exc))
+
+        await page.wait_for_timeout(800)
+
+        if click_error is not None:
+            raise click_error
 
     async def _try_activate_project_only_memory(self, page: Any) -> bool:
         locator = await self._find_visible_locator(
