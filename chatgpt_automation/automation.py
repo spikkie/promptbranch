@@ -204,6 +204,23 @@ class ChatGPTAutomation:
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         return await self.client.run_login_check(keep_open=keep_open)
 
+    async def create_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.create_project(
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
     async def add_project_source(
         self,
         *,

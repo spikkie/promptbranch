@@ -183,6 +183,68 @@ PROJECT_SOURCE_OPTIONS_ARIA_HINTS = (
     'menu',
     'source',
 )
+PROJECT_SIDEBAR_OPEN_BUTTON_SELECTORS = [
+    'button[aria-label="Open sidebar"]',
+    'button[aria-label*="Open sidebar" i]',
+]
+PROJECT_NEW_BUTTON_SELECTORS = [
+    'button:has-text("New project")',
+    'a:has-text("New project")',
+    '[data-testid="new-project-button"]',
+    '[aria-label*="New project" i]',
+]
+PROJECT_CREATE_DIALOG_SELECTORS = [
+    '[role="dialog"]',
+    'dialog[open]',
+]
+PROJECT_CREATE_NAME_INPUT_SELECTORS = [
+    '[role="dialog"] input[placeholder*="project" i]',
+    '[role="dialog"] input[aria-label*="project" i]',
+    'dialog[open] input[placeholder*="project" i]',
+    'dialog[open] input[aria-label*="project" i]',
+    '[role="dialog"] input[type="text"]',
+    'dialog[open] input[type="text"]',
+]
+PROJECT_CREATE_SUBMIT_SELECTORS = [
+    '[role="dialog"] button:has-text("Create")',
+    '[role="dialog"] button:has-text("Done")',
+    'dialog[open] button:has-text("Create")',
+    'dialog[open] button:has-text("Done")',
+]
+PROJECT_MEMORY_PROJECT_ONLY_SELECTORS = [
+    '[role="dialog"] label:has-text("Project-only memory")',
+    '[role="dialog"] button:has-text("Project-only memory")',
+    '[role="dialog"] [role="radio"]:has-text("Project-only memory")',
+    '[role="dialog"] [role="option"]:has-text("Project-only memory")',
+    'dialog[open] label:has-text("Project-only memory")',
+    'dialog[open] button:has-text("Project-only memory")',
+    'dialog[open] [role="radio"]:has-text("Project-only memory")',
+    'dialog[open] [role="option"]:has-text("Project-only memory")',
+]
+PROJECT_ICON_CONTROL_SELECTORS = [
+    '[role="dialog"] button[aria-label*="icon" i]',
+    '[role="dialog"] [role="combobox"][aria-label*="icon" i]',
+    '[role="dialog"] button:has-text("Icon")',
+    'dialog[open] button[aria-label*="icon" i]',
+    'dialog[open] [role="combobox"][aria-label*="icon" i]',
+    'dialog[open] button:has-text("Icon")',
+]
+PROJECT_COLOR_CONTROL_SELECTORS = [
+    '[role="dialog"] button[aria-label*="color" i]',
+    '[role="dialog"] [role="combobox"][aria-label*="color" i]',
+    '[role="dialog"] button:has-text("Color")',
+    'dialog[open] button[aria-label*="color" i]',
+    'dialog[open] [role="combobox"][aria-label*="color" i]',
+    'dialog[open] button:has-text("Color")',
+]
+PROJECT_VALUE_OPTION_PATTERNS = [
+    '[role="option"]:has-text("{value}")',
+    '[role="menuitem"]:has-text("{value}")',
+    '[role="radio"]:has-text("{value}")',
+    'button:has-text("{value}")',
+    '[title*="{value}" i]',
+    '[aria-label*="{value}" i]',
+]
 JSON_BLOCK_SELECTORS = [
     '#code-block-viewer .cm-content',
     'code.language-json',
@@ -246,6 +308,35 @@ class ChatGPTBrowserClient:
             prompt=prompt,
             file_path=file_path,
             expect_json=expect_json,
+            keep_open=keep_open,
+        )
+
+    async def create_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-create",
+            "starting create_project",
+            project_url=self.config.project_url,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_create",
+            operation=self._create_project_operation,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
             keep_open=keep_open,
         )
 
@@ -443,6 +534,106 @@ class ChatGPTBrowserClient:
                 input,
                 "Question completed. Press Enter to close the browser... ",
             )
+        return result
+
+    async def _create_project_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        name: str,
+        icon: Optional[str],
+        color: Optional[str],
+        memory_mode: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        home_url = self._chatgpt_home_url()
+        await self._goto(page, home_url, label="project-create-home")
+        await self._ensure_sidebar_open(page)
+
+        new_project_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_NEW_BUTTON_SELECTORS,
+            label="project-new-button",
+            total_timeout_ms=15_000,
+        )
+        if new_project_button is None:
+            raise ResponseTimeoutError("New project button did not become visible")
+        await new_project_button.click(timeout=5_000)
+        await page.wait_for_timeout(750)
+
+        name_input = await self._wait_for_visible_locator(
+            page,
+            PROJECT_CREATE_NAME_INPUT_SELECTORS,
+            label="project-create-name-input",
+            total_timeout_ms=10_000,
+        )
+        if name_input is None:
+            raise ResponseTimeoutError("Project name input did not become visible")
+        await self._fill_locator_text(name_input, name)
+
+        warnings: list[str] = []
+        icon_applied = False
+        color_applied = False
+        memory_mode_applied = (memory_mode == "default")
+
+        if icon:
+            icon_applied = await self._try_select_project_dialog_value(
+                page,
+                control_selectors=PROJECT_ICON_CONTROL_SELECTORS,
+                value=icon,
+                label="project-icon",
+            )
+            if not icon_applied:
+                warnings.append(f"Could not apply icon selection: {icon}")
+
+        if color:
+            color_applied = await self._try_select_project_dialog_value(
+                page,
+                control_selectors=PROJECT_COLOR_CONTROL_SELECTORS,
+                value=color,
+                label="project-color",
+            )
+            if not color_applied:
+                warnings.append(f"Could not apply color selection: {color}")
+
+        if memory_mode == "project-only":
+            memory_mode_applied = await self._try_activate_project_only_memory(page)
+            if not memory_mode_applied:
+                warnings.append("Project-only memory option was not found in the create-project dialog")
+
+        submit_button = await self._wait_for_visible_locator(
+            page,
+            PROJECT_CREATE_SUBMIT_SELECTORS,
+            label="project-create-submit",
+            total_timeout_ms=10_000,
+        )
+        if submit_button is None:
+            raise ResponseTimeoutError("Create project submit button did not become visible")
+
+        before_url = await self._safe_page_url(page)
+        await submit_button.click(timeout=5_000)
+        await page.wait_for_timeout(750)
+
+        project_url = await self._wait_for_created_project_url(page, project_name=name, previous_url=before_url)
+        result = {
+            "ok": True,
+            "action": "create_project",
+            "project_name": name,
+            "project_url": project_url,
+            "current_url": await self._safe_page_url(page),
+            "icon": icon,
+            "color": color,
+            "memory_mode": memory_mode,
+            "icon_applied": icon_applied,
+            "color_applied": color_applied,
+            "memory_mode_applied": memory_mode_applied,
+            "warnings": warnings,
+        }
+        self._log("project-create", "project created", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project created. Press Enter to close the browser... ")
         return result
 
     async def _add_project_source_operation(
@@ -1498,15 +1689,138 @@ class ChatGPTBrowserClient:
             return (*best_fallback, probes)
         return None, 0, "", probes
 
-    def _project_home_url(self) -> str:
+    def _chatgpt_home_url(self) -> str:
         parsed = urlparse(self.config.project_url)
-        path = parsed.path.rstrip("/")
-        if path.endswith("/project"):
-            return self.config.project_url
-        if "/c/" in path:
-            path = path.split("/c/", 1)[0] + "/project"
-            return urlunparse(parsed._replace(path=path, query="", fragment=""))
-        return self.config.project_url
+        return urlunparse(parsed._replace(path='/', query='', fragment=''))
+
+    def _project_home_url_from_url(self, url: str) -> str:
+        parsed = urlparse(url)
+        path = parsed.path or '/'
+        match = re.search(r'(/g/g-p-[^/]+/project)(?:/.*)?$', path.rstrip('/'))
+        if match:
+            return urlunparse(parsed._replace(path=match.group(1), query='', fragment=''))
+        if path.rstrip('/').endswith('/project'):
+            return urlunparse(parsed._replace(path=path.rstrip('/'), query='', fragment=''))
+        if '/c/' in path and '/g/g-p-' in path:
+            base = path.split('/c/', 1)[0].rstrip('/') + '/project'
+            return urlunparse(parsed._replace(path=base, query='', fragment=''))
+        return urlunparse(parsed._replace(path=path, query='', fragment=''))
+
+    async def _ensure_sidebar_open(self, page: Any) -> None:
+        new_project_button = await self._find_visible_locator(
+            page,
+            PROJECT_NEW_BUTTON_SELECTORS,
+            label='project-new-button-visible',
+            timeout_ms=800,
+        )
+        if new_project_button is not None:
+            return
+        open_sidebar = await self._find_visible_locator(
+            page,
+            PROJECT_SIDEBAR_OPEN_BUTTON_SELECTORS,
+            label='project-open-sidebar',
+            timeout_ms=800,
+        )
+        if open_sidebar is not None:
+            await open_sidebar.click(timeout=5_000)
+            await page.wait_for_timeout(600)
+
+    async def _try_activate_project_only_memory(self, page: Any) -> bool:
+        locator = await self._find_visible_locator(
+            page,
+            PROJECT_MEMORY_PROJECT_ONLY_SELECTORS,
+            label='project-memory-project-only',
+            timeout_ms=1_000,
+        )
+        if locator is None:
+            return False
+        try:
+            await locator.click(timeout=5_000)
+            await page.wait_for_timeout(300)
+            return True
+        except Exception:
+            return False
+
+    async def _try_select_project_dialog_value(
+        self,
+        page: Any,
+        *,
+        control_selectors: list[str],
+        value: str,
+        label: str,
+    ) -> bool:
+        control = await self._find_visible_locator(page, control_selectors, label=f'{label}-control', timeout_ms=1_000)
+        if control is None:
+            return False
+        try:
+            await control.click(timeout=5_000)
+            await page.wait_for_timeout(300)
+        except Exception:
+            return False
+
+        escaped = value.replace('"', '\"')
+        selectors = [pattern.format(value=escaped) for pattern in PROJECT_VALUE_OPTION_PATTERNS]
+        option = await self._wait_for_visible_locator(
+            page,
+            selectors,
+            label=f'{label}-value',
+            total_timeout_ms=2_000,
+            poll_interval_ms=250,
+            visibility_timeout_ms=500,
+        )
+        if option is None:
+            try:
+                await page.keyboard.press('Escape')
+            except Exception:
+                pass
+            return False
+        try:
+            await option.click(timeout=5_000)
+            await page.wait_for_timeout(300)
+            return True
+        except Exception:
+            return False
+
+    async def _wait_for_created_project_url(self, page: Any, *, project_name: str, previous_url: str, timeout_ms: int = 20_000) -> str:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        clicked_sidebar_link = False
+        while asyncio.get_running_loop().time() < deadline:
+            current_url = await self._safe_page_url(page)
+            project_url = self._project_home_url_from_url(current_url)
+            if self._is_project_home_url(project_url) and project_url != self._project_home_url_from_url(previous_url):
+                return project_url
+
+            if not clicked_sidebar_link:
+                project_link = await self._find_project_link_by_name(page, project_name)
+                if project_link is not None:
+                    try:
+                        await project_link.click(timeout=5_000)
+                        clicked_sidebar_link = True
+                    except Exception:
+                        pass
+            await page.wait_for_timeout(500)
+        raise ResponseTimeoutError(f'Timed out waiting for created project URL after creating project: {project_name}')
+
+    async def _find_project_link_by_name(self, page: Any, project_name: str) -> Optional[Any]:
+        normalized_name = re.sub(r'\s+', ' ', (project_name or '')).strip()
+        if not normalized_name:
+            return None
+        try:
+            locator = page.locator('a[href*="/project"], button').filter(has_text=normalized_name)
+            count = await locator.count()
+        except Exception:
+            return None
+        for index in range(min(count, 6)):
+            item = locator.nth(index)
+            try:
+                if await item.is_visible(timeout=500):
+                    return item
+            except Exception:
+                continue
+        return None
+
+    def _project_home_url(self) -> str:
+        return self._project_home_url_from_url(self.config.project_url)
 
     def _infer_source_match_text(self, source_kind: str, value: str) -> str:
         normalized = (value or "").strip()
@@ -1742,7 +2056,8 @@ class ChatGPTBrowserClient:
         return visible_buttons[-1] if visible_buttons else None
 
     def _is_project_home_url(self, url: str) -> bool:
-        return urlparse(url).path.rstrip("/").endswith("/project")
+        path = urlparse(url).path.rstrip("/")
+        return bool(re.search(r'/g/g-p-[^/]+/project$', path)) or path.endswith('/project')
 
     def _project_conversation_path_prefix(self) -> Optional[str]:
         parsed = urlparse(self.config.project_url)

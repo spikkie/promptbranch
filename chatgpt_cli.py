@@ -22,7 +22,7 @@ from chatgpt_browser_auth.exceptions import (
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
-COMMANDS = {"login-check", "ask", "shell", "project-source-add", "project-source-remove"}
+COMMANDS = {"login-check", "ask", "shell", "project-create", "project-source-add", "project-source-remove"}
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
     "--email": True,
@@ -81,6 +81,19 @@ async def cmd_login_check(service: ChatGPTAutomationService, args: argparse.Name
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
+
+
+
+async def cmd_project_create(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+    result = await service.create_project(
+        name=args.name,
+        icon=args.icon,
+        color=args.color,
+        memory_mode=args.memory_mode,
+        keep_open=args.keep_open,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
 
 async def cmd_project_source_add(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
     source_kind = args.type
@@ -301,6 +314,21 @@ def make_parser() -> argparse.ArgumentParser:
     login = subparsers.add_parser("login-check", help="Open the browser and verify whether the profile is logged in.")
     login.add_argument("--keep-open", action="store_true")
 
+    project_create = subparsers.add_parser(
+        "project-create",
+        help="Create a new ChatGPT project and return its URL.",
+    )
+    project_create.add_argument("name", help="Project name to create.")
+    project_create.add_argument("--icon", help="Optional project icon name/value to select when available.")
+    project_create.add_argument("--color", help="Optional project color name/value to select when available.")
+    project_create.add_argument(
+        "--memory-mode",
+        choices=["default", "project-only"],
+        default="default",
+        help="Project memory mode to request during creation.",
+    )
+    project_create.add_argument("--keep-open", action="store_true")
+
     source_add = subparsers.add_parser(
         "project-source-add",
         help="Add a source to the configured ChatGPT project (Sources tab).",
@@ -355,6 +383,8 @@ async def _async_main(args: argparse.Namespace) -> int:
     service = build_service(args)
     if args.command == "login-check":
         return await cmd_login_check(service, args)
+    if args.command == "project-create":
+        return await cmd_project_create(service, args)
     if args.command == "project-source-add":
         return await cmd_project_source_add(service, args)
     if args.command == "project-source-remove":
