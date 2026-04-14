@@ -907,6 +907,7 @@ class ChatGPTBrowserClient:
             "ok": True,
             "action": "remove_project",
             "deleted_project_url": project_home_url,
+            "deleted_project_id": self._extract_project_id_from_url(project_home_url),
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-remove", "project removed", **result)
@@ -1984,6 +1985,22 @@ class ChatGPTBrowserClient:
             return urlunparse(parsed._replace(path=base, query='', fragment=''))
         return urlunparse(parsed._replace(path=path, query='', fragment=''))
 
+    def _extract_project_id_from_url(self, url: str) -> Optional[str]:
+        path = urlparse(url).path or ''
+        match = re.search(r'/g/(g-p-[a-z0-9]+)', path, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+        return None
+
+    def _project_identity_key_from_url(self, url: str) -> str:
+        project_id = self._extract_project_id_from_url(url)
+        if project_id:
+            return project_id
+        return self._project_home_url_from_url(url)
+
+    def _project_urls_refer_to_same_project(self, left: str, right: str) -> bool:
+        return self._project_identity_key_from_url(left) == self._project_identity_key_from_url(right)
+
     async def _ensure_sidebar_open(self, page: Any) -> None:
         new_project_button = await self._find_visible_locator(
             page,
@@ -2213,7 +2230,7 @@ class ChatGPTBrowserClient:
 
     def _dedupe_projects(self, projects: list[dict[str, str]]) -> list[dict[str, str]]:
         deduped: list[dict[str, str]] = []
-        seen_urls: set[str] = set()
+        seen_keys: set[str] = set()
         for project in projects:
             display_name = re.sub(r'\s+', ' ', str(project.get('name') or '')).strip()
             raw_url = str(project.get('url') or '').strip()
@@ -2222,9 +2239,10 @@ class ChatGPTBrowserClient:
             project_url = self._project_home_url_from_url(raw_url)
             if not self._is_project_home_url(project_url):
                 continue
-            if project_url in seen_urls:
+            project_key = self._project_identity_key_from_url(project_url)
+            if project_key in seen_keys:
                 continue
-            seen_urls.add(project_url)
+            seen_keys.add(project_key)
             deduped.append({'name': display_name, 'url': project_url})
         return deduped
 
@@ -2611,16 +2629,17 @@ class ChatGPTBrowserClient:
         return visible_buttons[-1] if visible_buttons else None
 
     async def _find_current_project_sidebar_container(self, page: Any) -> Optional[Any]:
-        project_path = urlparse(self._project_home_url()).path.rstrip('/')
-        if not project_path:
+        project_id = self._extract_project_id_from_url(self._project_home_url())
+        if not project_id:
             return None
         handle = await page.evaluate_handle(
-            """
-            ({ projectPath, ariaHints }) => {
-                const normalizePath = value => {
+            r"""
+            ({ projectId, ariaHints }) => {
+                const extractProjectId = value => {
                     try {
                         const url = new URL(value, window.location.origin);
-                        return (url.pathname || '').replace(/\\/+$/, '');
+                        const match = (url.pathname || '').match(/\/g\/(g-p-[a-z0-9]+)/i);
+                        return match ? match[1].toLowerCase() : '';
                     } catch (_) {
                         return '';
                     }
@@ -2628,8 +2647,8 @@ class ChatGPTBrowserClient:
                 const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
                 const anchors = Array.from(document.querySelectorAll('a[href]')).filter(isVisible);
                 for (const anchor of anchors) {
-                    const hrefPath = normalizePath(anchor.getAttribute('href') || '');
-                    if (!hrefPath || hrefPath !== projectPath) continue;
+                    const hrefProjectId = extractProjectId(anchor.getAttribute('href') || '');
+                    if (!hrefProjectId || hrefProjectId !== projectId) continue;
                     let current = anchor;
                     while (current && current !== document.body) {
                         const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
@@ -2647,7 +2666,7 @@ class ChatGPTBrowserClient:
                 return null;
             }
             """,
-            {"projectPath": project_path, "ariaHints": list(PROJECT_OPTIONS_ARIA_HINTS)},
+            {"projectId": project_id, "ariaHints": list(PROJECT_OPTIONS_ARIA_HINTS)},
         )
         try:
             return handle.as_element()
@@ -2686,11 +2705,11 @@ class ChatGPTBrowserClient:
 
     async def _wait_for_project_absence(self, page: Any, *, deleted_project_url: str, timeout_ms: int = 20_000) -> None:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
-        deleted_project_home = self._project_home_url_from_url(deleted_project_url)
+        deleted_project_key = self._project_identity_key_from_url(deleted_project_url)
         while asyncio.get_running_loop().time() < deadline:
             current_url = await self._safe_page_url(page)
-            current_project_home = self._project_home_url_from_url(current_url)
-            if current_project_home != deleted_project_home or not self._is_project_home_url(current_url):
+            current_project_key = self._project_identity_key_from_url(current_url)
+            if current_project_key != deleted_project_key or not self._is_project_home_url(current_url):
                 return
             container = await self._find_current_project_sidebar_container(page)
             if container is None:

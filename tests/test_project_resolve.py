@@ -104,3 +104,36 @@ def test_resolve_project_retries_anchor_enumeration_before_not_found(tmp_path: P
     assert result["match_count"] == 1
     assert result["matched_by"] == "exact_name"
     assert result["project_url"] == "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835-test-test-3/project"
+
+
+def test_project_url_identity_uses_project_id_for_slugged_and_unslugged_urls(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    short_url = "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project"
+    slugged_url = "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835-test-test-3/project"
+
+    assert client._extract_project_id_from_url(short_url) == "g-p-69de540eadf88191b04ad8fd42ec8835"
+    assert client._extract_project_id_from_url(slugged_url) == "g-p-69de540eadf88191b04ad8fd42ec8835"
+    assert client._project_urls_refer_to_same_project(short_url, slugged_url) is True
+
+
+def test_dedupe_projects_collapses_slugged_and_unslugged_variants_by_project_id(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    projects = [
+        {
+            "name": "test_test_3",
+            "url": "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project",
+        },
+        {
+            "name": "test_test_3",
+            "url": "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835-test-test-3/project",
+        },
+    ]
+
+    assert client._dedupe_projects(projects) == [
+        {
+            "name": "test_test_3",
+            "url": "https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project",
+        }
+    ]
