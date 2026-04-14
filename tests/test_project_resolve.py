@@ -325,6 +325,57 @@ def test_remove_project_uses_project_details_menu_when_current_page_matches(tmp_
     assert result['deleted_project_id'] == 'g-p-69de540eadf88191b04ad8fd42ec8835'
 
 
+
+
+def test_project_source_option_kinds_link_does_not_fallback_to_text(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._project_source_option_kinds("link") == ["link"]
+
+
+def test_wait_for_source_presence_accepts_single_new_text_card_when_rendered_identity_differs(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    snapshots = iter(
+        [
+            [],
+            [
+                {
+                    "text": "Integration note for run 20260414-224024-896.txt Document",
+                    "key": "integration note for run 20260414-224024-896.txt document",
+                }
+            ],
+        ]
+    )
+
+    async def fake_snapshot_project_source_cards(_page):
+        return next(snapshots)
+
+    async def fake_find_project_source_container(*_args, **_kwargs):
+        return None
+
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_container = fake_find_project_source_container  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._wait_for_source_presence(
+            page,
+            source_match_candidates=[
+                "Integration note for run 20260414-224024-896",
+                "Integration note for run 20260414-223908-2242442",
+            ],
+            before_sources=[],
+            accept_single_new_card=True,
+            timeout_ms=2_000,
+        )
+    )
+
+    assert result == {
+        "text": "Integration note for run 20260414-224024-896.txt Document",
+        "key": "integration note for run 20260414-224024-896.txt document",
+    }
+
 def test_text_source_match_candidates_prefer_rendered_body_preview_over_display_name(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 

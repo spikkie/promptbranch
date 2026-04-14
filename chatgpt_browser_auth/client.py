@@ -1117,6 +1117,7 @@ class ChatGPTBrowserClient:
             page,
             source_match_candidates=source_match_candidates,
             before_sources=before_sources,
+            accept_single_new_card=normalized_kind == "text",
         )
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = (matched_source or {}).get("text") or requested_match
@@ -2757,14 +2758,12 @@ class ChatGPTBrowserClient:
 
     def _project_source_input_selectors(self, source_kind: str) -> list[str]:
         if source_kind == "link":
-            return [*PROJECT_SOURCE_LINK_INPUT_SELECTORS, *PROJECT_SOURCE_TEXT_INPUT_SELECTORS]
+            return PROJECT_SOURCE_LINK_INPUT_SELECTORS
         if source_kind == "text":
             return PROJECT_SOURCE_TEXT_INPUT_SELECTORS
         return PROJECT_SOURCE_FILE_INPUT_SELECTORS
 
     def _project_source_option_kinds(self, source_kind: str) -> list[str]:
-        if source_kind == "link":
-            return ["link", "text"]
         return [source_kind]
 
     async def _click_source_kind_option(self, page: Any, source_kind: str) -> None:
@@ -2875,8 +2874,6 @@ class ChatGPTBrowserClient:
 
     def _project_source_value_selectors(self, source_kind: str, *, option_kind: Optional[str] = None) -> list[str]:
         effective_kind = option_kind or source_kind
-        if source_kind == "link" and effective_kind == "text":
-            return PROJECT_SOURCE_TEXT_BODY_SELECTORS
         return self._project_source_input_selectors(effective_kind)
 
     async def _add_project_textual_source(
@@ -2998,6 +2995,7 @@ class ChatGPTBrowserClient:
         *,
         source_match_candidates: Optional[list[str]] = None,
         before_sources: Optional[list[dict[str, str]]] = None,
+        accept_single_new_card: bool = False,
         timeout_ms: int = 20_000,
     ) -> Optional[dict[str, str]]:
         candidates = [
@@ -3025,6 +3023,8 @@ class ChatGPTBrowserClient:
                 matched_new_card = self._match_source_card(new_cards, candidates)
                 if matched_new_card is not None:
                     return matched_new_card
+                if accept_single_new_card and len(new_cards) == 1:
+                    return new_cards[0]
                 if new_cards and not candidates:
                     return new_cards[0]
 
