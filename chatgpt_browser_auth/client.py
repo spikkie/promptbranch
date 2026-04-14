@@ -103,44 +103,67 @@ PROJECT_SOURCES_TAB_SELECTORS = [
     'button:has-text("Sources")',
     'a:has-text("Sources")',
 ]
-PROJECT_PAGE_INDICATOR_SELECTORS = [
-    '[role="tab"]:has-text("Chats")',
-    '[role="tab"]:has-text("Sources")',
-    'button:has-text("Chats")',
-    'button:has-text("Sources")',
-    'textarea[placeholder*="New chat in" i]',
-    '[contenteditable="true"][data-placeholder*="New chat in" i]',
+PROJECT_SOURCES_PANEL_SELECTORS = [
+    '[role="tabpanel"][data-state="active"]',
+    '[role="tabpanel"]',
 ]
 PROJECT_ADD_SOURCE_BUTTON_SELECTORS = [
+    '[role="tabpanel"][data-state="active"] button:has-text("Add source")',
+    '[role="tabpanel"][data-state="active"] button:has-text("Add Source")',
+    '[role="tabpanel"][data-state="active"] [aria-label*="Add source" i]',
+    '[role="tabpanel"][data-state="active"] button:has-text("Add")',
+    '[role="tabpanel"] button:has-text("Add")',
     'button:has-text("Add source")',
     'button:has-text("Add Source")',
     '[aria-label*="Add source" i]',
-    '[aria-label*="New source" i]',
-    '[aria-label*="Upload" i]',
-    'button:has-text("New source")',
-    'button:has-text("Upload")',
 ]
 PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
     '[role="dialog"]',
     'dialog[open]',
 ]
 PROJECT_SOURCE_LINK_TYPE_SELECTORS = [
-    '[role="menuitem"]:has-text("Link")',
+    '[role="dialog"] [role="menuitem"]:has-text("Link")',
+    'dialog[open] [role="menuitem"]:has-text("Link")',
+    '[role="menu"] [role="menuitem"]:has-text("Link")',
+    '[data-radix-popper-content-wrapper] [role="menuitem"]:has-text("Link")',
+    '[role="dialog"] button:has-text("Link")',
+    'dialog[open] button:has-text("Link")',
+    '[role="menu"] button:has-text("Link")',
+    '[data-radix-popper-content-wrapper] button:has-text("Link")',
+    '[role="dialog"] button:has-text("Website")',
+    '[role="menu"] button:has-text("Website")',
     'button:has-text("Link")',
-    'button:has-text("Slack")',
-    'button:has-text("Google Drive")',
 ]
 PROJECT_SOURCE_TEXT_TYPE_SELECTORS = [
-    '[role="menuitem"]:has-text("Text")',
+    '[role="dialog"] [role="menuitem"]:has-text("Text")',
+    'dialog[open] [role="menuitem"]:has-text("Text")',
+    '[role="menu"] [role="menuitem"]:has-text("Text")',
+    '[data-radix-popper-content-wrapper] [role="menuitem"]:has-text("Text")',
+    '[role="dialog"] button:has-text("Text")',
+    'dialog[open] button:has-text("Text")',
+    '[role="menu"] button:has-text("Text")',
+    '[data-radix-popper-content-wrapper] button:has-text("Text")',
+    '[role="dialog"] button:has-text("Quick text")',
+    '[role="menu"] button:has-text("Quick text")',
+    '[role="dialog"] button:has-text("Notes")',
+    '[role="menu"] button:has-text("Notes")',
     'button:has-text("Text")',
-    'button:has-text("Quick text")',
-    'button:has-text("Notes")',
 ]
 PROJECT_SOURCE_FILE_TYPE_SELECTORS = [
-    '[role="menuitem"]:has-text("File")',
+    '[role="dialog"] [role="menuitem"]:has-text("File")',
+    'dialog[open] [role="menuitem"]:has-text("File")',
+    '[role="menu"] [role="menuitem"]:has-text("File")',
+    '[data-radix-popper-content-wrapper] [role="menuitem"]:has-text("File")',
+    '[role="dialog"] button:has-text("File")',
+    'dialog[open] button:has-text("File")',
+    '[role="menu"] button:has-text("File")',
+    '[data-radix-popper-content-wrapper] button:has-text("File")',
+    '[role="dialog"] button:has-text("Upload")',
+    '[role="menu"] button:has-text("Upload")',
+    '[role="dialog"] button:has-text("Files")',
+    '[role="menu"] button:has-text("Files")',
     'button:has-text("File")',
     'button:has-text("Upload")',
-    'button:has-text("Files")',
 ]
 PROJECT_SOURCE_LINK_INPUT_SELECTORS = [
     '[role="dialog"] input[type="url"]',
@@ -882,17 +905,37 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
+        project_id = self._extract_project_id_from_url(project_home_url)
         await self._goto(page, project_home_url, label="project-remove-home")
         await self._ensure_sidebar_open(page)
 
-        container = await self._find_current_project_sidebar_container(page)
+        container = None
+        for attempt in range(3):
+            if attempt == 1:
+                await self._expand_projects_section(page)
+            elif attempt == 2:
+                await self._prime_project_sidebar(page)
+                await self._expand_projects_section(page)
+
+            container = await self._find_project_sidebar_container(page, project_url=project_home_url)
+            if container is not None:
+                break
+            await page.wait_for_timeout(350)
+
         if container is None:
             raise ResponseTimeoutError("Could not find the configured project in the sidebar")
 
         options_button = await self._find_project_options_button(container)
         if options_button is None:
             raise ResponseTimeoutError("Could not find the options button for the configured project")
-        await options_button.click(timeout=5_000)
+        try:
+            await options_button.scroll_into_view_if_needed(timeout=2_000)
+        except Exception:
+            pass
+        try:
+            await options_button.click(timeout=5_000)
+        except Exception:
+            await options_button.click(timeout=5_000, force=True)
 
         delete_action = await self._wait_for_visible_locator(
             page,
@@ -919,7 +962,7 @@ class ChatGPTBrowserClient:
             "ok": True,
             "action": "remove_project",
             "deleted_project_url": project_home_url,
-            "deleted_project_id": self._extract_project_id_from_url(project_home_url),
+            "deleted_project_id": project_id,
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-remove", "project removed", **result)
@@ -1121,22 +1164,6 @@ class ChatGPTBrowserClient:
             from playwright.async_api import async_playwright
         return async_playwright()
 
-    def _looks_like_project_page_url(self, url: str) -> bool:
-        parsed = urlparse(url or "")
-        path = (parsed.path or "").rstrip("/")
-        if not path:
-            return False
-        return bool(re.search(r'/g/g-p-[^/]+(?:-[^/]+)?/project$', path, re.IGNORECASE))
-
-    async def _has_project_page_indicators(self, page: Any) -> bool:
-        indicator = await self._find_visible_locator(
-            page,
-            PROJECT_PAGE_INDICATOR_SELECTORS,
-            label="project-page-indicator",
-            timeout_ms=800,
-        )
-        return indicator is not None
-
     async def _is_logged_in(self, page: Any) -> bool:
         self._log("auth-check", "probing logged-in indicators")
 
@@ -1153,10 +1180,6 @@ class ChatGPTBrowserClient:
         anonymous_visible = anonymous_marker is not None
 
         composer_visible = await self._has_chat_input(page)
-        current_url = await self._safe_page_url(page)
-        project_page_visible = False
-        if self._looks_like_project_page_url(current_url):
-            project_page_visible = await self._has_project_page_indicators(page)
 
         self._log(
             "auth-check",
@@ -1166,8 +1189,7 @@ class ChatGPTBrowserClient:
             signup_visible=signup_visible,
             anonymous_visible=anonymous_visible,
             composer_visible=composer_visible,
-            project_page_visible=project_page_visible,
-            current_url=current_url,
+            current_url=await self._safe_page_url(page),
         )
 
         if auth_visible:
@@ -1180,10 +1202,6 @@ class ChatGPTBrowserClient:
 
         if composer_visible:
             self._log("auth-check", "composer visible without anonymous markers; tentatively treating session as active")
-            return True
-
-        if project_page_visible:
-            self._log("auth-check", "project page indicators are visible without anonymous markers; tentatively treating session as active")
             return True
 
         return False
@@ -2452,98 +2470,31 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(750)
         self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
 
-    async def _has_visible_project_source_entry_surface(self, page: Any) -> bool:
-        for label, selectors in (
-            ("project-source-entry-kind-link", PROJECT_SOURCE_LINK_TYPE_SELECTORS),
-            ("project-source-entry-kind-text", PROJECT_SOURCE_TEXT_TYPE_SELECTORS),
-            ("project-source-entry-kind-file", PROJECT_SOURCE_FILE_TYPE_SELECTORS),
-            ("project-source-entry-link-input", PROJECT_SOURCE_LINK_INPUT_SELECTORS),
-            ("project-source-entry-text-input", PROJECT_SOURCE_TEXT_INPUT_SELECTORS),
-            ("project-source-entry-file-input", PROJECT_SOURCE_FILE_INPUT_SELECTORS),
-        ):
-            locator = await self._find_visible_locator(page, selectors, label=label, timeout_ms=500)
-            if locator is not None:
-                return True
-        return False
-
-    async def _find_project_source_primary_action(self, page: Any) -> Optional[Any]:
-        handle = await page.evaluate_handle(
-            r'''            () => {
-                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                const candidates = Array.from(document.querySelectorAll('main button, main [role="button"], main a, [role="main"] button, [role="main"] [role="button"], [role="main"] a'));
-                let best = null;
-                let bestScore = -1;
-                for (const el of candidates) {
-                    if (!isVisible(el)) continue;
-                    const text = normalize(el.innerText || el.textContent || '');
-                    const aria = normalize(el.getAttribute('aria-label'));
-                    const testid = normalize(el.getAttribute('data-testid'));
-                    const title = normalize(el.getAttribute('title'));
-                    const signature = [text, aria, testid, title].filter(Boolean).join(' | ');
-                    if (!signature) continue;
-
-                    let score = -1;
-                    if (signature.includes('add source')) score = Math.max(score, 120);
-                    if (signature.includes('new source')) score = Math.max(score, 110);
-                    if (signature.includes('upload file')) score = Math.max(score, 100);
-                    if (signature.includes('browse files')) score = Math.max(score, 95);
-                    if (signature.includes('upload')) score = Math.max(score, 85);
-                    if (signature.includes('add file')) score = Math.max(score, 80);
-                    if (signature.includes('connect source')) score = Math.max(score, 80);
-                    if (signature.includes('source')) score = Math.max(score, 70);
-                    if (score < 0 && (signature === 'link' || signature === 'text' || signature === 'file')) {
-                        score = 60;
-                    }
-                    if (score < 0 && (text === 'add' || aria === 'add')) {
-                        score = 45;
-                    }
-                    if (score > bestScore) {
-                        best = el;
-                        bestScore = score;
-                    }
-                }
-                return bestScore >= 60 ? best : null;
-            }
-            ''',
-        )
-        try:
-            return handle.as_element()
-        except Exception:
-            return None
-
     async def _click_add_source_button(self, page: Any) -> None:
-        if await self._has_visible_project_source_entry_surface(page):
-            self._log("project-source", "source entry controls already visible; skipping add-source click")
-            return
-
         button = await self._wait_for_visible_locator(
             page,
             PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
             label="project-add-source-button",
-            total_timeout_ms=6_000,
+            total_timeout_ms=10_000,
         )
-        if button is not None:
+        if button is None:
+            raise ResponseTimeoutError("Add source button did not become visible on the Sources tab")
+        try:
+            await button.scroll_into_view_if_needed(timeout=2_000)
+        except Exception:
+            pass
+        try:
             await button.click(timeout=5_000)
-            await page.wait_for_timeout(500)
-            return
+        except Exception:
+            await button.click(timeout=5_000, force=True)
+        await page.wait_for_timeout(500)
 
-        fallback_button = await self._find_project_source_primary_action(page)
-        if fallback_button is not None:
-            try:
-                await fallback_button.click(timeout=5_000)
-            except Exception:
-                await fallback_button.click(timeout=5_000, force=True)
-            await page.wait_for_timeout(500)
-            if await self._has_visible_project_source_entry_surface(page):
-                self._log("project-source", "clicked fallback source action control")
-                return
-
-        if await self._has_visible_project_source_entry_surface(page):
-            self._log("project-source", "source entry controls appeared after fallback probe")
-            return
-
-        raise ResponseTimeoutError("Add source button did not become visible")
+    def _project_source_input_selectors(self, source_kind: str) -> list[str]:
+        if source_kind == "link":
+            return PROJECT_SOURCE_LINK_INPUT_SELECTORS
+        if source_kind == "text":
+            return PROJECT_SOURCE_TEXT_INPUT_SELECTORS
+        return PROJECT_SOURCE_FILE_INPUT_SELECTORS
 
     async def _click_source_kind_option(self, page: Any, source_kind: str) -> None:
         selector_map = {
@@ -2560,9 +2511,33 @@ class ChatGPTBrowserClient:
             poll_interval_ms=250,
         )
         if option is None:
-            self._log("project-source", "source kind option not shown; continuing with default dialog", source_kind=source_kind)
+            input_locator = await self._find_visible_locator(
+                page,
+                self._project_source_input_selectors(source_kind),
+                label=f"project-source-kind-{source_kind}-input-already-visible",
+                timeout_ms=800,
+            )
+            if input_locator is not None:
+                self._log(
+                    "project-source",
+                    "source input already visible without explicit kind selection",
+                    source_kind=source_kind,
+                )
+                return
+            self._log(
+                "project-source",
+                "source kind option not shown; not using unrelated fallback controls",
+                source_kind=source_kind,
+            )
             return
-        await option.click(timeout=5_000)
+        try:
+            await option.scroll_into_view_if_needed(timeout=2_000)
+        except Exception:
+            pass
+        try:
+            await option.click(timeout=5_000)
+        except Exception:
+            await option.click(timeout=5_000, force=True)
         await page.wait_for_timeout(500)
 
     async def _fill_locator_text(self, locator: Any, text: str) -> None:
@@ -2611,14 +2586,27 @@ class ChatGPTBrowserClient:
         display_name: Optional[str],
     ) -> None:
         await self._click_add_source_button(page)
-        await self._click_source_kind_option(page, source_kind)
-        selectors = PROJECT_SOURCE_LINK_INPUT_SELECTORS if source_kind == "link" else PROJECT_SOURCE_TEXT_INPUT_SELECTORS
-        input_locator = await self._wait_for_visible_locator(
+        selectors = self._project_source_input_selectors(source_kind)
+        input_locator = await self._find_visible_locator(
             page,
             selectors,
-            label=f"project-source-{source_kind}-input",
-            total_timeout_ms=10_000,
+            label=f"project-source-{source_kind}-input-preopened",
+            timeout_ms=800,
         )
+        if input_locator is None:
+            await self._click_source_kind_option(page, source_kind)
+            input_locator = await self._wait_for_visible_locator(
+                page,
+                selectors,
+                label=f"project-source-{source_kind}-input",
+                total_timeout_ms=10_000,
+            )
+        else:
+            self._log(
+                "project-source",
+                "source input became visible immediately after clicking Add",
+                source_kind=source_kind,
+            )
         if input_locator is None:
             raise ResponseTimeoutError(f"Input for project source kind {source_kind!r} did not become visible")
         await self._fill_locator_text(input_locator, value)
@@ -2746,8 +2734,9 @@ class ChatGPTBrowserClient:
 
         return visible_buttons[-1] if visible_buttons else None
 
-    async def _find_current_project_sidebar_container(self, page: Any) -> Optional[Any]:
-        project_id = self._extract_project_id_from_url(self._project_home_url())
+    async def _find_project_sidebar_container(self, page: Any, *, project_url: Optional[str] = None) -> Optional[Any]:
+        target_url = project_url or self._project_home_url()
+        project_id = self._extract_project_id_from_url(target_url)
         if not project_id:
             return None
         handle = await page.evaluate_handle(
@@ -2762,14 +2751,18 @@ class ChatGPTBrowserClient:
                         return '';
                     }
                 };
-                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                const anchors = Array.from(document.querySelectorAll('a[href]')).filter(isVisible);
+                const hasVisibleLayout = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const anchors = Array.from(
+                    document.querySelectorAll(
+                        'a[data-sidebar-item="true"][href*="/project"], aside a[href*="/project"], nav a[href*="/project"], a[href*="/project"]'
+                    )
+                );
                 for (const anchor of anchors) {
                     const hrefProjectId = extractProjectId(anchor.getAttribute('href') || '');
                     if (!hrefProjectId || hrefProjectId !== projectId) continue;
-                    let current = anchor;
+                    let current = anchor.closest('li') || anchor;
                     while (current && current !== document.body) {
-                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
+                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(hasVisibleLayout);
                         for (const button of buttons) {
                             const aria = (button.getAttribute('aria-label') || '').toLowerCase();
                             const hasPopup = (button.getAttribute('aria-haspopup') || '').toLowerCase();
@@ -2780,6 +2773,7 @@ class ChatGPTBrowserClient:
                         }
                         current = current.parentElement;
                     }
+                    return anchor.closest('li') || anchor;
                 }
                 return null;
             }
@@ -2829,7 +2823,7 @@ class ChatGPTBrowserClient:
             current_project_key = self._project_identity_key_from_url(current_url)
             if current_project_key != deleted_project_key or not self._is_project_home_url(current_url):
                 return
-            container = await self._find_current_project_sidebar_container(page)
+            container = await self._find_project_sidebar_container(page, project_url=deleted_project_url)
             if container is None:
                 return
             await page.wait_for_timeout(500)
