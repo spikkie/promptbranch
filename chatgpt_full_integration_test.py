@@ -146,6 +146,27 @@ def _generated_run_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
 
 
+def _extract_project_id(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    import re
+    from urllib.parse import urlparse
+
+    path = urlparse(url).path or ""
+    match = re.search(r"/g/(g-p-[a-z0-9]+)", path, re.IGNORECASE)
+    if match:
+        return match.group(1).lower()
+    return None
+
+
+def _same_project(left: Optional[str], right: Optional[str]) -> bool:
+    left_id = _extract_project_id(left)
+    right_id = _extract_project_id(right)
+    if left_id and right_id:
+        return left_id == right_id
+    return (left or "") == (right or "")
+
+
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     steps: list[StepResult] = []
     cleanup_steps: list[StepResult] = []
@@ -153,6 +174,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     project_name = args.project_name or f"{args.project_name_prefix}-{run_id}"
     base_service = build_service(args, project_url=args.project_url)
     project_url: Optional[str] = None
+    project_id: Optional[str] = None
 
     temp_dir = Path(tempfile.mkdtemp(prefix="chatgpt-itest-"))
     file_source_path = temp_dir / f"itest-file-{run_id}.txt"
@@ -170,6 +192,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "run_id": run_id,
         "project_name": project_name,
         "project_url": None,
+        "project_id": None,
         "kept_project": bool(args.keep_project),
         "steps": [],
         "cleanup_steps": [],
@@ -215,7 +238,10 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         _require(ensure_created.get("ok") is True, f"project_ensure failed: {ensure_created}")
         project_url = ensure_created.get("project_url")
         _require(bool(project_url), f"project_ensure did not return project_url: {ensure_created}")
+        project_id = _extract_project_id(project_url)
+        _require(bool(project_id), f"project_ensure returned a project_url without a project_id: {ensure_created}")
         summary["project_url"] = project_url
+        summary["project_id"] = project_id
 
         ensure_idempotent = await _run_step(
             steps,
@@ -231,8 +257,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         _require(ensure_idempotent.get("ok") is True, f"second project_ensure failed: {ensure_idempotent}")
         _require(ensure_idempotent.get("created") is False, f"second project_ensure was not idempotent: {ensure_idempotent}")
         _require(
-            ensure_idempotent.get("project_url") == project_url,
-            f"second project_ensure returned a different project_url: {ensure_idempotent}",
+            _same_project(ensure_idempotent.get("project_url"), project_url),
+            f"second project_ensure returned a different project identity: {ensure_idempotent}",
         )
 
         resolved = await _run_step(
@@ -242,7 +268,10 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         )
         _require(resolved.get("ok") is True, f"project_resolve failed after ensure: {resolved}")
         _require(resolved.get("match_count") == 1, f"project_resolve did not uniquely match the project: {resolved}")
-        _require(resolved.get("project_url") == project_url, f"project_resolve returned a mismatched URL: {resolved}")
+        _require(
+            _same_project(resolved.get("project_url"), project_url),
+            f"project_resolve returned a mismatched project identity: {resolved}",
+        )
 
         project_service = build_service(args, project_url=project_url)
 
