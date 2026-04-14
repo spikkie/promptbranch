@@ -134,6 +134,44 @@ class ChatGPTAutomationService:
                 ),
             )
 
+    async def resolve_project(
+        self,
+        *,
+        name: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Resolving ChatGPT project by name")
+        async with self._lock:
+            return await self._with_retries(
+                "resolve_project",
+                lambda: self._build_bot().resolve_project(
+                    name=name,
+                    keep_open=keep_open,
+                ),
+            )
+
+    async def ensure_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Ensuring ChatGPT project exists")
+        async with self._lock:
+            return await self._with_retries(
+                "ensure_project",
+                lambda: self._build_bot().ensure_project(
+                    name=name,
+                    icon=icon,
+                    color=color,
+                    memory_mode=memory_mode,
+                    keep_open=keep_open,
+                ),
+            )
+
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         async with self._lock:
             logger.info("Running ChatGPT browser login check")
