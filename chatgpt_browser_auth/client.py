@@ -1082,14 +1082,21 @@ class ChatGPTBrowserClient:
         if normalized_kind not in {"link", "text", "file"}:
             raise ValueError(f"Unsupported source kind: {source_kind!r}")
 
-        expected_match: Optional[str]
+        before_sources = await self._snapshot_project_source_cards(page)
+
+        source_match_candidates: list[str]
         if normalized_kind == "file":
             if not file_path:
                 raise ValueError("file_path is required when source_kind='file'")
             if not os.path.exists(file_path):
                 raise FileNotFoundError(file_path)
             await self._add_project_file_source(page, file_path=file_path)
-            expected_match = display_name or Path(file_path).name
+            source_match_candidates = self._build_source_match_candidates(
+                normalized_kind,
+                value=None,
+                display_name=display_name,
+                file_path=file_path,
+            )
         else:
             if not value:
                 raise ValueError(f"value is required when source_kind={normalized_kind!r}")
@@ -1099,15 +1106,28 @@ class ChatGPTBrowserClient:
                 value=value,
                 display_name=display_name,
             )
-            expected_match = display_name or self._infer_source_match_text(normalized_kind, value)
+            source_match_candidates = self._build_source_match_candidates(
+                normalized_kind,
+                value=value,
+                display_name=display_name,
+                file_path=None,
+            )
 
-        await self._wait_for_source_presence(page, expected_match)
+        matched_source = await self._wait_for_source_presence(
+            page,
+            source_match_candidates=source_match_candidates,
+            before_sources=before_sources,
+        )
+        requested_match = source_match_candidates[0] if source_match_candidates else None
+        actual_match = (matched_source or {}).get("text") or requested_match
         result = {
             "ok": True,
             "action": "add",
             "project_url": project_home_url,
             "source_kind": normalized_kind,
-            "source_match": expected_match,
+            "source_match": actual_match,
+            "source_match_requested": requested_match,
+            "source_match_candidates": source_match_candidates,
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-source-add", "project source added", **result)
@@ -2557,6 +2577,152 @@ class ChatGPTBrowserClient:
             return parsed.netloc or normalized
         return self._preview_text(normalized, 80)
 
+    def _normalize_source_match_text(self, value: Optional[str]) -> str:
+        return re.sub(r"\s+", " ", (value or "").strip())
+
+    def _build_source_match_candidates(
+        self,
+        source_kind: str,
+        *,
+        value: Optional[str],
+        display_name: Optional[str],
+        file_path: Optional[str],
+    ) -> list[str]:
+        candidates: list[str] = []
+
+        def add(candidate: Optional[str]) -> None:
+            normalized = self._normalize_source_match_text(candidate)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+        if source_kind == "file":
+            add(display_name)
+            add(Path(file_path).name if file_path else None)
+            return candidates
+
+        normalized_value = self._normalize_source_match_text(value)
+        preview_value = self._preview_text(normalized_value, 80) if normalized_value else ""
+        add(self._infer_source_match_text(source_kind, normalized_value))
+        add(preview_value)
+        if source_kind == "text":
+            add(normalized_value)
+            add(display_name)
+            return candidates
+
+        parsed = urlparse(normalized_value)
+        add(parsed.netloc)
+        add(display_name)
+        add(normalized_value)
+        return candidates
+
+    async def _snapshot_project_source_cards(self, page: Any) -> list[dict[str, str]]:
+        try:
+            cards = await page.evaluate(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                    const isOptionsButton = button => {
+                        if (!button || !isVisible(button)) return false;
+                        const aria = (button.getAttribute('aria-label') || '').toLowerCase();
+                        const testid = (button.getAttribute('data-testid') || '').toLowerCase();
+                        const hasPopup = (button.getAttribute('aria-haspopup') || '').toLowerCase();
+                        const trailing = button.hasAttribute('data-trailing-button');
+                        return trailing || hasPopup === 'menu' || ['options', 'more', 'menu', 'source'].some(hint => aria.includes(hint) || testid.includes(hint));
+                    };
+                    const roots = Array.from(document.querySelectorAll('[role="tabpanel"][data-state="active"], [role="tabpanel"], main, [role="main"]')).filter(isVisible);
+                    const seen = new Set();
+                    const results = [];
+                    for (const root of roots) {
+                        const rootText = normalize(root.innerText || root.textContent || '');
+                        const buttons = Array.from(root.querySelectorAll('button,[role="button"]')).filter(isOptionsButton);
+                        for (const button of buttons) {
+                            let current = button.closest('li, article, [role="listitem"], div') || button.parentElement;
+                            while (current && current !== root && current !== document.body) {
+                                if (!isVisible(current)) {
+                                    current = current.parentElement;
+                                    continue;
+                                }
+                                const text = normalize(current.innerText || current.textContent || '');
+                                if (!text || text === rootText || text.length > 600) {
+                                    current = current.parentElement;
+                                    continue;
+                                }
+                                const key = text.toLowerCase();
+                                if (!seen.has(key)) {
+                                    seen.add(key);
+                                    results.push({ text, key });
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    return results;
+                }
+                """
+            )
+        except Exception:
+            return []
+        if not isinstance(cards, list):
+            return []
+        normalized_cards: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in cards:
+            if not isinstance(item, dict):
+                continue
+            text_value = self._normalize_source_match_text(item.get("text"))
+            if not text_value:
+                continue
+            key = self._normalize_source_match_text(item.get("key")) or text_value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_cards.append({"text": text_value, "key": key})
+        return normalized_cards
+
+    def _match_source_card(
+        self,
+        cards: list[dict[str, str]],
+        source_match_candidates: Optional[list[str]],
+    ) -> Optional[dict[str, str]]:
+        normalized_candidates = [
+            self._normalize_source_match_text(candidate).lower()
+            for candidate in (source_match_candidates or [])
+            if self._normalize_source_match_text(candidate)
+        ]
+        if not normalized_candidates:
+            return cards[0] if cards else None
+
+        best_card: Optional[dict[str, str]] = None
+        best_score = -1
+        for card in cards:
+            card_text = self._normalize_source_match_text(card.get("text")).lower()
+            if not card_text:
+                continue
+            card_score = -1
+            for index, candidate in enumerate(normalized_candidates):
+                if not candidate:
+                    continue
+                score = -1
+                if candidate == card_text:
+                    score = 1_000 - index
+                elif candidate in card_text:
+                    score = min(len(candidate), 900) - index
+                elif len(candidate) >= 16 and card_text in candidate:
+                    score = min(len(card_text), 700) - index
+                elif len(candidate) >= 24:
+                    overlap = candidate[:48]
+                    if overlap and overlap in card_text:
+                        score = min(len(overlap), 500) - index
+                if score > card_score:
+                    card_score = score
+            if card_score > best_score:
+                best_score = card_score
+                best_card = card
+        if best_score >= 0:
+            return best_card
+        return None
+
     async def _open_project_sources_tab(self, page: Any) -> None:
         tab = await self._wait_for_visible_locator(
             page,
@@ -2825,17 +2991,55 @@ class ChatGPTBrowserClient:
         await target.set_input_files(file_path)
         await page.wait_for_timeout(1_500)
 
-    async def _wait_for_source_presence(self, page: Any, source_match: Optional[str], *, timeout_ms: int = 20_000) -> None:
-        if not source_match:
+    async def _wait_for_source_presence(
+        self,
+        page: Any,
+        source_match: Optional[str] = None,
+        *,
+        source_match_candidates: Optional[list[str]] = None,
+        before_sources: Optional[list[dict[str, str]]] = None,
+        timeout_ms: int = 20_000,
+    ) -> Optional[dict[str, str]]:
+        candidates = [
+            self._normalize_source_match_text(candidate)
+            for candidate in (source_match_candidates or ([] if source_match is None else [source_match]))
+            if self._normalize_source_match_text(candidate)
+        ]
+        if not candidates and not before_sources:
             await page.wait_for_timeout(1_500)
-            return
+            return None
+
+        before_keys = {
+            self._normalize_source_match_text(item.get('key') or item.get('text')).lower()
+            for item in (before_sources or [])
+            if self._normalize_source_match_text(item.get('key') or item.get('text'))
+        }
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while asyncio.get_running_loop().time() < deadline:
-            container = await self._find_project_source_container(page, source_match, exact=False)
-            if container is not None:
-                return
+            cards = await self._snapshot_project_source_cards(page)
+            if before_keys:
+                new_cards = [
+                    card for card in cards
+                    if self._normalize_source_match_text(card.get('key') or card.get('text')).lower() not in before_keys
+                ]
+                matched_new_card = self._match_source_card(new_cards, candidates)
+                if matched_new_card is not None:
+                    return matched_new_card
+                if new_cards and not candidates:
+                    return new_cards[0]
+
+            matched_card = self._match_source_card(cards, candidates)
+            if matched_card is not None:
+                return matched_card
+
+            for candidate in candidates:
+                container = await self._find_project_source_container(page, candidate, exact=False)
+                if container is not None:
+                    return {'text': candidate, 'key': candidate.lower()}
+
             await page.wait_for_timeout(500)
-        raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {source_match}")
+        target = candidates[0] if candidates else '<new source>'
+        raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {target}")
 
     async def _wait_for_source_absence(self, page: Any, source_name: str, *, exact: bool, timeout_ms: int = 20_000) -> None:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)

@@ -323,3 +323,60 @@ def test_remove_project_uses_project_details_menu_when_current_page_matches(tmp_
     assert confirm_action.click_count == 1
     assert sidebar_calls == 0
     assert result['deleted_project_id'] == 'g-p-69de540eadf88191b04ad8fd42ec8835'
+
+
+def test_text_source_match_candidates_prefer_rendered_body_preview_over_display_name(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    candidates = client._build_source_match_candidates(
+        "text",
+        value="Integration note for run 20260414-220546-2113931",
+        display_name="itest-text-20260414-220546-2113931",
+        file_path=None,
+    )
+
+    assert candidates[0] == "Integration note for run 20260414-220546-2113931"
+    assert "itest-text-20260414-220546-2113931" in candidates
+
+
+def test_wait_for_source_presence_accepts_actual_rendered_text_source_card_identity(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    snapshots = iter(
+        [
+            [],
+            [
+                {
+                    "text": "Integration note for run 20260414-220546-2113931",
+                    "key": "integration note for run 20260414-220546-2113931",
+                }
+            ],
+        ]
+    )
+
+    async def fake_snapshot_project_source_cards(_page):
+        return next(snapshots)
+
+    async def fake_find_project_source_container(*_args, **_kwargs):
+        return None
+
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_container = fake_find_project_source_container  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._wait_for_source_presence(
+            page,
+            source_match_candidates=[
+                "Integration note for run 20260414-220546-2113931",
+                "itest-text-20260414-220546-2113931",
+            ],
+            before_sources=[],
+            timeout_ms=2_000,
+        )
+    )
+
+    assert result == {
+        "text": "Integration note for run 20260414-220546-2113931",
+        "key": "integration note for run 20260414-220546-2113931",
+    }
