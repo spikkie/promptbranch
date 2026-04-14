@@ -366,6 +366,55 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def resolve_project(
+        self,
+        *,
+        name: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-resolve",
+            "starting resolve_project",
+            project_url=self.config.project_url,
+            name=name,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_resolve",
+            operation=self._resolve_project_operation,
+            name=name,
+            keep_open=keep_open,
+        )
+
+    async def ensure_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-ensure",
+            "starting ensure_project",
+            project_url=self.config.project_url,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_ensure",
+            operation=self._ensure_project_operation,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
     async def remove_project(
         self,
         *,
@@ -595,6 +644,136 @@ class ChatGPTBrowserClient:
         await self._goto(page, home_url, label="project-create-home")
         await self._ensure_sidebar_open(page)
 
+        result = await self._create_project_from_sidebar(
+            page,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+        )
+        self._log("project-create", "project created", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project created. Press Enter to close the browser... ")
+        return result
+
+    async def _resolve_project_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        name: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        resolution = await self._resolve_projects_by_name(page, name=name, label="project-resolve-home")
+        result = {
+            "ok": resolution["error"] is None and resolution["match_count"] == 1,
+            "action": "resolve_project",
+            "project_name": name,
+            "project_url": resolution["project_url"],
+            "match_count": resolution["match_count"],
+            "matches": resolution["matches"],
+            "matched_by": resolution["matched_by"],
+            "error": resolution["error"],
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-resolve", "project resolution completed", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project resolution finished. Press Enter to close the browser... ")
+        return result
+
+    async def _ensure_project_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        name: str,
+        icon: Optional[str],
+        color: Optional[str],
+        memory_mode: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        resolution = await self._resolve_projects_by_name(page, name=name, label="project-ensure-home")
+
+        if resolution["match_count"] == 1 and resolution["project_url"]:
+            result = {
+                "ok": True,
+                "action": "ensure_project",
+                "project_name": name,
+                "project_url": resolution["project_url"],
+                "created": False,
+                "match_count": 1,
+                "matches": resolution["matches"],
+                "matched_by": resolution["matched_by"],
+                "error": None,
+                "current_url": await self._safe_page_url(page),
+                "icon": icon,
+                "color": color,
+                "memory_mode": memory_mode,
+                "icon_applied": False,
+                "color_applied": False,
+                "memory_mode_applied": False,
+                "warnings": [],
+            }
+            self._log("project-ensure", "project already exists", **result)
+            if keep_open and self.config.is_headed:
+                await asyncio.to_thread(input, "Project already exists. Press Enter to close the browser... ")
+            return result
+
+        if resolution["match_count"] > 1:
+            result = {
+                "ok": False,
+                "action": "ensure_project",
+                "project_name": name,
+                "project_url": None,
+                "created": False,
+                "match_count": resolution["match_count"],
+                "matches": resolution["matches"],
+                "matched_by": resolution["matched_by"],
+                "error": resolution["error"] or "ambiguous_project_name",
+                "current_url": await self._safe_page_url(page),
+                "icon": icon,
+                "color": color,
+                "memory_mode": memory_mode,
+                "warnings": ["Multiple existing projects matched the requested exact name."],
+            }
+            self._log("project-ensure", "project ensure blocked by ambiguity", **result)
+            if keep_open and self.config.is_headed:
+                await asyncio.to_thread(input, "Project ensure failed. Press Enter to close the browser... ")
+            return result
+
+        created = await self._create_project_from_sidebar(
+            page,
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+        )
+        result = {
+            **created,
+            "action": "ensure_project",
+            "created": True,
+            "match_count": 0,
+            "matches": [],
+            "matched_by": None,
+            "error": None,
+        }
+        self._log("project-ensure", "project created during ensure", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project ensured. Press Enter to close the browser... ")
+        return result
+
+    async def _create_project_from_sidebar(
+        self,
+        page: Any,
+        *,
+        name: str,
+        icon: Optional[str],
+        color: Optional[str],
+        memory_mode: str,
+    ) -> dict[str, Any]:
+
         new_project_button = await self._wait_for_visible_locator(
             page,
             PROJECT_NEW_BUTTON_SELECTORS,
@@ -662,7 +841,7 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(750)
 
         project_url = await self._wait_for_created_project_url(page, project_name=name, previous_url=before_url)
-        result = {
+        return {
             "ok": True,
             "action": "create_project",
             "project_name": name,
@@ -676,10 +855,6 @@ class ChatGPTBrowserClient:
             "memory_mode_applied": memory_mode_applied,
             "warnings": warnings,
         }
-        self._log("project-create", "project created", **result)
-        if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project created. Press Enter to close the browser... ")
-        return result
 
     async def _remove_project_operation(
         self,
@@ -1954,6 +2129,123 @@ class ChatGPTBrowserClient:
             except Exception:
                 continue
         return None
+
+    def _normalize_project_name(self, value: str) -> str:
+        return re.sub(r'\s+', ' ', (value or '')).strip()
+
+    async def _resolve_projects_by_name(self, page: Any, *, name: str, label: str) -> dict[str, Any]:
+        home_url = self._chatgpt_home_url()
+        await self._goto(page, home_url, label=label)
+        await self._ensure_sidebar_open(page)
+
+        normalized_name = self._normalize_project_name(name)
+        projects = await self._collect_sidebar_projects(page)
+        matches = [project for project in projects if self._normalize_project_name(project.get("name", "")) == normalized_name]
+
+        if len(matches) == 1:
+            return {
+                "project_url": matches[0]["url"],
+                "match_count": 1,
+                "matches": matches,
+                "matched_by": "exact_name",
+                "error": None,
+            }
+        if not matches:
+            return {
+                "project_url": None,
+                "match_count": 0,
+                "matches": [],
+                "matched_by": None,
+                "error": "project_not_found",
+            }
+        return {
+            "project_url": None,
+            "match_count": len(matches),
+            "matches": matches,
+            "matched_by": None,
+            "error": "ambiguous_project_name",
+        }
+
+    async def _collect_sidebar_projects(self, page: Any) -> list[dict[str, str]]:
+        try:
+            projects = await page.evaluate(
+                r"""
+                () => {
+                    const normalizeText = value => (value || '').replace(/\\s+/g, ' ').trim();
+                    const normalizePath = value => {
+                        try {
+                            const url = new URL(value, window.location.origin);
+                            return (url.pathname || '').replace(/\/+$/, '');
+                        } catch (_) {
+                            return '';
+                        }
+                    };
+                    const toAbsolute = value => {
+                        try {
+                            const url = new URL(value, window.location.origin);
+                            url.search = '';
+                            url.hash = '';
+                            return url.toString();
+                        } catch (_) {
+                            return '';
+                        }
+                    };
+                    const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                    const isProjectPath = value => /\/g\/g-p-[^/]+(?:-[^/]+)?\/project$/.test(value || '');
+
+                    const headings = Array.from(document.querySelectorAll('h2'));
+                    const projectHeading = headings.find(h => normalizeText(h.textContent).toLowerCase() === 'projects');
+                    let scope = projectHeading?.closest('div[class*="sidebar-expando-section"]') || projectHeading?.parentElement?.parentElement || document.body;
+                    if (!scope) scope = document.body;
+
+                    const anchors = Array.from(scope.querySelectorAll('a[href]')).filter(isVisible);
+                    const seen = new Set();
+                    const results = [];
+                    for (const anchor of anchors) {
+                        const absoluteUrl = toAbsolute(anchor.getAttribute('href') || '');
+                        const normalizedPath = normalizePath(absoluteUrl);
+                        if (!isProjectPath(normalizedPath)) continue;
+                        if (seen.has(normalizedPath)) continue;
+
+                        const titleEl = anchor.querySelector('[title]');
+                        const name = normalizeText(
+                            titleEl?.getAttribute('title')
+                            || anchor.getAttribute('aria-label')
+                            || anchor.innerText
+                            || anchor.textContent
+                        );
+                        if (!name) continue;
+
+                        seen.add(normalizedPath);
+                        results.push({ name, url: absoluteUrl });
+                    }
+                    return results;
+                }
+                """
+            )
+        except Exception:
+            return []
+
+        if not isinstance(projects, list):
+            return []
+
+        normalized_projects: list[dict[str, str]] = []
+        seen_urls: set[str] = set()
+        for item in projects:
+            if not isinstance(item, dict):
+                continue
+            raw_name = self._normalize_project_name(str(item.get("name") or ""))
+            raw_url = str(item.get("url") or "").strip()
+            if not raw_name or not raw_url:
+                continue
+            project_url = self._project_home_url_from_url(raw_url)
+            if not self._is_project_home_url(project_url):
+                continue
+            if project_url in seen_urls:
+                continue
+            seen_urls.add(project_url)
+            normalized_projects.append({"name": raw_name, "url": project_url})
+        return normalized_projects
 
     def _project_home_url(self) -> str:
         return self._project_home_url_from_url(self.config.project_url)

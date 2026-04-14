@@ -22,7 +22,17 @@ from chatgpt_browser_auth.exceptions import (
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
-COMMANDS = {"login-check", "ask", "shell", "project-create", "project-remove", "project-source-add", "project-source-remove"}
+COMMANDS = {
+    "login-check",
+    "ask",
+    "shell",
+    "project-create",
+    "project-resolve",
+    "project-ensure",
+    "project-remove",
+    "project-source-add",
+    "project-source-remove",
+}
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
     "--email": True,
@@ -94,6 +104,27 @@ async def cmd_project_create(service: ChatGPTAutomationService, args: argparse.N
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
+
+
+async def cmd_project_resolve(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+    result = await service.resolve_project(
+        name=args.name,
+        keep_open=args.keep_open,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+async def cmd_project_ensure(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+    result = await service.ensure_project(
+        name=args.name,
+        icon=args.icon,
+        color=args.color,
+        memory_mode=args.memory_mode,
+        keep_open=args.keep_open,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
 
 async def cmd_project_remove(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
     result = await service.remove_project(
@@ -336,6 +367,28 @@ def make_parser() -> argparse.ArgumentParser:
     )
     project_create.add_argument("--keep-open", action="store_true")
 
+    project_resolve = subparsers.add_parser(
+        "project-resolve",
+        help="Resolve a ChatGPT project by exact name and return its URL when uniquely matched.",
+    )
+    project_resolve.add_argument("name", help="Project name to resolve by exact visible name.")
+    project_resolve.add_argument("--keep-open", action="store_true")
+
+    project_ensure = subparsers.add_parser(
+        "project-ensure",
+        help="Resolve a ChatGPT project by exact name, creating it only when missing.",
+    )
+    project_ensure.add_argument("name", help="Project name to resolve or create.")
+    project_ensure.add_argument("--icon", help="Optional project icon name/value to select when creation is needed.")
+    project_ensure.add_argument("--color", help="Optional project color name/value to select when creation is needed.")
+    project_ensure.add_argument(
+        "--memory-mode",
+        choices=["default", "project-only"],
+        default="default",
+        help="Project memory mode to request during creation when a project does not already exist.",
+    )
+    project_ensure.add_argument("--keep-open", action="store_true")
+
     project_remove = subparsers.add_parser(
         "project-remove",
         help="Delete the configured ChatGPT project referenced by --project-url.",
@@ -398,6 +451,10 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_login_check(service, args)
     if args.command == "project-create":
         return await cmd_project_create(service, args)
+    if args.command == "project-resolve":
+        return await cmd_project_resolve(service, args)
+    if args.command == "project-ensure":
+        return await cmd_project_ensure(service, args)
     if args.command == "project-remove":
         return await cmd_project_remove(service, args)
     if args.command == "project-source-add":

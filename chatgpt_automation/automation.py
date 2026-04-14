@@ -221,6 +221,34 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def resolve_project(
+        self,
+        *,
+        name: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.resolve_project(
+            name=name,
+            keep_open=keep_open,
+        )
+
+    async def ensure_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.ensure_project(
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
     async def remove_project(
         self,
         *,
