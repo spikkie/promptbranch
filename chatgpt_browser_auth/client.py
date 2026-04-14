@@ -103,10 +103,22 @@ PROJECT_SOURCES_TAB_SELECTORS = [
     'button:has-text("Sources")',
     'a:has-text("Sources")',
 ]
+PROJECT_PAGE_INDICATOR_SELECTORS = [
+    '[role="tab"]:has-text("Chats")',
+    '[role="tab"]:has-text("Sources")',
+    'button:has-text("Chats")',
+    'button:has-text("Sources")',
+    'textarea[placeholder*="New chat in" i]',
+    '[contenteditable="true"][data-placeholder*="New chat in" i]',
+]
 PROJECT_ADD_SOURCE_BUTTON_SELECTORS = [
     'button:has-text("Add source")',
     'button:has-text("Add Source")',
     '[aria-label*="Add source" i]',
+    '[aria-label*="New source" i]',
+    '[aria-label*="Upload" i]',
+    'button:has-text("New source")',
+    'button:has-text("Upload")',
 ]
 PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
     '[role="dialog"]',
@@ -1109,6 +1121,22 @@ class ChatGPTBrowserClient:
             from playwright.async_api import async_playwright
         return async_playwright()
 
+    def _looks_like_project_page_url(self, url: str) -> bool:
+        parsed = urlparse(url or "")
+        path = (parsed.path or "").rstrip("/")
+        if not path:
+            return False
+        return bool(re.search(r'/g/g-p-[^/]+(?:-[^/]+)?/project$', path, re.IGNORECASE))
+
+    async def _has_project_page_indicators(self, page: Any) -> bool:
+        indicator = await self._find_visible_locator(
+            page,
+            PROJECT_PAGE_INDICATOR_SELECTORS,
+            label="project-page-indicator",
+            timeout_ms=800,
+        )
+        return indicator is not None
+
     async def _is_logged_in(self, page: Any) -> bool:
         self._log("auth-check", "probing logged-in indicators")
 
@@ -1125,6 +1153,10 @@ class ChatGPTBrowserClient:
         anonymous_visible = anonymous_marker is not None
 
         composer_visible = await self._has_chat_input(page)
+        current_url = await self._safe_page_url(page)
+        project_page_visible = False
+        if self._looks_like_project_page_url(current_url):
+            project_page_visible = await self._has_project_page_indicators(page)
 
         self._log(
             "auth-check",
@@ -1134,7 +1166,8 @@ class ChatGPTBrowserClient:
             signup_visible=signup_visible,
             anonymous_visible=anonymous_visible,
             composer_visible=composer_visible,
-            current_url=await self._safe_page_url(page),
+            project_page_visible=project_page_visible,
+            current_url=current_url,
         )
 
         if auth_visible:
@@ -1147,6 +1180,10 @@ class ChatGPTBrowserClient:
 
         if composer_visible:
             self._log("auth-check", "composer visible without anonymous markers; tentatively treating session as active")
+            return True
+
+        if project_page_visible:
+            self._log("auth-check", "project page indicators are visible without anonymous markers; tentatively treating session as active")
             return True
 
         return False
@@ -2415,17 +2452,98 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(750)
         self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
 
+    async def _has_visible_project_source_entry_surface(self, page: Any) -> bool:
+        for label, selectors in (
+            ("project-source-entry-kind-link", PROJECT_SOURCE_LINK_TYPE_SELECTORS),
+            ("project-source-entry-kind-text", PROJECT_SOURCE_TEXT_TYPE_SELECTORS),
+            ("project-source-entry-kind-file", PROJECT_SOURCE_FILE_TYPE_SELECTORS),
+            ("project-source-entry-link-input", PROJECT_SOURCE_LINK_INPUT_SELECTORS),
+            ("project-source-entry-text-input", PROJECT_SOURCE_TEXT_INPUT_SELECTORS),
+            ("project-source-entry-file-input", PROJECT_SOURCE_FILE_INPUT_SELECTORS),
+        ):
+            locator = await self._find_visible_locator(page, selectors, label=label, timeout_ms=500)
+            if locator is not None:
+                return True
+        return False
+
+    async def _find_project_source_primary_action(self, page: Any) -> Optional[Any]:
+        handle = await page.evaluate_handle(
+            r'''            () => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const candidates = Array.from(document.querySelectorAll('main button, main [role="button"], main a, [role="main"] button, [role="main"] [role="button"], [role="main"] a'));
+                let best = null;
+                let bestScore = -1;
+                for (const el of candidates) {
+                    if (!isVisible(el)) continue;
+                    const text = normalize(el.innerText || el.textContent || '');
+                    const aria = normalize(el.getAttribute('aria-label'));
+                    const testid = normalize(el.getAttribute('data-testid'));
+                    const title = normalize(el.getAttribute('title'));
+                    const signature = [text, aria, testid, title].filter(Boolean).join(' | ');
+                    if (!signature) continue;
+
+                    let score = -1;
+                    if (signature.includes('add source')) score = Math.max(score, 120);
+                    if (signature.includes('new source')) score = Math.max(score, 110);
+                    if (signature.includes('upload file')) score = Math.max(score, 100);
+                    if (signature.includes('browse files')) score = Math.max(score, 95);
+                    if (signature.includes('upload')) score = Math.max(score, 85);
+                    if (signature.includes('add file')) score = Math.max(score, 80);
+                    if (signature.includes('connect source')) score = Math.max(score, 80);
+                    if (signature.includes('source')) score = Math.max(score, 70);
+                    if (score < 0 && (signature === 'link' || signature === 'text' || signature === 'file')) {
+                        score = 60;
+                    }
+                    if (score < 0 && (text === 'add' || aria === 'add')) {
+                        score = 45;
+                    }
+                    if (score > bestScore) {
+                        best = el;
+                        bestScore = score;
+                    }
+                }
+                return bestScore >= 60 ? best : null;
+            }
+            ''',
+        )
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
     async def _click_add_source_button(self, page: Any) -> None:
+        if await self._has_visible_project_source_entry_surface(page):
+            self._log("project-source", "source entry controls already visible; skipping add-source click")
+            return
+
         button = await self._wait_for_visible_locator(
             page,
             PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
             label="project-add-source-button",
-            total_timeout_ms=10_000,
+            total_timeout_ms=6_000,
         )
-        if button is None:
-            raise ResponseTimeoutError("Add source button did not become visible")
-        await button.click(timeout=5_000)
-        await page.wait_for_timeout(500)
+        if button is not None:
+            await button.click(timeout=5_000)
+            await page.wait_for_timeout(500)
+            return
+
+        fallback_button = await self._find_project_source_primary_action(page)
+        if fallback_button is not None:
+            try:
+                await fallback_button.click(timeout=5_000)
+            except Exception:
+                await fallback_button.click(timeout=5_000, force=True)
+            await page.wait_for_timeout(500)
+            if await self._has_visible_project_source_entry_surface(page):
+                self._log("project-source", "clicked fallback source action control")
+                return
+
+        if await self._has_visible_project_source_entry_surface(page):
+            self._log("project-source", "source entry controls appeared after fallback probe")
+            return
+
+        raise ResponseTimeoutError("Add source button did not become visible")
 
     async def _click_source_kind_option(self, page: Any, source_kind: str) -> None:
         selector_map = {
