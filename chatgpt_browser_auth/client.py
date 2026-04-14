@@ -181,10 +181,20 @@ PROJECT_SOURCE_LINK_INPUT_SELECTORS = [
 PROJECT_SOURCE_TEXT_INPUT_SELECTORS = [
     '[role="dialog"] textarea',
     '[role="dialog"] [contenteditable="true"]',
+    '[role="dialog"] [role="textbox"]',
     '[role="dialog"] input[type="text"]',
     'dialog[open] textarea',
     'dialog[open] [contenteditable="true"]',
+    'dialog[open] [role="textbox"]',
     'dialog[open] input[type="text"]',
+]
+PROJECT_SOURCE_TEXT_BODY_SELECTORS = [
+    '[role="dialog"] textarea',
+    '[role="dialog"] [contenteditable="true"]',
+    '[role="dialog"] [role="textbox"]:not(input)',
+    'dialog[open] textarea',
+    'dialog[open] [contenteditable="true"]',
+    'dialog[open] [role="textbox"]:not(input)',
 ]
 PROJECT_SOURCE_TITLE_INPUT_SELECTORS = [
     '[role="dialog"] input[placeholder*="Title" i]',
@@ -267,15 +277,37 @@ PROJECT_CREATE_SUBMIT_SELECTORS = [
 ]
 PROJECT_REMOVE_ACTION_SELECTORS = [
     '[role="menuitem"]:has-text("Delete project")',
+    '[role="menuitem"]:has-text("Delete Project")',
+    '[role="menuitem"]:has-text("Delete this project")',
+    '[role="menuitem"]:has-text("Remove project")',
     '[role="menuitem"]:has-text("Delete")',
+    '[role="menuitem"]:has-text("Remove")',
     'button:has-text("Delete project")',
+    'button:has-text("Delete Project")',
+    'button:has-text("Delete this project")',
+    'button:has-text("Remove project")',
     'button:has-text("Delete")',
+    'button:has-text("Remove")',
+    '[aria-label*="Delete project" i]',
+]
+PROJECT_REMOVE_SETTINGS_SELECTORS = [
+    '[role="menuitem"]:has-text("Settings")',
+    'button:has-text("Settings")',
+    '[aria-label*="settings" i]',
 ]
 PROJECT_CONFIRM_REMOVE_SELECTORS = [
     '[role="dialog"] button:has-text("Delete project")',
+    '[role="dialog"] button:has-text("Delete Project")',
+    '[role="dialog"] button:has-text("Delete this project")',
+    '[role="dialog"] button:has-text("Remove project")',
     '[role="dialog"] button:has-text("Delete")',
+    '[role="dialog"] button:has-text("Remove")',
     'dialog[open] button:has-text("Delete project")',
+    'dialog[open] button:has-text("Delete Project")',
+    'dialog[open] button:has-text("Delete this project")',
+    'dialog[open] button:has-text("Remove project")',
     'dialog[open] button:has-text("Delete")',
+    'dialog[open] button:has-text("Remove")',
 ]
 PROJECT_PAGE_DETAILS_MENU_SELECTORS = [
     'button[aria-label="Show project details"]',
@@ -918,9 +950,68 @@ class ChatGPTBrowserClient:
         await self._goto(page, project_home_url, label="project-remove-home")
         await self._ensure_sidebar_open(page)
 
-        delete_action = None
         current_url = await self._safe_page_url(page)
-        if self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
+        delete_action = None
+
+        container = None
+        for attempt in range(3):
+            if attempt == 1:
+                await self._expand_projects_section(page)
+            elif attempt == 2:
+                await self._prime_project_sidebar(page)
+                await self._expand_projects_section(page)
+
+            container = await self._find_project_sidebar_container(page, project_url=project_home_url)
+            if container is not None:
+                break
+            await page.wait_for_timeout(350)
+
+        if container is None:
+            raise ResponseTimeoutError("Could not find the configured project in the sidebar")
+
+        try:
+            await container.hover(timeout=2_000)
+        except Exception:
+            pass
+
+        options_button = await self._find_project_options_button(container)
+        if options_button is None:
+            raise ResponseTimeoutError("Could not find the options button for the configured project")
+        try:
+            await options_button.scroll_into_view_if_needed(timeout=2_000)
+        except Exception:
+            pass
+        try:
+            await options_button.click(timeout=5_000)
+        except Exception:
+            await options_button.click(timeout=5_000, force=True)
+
+        delete_action = await self._wait_for_visible_locator(
+            page,
+            PROJECT_REMOVE_ACTION_SELECTORS,
+            label="project-remove-action",
+            total_timeout_ms=3_000,
+            poll_interval_ms=250,
+        )
+        if delete_action is None:
+            settings_action = await self._wait_for_visible_locator(
+                page,
+                PROJECT_REMOVE_SETTINGS_SELECTORS,
+                label="project-remove-settings-action",
+                total_timeout_ms=3_000,
+                poll_interval_ms=250,
+            )
+            if settings_action is not None:
+                await settings_action.click(timeout=5_000)
+                delete_action = await self._wait_for_visible_locator(
+                    page,
+                    PROJECT_REMOVE_ACTION_SELECTORS,
+                    label="project-remove-action-after-settings",
+                    total_timeout_ms=8_000,
+                    poll_interval_ms=250,
+                )
+
+        if delete_action is None and self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
             page_details_button = await self._find_visible_locator(
                 page,
                 PROJECT_PAGE_DETAILS_MENU_SELECTORS,
@@ -939,52 +1030,11 @@ class ChatGPTBrowserClient:
                 delete_action = await self._wait_for_visible_locator(
                     page,
                     PROJECT_REMOVE_ACTION_SELECTORS,
-                    label="project-remove-action",
+                    label="project-remove-action-from-page-details",
                     total_timeout_ms=3_000,
                     poll_interval_ms=250,
                 )
-                if delete_action is None:
-                    self._log(
-                        "project-remove",
-                        "project details menu did not expose delete action; falling back to sidebar project options",
-                        current_url=current_url,
-                    )
 
-        if delete_action is None:
-            container = None
-            for attempt in range(3):
-                if attempt == 1:
-                    await self._expand_projects_section(page)
-                elif attempt == 2:
-                    await self._prime_project_sidebar(page)
-                    await self._expand_projects_section(page)
-
-                container = await self._find_project_sidebar_container(page, project_url=project_home_url)
-                if container is not None:
-                    break
-                await page.wait_for_timeout(350)
-
-            if container is None:
-                raise ResponseTimeoutError("Could not find the configured project in the sidebar")
-
-            options_button = await self._find_project_options_button(container)
-            if options_button is None:
-                raise ResponseTimeoutError("Could not find the options button for the configured project")
-            try:
-                await options_button.scroll_into_view_if_needed(timeout=2_000)
-            except Exception:
-                pass
-            try:
-                await options_button.click(timeout=5_000)
-            except Exception:
-                await options_button.click(timeout=5_000, force=True)
-
-            delete_action = await self._wait_for_visible_locator(
-                page,
-                PROJECT_REMOVE_ACTION_SELECTORS,
-                label="project-remove-action",
-                total_timeout_ms=8_000,
-            )
         if delete_action is None:
             raise ResponseTimeoutError("Could not find the delete action for the configured project")
         await delete_action.click(timeout=5_000)
@@ -2632,6 +2682,37 @@ class ChatGPTBrowserClient:
             pass
         await locator.type(text, delay=10)
 
+    async def _locator_is_enabled(self, locator: Any) -> bool:
+        try:
+            if hasattr(locator, "is_enabled") and await locator.is_enabled():
+                disabled = await locator.get_attribute("disabled")
+                aria_disabled = await locator.get_attribute("aria-disabled")
+                visually_disabled = await locator.get_attribute("data-visually-disabled")
+                return disabled is None and (aria_disabled or "").lower() != "true" and visually_disabled is None
+        except Exception:
+            pass
+        try:
+            disabled = await locator.get_attribute("disabled")
+            aria_disabled = await locator.get_attribute("aria-disabled")
+            visually_disabled = await locator.get_attribute("data-visually-disabled")
+            return disabled is None and (aria_disabled or "").lower() != "true" and visually_disabled is None
+        except Exception:
+            return False
+
+    async def _wait_for_enabled_locator(self, locator: Any, *, timeout_ms: int = 5_000) -> bool:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        while asyncio.get_running_loop().time() < deadline:
+            if await self._locator_is_enabled(locator):
+                return True
+            await asyncio.sleep(0.2)
+        return await self._locator_is_enabled(locator)
+
+    def _project_source_value_selectors(self, source_kind: str, *, option_kind: Optional[str] = None) -> list[str]:
+        effective_kind = option_kind or source_kind
+        if source_kind == "link" and effective_kind == "text":
+            return PROJECT_SOURCE_TEXT_BODY_SELECTORS
+        return self._project_source_input_selectors(effective_kind)
+
     async def _add_project_textual_source(
         self,
         page: Any,
@@ -2641,23 +2722,24 @@ class ChatGPTBrowserClient:
         display_name: Optional[str],
     ) -> None:
         await self._click_add_source_button(page)
-        selectors = self._project_source_input_selectors(source_kind)
         input_locator = await self._find_visible_locator(
             page,
-            selectors,
+            self._project_source_value_selectors(source_kind),
             label=f"project-source-{source_kind}-input-preopened",
             timeout_ms=800,
         )
+        selected_option_kind = source_kind
         if input_locator is None:
             for option_kind in self._project_source_option_kinds(source_kind):
                 await self._click_source_kind_option(page, option_kind)
                 input_locator = await self._find_visible_locator(
                     page,
-                    selectors,
+                    self._project_source_value_selectors(source_kind, option_kind=option_kind),
                     label=f"project-source-{source_kind}-input-after-{option_kind}",
                     timeout_ms=1_200,
                 )
                 if input_locator is not None:
+                    selected_option_kind = option_kind
                     if option_kind != source_kind:
                         self._log(
                             "project-source",
@@ -2669,7 +2751,7 @@ class ChatGPTBrowserClient:
             if input_locator is None:
                 input_locator = await self._wait_for_visible_locator(
                     page,
-                    selectors,
+                    self._project_source_value_selectors(source_kind),
                     label=f"project-source-{source_kind}-input",
                     total_timeout_ms=10_000,
                 )
@@ -2681,17 +2763,32 @@ class ChatGPTBrowserClient:
             )
         if input_locator is None:
             raise ResponseTimeoutError(f"Input for project source kind {source_kind!r} did not become visible")
+
         await self._fill_locator_text(input_locator, value)
 
-        if display_name:
+        title_value = display_name
+        if source_kind == "link" and selected_option_kind == "text" and not title_value:
+            parsed = urlparse(value)
+            title_value = parsed.netloc or value
+
+        title_locator = await self._find_visible_locator(
+            page,
+            PROJECT_SOURCE_TITLE_INPUT_SELECTORS,
+            label="project-source-title-input",
+            timeout_ms=800,
+        )
+        if title_locator is None and source_kind == "link" and selected_option_kind == "text" and title_value:
             title_locator = await self._find_visible_locator(
                 page,
-                PROJECT_SOURCE_TITLE_INPUT_SELECTORS,
-                label="project-source-title-input",
+                [
+                    '[role="dialog"] input[type="text"]',
+                    'dialog[open] input[type="text"]',
+                ],
+                label="project-source-title-input-fallback",
                 timeout_ms=800,
             )
-            if title_locator is not None:
-                await self._fill_locator_text(title_locator, display_name)
+        if title_locator is not None and title_value:
+            await self._fill_locator_text(title_locator, title_value)
 
         save_button = await self._wait_for_visible_locator(
             page,
@@ -2701,6 +2798,10 @@ class ChatGPTBrowserClient:
         )
         if save_button is None:
             raise ResponseTimeoutError("Project source save/add button did not become visible")
+        if not await self._wait_for_enabled_locator(save_button, timeout_ms=5_000):
+            raise ResponseTimeoutError(
+                f"Project source save/add button stayed disabled (source_kind={source_kind}, selected_option_kind={selected_option_kind})"
+            )
         await save_button.click(timeout=5_000)
         await page.wait_for_timeout(1_000)
 
@@ -2872,19 +2973,28 @@ class ChatGPTBrowserClient:
             except Exception:
                 continue
 
+        prioritized: list[Any] = []
         for button in visible_buttons:
-            aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
-            has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
-            if any(hint in aria_label for hint in PROJECT_OPTIONS_ARIA_HINTS):
-                return button
-            if has_popup == 'menu':
-                return button
             try:
-                if await button.get_attribute('data-trailing-button') is not None:
-                    return button
+                aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
+                has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+                data_trailing = await button.get_attribute('data-trailing-button')
             except Exception:
-                pass
+                continue
+            if aria_label.startswith('open project options for '):
+                prioritized.append(button)
+                continue
+            if any(hint in aria_label for hint in PROJECT_OPTIONS_ARIA_HINTS):
+                prioritized.append(button)
+                continue
+            if data_trailing is not None and has_popup == 'menu':
+                prioritized.append(button)
+                continue
+            if has_popup == 'menu':
+                prioritized.append(button)
 
+        if prioritized:
+            return prioritized[0]
         return visible_buttons[-1] if visible_buttons else None
 
     async def _wait_for_project_absence(self, page: Any, *, deleted_project_url: str, timeout_ms: int = 20_000) -> None:
