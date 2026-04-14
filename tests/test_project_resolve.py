@@ -234,3 +234,92 @@ def test_remove_project_retries_sidebar_lookup_and_uses_project_id_identity(tmp_
     assert delete_action.click_count == 1
     assert confirm_action.click_count == 1
     assert result['deleted_project_id'] == 'g-p-69de540eadf88191b04ad8fd42ec8835'
+
+
+
+def test_is_logged_in_treats_project_page_without_composer_as_authenticated(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    async def fake_find_visible_locator(*_args, **_kwargs):
+        return None
+
+    async def fake_has_chat_input(*_args, **_kwargs) -> bool:
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return 'https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project'
+
+    client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    client._has_chat_input = fake_has_chat_input  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    assert asyncio.run(client._is_logged_in(page)) is True
+
+
+def test_link_source_kind_uses_scoped_text_input_fallback(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._project_source_option_kinds('link') == ['link', 'text']
+    assert any('Text input' in selector for selector in client_module.PROJECT_SOURCE_TEXT_TYPE_SELECTORS)
+    assert any('textarea' in selector for selector in client._project_source_input_selectors('link'))
+
+
+def test_remove_project_uses_project_details_menu_when_current_page_matches(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = 'https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project'
+    page = FakePage()
+
+    details_button = FakeClickable()
+    delete_action = FakeClickable()
+    confirm_action = FakeClickable()
+    sidebar_calls = 0
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_ensure_sidebar_open(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return 'https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project'
+
+    async def fake_find_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == 'project-page-details-menu':
+            return details_button
+        return None
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == 'project-remove-action':
+            return delete_action
+        if label == 'project-remove-confirm':
+            return confirm_action
+        raise AssertionError(f'unexpected locator label: {label}')
+
+    async def fake_find_project_sidebar_container(*_args, **_kwargs):
+        nonlocal sidebar_calls
+        sidebar_calls += 1
+        raise AssertionError('sidebar lookup should not be used when project details menu succeeds')
+
+    async def fake_wait_for_project_absence(*_args, **_kwargs) -> None:
+        return None
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._ensure_sidebar_open = fake_ensure_sidebar_open  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._find_project_sidebar_container = fake_find_project_sidebar_container  # type: ignore[method-assign]
+    client._wait_for_project_absence = fake_wait_for_project_absence  # type: ignore[method-assign]
+
+    result = asyncio.run(_run_remove_project_retry_harness(client, page))
+
+    assert details_button.click_count == 1
+    assert delete_action.click_count == 1
+    assert confirm_action.click_count == 1
+    assert sidebar_calls == 0
+    assert result['deleted_project_id'] == 'g-p-69de540eadf88191b04ad8fd42ec8835'
