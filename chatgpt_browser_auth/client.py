@@ -202,6 +202,11 @@ PROJECT_NEW_BUTTON_SELECTORS = [
     '[data-testid="new-project-button"]',
     '[aria-label*="New project" i]',
 ]
+PROJECT_SECTION_TOGGLE_SELECTORS = [
+    'button:has-text("Projects")',
+    '[role="button"]:has-text("Projects")',
+    'summary:has-text("Projects")',
+]
 PROJECT_CREATE_DIALOG_SELECTORS = [
     '[role="dialog"]',
     'dialog[open]',
@@ -2131,7 +2136,97 @@ class ChatGPTBrowserClient:
         return None
 
     def _normalize_project_name(self, value: str) -> str:
-        return re.sub(r'\s+', ' ', (value or '')).strip()
+        normalized = re.sub(r'\s+', ' ', (value or '')).strip()
+        return normalized.casefold()
+
+    async def _expand_projects_section(self, page: Any) -> bool:
+        toggle = await self._find_visible_locator(
+            page,
+            PROJECT_SECTION_TOGGLE_SELECTORS,
+            label='project-section-toggle',
+            timeout_ms=800,
+        )
+        if toggle is not None:
+            try:
+                expanded = await toggle.get_attribute('aria-expanded')
+            except Exception:
+                expanded = None
+            if expanded == 'true':
+                return False
+            try:
+                await toggle.click(timeout=2_500)
+                self._log('project-resolve', 'expanded Projects section via toggle control')
+                await page.wait_for_timeout(500)
+                return True
+            except Exception as exc:
+                self._log('project-resolve', 'Projects toggle click failed; falling back to DOM expansion', error=str(exc))
+
+        try:
+            expanded = await page.evaluate(
+                r'''
+                () => {
+                    const normalizeText = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const controls = Array.from(document.querySelectorAll('button,[role="button"],summary'));
+                    for (const control of controls) {
+                        const text = normalizeText(control.innerText || control.textContent || control.getAttribute('aria-label') || '');
+                        if (text !== 'projects') continue;
+                        const ariaExpanded = (control.getAttribute('aria-expanded') || '').toLowerCase();
+                        if (ariaExpanded === 'true') return false;
+                        control.click();
+                        return true;
+                    }
+                    return false;
+                }
+                '''
+            )
+        except Exception:
+            return False
+        if expanded:
+            self._log('project-resolve', 'expanded Projects section via DOM fallback')
+            await page.wait_for_timeout(500)
+            return True
+        return False
+
+    async def _prime_project_sidebar(self, page: Any) -> None:
+        try:
+            await page.evaluate(
+                r'''
+                () => {
+                    const candidates = Array.from(document.querySelectorAll('aside, nav, [data-testid*="sidebar"], [class*="sidebar"]'));
+                    for (const element of candidates) {
+                        if (!(element instanceof HTMLElement)) continue;
+                        try {
+                            element.scrollTop = 0;
+                            element.dispatchEvent(new Event('scroll', { bubbles: true }));
+                            element.scrollTop = element.scrollHeight;
+                            element.dispatchEvent(new Event('scroll', { bubbles: true }));
+                            element.scrollTop = 0;
+                        } catch (_) {}
+                    }
+                    window.scrollTo(0, 0);
+                }
+                '''
+            )
+        except Exception:
+            return
+        await page.wait_for_timeout(400)
+
+    def _dedupe_projects(self, projects: list[dict[str, str]]) -> list[dict[str, str]]:
+        deduped: list[dict[str, str]] = []
+        seen_urls: set[str] = set()
+        for project in projects:
+            display_name = re.sub(r'\s+', ' ', str(project.get('name') or '')).strip()
+            raw_url = str(project.get('url') or '').strip()
+            if not display_name or not raw_url:
+                continue
+            project_url = self._project_home_url_from_url(raw_url)
+            if not self._is_project_home_url(project_url):
+                continue
+            if project_url in seen_urls:
+                continue
+            seen_urls.add(project_url)
+            deduped.append({'name': display_name, 'url': project_url})
+        return deduped
 
     async def _resolve_projects_by_name(self, page: Any, *, name: str, label: str) -> dict[str, Any]:
         home_url = self._chatgpt_home_url()
@@ -2139,39 +2234,57 @@ class ChatGPTBrowserClient:
         await self._ensure_sidebar_open(page)
 
         normalized_name = self._normalize_project_name(name)
-        projects = await self._collect_sidebar_projects(page)
-        matches = [project for project in projects if self._normalize_project_name(project.get("name", "")) == normalized_name]
+        collected: list[dict[str, str]] = []
+        for attempt in range(3):
+            if attempt == 1:
+                await self._expand_projects_section(page)
+            elif attempt == 2:
+                await self._prime_project_sidebar(page)
+                await self._expand_projects_section(page)
 
-        if len(matches) == 1:
-            return {
-                "project_url": matches[0]["url"],
-                "match_count": 1,
-                "matches": matches,
-                "matched_by": "exact_name",
-                "error": None,
-            }
-        if not matches:
-            return {
-                "project_url": None,
-                "match_count": 0,
-                "matches": [],
-                "matched_by": None,
-                "error": "project_not_found",
-            }
+            projects = await self._collect_sidebar_projects(page)
+            collected = self._dedupe_projects([*collected, *projects])
+            matches = [project for project in collected if self._normalize_project_name(project.get('name', '')) == normalized_name]
+            self._log(
+                'project-resolve',
+                'project enumeration attempt completed',
+                attempt=attempt + 1,
+                discovered_count=len(projects),
+                total_count=len(collected),
+                match_count=len(matches),
+            )
+            if len(matches) == 1:
+                return {
+                    'project_url': matches[0]['url'],
+                    'match_count': 1,
+                    'matches': matches,
+                    'matched_by': 'exact_name',
+                    'error': None,
+                }
+            if len(matches) > 1:
+                return {
+                    'project_url': None,
+                    'match_count': len(matches),
+                    'matches': matches,
+                    'matched_by': None,
+                    'error': 'ambiguous_project_name',
+                }
+            await page.wait_for_timeout(350)
+
         return {
-            "project_url": None,
-            "match_count": len(matches),
-            "matches": matches,
-            "matched_by": None,
-            "error": "ambiguous_project_name",
+            'project_url': None,
+            'match_count': 0,
+            'matches': [],
+            'matched_by': None,
+            'error': 'project_not_found',
         }
 
     async def _collect_sidebar_projects(self, page: Any) -> list[dict[str, str]]:
         try:
             projects = await page.evaluate(
-                r"""
+                r'''
                 () => {
-                    const normalizeText = value => (value || '').replace(/\\s+/g, ' ').trim();
+                    const normalizeText = value => (value || '').replace(/\s+/g, ' ').trim();
                     const normalizePath = value => {
                         try {
                             const url = new URL(value, window.location.origin);
@@ -2190,38 +2303,60 @@ class ChatGPTBrowserClient:
                             return '';
                         }
                     };
-                    const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                    const isProjectPath = value => /\/g\/g-p-[^/]+(?:-[^/]+)?\/project$/.test(value || '');
+                    const isProjectPath = value => /\/g\/g-p-[^/]+(?:-[^/]+)?\/project$/.test(value || '') || /\/project$/.test(value || '');
+                    const namePartsForAnchor = anchor => {
+                        const parts = [];
+                        const push = value => {
+                            const normalized = normalizeText(value);
+                            if (normalized) parts.push(normalized);
+                        };
+                        push(anchor.getAttribute('title'));
+                        push(anchor.getAttribute('aria-label'));
+                        push(anchor.innerText);
+                        push(anchor.textContent);
+                        for (const node of Array.from(anchor.querySelectorAll('[title],[aria-label],span,div,p')).slice(0, 12)) {
+                            push(node.getAttribute?.('title'));
+                            push(node.getAttribute?.('aria-label'));
+                            push(node.textContent);
+                        }
+                        const container = anchor.closest('[data-sidebar-item], li, [role="treeitem"], [role="listitem"], [class*="sidebar"]');
+                        push(container?.getAttribute?.('aria-label'));
+                        push(container?.textContent);
+                        return parts;
+                    };
 
-                    const headings = Array.from(document.querySelectorAll('h2'));
-                    const projectHeading = headings.find(h => normalizeText(h.textContent).toLowerCase() === 'projects');
-                    let scope = projectHeading?.closest('div[class*="sidebar-expando-section"]') || projectHeading?.parentElement?.parentElement || document.body;
-                    if (!scope) scope = document.body;
+                    const roots = [];
+                    const seenRoots = new Set();
+                    const addRoot = root => {
+                        if (!root || seenRoots.has(root)) return;
+                        seenRoots.add(root);
+                        roots.push(root);
+                    };
 
-                    const anchors = Array.from(scope.querySelectorAll('a[href]')).filter(isVisible);
+                    for (const root of Array.from(document.querySelectorAll('aside, nav, [data-testid*="sidebar"], [class*="sidebar"]'))) {
+                        addRoot(root);
+                    }
+                    addRoot(document.body);
+
                     const seen = new Set();
                     const results = [];
-                    for (const anchor of anchors) {
-                        const absoluteUrl = toAbsolute(anchor.getAttribute('href') || '');
-                        const normalizedPath = normalizePath(absoluteUrl);
-                        if (!isProjectPath(normalizedPath)) continue;
-                        if (seen.has(normalizedPath)) continue;
+                    for (const root of roots) {
+                        for (const anchor of Array.from(root.querySelectorAll('a[href*="/project"]'))) {
+                            const absoluteUrl = toAbsolute(anchor.getAttribute('href') || '');
+                            const normalizedPath = normalizePath(absoluteUrl);
+                            if (!isProjectPath(normalizedPath)) continue;
+                            if (seen.has(normalizedPath)) continue;
 
-                        const titleEl = anchor.querySelector('[title]');
-                        const name = normalizeText(
-                            titleEl?.getAttribute('title')
-                            || anchor.getAttribute('aria-label')
-                            || anchor.innerText
-                            || anchor.textContent
-                        );
-                        if (!name) continue;
+                            const name = namePartsForAnchor(anchor).find(Boolean) || '';
+                            if (!name) continue;
 
-                        seen.add(normalizedPath);
-                        results.push({ name, url: absoluteUrl });
+                            seen.add(normalizedPath);
+                            results.push({ name, url: absoluteUrl });
+                        }
                     }
                     return results;
                 }
-                """
+                '''
             )
         except Exception:
             return []
@@ -2230,23 +2365,15 @@ class ChatGPTBrowserClient:
             return []
 
         normalized_projects: list[dict[str, str]] = []
-        seen_urls: set[str] = set()
         for item in projects:
             if not isinstance(item, dict):
                 continue
-            raw_name = self._normalize_project_name(str(item.get("name") or ""))
+            raw_name = str(item.get("name") or "")
             raw_url = str(item.get("url") or "").strip()
             if not raw_name or not raw_url:
                 continue
-            project_url = self._project_home_url_from_url(raw_url)
-            if not self._is_project_home_url(project_url):
-                continue
-            if project_url in seen_urls:
-                continue
-            seen_urls.add(project_url)
-            normalized_projects.append({"name": raw_name, "url": project_url})
-        return normalized_projects
-
+            normalized_projects.append({"name": raw_name, "url": raw_url})
+        return self._dedupe_projects(normalized_projects)
     def _project_home_url(self) -> str:
         return self._project_home_url_from_url(self.config.project_url)
 
