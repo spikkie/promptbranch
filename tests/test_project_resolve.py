@@ -431,3 +431,37 @@ def test_wait_for_source_presence_accepts_actual_rendered_text_source_card_ident
         "text": "Integration note for run 20260414-220546-2113931",
         "key": "integration note for run 20260414-220546-2113931",
     }
+
+
+def test_match_source_card_prefers_structured_identity_fields(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    card = {
+        "text": "pasted.txt Document · Apr 16, 2026",
+        "key": "pasted.txt document",
+        "title": "pasted.txt",
+        "subtitle": "Document · Apr 16, 2026",
+        "identity": "pasted.txt Document",
+    }
+
+    assert client._match_source_card([card], ["pasted.txt Document"]) == card
+    assert client._match_source_card([card], ["pasted.txt"]) == card
+
+
+
+def test_source_lookup_candidates_include_structured_card_identity(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    card = {
+        "text": "pasted.txt Document · Apr 16, 2026",
+        "key": "pasted.txt document",
+        "title": "pasted.txt",
+        "subtitle": "Document · Apr 16, 2026",
+        "identity": "pasted.txt Document",
+    }
+
+    candidates = client._source_lookup_candidates("pasted.txt Document", card)
+
+    assert candidates[0] == "pasted.txt Document"
+    assert "pasted.txt" in candidates
+    assert "Document · Apr 16, 2026" in candidates

@@ -1209,13 +1209,17 @@ class ChatGPTBrowserClient:
         await self._goto(page, project_home_url, label="project-source-remove-home")
         await self._open_project_sources_tab(page)
 
-        container = await self._find_project_source_container(page, source_name, exact=exact)
-        if container is None:
-            raise ResponseTimeoutError(f"Project source was not found: {source_name}")
+        source_cards = await self._snapshot_project_source_cards(page)
+        matched_card = self._match_source_card(source_cards, [source_name])
+        match_candidates = self._source_lookup_candidates(source_name, matched_card)
 
-        options_button = await self._find_source_options_button(container)
+        options_button = await self._find_project_source_action_button(
+            page,
+            match_candidates,
+            exact=exact,
+        )
         if options_button is None:
-            raise ResponseTimeoutError(f"Could not find options button for project source: {source_name}")
+            raise ResponseTimeoutError(f"Project source was not found: {source_name}")
         await options_button.click(timeout=5_000)
         remove_button = await self._wait_for_visible_locator(
             page,
@@ -2708,10 +2712,30 @@ class ChatGPTBrowserClient:
                                     current = current.parentElement;
                                     continue;
                                 }
-                                const key = text.toLowerCase();
+                                const lines = (current.innerText || current.textContent || '')
+                                    .split(/
++/)
+                                    .map(value => normalize(value))
+                                    .filter(Boolean);
+                                const firstLabelEl = Array.from(current.querySelectorAll('[aria-label]'))
+                                    .find(el => el !== button && !button.contains(el) && isVisible(el));
+                                const title = normalize((firstLabelEl && firstLabelEl.getAttribute('aria-label')) || lines[0] || '');
+                                let subtitle = '';
+                                const secondary = Array.from(current.querySelectorAll('.text-token-text-secondary, time'))
+                                    .filter(el => el !== button && !button.contains(el) && isVisible(el))
+                                    .map(el => normalize(el.innerText || el.textContent || ''))
+                                    .filter(Boolean);
+                                if (secondary.length) {
+                                    subtitle = secondary.join(' ');
+                                } else if (lines.length > 1) {
+                                    subtitle = lines[1];
+                                }
+                                const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
+                                const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
+                                const key = (identity || text).toLowerCase();
                                 if (!seen.has(key)) {
                                     seen.add(key);
-                                    results.push({ text, key });
+                                    results.push({ text, key, title, subtitle, identity });
                                 }
                                 break;
                             }
@@ -2733,12 +2757,51 @@ class ChatGPTBrowserClient:
             text_value = self._normalize_source_match_text(item.get("text"))
             if not text_value:
                 continue
-            key = self._normalize_source_match_text(item.get("key")) or text_value.lower()
+            title_value = self._normalize_source_match_text(item.get("title"))
+            subtitle_value = self._normalize_source_match_text(item.get("subtitle"))
+            identity_value = self._normalize_source_match_text(item.get("identity"))
+            key = self._normalize_source_match_text(item.get("key")) or (identity_value or text_value).lower()
             if key in seen:
                 continue
             seen.add(key)
-            normalized_cards.append({"text": text_value, "key": key})
+            normalized_cards.append(
+                {
+                    "text": text_value,
+                    "key": key,
+                    "title": title_value,
+                    "subtitle": subtitle_value,
+                    "identity": identity_value,
+                }
+            )
         return normalized_cards
+
+    def _source_card_identity_candidates(self, card: Optional[dict[str, str]]) -> list[str]:
+        if not isinstance(card, dict):
+            return []
+        candidates: list[str] = []
+        for value in (
+            card.get("identity"),
+            card.get("title"),
+            card.get("subtitle"),
+            card.get("text"),
+        ):
+            normalized = self._normalize_source_match_text(value)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+        subtitle = self._normalize_source_match_text(card.get("subtitle"))
+        if subtitle:
+            subtitle_prefix = self._normalize_source_match_text((subtitle.split("·")[0] or "").strip())
+            if subtitle_prefix and subtitle_prefix not in candidates:
+                candidates.append(subtitle_prefix)
+        return candidates
+
+    def _source_lookup_candidates(self, requested: Optional[str], matched_card: Optional[dict[str, str]] = None) -> list[str]:
+        candidates: list[str] = []
+        for value in [requested, *self._source_card_identity_candidates(matched_card)]:
+            normalized = self._normalize_source_match_text(value)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+        return candidates
 
     def _match_source_card(
         self,
@@ -2756,24 +2819,34 @@ class ChatGPTBrowserClient:
         best_card: Optional[dict[str, str]] = None
         best_score = -1
         for card in cards:
-            card_text = self._normalize_source_match_text(card.get("text")).lower()
-            if not card_text:
+            card_fields = [
+                self._normalize_source_match_text(value).lower()
+                for value in self._source_card_identity_candidates(card)
+                if self._normalize_source_match_text(value)
+            ]
+            if not card_fields:
                 continue
             card_score = -1
             for index, candidate in enumerate(normalized_candidates):
                 if not candidate:
                     continue
                 score = -1
-                if candidate == card_text:
-                    score = 1_000 - index
-                elif candidate in card_text:
-                    score = min(len(candidate), 900) - index
-                elif len(candidate) >= 16 and card_text in candidate:
-                    score = min(len(card_text), 700) - index
-                elif len(candidate) >= 24:
-                    overlap = candidate[:48]
-                    if overlap and overlap in card_text:
-                        score = min(len(overlap), 500) - index
+                for field in card_fields:
+                    if not field:
+                        continue
+                    field_score = -1
+                    if candidate == field:
+                        field_score = 1_000 - index
+                    elif candidate in field:
+                        field_score = min(len(candidate), 900) - index
+                    elif len(candidate) >= 16 and field in candidate:
+                        field_score = min(len(field), 700) - index
+                    elif len(candidate) >= 24:
+                        overlap = candidate[:48]
+                        if overlap and overlap in field:
+                            field_score = min(len(overlap), 500) - index
+                    if field_score > score:
+                        score = field_score
                 if score > card_score:
                     card_score = score
             if card_score > best_score:
@@ -3212,8 +3285,8 @@ class ChatGPTBrowserClient:
     async def _wait_for_source_absence(self, page: Any, source_name: str, *, exact: bool, timeout_ms: int = 20_000) -> None:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while asyncio.get_running_loop().time() < deadline:
-            container = await self._find_project_source_container(page, source_name, exact=exact)
-            if container is None:
+            action_button = await self._find_project_source_action_button(page, [source_name], exact=exact)
+            if action_button is None:
                 return
             await page.wait_for_timeout(500)
         raise ResponseTimeoutError(f"Timed out waiting for project source to disappear: {source_name}")
@@ -3245,6 +3318,118 @@ class ChatGPTBrowserClient:
             }
             """,
             {"needle": needle, "exact": exact},
+        )
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
+    async def _find_project_source_action_button(
+        self,
+        page: Any,
+        source_names: list[str],
+        *,
+        exact: bool,
+    ) -> Optional[Any]:
+        normalized_needles = [
+            self._normalize_source_match_text(candidate)
+            for candidate in (source_names or [])
+            if self._normalize_source_match_text(candidate)
+        ]
+        if not normalized_needles:
+            return None
+        handle = await page.evaluate_handle(
+            r"""
+            ({ needles, exact }) => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const normalizeLower = value => normalize(value).toLowerCase();
+                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const roots = Array.from(
+                    document.querySelectorAll('[role="tabpanel"][data-state="active"], [role="tabpanel"], main, [role="main"]')
+                ).filter(isVisible);
+                const rootSet = roots.length ? roots : [document.body];
+                const normalizedNeedles = needles.map(normalizeLower).filter(Boolean);
+                const scoreValue = value => {
+                    const haystack = normalizeLower(value);
+                    if (!haystack) return -1;
+                    let best = -1;
+                    for (const needle of normalizedNeedles) {
+                        if (!needle) continue;
+                        let score = -1;
+                        if (exact ? haystack === needle : haystack === needle) {
+                            score = 1000;
+                        } else if (!exact && haystack.includes(needle)) {
+                            score = Math.min(needle.length, 900);
+                        } else if (!exact && needle.length >= 16 && needle.includes(haystack)) {
+                            score = Math.min(haystack.length, 700);
+                        }
+                        if (score > best) best = score;
+                    }
+                    return best;
+                };
+                const isSourceActionButton = button => {
+                    if (!button || !isVisible(button)) return false;
+                    const aria = normalizeLower(button.getAttribute('aria-label') || '');
+                    const testid = normalizeLower(button.getAttribute('data-testid') || '');
+                    const hasPopup = normalizeLower(button.getAttribute('aria-haspopup') || '');
+                    if (aria.includes('source actions')) return true;
+                    if (hasPopup !== 'menu') return false;
+                    return aria.includes('source') || testid.includes('source') || !!button.closest('[role="tabpanel"], main, [role="main"]');
+                };
+                let bestButton = null;
+                let bestScore = -1;
+                for (const root of rootSet) {
+                    const buttons = Array.from(root.querySelectorAll('button,[role="button"]')).filter(isSourceActionButton);
+                    for (const button of buttons) {
+                        let current = button.closest('li, article, [role="listitem"], div') || button.parentElement;
+                        while (current && current !== root && current !== document.body) {
+                            if (!isVisible(current)) {
+                                current = current.parentElement;
+                                continue;
+                            }
+                            const text = normalize(current.innerText || current.textContent || '');
+                            if (!text || text.length > 600) {
+                                current = current.parentElement;
+                                continue;
+                            }
+                            const lines = (current.innerText || current.textContent || '')
+                                .split(/
++/)
+                                .map(value => normalize(value))
+                                .filter(Boolean);
+                            const firstLabelEl = Array.from(current.querySelectorAll('[aria-label]'))
+                                .find(el => el !== button && !button.contains(el) && isVisible(el));
+                            const title = normalize((firstLabelEl && firstLabelEl.getAttribute('aria-label')) || lines[0] || '');
+                            let subtitle = '';
+                            const secondary = Array.from(current.querySelectorAll('.text-token-text-secondary, time'))
+                                .filter(el => el !== button && !button.contains(el) && isVisible(el))
+                                .map(el => normalize(el.innerText || el.textContent || ''))
+                                .filter(Boolean);
+                            if (secondary.length) {
+                                subtitle = secondary.join(' ');
+                            } else if (lines.length > 1) {
+                                subtitle = lines[1];
+                            }
+                            const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
+                            const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
+                            const values = [identity, title, subtitle, text].filter(Boolean);
+                            let score = -1;
+                            for (const value of values) {
+                                const valueScore = scoreValue(value);
+                                if (valueScore > score) score = valueScore;
+                            }
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestButton = button;
+                            }
+                            break;
+                        }
+                    }
+                }
+                return bestScore >= 0 ? bestButton : null;
+            }
+            """,
+            {"needles": normalized_needles, "exact": exact},
         )
         try:
             return handle.as_element()
