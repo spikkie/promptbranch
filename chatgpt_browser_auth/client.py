@@ -1179,7 +1179,7 @@ class ChatGPTBrowserClient:
             accept_single_new_card=normalized_kind == "text",
         )
         requested_match = source_match_candidates[0] if source_match_candidates else None
-        actual_match = (matched_source or {}).get("text") or requested_match
+        actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
         result = {
             "ok": True,
             "action": "add",
@@ -2685,60 +2685,95 @@ class ChatGPTBrowserClient:
                 r"""
                 () => {
                     const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-                    const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                    const isOptionsButton = button => {
-                        if (!button || !isVisible(button)) return false;
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const isSourceActionButton = button => {
+                        if (!button) return false;
                         const aria = (button.getAttribute('aria-label') || '').toLowerCase();
                         const testid = (button.getAttribute('data-testid') || '').toLowerCase();
                         const hasPopup = (button.getAttribute('aria-haspopup') || '').toLowerCase();
-                        const trailing = button.hasAttribute('data-trailing-button');
-                        return trailing || hasPopup === 'menu' || ['options', 'more', 'menu', 'source'].some(hint => aria.includes(hint) || testid.includes(hint));
+                        return aria.includes('source actions') || testid.includes('source') || hasPopup === 'menu';
                     };
                     const roots = Array.from(document.querySelectorAll('[role="tabpanel"][data-state="active"], [role="tabpanel"], main, [role="main"]')).filter(isVisible);
+                    const rootSet = roots.length ? roots : [document.body];
                     const seen = new Set();
                     const results = [];
-                    for (const root of roots) {
-                        const rootText = normalize(root.innerText || root.textContent || '');
-                        const buttons = Array.from(root.querySelectorAll('button,[role="button"]')).filter(isOptionsButton);
-                        for (const button of buttons) {
-                            let current = button.closest('li, article, [role="listitem"], div') || button.parentElement;
+
+                    const candidateRowsForRoot = root => {
+                        const rows = [];
+                        const rowSet = new Set();
+
+                        const addRow = row => {
+                            if (!row || rowSet.has(row) || !isVisible(row)) return;
+                            rowSet.add(row);
+                            rows.push(row);
+                        };
+
+                        for (const row of Array.from(root.querySelectorAll('[class*="file-row"]'))) {
+                            addRow(row);
+                        }
+
+                        for (const button of Array.from(root.querySelectorAll('button,[role="button"]'))) {
+                            if (!isSourceActionButton(button)) continue;
+                            let current = button.closest('[class*="file-row"], li, article, [role="listitem"], div') || button.parentElement;
                             while (current && current !== root && current !== document.body) {
                                 if (!isVisible(current)) {
                                     current = current.parentElement;
                                     continue;
                                 }
                                 const text = normalize(current.innerText || current.textContent || '');
-                                if (!text || text === rootText || text.length > 600) {
+                                if (!text || text.length > 600) {
                                     current = current.parentElement;
                                     continue;
                                 }
-                                const lines = (current.innerText || current.textContent || '')
-                                    .split(/
-+/)
-                                    .map(value => normalize(value))
-                                    .filter(Boolean);
-                                const firstLabelEl = Array.from(current.querySelectorAll('[aria-label]'))
-                                    .find(el => el !== button && !button.contains(el) && isVisible(el));
-                                const title = normalize((firstLabelEl && firstLabelEl.getAttribute('aria-label')) || lines[0] || '');
-                                let subtitle = '';
-                                const secondary = Array.from(current.querySelectorAll('.text-token-text-secondary, time'))
-                                    .filter(el => el !== button && !button.contains(el) && isVisible(el))
-                                    .map(el => normalize(el.innerText || el.textContent || ''))
-                                    .filter(Boolean);
-                                if (secondary.length) {
-                                    subtitle = secondary.join(' ');
-                                } else if (lines.length > 1) {
-                                    subtitle = lines[1];
-                                }
-                                const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
-                                const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
-                                const key = (identity || text).toLowerCase();
-                                if (!seen.has(key)) {
-                                    seen.add(key);
-                                    results.push({ text, key, title, subtitle, identity });
-                                }
+                                addRow(current);
                                 break;
                             }
+                        }
+
+                        return rows;
+                    };
+
+                    for (const root of rootSet) {
+                        for (const row of candidateRowsForRoot(root)) {
+                            const text = normalize(row.innerText || row.textContent || '');
+                            if (!text || text.length > 600) continue;
+                            if (/^add\s+source$/i.test(text)) continue;
+
+                            const lines = (row.innerText || row.textContent || '')
+                                .split(/\n+/)
+                                .map(value => normalize(value))
+                                .filter(Boolean);
+
+                            const titleNode =
+                                Array.from(row.querySelectorAll('[aria-label]'))
+                                    .find(el => !/source actions/i.test(normalize(el.getAttribute('aria-label') || '')) && isVisible(el)) ||
+                                row.querySelector('.font-semibold,[class*="font-semibold"]');
+
+                            const title = normalize(
+                                (titleNode && (titleNode.getAttribute('aria-label') || titleNode.innerText || titleNode.textContent)) ||
+                                lines[0] ||
+                                ''
+                            );
+
+                            const subtitle = Array.from(row.querySelectorAll('.text-token-text-secondary, time'))
+                                .filter(el => isVisible(el))
+                                .map(el => normalize(el.innerText || el.textContent || ''))
+                                .filter(Boolean)
+                                .join(' ') || (lines.length > 1 ? lines[1] : '');
+
+                            const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
+                            const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
+                            const key = normalize((title || identity || text)).toLowerCase();
+                            if (!key || seen.has(key)) continue;
+                            seen.add(key);
+                            results.push({ text, key, title, subtitle, identity });
                         }
                     }
                     return results;
@@ -2760,7 +2795,7 @@ class ChatGPTBrowserClient:
             title_value = self._normalize_source_match_text(item.get("title"))
             subtitle_value = self._normalize_source_match_text(item.get("subtitle"))
             identity_value = self._normalize_source_match_text(item.get("identity"))
-            key = self._normalize_source_match_text(item.get("key")) or (identity_value or text_value).lower()
+            key = self._normalize_source_match_text(item.get("key")) or (title_value or identity_value or text_value).lower()
             if key in seen:
                 continue
             seen.add(key)
@@ -2802,6 +2837,10 @@ class ChatGPTBrowserClient:
             if normalized and normalized not in candidates:
                 candidates.append(normalized)
         return candidates
+
+    def _preferred_source_card_identity(self, card: Optional[dict[str, str]]) -> Optional[str]:
+        candidates = self._source_card_identity_candidates(card)
+        return candidates[0] if candidates else None
 
     def _match_source_card(
         self,
@@ -3249,17 +3288,21 @@ class ChatGPTBrowserClient:
             return None
 
         before_keys = {
-            self._normalize_source_match_text(item.get('key') or item.get('text')).lower()
+            self._normalize_source_match_text(item.get('key') or item.get('title') or item.get('identity') or item.get('text')).lower()
             for item in (before_sources or [])
-            if self._normalize_source_match_text(item.get('key') or item.get('text'))
+            if self._normalize_source_match_text(item.get('key') or item.get('title') or item.get('identity') or item.get('text'))
         }
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while asyncio.get_running_loop().time() < deadline:
             cards = await self._snapshot_project_source_cards(page)
+
+            if accept_single_new_card and not before_keys and len(cards) == 1:
+                return cards[0]
+
             if before_keys:
                 new_cards = [
                     card for card in cards
-                    if self._normalize_source_match_text(card.get('key') or card.get('text')).lower() not in before_keys
+                    if self._normalize_source_match_text(card.get('key') or card.get('title') or card.get('identity') or card.get('text')).lower() not in before_keys
                 ]
                 matched_new_card = self._match_source_card(new_cards, candidates)
                 if matched_new_card is not None:
@@ -3276,7 +3319,7 @@ class ChatGPTBrowserClient:
             for candidate in candidates:
                 container = await self._find_project_source_container(page, candidate, exact=False)
                 if container is not None:
-                    return {'text': candidate, 'key': candidate.lower()}
+                    return {'text': candidate, 'title': candidate, 'key': candidate.lower()}
 
             await page.wait_for_timeout(500)
         target = candidates[0] if candidates else '<new source>'
