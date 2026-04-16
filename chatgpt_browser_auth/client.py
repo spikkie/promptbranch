@@ -2746,8 +2746,8 @@ class ChatGPTBrowserClient:
                             if (!text || text.length > 600) continue;
                             if (/^add\s+source$/i.test(text)) continue;
 
-                            const lines = (row.innerText || row.textContent || '')
-                                .split(/\n+/)
+                            const rawLines = String(row.innerText || row.textContent || '').split('\n');
+                            const lines = rawLines
                                 .map(value => normalize(value))
                                 .filter(Boolean);
 
@@ -3435,9 +3435,8 @@ class ChatGPTBrowserClient:
                                 current = current.parentElement;
                                 continue;
                             }
-                            const lines = (current.innerText || current.textContent || '')
-                                .split(/
-+/)
+                            const rawLines = String(current.innerText || current.textContent || '').split('\n');
+                            const lines = rawLines
                                 .map(value => normalize(value))
                                 .filter(Boolean);
                             const firstLabelEl = Array.from(current.querySelectorAll('[aria-label]'))
