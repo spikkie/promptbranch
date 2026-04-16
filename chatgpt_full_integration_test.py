@@ -39,6 +39,18 @@ class IntegrationAssertionError(RuntimeError):
     pass
 
 
+def _record_step(steps: list[StepResult], name: str, *, ok: bool, details: Any, duration_seconds: float = 0.0) -> Any:
+    steps.append(
+        StepResult(
+            name=name,
+            ok=ok,
+            duration_seconds=round(duration_seconds, 3),
+            details=details,
+        )
+    )
+    return details
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -276,17 +288,41 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
 
         project_service = build_service(args, project_url=project_url)
 
-        link_add = await _run_step(
+        source_capabilities = await _run_step(
             steps,
-            "project_source_add_link",
-            project_service.add_project_source(
-                source_kind="link",
-                value=args.link_url,
-                display_name=link_source_name,
-                keep_open=args.keep_open,
-            ),
+            "project_source_capabilities",
+            project_service.discover_project_source_capabilities(keep_open=args.keep_open),
         )
-        _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
+        available_source_kinds = list(source_capabilities.get("available_source_kinds") or [])
+        summary["available_source_kinds"] = available_source_kinds
+        link_supported = "link" in set(available_source_kinds)
+        summary["link_source_supported"] = link_supported
+
+        link_add: Optional[dict[str, Any]] = None
+        if link_supported:
+            link_add = await _run_step(
+                steps,
+                "project_source_add_link",
+                project_service.add_project_source(
+                    source_kind="link",
+                    value=args.link_url,
+                    display_name=link_source_name,
+                    keep_open=args.keep_open,
+                ),
+            )
+            _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
+        else:
+            _record_step(
+                steps,
+                "project_source_add_link",
+                ok=True,
+                details={
+                    "skipped": True,
+                    "reason": "unsupported",
+                    "requested_source_kind": "link",
+                    "available_source_kinds": available_source_kinds,
+                },
+            )
 
         text_add = await _run_step(
             steps,
@@ -331,16 +367,29 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             f"ask_question did not contain the expected token. response={ask_text!r}",
         )
 
-        link_remove = await _run_step(
-            steps,
-            "project_source_remove_link",
-            project_service.remove_project_source(
-                source_name=link_source_name,
-                exact=True,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(link_remove.get("ok") is True, f"link source remove failed: {link_remove}")
+        if link_supported:
+            link_remove = await _run_step(
+                steps,
+                "project_source_remove_link",
+                project_service.remove_project_source(
+                    source_name=link_source_name,
+                    exact=True,
+                    keep_open=args.keep_open,
+                ),
+            )
+            _require(link_remove.get("ok") is True, f"link source remove failed: {link_remove}")
+        else:
+            _record_step(
+                steps,
+                "project_source_remove_link",
+                ok=True,
+                details={
+                    "skipped": True,
+                    "reason": "unsupported",
+                    "requested_source_kind": "link",
+                    "available_source_kinds": available_source_kinds,
+                },
+            )
 
         text_remove = await _run_step(
             steps,

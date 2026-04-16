@@ -211,6 +211,17 @@ class ChatGPTAutomationService:
                 keep_open=keep_open,
             )
 
+    async def discover_project_source_capabilities(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        async with self._lock:
+            logger.info("Discovering ChatGPT project source capabilities")
+            return await self._build_bot().discover_project_source_capabilities(
+                keep_open=keep_open,
+            )
+
     async def remove_project_source(
         self,
         *,
