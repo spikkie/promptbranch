@@ -257,12 +257,12 @@ def test_is_logged_in_treats_project_page_without_composer_as_authenticated(tmp_
     assert asyncio.run(client._is_logged_in(page)) is True
 
 
-def test_link_source_kind_uses_scoped_text_input_fallback(tmp_path: Path) -> None:
+def test_link_source_kind_uses_capability_probe_without_text_fallback(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
-    assert client._project_source_option_kinds('link') == ['link', 'text']
-    assert any('Text input' in selector for selector in client_module.PROJECT_SOURCE_TEXT_TYPE_SELECTORS)
-    assert any('textarea' in selector for selector in client._project_source_input_selectors('link'))
+    assert client._project_source_option_kinds('link') == ['link']
+    summary = client._project_source_capability_summary(['Upload', 'Text input', 'Google Drive', 'Slack'])
+    assert [item['kind'] for item in summary] == ['file', 'text', 'gdrive', 'slack']
 
 
 def test_remove_project_uses_project_details_menu_when_current_page_matches(tmp_path: Path) -> None:

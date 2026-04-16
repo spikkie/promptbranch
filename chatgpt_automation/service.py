@@ -10,6 +10,7 @@ from chatgpt_browser_auth.exceptions import (
     BotChallengeError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
+    UnsupportedOperationError,
 )
 
 from .automation import ChatGPTAutomation
@@ -99,7 +100,7 @@ class ChatGPTAutomationService:
                 if attempt >= max_retries + 1:
                     break
                 await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
-            except (ManualLoginRequiredError, AuthenticationError):
+            except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError):
                 raise
             except Exception as exc:  # pragma: no cover - defensive fallback
                 last_error = exc
@@ -264,7 +265,7 @@ class ChatGPTAutomationService:
                     if attempt >= max_retries + 1:
                         break
                     await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
-                except (ManualLoginRequiredError, AuthenticationError):
+                except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError):
                     raise
                 except Exception as exc:  # pragma: no cover - defensive fallback
                     last_error = exc

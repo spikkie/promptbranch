@@ -19,6 +19,7 @@ from chatgpt_browser_auth.exceptions import (
     BotChallengeError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
+    UnsupportedOperationError,
 )
 
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
@@ -438,6 +439,14 @@ async def _async_main(argv: Optional[list[str]] = None) -> int:
         }
         print(render_summary(summary))
         return 12
+    except UnsupportedOperationError as exc:
+        summary = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(render_summary(summary))
+        return 15
     except AuthenticationError as exc:
         summary = {
             "ok": False,
