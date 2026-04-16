@@ -4,6 +4,7 @@ from .exceptions import (
     AuthenticationError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
+    UnsupportedOperationError,
 )
 
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     "ChatGPTBrowserConfig",
     "ManualLoginRequiredError",
     "ResponseTimeoutError",
+    "UnsupportedOperationError",
     "ask_chatgpt",
 ]

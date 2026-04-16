@@ -16,6 +16,7 @@ from .exceptions import (
     BotChallengeError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
+    UnsupportedOperationError,
 )
 
 LOGIN_BUTTON_SELECTOR = 'button[data-testid="login-button"]'
@@ -121,6 +122,19 @@ PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
     '[role="dialog"]',
     'dialog[open]',
 ]
+PROJECT_SOURCE_OPTION_DISCOVERY_ROOT_SELECTORS = [
+    '[role="dialog"]',
+    'dialog[open]',
+    '[role="menu"]',
+    '[data-radix-popper-content-wrapper]',
+]
+PROJECT_SOURCE_OPTION_KIND_ALIASES: dict[str, tuple[str, ...]] = {
+    'link': ('link', 'website', 'url'),
+    'text': ('text input', 'text'),
+    'file': ('upload', 'file', 'files'),
+    'gdrive': ('google drive', 'drive'),
+    'slack': ('slack',),
+}
 PROJECT_SOURCE_LINK_TYPE_SELECTORS = [
     '[role="dialog"] [role="menuitem"]:has-text("Link")',
     'dialog[open] [role="menuitem"]:has-text("Link")',
@@ -953,65 +967,7 @@ class ChatGPTBrowserClient:
         current_url = await self._safe_page_url(page)
         delete_action = None
 
-        container = None
-        for attempt in range(3):
-            if attempt == 1:
-                await self._expand_projects_section(page)
-            elif attempt == 2:
-                await self._prime_project_sidebar(page)
-                await self._expand_projects_section(page)
-
-            container = await self._find_project_sidebar_container(page, project_url=project_home_url)
-            if container is not None:
-                break
-            await page.wait_for_timeout(350)
-
-        if container is None:
-            raise ResponseTimeoutError("Could not find the configured project in the sidebar")
-
-        try:
-            await container.hover(timeout=2_000)
-        except Exception:
-            pass
-
-        options_button = await self._find_project_options_button(container)
-        if options_button is None:
-            raise ResponseTimeoutError("Could not find the options button for the configured project")
-        try:
-            await options_button.scroll_into_view_if_needed(timeout=2_000)
-        except Exception:
-            pass
-        try:
-            await options_button.click(timeout=5_000)
-        except Exception:
-            await options_button.click(timeout=5_000, force=True)
-
-        delete_action = await self._wait_for_visible_locator(
-            page,
-            PROJECT_REMOVE_ACTION_SELECTORS,
-            label="project-remove-action",
-            total_timeout_ms=3_000,
-            poll_interval_ms=250,
-        )
-        if delete_action is None:
-            settings_action = await self._wait_for_visible_locator(
-                page,
-                PROJECT_REMOVE_SETTINGS_SELECTORS,
-                label="project-remove-settings-action",
-                total_timeout_ms=3_000,
-                poll_interval_ms=250,
-            )
-            if settings_action is not None:
-                await settings_action.click(timeout=5_000)
-                delete_action = await self._wait_for_visible_locator(
-                    page,
-                    PROJECT_REMOVE_ACTION_SELECTORS,
-                    label="project-remove-action-after-settings",
-                    total_timeout_ms=8_000,
-                    poll_interval_ms=250,
-                )
-
-        if delete_action is None and self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
+        if self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
             page_details_button = await self._find_visible_locator(
                 page,
                 PROJECT_PAGE_DETAILS_MENU_SELECTORS,
@@ -1030,10 +986,69 @@ class ChatGPTBrowserClient:
                 delete_action = await self._wait_for_visible_locator(
                     page,
                     PROJECT_REMOVE_ACTION_SELECTORS,
-                    label="project-remove-action-from-page-details",
+                    label="project-remove-action",
                     total_timeout_ms=3_000,
                     poll_interval_ms=250,
                 )
+
+        if delete_action is None:
+            container = None
+            for attempt in range(3):
+                if attempt == 1:
+                    await self._expand_projects_section(page)
+                elif attempt == 2:
+                    await self._prime_project_sidebar(page)
+                    await self._expand_projects_section(page)
+
+                container = await self._find_project_sidebar_container(page, project_url=project_home_url)
+                if container is not None:
+                    break
+                await page.wait_for_timeout(350)
+
+            if container is None:
+                raise ResponseTimeoutError("Could not find the configured project in the sidebar")
+
+            try:
+                await container.hover(timeout=2_000)
+            except Exception:
+                pass
+
+            options_button = await self._find_project_options_button(container)
+            if options_button is None:
+                raise ResponseTimeoutError("Could not find the options button for the configured project")
+            try:
+                await options_button.scroll_into_view_if_needed(timeout=2_000)
+            except Exception:
+                pass
+            try:
+                await options_button.click(timeout=5_000)
+            except Exception:
+                await options_button.click(timeout=5_000, force=True)
+
+            delete_action = await self._wait_for_visible_locator(
+                page,
+                PROJECT_REMOVE_ACTION_SELECTORS,
+                label="project-remove-action",
+                total_timeout_ms=3_000,
+                poll_interval_ms=250,
+            )
+            if delete_action is None:
+                settings_action = await self._wait_for_visible_locator(
+                    page,
+                    PROJECT_REMOVE_SETTINGS_SELECTORS,
+                    label="project-remove-settings-action",
+                    total_timeout_ms=3_000,
+                    poll_interval_ms=250,
+                )
+                if settings_action is not None:
+                    await settings_action.click(timeout=5_000)
+                    delete_action = await self._wait_for_visible_locator(
+                        page,
+                        PROJECT_REMOVE_ACTION_SELECTORS,
+                        label="project-remove-action-after-settings",
+                        total_timeout_ms=8_000,
+                        poll_interval_ms=250,
+                    )
 
         if delete_action is None:
             raise ResponseTimeoutError("Could not find the delete action for the configured project")
@@ -2876,6 +2891,113 @@ class ChatGPTBrowserClient:
         effective_kind = option_kind or source_kind
         return self._project_source_input_selectors(effective_kind)
 
+    def _normalize_project_source_option_label(self, label: Any) -> Optional[str]:
+        text = self._normalize_source_match_text(label)
+        if not text:
+            return None
+        normalized = re.sub(r'\s+', ' ', text).strip()
+        return normalized
+
+    def _project_source_kind_from_label(self, label: Any) -> Optional[str]:
+        normalized = self._normalize_project_source_option_label(label)
+        if not normalized:
+            return None
+        lowered = normalized.lower()
+        for kind, aliases in PROJECT_SOURCE_OPTION_KIND_ALIASES.items():
+            for alias in aliases:
+                if alias in lowered:
+                    return kind
+        return None
+
+    def _project_source_capability_summary(self, option_labels: list[str]) -> list[dict[str, str]]:
+        summary: list[dict[str, str]] = []
+        seen_kinds: set[str] = set()
+        for label in option_labels:
+            normalized = self._normalize_project_source_option_label(label)
+            if not normalized:
+                continue
+            kind = self._project_source_kind_from_label(normalized)
+            if kind is None or kind in seen_kinds:
+                continue
+            summary.append({'kind': kind, 'label': normalized})
+            seen_kinds.add(kind)
+        return summary
+
+    async def _discover_project_source_capabilities(self, page: Any) -> list[dict[str, str]]:
+        try:
+            option_labels = await page.evaluate(
+                r"""
+                (roots) => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const results = [];
+                    const seen = new Set();
+                    const rootNodes = [];
+                    for (const selector of roots) {
+                        for (const node of document.querySelectorAll(selector)) {
+                            if (isVisible(node)) rootNodes.push(node);
+                        }
+                    }
+                    const targets = [
+                        'button',
+                        '[role=\"button\"]',
+                        '[role=\"menuitem\"]',
+                        '[role=\"option\"]',
+                        'a',
+                    ];
+                    for (const root of rootNodes) {
+                        for (const selector of targets) {
+                            for (const node of root.querySelectorAll(selector)) {
+                                if (!isVisible(node)) continue;
+                                const text = normalize(node.innerText || node.textContent || '');
+                                if (!text || text.length > 120) continue;
+                                const key = text.toLowerCase();
+                                if (seen.has(key)) continue;
+                                seen.add(key);
+                                results.push(text);
+                            }
+                        }
+                    }
+                    return results;
+                }
+                """,
+                PROJECT_SOURCE_OPTION_DISCOVERY_ROOT_SELECTORS,
+            )
+        except Exception:
+            return []
+        if not isinstance(option_labels, list):
+            return []
+        normalized_labels = [
+            self._normalize_project_source_option_label(label)
+            for label in option_labels
+            if self._normalize_project_source_option_label(label)
+        ]
+        return self._project_source_capability_summary(normalized_labels)
+
+    async def _require_project_source_capability(self, page: Any, source_kind: str) -> list[dict[str, str]]:
+        capabilities = await self._discover_project_source_capabilities(page)
+        if capabilities:
+            self._log(
+                'project-source',
+                'discovered add-source capabilities',
+                requested_source_kind=source_kind,
+                available_source_kinds=[item['kind'] for item in capabilities],
+                available_source_labels=[item['label'] for item in capabilities],
+            )
+            available_kinds = {item['kind'] for item in capabilities}
+            if source_kind not in available_kinds:
+                raise UnsupportedOperationError(
+                    f"Project source kind {source_kind!r} is not exposed in the current Add sources modal; available_source_kinds={[item['kind'] for item in capabilities]!r}"
+                )
+        return capabilities
+
     async def _add_project_textual_source(
         self,
         page: Any,
@@ -2893,6 +3015,7 @@ class ChatGPTBrowserClient:
         )
         selected_option_kind = source_kind
         if input_locator is None:
+            await self._require_project_source_capability(page, source_kind)
             for option_kind in self._project_source_option_kinds(source_kind):
                 await self._click_source_kind_option(page, option_kind)
                 input_locator = await self._find_visible_locator(
@@ -2912,6 +3035,7 @@ class ChatGPTBrowserClient:
                         )
                     break
             if input_locator is None:
+                await self._require_project_source_capability(page, source_kind)
                 input_locator = await self._wait_for_visible_locator(
                     page,
                     self._project_source_value_selectors(source_kind),

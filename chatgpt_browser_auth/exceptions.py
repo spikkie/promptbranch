@@ -12,3 +12,8 @@ class ResponseTimeoutError(TimeoutError):
 
 class BotChallengeError(AuthenticationError):
     """Raised when ChatGPT/Cloudflare challenge blocks the browser before app load."""
+
+
+class UnsupportedOperationError(RuntimeError):
+    """Raised when the current ChatGPT UI does not expose the requested action."""
+
