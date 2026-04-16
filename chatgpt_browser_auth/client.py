@@ -556,6 +556,23 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def discover_project_source_capabilities(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-source-capabilities",
+            "starting discover_project_source_capabilities",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_source_capabilities",
+            operation=self._discover_project_source_capabilities_operation,
+            keep_open=keep_open,
+        )
+
     async def remove_project_source(
         self,
         *,
@@ -1075,6 +1092,33 @@ class ChatGPTBrowserClient:
         self._log("project-remove", "project removed", **result)
         if keep_open and self.config.is_headed:
             await asyncio.to_thread(input, "Project removed. Press Enter to close the browser... ")
+        return result
+
+    async def _discover_project_source_capabilities_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-source-capabilities-home")
+        await self._open_project_sources_tab(page)
+        await self._click_add_source_button(page)
+        capabilities = await self._discover_project_source_capabilities(page)
+        result = {
+            "ok": True,
+            "action": "discover_project_source_capabilities",
+            "project_url": project_home_url,
+            "available_source_kinds": [item.get("kind") for item in capabilities],
+            "available_source_labels": [item.get("label") for item in capabilities],
+            "capabilities": capabilities,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-source-capabilities", "discovered project source capabilities", **result)
+        if keep_open and self.config.is_headed:
+            await asyncio.to_thread(input, "Project source capabilities discovered. Press Enter to close the browser... ")
         return result
 
     async def _add_project_source_operation(
