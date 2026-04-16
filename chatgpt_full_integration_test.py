@@ -197,7 +197,9 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     link_source_name = f"itest-link-{run_id}"
+    link_source_match = link_source_name
     text_source_name = f"itest-text-{run_id}"
+    text_source_match = text_source_name
     file_source_match = file_source_path.name
 
     summary: dict[str, Any] = {
@@ -212,6 +214,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "artifacts": {
             "temp_dir": str(temp_dir),
             "file_source_path": str(file_source_path),
+            "link_source_name": link_source_name,
+            "text_source_name": text_source_name,
         },
     }
 
@@ -311,6 +315,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 ),
             )
             _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
+            link_source_match = str(link_add.get("source_match") or link_source_name)
         else:
             _record_step(
                 steps,
@@ -335,6 +340,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             ),
         )
         _require(text_add.get("ok") is True, f"text source add failed: {text_add}")
+        text_source_match = str(text_add.get("source_match") or text_source_name)
 
         file_add = await _run_step(
             steps,
@@ -347,6 +353,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             ),
         )
         _require(file_add.get("ok") is True, f"file source add failed: {file_add}")
+        file_source_match = str(file_add.get("source_match") or file_source_match)
 
         ask_result = await _run_step(
             steps,
@@ -372,7 +379,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "project_source_remove_link",
                 project_service.remove_project_source(
-                    source_name=link_source_name,
+                    source_name=link_source_match,
                     exact=True,
                     keep_open=args.keep_open,
                 ),
@@ -395,7 +402,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             steps,
             "project_source_remove_text",
             project_service.remove_project_source(
-                source_name=text_source_name,
+                source_name=text_source_match,
                 exact=True,
                 keep_open=args.keep_open,
             ),
@@ -416,6 +423,9 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["ok"] = True
         return summary
     finally:
+        summary["artifacts"]["link_source_match"] = link_source_match
+        summary["artifacts"]["text_source_match"] = text_source_match
+        summary["artifacts"]["file_source_match"] = file_source_match
         summary["steps"] = [asdict(step) for step in steps]
 
         if project_url and not args.keep_project:
