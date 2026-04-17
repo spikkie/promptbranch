@@ -465,3 +465,130 @@ def test_source_lookup_candidates_include_structured_card_identity(tmp_path: Pat
     assert candidates[0] == "pasted.txt Document"
     assert "pasted.txt" in candidates
     assert "Document · Apr 16, 2026" in candidates
+
+
+def test_project_source_stable_absence_accepts_empty_sources_surface(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    async def fake_snapshot_project_source_cards(_page):
+        return []
+
+    async def fake_find_project_source_action_button(*_args, **_kwargs):
+        return None
+
+    async def fake_find_project_source_container(*_args, **_kwargs):
+        return None
+
+    async def fake_project_sources_empty_state_visible(_page):
+        return True
+
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_action_button = fake_find_project_source_action_button  # type: ignore[method-assign]
+    client._find_project_source_container = fake_find_project_source_container  # type: ignore[method-assign]
+    client._project_sources_empty_state_visible = fake_project_sources_empty_state_visible  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._project_source_is_stably_absent(
+            page,
+            ["pasted.txt Document"],
+            exact=True,
+            required_observations=2,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result is True
+
+
+
+def test_project_source_stable_absence_rejects_non_empty_unmatched_surface(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    async def fake_snapshot_project_source_cards(_page):
+        return [
+            {
+                "text": "itest-file-20260417-131136-2837993.txt Document · Apr 17, 2026",
+                "key": "itest-file-20260417-131136-2837993.txt document",
+                "title": "itest-file-20260417-131136-2837993.txt",
+                "subtitle": "Document · Apr 17, 2026",
+                "identity": "itest-file-20260417-131136-2837993.txt Document",
+            }
+        ]
+
+    async def fake_find_project_source_action_button(*_args, **_kwargs):
+        return None
+
+    async def fake_find_project_source_container(*_args, **_kwargs):
+        return None
+
+    async def fake_project_sources_empty_state_visible(_page):
+        return False
+
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_action_button = fake_find_project_source_action_button  # type: ignore[method-assign]
+    client._find_project_source_container = fake_find_project_source_container  # type: ignore[method-assign]
+    client._project_sources_empty_state_visible = fake_project_sources_empty_state_visible  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._project_source_is_stably_absent(
+            page,
+            ["pasted.txt Document"],
+            exact=True,
+            required_observations=2,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result is False
+
+
+
+def test_remove_project_source_returns_idempotent_success_when_source_is_already_absent(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        return []
+
+    async def fake_wait_for_project_source_action_button(*_args, **_kwargs):
+        return None, None, ["pasted.txt Document"]
+
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._remove_project_source_operation(
+            context=None,
+            page=page,
+            source_name="pasted.txt Document",
+            exact=True,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["already_absent"] is True
+    assert result["source_match"] == "pasted.txt Document"
