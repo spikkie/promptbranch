@@ -664,7 +664,7 @@ class ChatGPTBrowserClient:
                     f"{operation_name} failed",
                     error_type=type(exc).__name__,
                     error=str(exc),
-                    current_url=await self._safe_page_url(page),
+                    current_url=current_url,
                 )
                 await self._dump_failure_artifacts(page, operation_name, exc)
                 raise
@@ -3741,6 +3741,27 @@ class ChatGPTBrowserClient:
         path = urlparse(url).path.rstrip("/")
         return bool(re.search(r'/g/g-p-[^/]+/project$', path)) or path.endswith('/project')
 
+    def _is_conversation_url(self, url: str) -> bool:
+        path = urlparse(url).path
+        return '/c/' in path
+
+    def _response_completion_signal_ready(
+        self,
+        *,
+        current_url: str,
+        content_present: bool,
+        stop_visible: bool,
+        thinking_visible: bool,
+        observed_running_state: bool,
+        observed_idle_after_running: bool,
+    ) -> bool:
+        ui_idle = not stop_visible and not thinking_visible
+        if not ui_idle:
+            return False
+        if observed_running_state and observed_idle_after_running:
+            return True
+        return bool(content_present and self._is_conversation_url(current_url))
+
     def _project_conversation_path_prefix(self) -> Optional[str]:
         parsed = urlparse(self.config.project_url)
         path = parsed.path.rstrip("/")
@@ -4116,6 +4137,7 @@ class ChatGPTBrowserClient:
             probe_summary = self._summarize_probes(probes)
             submit_state = await self._probe_submit_button_state(page)
             thinking_state = await self._probe_thinking_state(page)
+            current_url = await self._safe_page_url(page)
             running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
             idle_now = bool(observed_running_state and not submit_state.get("stop_visible") and not thinking_state.get("visible"))
 
@@ -4160,11 +4182,13 @@ class ChatGPTBrowserClient:
                 if first_response_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
 
-                completion_ready = bool(
-                    observed_running_state
-                    and observed_idle_after_running
-                    and not submit_state.get("stop_visible")
-                    and not thinking_state.get("visible")
+                completion_ready = self._response_completion_signal_ready(
+                    current_url=current_url,
+                    content_present=payload is not None,
+                    stop_visible=bool(submit_state.get("stop_visible")),
+                    thinking_visible=bool(thinking_state.get("visible")),
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
                 )
                 if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
                     self._log(
@@ -4203,7 +4227,7 @@ class ChatGPTBrowserClient:
                     "assistant wait poll",
                     attempt=attempt,
                     elapsed_s=round(elapsed_s, 1),
-                    current_url=await self._safe_page_url(page),
+                    current_url=current_url,
                     probe_summary=probe_summary,
                     stable_polls=stable_polls,
                     submit_selector=submit_state.get("selector"),
@@ -4295,6 +4319,7 @@ class ChatGPTBrowserClient:
             probe_summary = self._summarize_probes(probes)
             submit_state = await self._probe_submit_button_state(page)
             thinking_state = await self._probe_thinking_state(page)
+            current_url = await self._safe_page_url(page)
             running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
             idle_now = bool(observed_running_state and not submit_state.get("stop_visible") and not thinking_state.get("visible"))
 
@@ -4335,11 +4360,13 @@ class ChatGPTBrowserClient:
                 if first_payload_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
 
-                completion_ready = bool(
-                    observed_running_state
-                    and observed_idle_after_running
-                    and not submit_state.get("stop_visible")
-                    and not thinking_state.get("visible")
+                completion_ready = self._response_completion_signal_ready(
+                    current_url=current_url,
+                    content_present=payload is not None,
+                    stop_visible=bool(submit_state.get("stop_visible")),
+                    thinking_visible=bool(thinking_state.get("visible")),
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
                 )
                 if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
                     self._log(
