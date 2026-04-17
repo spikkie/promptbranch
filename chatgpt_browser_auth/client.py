@@ -659,6 +659,7 @@ class ChatGPTBrowserClient:
                 self._log("result", f"{operation_name} completed", result_type=type(result).__name__)
                 return result
             except Exception as exc:
+                current_url = await self._safe_page_url(page)
                 self._log(
                     "error",
                     f"{operation_name} failed",
@@ -4184,7 +4185,7 @@ class ChatGPTBrowserClient:
 
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
-                    content_present=payload is not None,
+                    content_present=bool(candidate_text),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
                     observed_running_state=observed_running_state,
@@ -4362,7 +4363,7 @@ class ChatGPTBrowserClient:
 
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
-                    content_present=payload is not None,
+                    content_present=bool(candidate_text),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
                     observed_running_state=observed_running_state,

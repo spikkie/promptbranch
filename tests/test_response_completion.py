@@ -76,3 +76,120 @@ def test_response_completion_ready_does_not_fire_while_thinking_or_stop_visible(
         observed_running_state=False,
         observed_idle_after_running=False,
     ) is False
+
+
+class _CompletionProbeTriggered(Exception):
+    def __init__(self, content_present: bool) -> None:
+        super().__init__(str(content_present))
+        self.content_present = content_present
+
+
+def test_wait_and_get_response_passes_candidate_text_as_content_present(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    async def fake_open_new_project_conversation(*args, **kwargs) -> None:
+        return None
+
+    async def fake_extract_last_text_from_selectors(*args, **kwargs):
+        return 'assistant', 1, 'INTEGRATION_OK', []
+
+    async def fake_probe_submit_button_state(*args, **kwargs):
+        return {
+            'selector': '#composer-submit-button',
+            'send_ready': True,
+            'idle_visible': True,
+            'visible_enabled_count': 1,
+            'aria_label': 'Send prompt',
+            'data_testid': 'send-button',
+            'stop_visible': False,
+        }
+
+    async def fake_probe_thinking_state(*args, **kwargs):
+        return {'visible': False, 'text': ''}
+
+    async def fake_safe_page_url(*args, **kwargs):
+        return 'https://chatgpt.com/c/test-conversation'
+
+    def fake_completion_signal_ready(*, content_present: bool, **kwargs):
+        raise _CompletionProbeTriggered(content_present)
+
+    monkeypatch.setattr(client, '_maybe_open_new_project_conversation', fake_open_new_project_conversation)
+    monkeypatch.setattr(client, '_extract_last_text_from_selectors', fake_extract_last_text_from_selectors)
+    monkeypatch.setattr(client, '_probe_submit_button_state', fake_probe_submit_button_state)
+    monkeypatch.setattr(client, '_probe_thinking_state', fake_probe_thinking_state)
+    monkeypatch.setattr(client, '_safe_page_url', fake_safe_page_url)
+    monkeypatch.setattr(client, '_response_completion_signal_ready', fake_completion_signal_ready)
+
+    try:
+        import asyncio
+        asyncio.run(client._wait_and_get_response(DummyPage()))
+    except _CompletionProbeTriggered as exc:
+        assert exc.content_present is True
+    else:
+        raise AssertionError('expected completion probe to trigger')
+
+
+def test_run_with_context_preserves_original_exception_when_operation_fails(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyTracing:
+        async def start(self, **kwargs) -> None:
+            return None
+
+    class DummyPage:
+        pass
+
+    class DummyContext:
+        def __init__(self) -> None:
+            self.pages = [DummyPage()]
+            self.tracing = DummyTracing()
+
+        def set_default_timeout(self, _timeout: int) -> None:
+            return None
+
+    class DummyChromium:
+        async def launch_persistent_context(self, **kwargs):
+            return DummyContext()
+
+    class DummyPlaywright:
+        def __init__(self) -> None:
+            self.chromium = DummyChromium()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def fake_operation(**kwargs):
+        raise ValueError('boom')
+
+    async def fake_safe_page_url(*args, **kwargs):
+        return 'https://chatgpt.com/c/test-conversation'
+
+    async def fake_dump_failure_artifacts(*args, **kwargs) -> None:
+        return None
+
+    async def fake_finalize_context(*args, **kwargs) -> None:
+        return None
+
+    async def fake_start_driver():
+        return DummyPlaywright()
+
+    monkeypatch.setattr(client, '_start_driver', fake_start_driver)
+    monkeypatch.setattr(client, '_safe_page_url', fake_safe_page_url)
+    monkeypatch.setattr(client, '_dump_failure_artifacts', fake_dump_failure_artifacts)
+    monkeypatch.setattr(client, '_finalize_context', fake_finalize_context)
+
+    import asyncio
+
+    try:
+        asyncio.run(client._run_with_context('failing-operation', fake_operation))
+    except ValueError as exc:
+        assert str(exc) == 'boom'
+    else:
+        raise AssertionError('expected original ValueError to be raised')
