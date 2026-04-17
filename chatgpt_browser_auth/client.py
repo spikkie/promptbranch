@@ -1221,6 +1221,26 @@ class ChatGPTBrowserClient:
             timeout_ms=18_000,
         )
         if options_button is None:
+            if await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+                result = {
+                    "ok": True,
+                    "action": "remove",
+                    "project_url": project_home_url,
+                    "source_name": source_name,
+                    "source_match": source_name,
+                    "source_match_candidates": match_candidates,
+                    "exact": exact,
+                    "already_absent": True,
+                    "current_url": await self._safe_page_url(page),
+                }
+                self._log(
+                    "project-source-remove",
+                    "project source already absent; treating remove as idempotent success",
+                    **result,
+                )
+                if keep_open and self.config.is_headed:
+                    await asyncio.to_thread(input, "Source already absent. Press Enter to close the browser... ")
+                return result
             raise ResponseTimeoutError(f"Project source was not found: {source_name}")
         await options_button.click(timeout=5_000)
         remove_button = await self._wait_for_visible_locator(
@@ -3330,6 +3350,52 @@ class ChatGPTBrowserClient:
             await page.wait_for_timeout(500)
         target = candidates[0] if candidates else '<new source>'
         raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {target}")
+
+    async def _project_source_is_stably_absent(
+        self,
+        page: Any,
+        source_names: str | list[str],
+        *,
+        exact: bool,
+        required_observations: int = 3,
+        poll_interval_ms: int = 500,
+    ) -> bool:
+        candidates = self._normalize_source_lookup_inputs(source_names)
+        if not candidates:
+            return True
+
+        stable_observations = 0
+        for _ in range(max(required_observations, 1)):
+            source_cards = await self._snapshot_project_source_cards(page)
+            matched_card = self._match_source_card(source_cards, candidates)
+            action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
+            container = None
+            if action_button is None and matched_card is None:
+                for candidate in candidates:
+                    container = await self._find_project_source_container(page, candidate, exact=exact)
+                    if container is not None:
+                        break
+            empty_state_visible = await self._project_sources_empty_state_visible(page)
+            cards_empty = len(source_cards) == 0
+            absent_now = action_button is None and matched_card is None and container is None and (empty_state_visible or cards_empty)
+            self._log(
+                'project-source-remove',
+                'stable absence probe',
+                source_candidates=candidates,
+                source_card_count=len(source_cards),
+                matched_card=(matched_card or {}).get('identity') if isinstance(matched_card, dict) else None,
+                empty_state_visible=empty_state_visible,
+                cards_empty=cards_empty,
+                absent_now=absent_now,
+                current_url=await self._safe_page_url(page),
+            )
+            if not absent_now:
+                return False
+            stable_observations += 1
+            if stable_observations >= max(required_observations, 1):
+                return True
+            await page.wait_for_timeout(poll_interval_ms)
+        return False
 
     async def _wait_for_source_absence(
         self,
