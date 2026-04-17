@@ -49,3 +49,18 @@ def test_require_project_source_capability_raises_for_missing_link(browser_clien
     message = str(exc_info.value)
     assert "Project source kind 'link' is not exposed" in message
     assert "available_source_kinds=['file', 'text', 'gdrive', 'slack']" in message
+
+
+def test_normalize_source_lookup_inputs_deduplicates(browser_client: ChatGPTBrowserClient) -> None:
+    assert browser_client._normalize_source_lookup_inputs([" pasted.txt Document ", "pasted.txt Document", ""]) == [
+        "pasted.txt Document"
+    ]
+
+
+def test_project_sources_url_sets_tab_query(browser_client: ChatGPTBrowserClient) -> None:
+    assert browser_client._project_sources_url("https://chatgpt.com/g/g-p-123/project") == (
+        "https://chatgpt.com/g/g-p-123/project?tab=sources"
+    )
+    assert browser_client._project_sources_url("https://chatgpt.com/g/g-p-123/project?foo=1&tab=chats") == (
+        "https://chatgpt.com/g/g-p-123/project?foo=1&tab=sources"
+    )

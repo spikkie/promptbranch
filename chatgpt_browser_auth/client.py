@@ -8,7 +8,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
 from .exceptions import (
@@ -1213,10 +1213,11 @@ class ChatGPTBrowserClient:
         matched_card = self._match_source_card(source_cards, [source_name])
         match_candidates = self._source_lookup_candidates(source_name, matched_card)
 
-        options_button = await self._find_project_source_action_button(
+        options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
             page,
             match_candidates,
             exact=exact,
+            timeout_ms=18_000,
         )
         if options_button is None:
             raise ResponseTimeoutError(f"Project source was not found: {source_name}")
@@ -1240,12 +1241,14 @@ class ChatGPTBrowserClient:
         if confirm_button is not None:
             await confirm_button.click(timeout=5_000)
 
-        await self._wait_for_source_absence(page, source_name, exact=exact)
+        await self._wait_for_source_absence(page, match_candidates, exact=exact)
         result = {
             "ok": True,
             "action": "remove",
             "project_url": project_home_url,
             "source_name": source_name,
+            "source_match": self._preferred_source_card_identity(matched_card) or source_name,
+            "source_match_candidates": match_candidates,
             "exact": exact,
             "current_url": await self._safe_page_url(page),
         }
@@ -2685,6 +2688,7 @@ class ChatGPTBrowserClient:
                 r"""
                 () => {
                     const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const normalizeLower = value => normalize(value).toLowerCase();
                     const isVisible = el => {
                         if (!el) return false;
                         const style = window.getComputedStyle(el);
@@ -2694,41 +2698,47 @@ class ChatGPTBrowserClient:
                         return rect.width > 0 && rect.height > 0;
                     };
                     const isSourceActionButton = button => {
-                        if (!button) return false;
-                        const aria = (button.getAttribute('aria-label') || '').toLowerCase();
-                        const testid = (button.getAttribute('data-testid') || '').toLowerCase();
-                        const hasPopup = (button.getAttribute('aria-haspopup') || '').toLowerCase();
+                        if (!button || !isVisible(button)) return false;
+                        const aria = normalizeLower(button.getAttribute('aria-label') || '');
+                        const testid = normalizeLower(button.getAttribute('data-testid') || '');
+                        const hasPopup = normalizeLower(button.getAttribute('aria-haspopup') || '');
                         return aria.includes('source actions') || testid.includes('source') || hasPopup === 'menu';
                     };
-                    const roots = Array.from(document.querySelectorAll('[role="tabpanel"][data-state="active"], [role="tabpanel"], main, [role="main"]')).filter(isVisible);
-                    const rootSet = roots.length ? roots : [document.body];
+                    const rootCandidates = Array.from(
+                        document.querySelectorAll(
+                            '[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
+                        )
+                    ).filter(isVisible);
+                    const roots = rootCandidates.length
+                        ? rootCandidates
+                        : Array.from(document.querySelectorAll('main, [role="main"], body')).filter(isVisible);
                     const seen = new Set();
                     const results = [];
+
+                    const isEmptyStateText = text => {
+                        const lower = normalizeLower(text);
+                        return lower.includes('give chatgpt more context');
+                    };
 
                     const candidateRowsForRoot = root => {
                         const rows = [];
                         const rowSet = new Set();
-
                         const addRow = row => {
                             if (!row || rowSet.has(row) || !isVisible(row)) return;
                             rowSet.add(row);
                             rows.push(row);
                         };
 
-                        for (const row of Array.from(root.querySelectorAll('[class*="file-row"]'))) {
-                            addRow(row);
-                        }
-
                         for (const button of Array.from(root.querySelectorAll('button,[role="button"]'))) {
                             if (!isSourceActionButton(button)) continue;
-                            let current = button.closest('[class*="file-row"], li, article, [role="listitem"], div') || button.parentElement;
+                            let current = button.closest('[data-testid*="source"], [class*="file-row"], [class*="source"], li, article, [role="listitem"], div') || button.parentElement;
                             while (current && current !== root && current !== document.body) {
                                 if (!isVisible(current)) {
                                     current = current.parentElement;
                                     continue;
                                 }
                                 const text = normalize(current.innerText || current.textContent || '');
-                                if (!text || text.length > 600) {
+                                if (!text || text.length > 600 || isEmptyStateText(text) || /^add\s*$/i.test(text) || /^add\s+source$/i.test(text)) {
                                     current = current.parentElement;
                                     continue;
                                 }
@@ -2736,38 +2746,33 @@ class ChatGPTBrowserClient:
                                 break;
                             }
                         }
-
                         return rows;
                     };
 
-                    for (const root of rootSet) {
+                    for (const root of roots) {
                         for (const row of candidateRowsForRoot(root)) {
                             const text = normalize(row.innerText || row.textContent || '');
-                            if (!text || text.length > 600) continue;
-                            if (/^add\s+source$/i.test(text)) continue;
+                            if (!text || text.length > 600 || isEmptyStateText(text)) continue;
 
                             const rawLines = String(row.innerText || row.textContent || '').split('\n');
-                            const lines = rawLines
-                                .map(value => normalize(value))
-                                .filter(Boolean);
-
+                            const lines = rawLines.map(value => normalize(value)).filter(Boolean);
                             const titleNode =
-                                Array.from(row.querySelectorAll('[aria-label]'))
-                                    .find(el => !/source actions/i.test(normalize(el.getAttribute('aria-label') || '')) && isVisible(el)) ||
-                                row.querySelector('.font-semibold,[class*="font-semibold"]');
-
+                                Array.from(row.querySelectorAll('[title], [aria-label], .truncate, .font-semibold, [class*="font-semibold"]'))
+                                    .find(el => {
+                                        if (!isVisible(el)) return false;
+                                        const aria = normalizeLower(el.getAttribute('aria-label') || '');
+                                        return !aria.includes('source actions') && !el.closest('button,[role="button"]');
+                                    }) || null;
                             const title = normalize(
-                                (titleNode && (titleNode.getAttribute('aria-label') || titleNode.innerText || titleNode.textContent)) ||
+                                (titleNode && (titleNode.getAttribute('title') || titleNode.getAttribute('aria-label') || titleNode.innerText || titleNode.textContent)) ||
                                 lines[0] ||
                                 ''
                             );
-
                             const subtitle = Array.from(row.querySelectorAll('.text-token-text-secondary, time'))
-                                .filter(el => isVisible(el))
+                                .filter(isVisible)
                                 .map(el => normalize(el.innerText || el.textContent || ''))
                                 .filter(Boolean)
                                 .join(' ') || (lines.length > 1 ? lines[1] : '');
-
                             const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
                             const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
                             const key = normalize((title || identity || text)).toLowerCase();
@@ -3325,14 +3330,130 @@ class ChatGPTBrowserClient:
         target = candidates[0] if candidates else '<new source>'
         raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {target}")
 
-    async def _wait_for_source_absence(self, page: Any, source_name: str, *, exact: bool, timeout_ms: int = 20_000) -> None:
+    async def _wait_for_source_absence(
+        self,
+        page: Any,
+        source_name: str | list[str],
+        *,
+        exact: bool,
+        timeout_ms: int = 20_000,
+    ) -> None:
+        candidates = self._normalize_source_lookup_inputs(source_name)
+        if not candidates:
+            return
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while asyncio.get_running_loop().time() < deadline:
-            action_button = await self._find_project_source_action_button(page, [source_name], exact=exact)
+            action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
             if action_button is None:
                 return
             await page.wait_for_timeout(500)
-        raise ResponseTimeoutError(f"Timed out waiting for project source to disappear: {source_name}")
+        raise ResponseTimeoutError(f"Timed out waiting for project source to disappear: {candidates[0]}")
+
+    def _normalize_source_lookup_inputs(self, source_names: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        raw_values: list[str] = []
+        if isinstance(source_names, str):
+            raw_values = [source_names]
+        elif source_names:
+            raw_values = list(source_names)
+        normalized: list[str] = []
+        for value in raw_values:
+            normalized_value = self._normalize_source_match_text(value)
+            if normalized_value and normalized_value not in normalized:
+                normalized.append(normalized_value)
+        return normalized
+
+    def _project_sources_url(self, project_url: Optional[str] = None) -> str:
+        base_url = project_url or self._project_home_url()
+        parsed = urlparse(base_url)
+        query_pairs: list[tuple[str, str]] = []
+        existing_tab = False
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            if key == 'tab':
+                query_pairs.append((key, 'sources'))
+                existing_tab = True
+            else:
+                query_pairs.append((key, value))
+        if not existing_tab:
+            query_pairs.append(('tab', 'sources'))
+        query = urlencode(query_pairs)
+        return urlunparse(parsed._replace(query=query))
+
+    async def _project_sources_empty_state_visible(self, page: Any) -> bool:
+        try:
+            visible = await page.evaluate(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                    const surfaces = Array.from(
+                        document.querySelectorAll('[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"][data-state="active"]')
+                    ).filter(isVisible);
+                    for (const surface of (surfaces.length ? surfaces : [document.body])) {
+                        const text = normalize(surface.innerText || surface.textContent || '');
+                        if (!text) continue;
+                        if (text.includes('give chatgpt more context')) return true;
+                    }
+                    return false;
+                }
+                """
+            )
+        except Exception:
+            return False
+        return bool(visible)
+
+    async def _wait_for_project_source_action_button(
+        self,
+        page: Any,
+        source_names: str | list[str],
+        *,
+        exact: bool,
+        timeout_ms: int = 18_000,
+        poll_interval_ms: int = 750,
+    ) -> tuple[Optional[Any], Optional[dict[str, str]], list[str]]:
+        candidates = self._normalize_source_lookup_inputs(source_names)
+        if not candidates:
+            return None, None, []
+
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        refresh_attempted = False
+        last_matched_card: Optional[dict[str, str]] = None
+        last_empty_state = False
+        while asyncio.get_running_loop().time() < deadline:
+            source_cards = await self._snapshot_project_source_cards(page)
+            matched_card = self._match_source_card(source_cards, candidates)
+            if matched_card is not None:
+                last_matched_card = matched_card
+                candidates = self._source_lookup_candidates(candidates[0], matched_card)
+            action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
+            if action_button is not None:
+                return action_button, last_matched_card, candidates
+
+            last_empty_state = await self._project_sources_empty_state_visible(page)
+            self._log(
+                'project-source-remove',
+                'project source action button not ready yet',
+                source_candidates=candidates,
+                source_card_count=len(source_cards),
+                matched_card=(last_matched_card or {}).get('identity') if isinstance(last_matched_card, dict) else None,
+                empty_state_visible=last_empty_state,
+                current_url=await self._safe_page_url(page),
+            )
+            if last_empty_state and not refresh_attempted:
+                refresh_attempted = True
+                await self._goto(page, self._project_sources_url(), label='project-source-remove-sources-refresh')
+                await page.wait_for_timeout(max(poll_interval_ms, 1_000))
+                continue
+            await page.wait_for_timeout(poll_interval_ms)
+
+        self._log(
+            'project-source-remove',
+            'project source action button lookup timed out',
+            source_candidates=candidates,
+            matched_card=(last_matched_card or {}).get('identity') if isinstance(last_matched_card, dict) else None,
+            empty_state_visible=last_empty_state,
+            current_url=await self._safe_page_url(page),
+        )
+        return None, last_matched_card, candidates
 
     async def _find_project_source_container(self, page: Any, source_name: str, *, exact: bool) -> Optional[Any]:
         needle = re.sub(r"\s+", " ", (source_name or "")).strip()
@@ -3387,11 +3508,16 @@ class ChatGPTBrowserClient:
                 const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
                 const normalizeLower = value => normalize(value).toLowerCase();
                 const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                const roots = Array.from(
-                    document.querySelectorAll('[role="tabpanel"][data-state="active"], [role="tabpanel"], main, [role="main"]')
+                const rootCandidates = Array.from(
+                    document.querySelectorAll(
+                        '[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
+                    )
                 ).filter(isVisible);
-                const rootSet = roots.length ? roots : [document.body];
+                const roots = rootCandidates.length
+                    ? rootCandidates
+                    : Array.from(document.querySelectorAll('main, [role="main"], body')).filter(isVisible);
                 const normalizedNeedles = needles.map(normalizeLower).filter(Boolean);
+                const isEmptyStateText = text => normalizeLower(text).includes('give chatgpt more context');
                 const scoreValue = value => {
                     const haystack = normalizeLower(value);
                     if (!haystack) return -1;
@@ -3399,7 +3525,7 @@ class ChatGPTBrowserClient:
                     for (const needle of normalizedNeedles) {
                         if (!needle) continue;
                         let score = -1;
-                        if (exact ? haystack === needle : haystack === needle) {
+                        if (haystack === needle) {
                             score = 1000;
                         } else if (!exact && haystack.includes(needle)) {
                             score = Math.min(needle.length, 900);
@@ -3417,41 +3543,42 @@ class ChatGPTBrowserClient:
                     const hasPopup = normalizeLower(button.getAttribute('aria-haspopup') || '');
                     if (aria.includes('source actions')) return true;
                     if (hasPopup !== 'menu') return false;
-                    return aria.includes('source') || testid.includes('source') || !!button.closest('[role="tabpanel"], main, [role="main"]');
+                    return aria.includes('source') || testid.includes('source') || !!button.closest('[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"]');
                 };
                 let bestButton = null;
                 let bestScore = -1;
-                for (const root of rootSet) {
+                for (const root of roots) {
                     const buttons = Array.from(root.querySelectorAll('button,[role="button"]')).filter(isSourceActionButton);
                     for (const button of buttons) {
-                        let current = button.closest('li, article, [role="listitem"], div') || button.parentElement;
+                        let current = button.closest('[data-testid*="source"], [class*="file-row"], [class*="source"], li, article, [role="listitem"], div') || button.parentElement;
                         while (current && current !== root && current !== document.body) {
                             if (!isVisible(current)) {
                                 current = current.parentElement;
                                 continue;
                             }
                             const text = normalize(current.innerText || current.textContent || '');
-                            if (!text || text.length > 600) {
+                            if (!text || text.length > 600 || isEmptyStateText(text) || /^add\s*$/i.test(text) || /^add\s+source$/i.test(text)) {
                                 current = current.parentElement;
                                 continue;
                             }
                             const rawLines = String(current.innerText || current.textContent || '').split('\n');
-                            const lines = rawLines
-                                .map(value => normalize(value))
-                                .filter(Boolean);
-                            const firstLabelEl = Array.from(current.querySelectorAll('[aria-label]'))
-                                .find(el => el !== button && !button.contains(el) && isVisible(el));
-                            const title = normalize((firstLabelEl && firstLabelEl.getAttribute('aria-label')) || lines[0] || '');
-                            let subtitle = '';
-                            const secondary = Array.from(current.querySelectorAll('.text-token-text-secondary, time'))
-                                .filter(el => el !== button && !button.contains(el) && isVisible(el))
+                            const lines = rawLines.map(value => normalize(value)).filter(Boolean);
+                            const titleNode = Array.from(current.querySelectorAll('[title], [aria-label], .truncate, .font-semibold, [class*="font-semibold"]'))
+                                .find(el => {
+                                    if (!isVisible(el)) return false;
+                                    const aria = normalizeLower(el.getAttribute('aria-label') || '');
+                                    return !aria.includes('source actions') && !el.closest('button,[role="button"]');
+                                }) || null;
+                            const title = normalize(
+                                (titleNode && (titleNode.getAttribute('title') || titleNode.getAttribute('aria-label') || titleNode.innerText || titleNode.textContent)) ||
+                                lines[0] ||
+                                ''
+                            );
+                            const subtitle = Array.from(current.querySelectorAll('.text-token-text-secondary, time'))
+                                .filter(isVisible)
                                 .map(el => normalize(el.innerText || el.textContent || ''))
-                                .filter(Boolean);
-                            if (secondary.length) {
-                                subtitle = secondary.join(' ');
-                            } else if (lines.length > 1) {
-                                subtitle = lines[1];
-                            }
+                                .filter(Boolean)
+                                .join(' ') || (lines.length > 1 ? lines[1] : '');
                             const subtitlePrefix = normalize((subtitle.split('·')[0] || '').trim());
                             const identity = normalize([title, subtitlePrefix].filter(Boolean).join(' '));
                             const values = [identity, title, subtitle, text].filter(Boolean);
