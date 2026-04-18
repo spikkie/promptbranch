@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -256,6 +257,17 @@ PROJECT_SIDEBAR_CLOSE_BUTTON_SELECTORS = [
     'button[aria-label="Close sidebar"]',
     'button[aria-label*="Close sidebar" i]',
 ]
+RATE_LIMIT_MODAL_SELECTORS = [
+    '[data-testid="modal-conversation-history-rate-limit"]',
+    '#modal-conversation-history-rate-limit',
+]
+RATE_LIMIT_MODAL_ACK_SELECTORS = [
+    '[data-testid="modal-conversation-history-rate-limit"] button:has-text("Got it")',
+    '#modal-conversation-history-rate-limit button:has-text("Got it")',
+    'button:has-text("Got it")',
+]
+CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENT = '/backend-api/conversations'
+_PROFILE_LAST_CONTEXT_CLOSED_AT: dict[str, float] = {}
 PROJECT_NEW_BUTTON_SELECTORS = [
     'button:has-text("New project")',
     'a:has-text("New project")',
@@ -384,8 +396,110 @@ class ChatGPTBrowserClient:
     def __init__(self, config: ChatGPTBrowserConfig):
         self.config = config
         self._artifact_dir = Path(self.config.debug_artifact_dir)
+        self._profile_key = str(Path(self.config.profile_dir).expanduser().resolve())
+        self._rate_limit_cooldown_path = Path(self._profile_key) / '.conversation_history_rate_limit_until'
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    def _is_conversation_history_url(self, url: str) -> bool:
+        return CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENT in (url or '').lower()
+
+    def _read_rate_limit_cooldown_until(self) -> float:
+        try:
+            raw = self._rate_limit_cooldown_path.read_text(encoding='utf-8').strip()
+            return float(raw) if raw else 0.0
+        except FileNotFoundError:
+            return 0.0
+        except Exception as exc:
+            self._log('rate-limit', 'failed reading cooldown file', path=str(self._rate_limit_cooldown_path), error=str(exc))
+            return 0.0
+
+    def _write_rate_limit_cooldown_until(self, cooldown_until: float) -> None:
+        try:
+            self._rate_limit_cooldown_path.parent.mkdir(parents=True, exist_ok=True)
+            self._rate_limit_cooldown_path.write_text(f'{cooldown_until:.6f}', encoding='utf-8')
+        except Exception as exc:
+            self._log('rate-limit', 'failed writing cooldown file', path=str(self._rate_limit_cooldown_path), error=str(exc))
+
+    def _note_conversation_history_rate_limit(self, *, trigger: str, url: str, status: int | None = None) -> None:
+        cooldown_seconds = max(0.0, float(self.config.conversation_history_rate_limit_cooldown_seconds))
+        if cooldown_seconds <= 0:
+            return
+        cooldown_until = time.time() + cooldown_seconds
+        existing = self._read_rate_limit_cooldown_until()
+        if existing > cooldown_until:
+            cooldown_until = existing
+        self._write_rate_limit_cooldown_until(cooldown_until)
+        self._log(
+            'rate-limit',
+            'conversation history rate limit noted',
+            trigger=trigger,
+            status=status,
+            url=url,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_until=cooldown_until,
+        )
+
+    async def _respect_context_spacing(self) -> None:
+        spacing = max(0.0, float(self.config.min_context_spacing_seconds))
+        if spacing <= 0:
+            return
+        last_closed_at = _PROFILE_LAST_CONTEXT_CLOSED_AT.get(self._profile_key)
+        if last_closed_at is None:
+            return
+        wait_seconds = (last_closed_at + spacing) - time.monotonic()
+        if wait_seconds <= 0:
+            return
+        self._log('rate-limit', 'waiting before launching next browser context', wait_seconds=round(wait_seconds, 3), profile_dir=self._profile_key)
+        await asyncio.sleep(wait_seconds)
+
+    async def _respect_rate_limit_cooldown(self) -> None:
+        cooldown_until = self._read_rate_limit_cooldown_until()
+        remaining = cooldown_until - time.time()
+        if remaining <= 0:
+            return
+        self._log('rate-limit', 'waiting for persisted conversation history cooldown', wait_seconds=round(remaining, 3), path=str(self._rate_limit_cooldown_path))
+        await asyncio.sleep(remaining)
+
+    async def _wait_for_rate_limit_modal_to_clear(
+        self,
+        page: Any,
+        *,
+        label: str,
+        timeout_ms: int | None = None,
+    ) -> bool:
+        timeout_ms = self.config.rate_limit_modal_wait_timeout_ms if timeout_ms is None else timeout_ms
+        poll_interval_ms = self.config.rate_limit_modal_poll_interval_ms
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        saw_modal = False
+        while True:
+            modal = await self._find_visible_locator(page, RATE_LIMIT_MODAL_SELECTORS, label=f'{label}-rate-limit-modal')
+            if modal is None:
+                if saw_modal:
+                    self._log('rate-limit', 'rate limit modal cleared', label=label)
+                return saw_modal
+            if not saw_modal:
+                saw_modal = True
+                self._note_conversation_history_rate_limit(
+                    trigger='modal',
+                    url=await self._safe_page_url(page),
+                    status=429,
+                )
+                self._log('rate-limit', 'rate limit modal detected', label=label, current_url=await self._safe_page_url(page), timeout_ms=timeout_ms)
+            ack = await self._find_visible_locator(page, RATE_LIMIT_MODAL_ACK_SELECTORS, label=f'{label}-rate-limit-ack')
+            if ack is not None:
+                try:
+                    await self._click_locator_with_fallback(
+                        ack,
+                        label=f'{label}-rate-limit-ack',
+                        timeout_ms=min(5_000, timeout_ms),
+                        handle_rate_limit=False,
+                    )
+                except Exception as exc:
+                    self._log('rate-limit', 'rate limit modal acknowledgement click failed', label=label, error=repr(exc))
+            if asyncio.get_running_loop().time() >= deadline:
+                raise ResponseTimeoutError('Rate limit modal did not clear before continuing')
+            await page.wait_for_timeout(poll_interval_ms)
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         self._log(
@@ -602,6 +716,8 @@ class ChatGPTBrowserClient:
 
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
+        await self._respect_rate_limit_cooldown()
+        await self._respect_context_spacing()
         playwright_module = await self._start_driver()
         async with playwright_module as p:
             browser_args = list(self.config.extra_browser_args)
@@ -671,6 +787,7 @@ class ChatGPTBrowserClient:
                 raise
             finally:
                 await self._finalize_context(context, operation_name)
+                _PROFILE_LAST_CONTEXT_CLOSED_AT[self._profile_key] = time.monotonic()
 
     async def _run_login_check_operation(
         self,
@@ -710,8 +827,9 @@ class ChatGPTBrowserClient:
         await self.ensure_logged_in(page, context)
         await self._goto(page, self.config.project_url, label="chat-home-after-login")
         input_locator = await self._wait_for_chat_input(page)
+        await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
         self._log("composer", "chat input resolved; clicking")
-        await input_locator.click()
+        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
         self._log("composer", "filling prompt", prompt_length=len(prompt))
         await input_locator.fill(prompt)
 
@@ -3081,6 +3199,7 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 5_000,
         allow_force: bool = True,
         allow_evaluate: bool = True,
+        handle_rate_limit: bool = True,
     ) -> None:
         try:
             await locator.scroll_into_view_if_needed(timeout=min(timeout_ms, 2_000))
@@ -5057,6 +5176,7 @@ class ChatGPTBrowserClient:
         self._log("nav", "navigating", label=label, from_url=current_url, to_url=url)
         await page.goto(url, wait_until="domcontentloaded")
         self._log("nav", "domcontentloaded reached", label=label, current_url=await self._safe_page_url(page), title=await self._safe_page_title(page))
+        await self._wait_for_rate_limit_modal_to_clear(page, label=label)
 
     async def _wait_for_challenge_resolution(self, page: Any, *, label: str) -> None:
         current_url = await self._safe_page_url(page)
@@ -5141,6 +5261,16 @@ class ChatGPTBrowserClient:
         )
 
     def _attach_context_debug(self, context: Any, page: Any, operation_name: str) -> None:
+        def observe_response(resp: Any) -> None:
+            status = getattr(resp, "status", None)
+            url = getattr(resp, "url", "")
+            if status == 429 and self._is_conversation_history_url(url):
+                self._note_conversation_history_rate_limit(trigger="response", url=url, status=status)
+            if self.config.debug and status and status >= 400:
+                self._log("browser-response", "http error response", status=status, url=url)
+
+        context.on("response", observe_response)
+
         if not self.config.debug:
             return
 
@@ -5168,11 +5298,6 @@ class ChatGPTBrowserClient:
                 failure=failure_text,
             )
 
-        def log_response(resp: Any) -> None:
-            status = getattr(resp, "status", None)
-            if status and status >= 400:
-                self._log("browser-response", "http error response", status=status, url=resp.url)
-
         def log_page_created(new_page: Any) -> None:
             self._log("browser-page", "new page detected", operation=operation_name, url=new_page.url)
             self._attach_page_debug(new_page)
@@ -5180,7 +5305,6 @@ class ChatGPTBrowserClient:
         context.on("page", log_page_created)
         self._attach_page_debug(page)
         context.on("requestfailed", log_request_failed)
-        context.on("response", log_response)
         self._log("debug", "browser debug hooks attached", operation=operation_name)
 
     def _attach_page_debug(self, page: Any) -> None:

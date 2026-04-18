@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 import chatgpt_browser_auth.client as client_module
 from chatgpt_browser_auth.client import ChatGPTBrowserClient
 from chatgpt_browser_auth.config import ChatGPTBrowserConfig
@@ -820,3 +822,55 @@ def test_remove_project_source_returns_idempotent_success_when_source_is_already
     assert result["removed_via_ui"] is False
     assert result["source_match"] == "pasted.txt Document"
     assert result["source_identity_used"] == "pasted.txt Document"
+
+
+def test_respect_context_spacing_waits_between_browser_context_launches(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.min_context_spacing_seconds = 5.0
+    client_module._PROFILE_LAST_CONTEXT_CLOSED_AT[client._profile_key] = 100.0
+
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: 103.0)
+
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(client_module.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(client._respect_context_spacing())
+
+    assert slept == [2.0]
+
+
+def test_note_conversation_history_rate_limit_persists_cooldown_file(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.conversation_history_rate_limit_cooldown_seconds = 30.0
+    monkeypatch.setattr(client_module.time, "time", lambda: 1_000.0)
+
+    client._note_conversation_history_rate_limit(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/conversations?offset=0",
+        status=429,
+    )
+
+    assert client._rate_limit_cooldown_path.exists() is True
+    assert float(client._rate_limit_cooldown_path.read_text(encoding="utf-8")) == pytest.approx(1_030.0)
+
+
+def test_respect_rate_limit_cooldown_waits_for_persisted_deadline(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client._rate_limit_cooldown_path.parent.mkdir(parents=True, exist_ok=True)
+    client._rate_limit_cooldown_path.write_text("1010.0", encoding="utf-8")
+    monkeypatch.setattr(client_module.time, "time", lambda: 1_000.0)
+
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(client_module.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(client._respect_rate_limit_cooldown())
+
+    assert slept == [10.0]
