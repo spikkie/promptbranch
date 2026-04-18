@@ -38,22 +38,31 @@ class AskResponse(BaseModel):
     answer: object
 
 
+class ProjectResolveRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    keep_open: bool = False
+    project_url: Optional[str] = None
+
+
 class ProjectEnsureRequest(BaseModel):
     name: str = Field(..., min_length=1)
     icon: Optional[str] = None
     color: Optional[str] = None
     memory_mode: str = "default"
     keep_open: bool = False
+    project_url: Optional[str] = None
 
 
 class ProjectRemoveRequest(BaseModel):
     keep_open: bool = False
+    project_url: Optional[str] = None
 
 
 class ProjectSourceRemoveRequest(BaseModel):
     source_name: str = Field(..., min_length=1)
     exact: bool = False
     keep_open: bool = False
+    project_url: Optional[str] = None
 
 
 class ServiceInfo(BaseModel):
@@ -68,14 +77,15 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.46"
+SERVICE_VERSION = "0.0.47"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
+_DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
 
-def _build_service() -> ChatGPTAutomationService:
+def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAutomationService:
     return ChatGPTAutomationService(
         ChatGPTAutomationSettings(
-            project_url=os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/"),
+            project_url=project_url_override or _DEFAULT_PROJECT_URL,
             email=os.getenv("CHATGPT_EMAIL") or os.getenv("EMAIL"),
             password=os.getenv("CHATGPT_PASSWORD") or os.getenv("PASSWORD"),
             profile_dir=os.getenv("CHATGPT_PROFILE_DIR", "/app/profile"),
@@ -98,6 +108,12 @@ app = FastAPI(
     description="Reusable Docker-first service for browser-driven ChatGPT automation.",
 )
 protected = APIRouter(prefix="/v1")
+
+
+def _service_for(project_url: Optional[str]) -> ChatGPTAutomationService:
+    if not project_url or project_url == service.settings.project_url:
+        return service
+    return _build_service(project_url_override=project_url)
 
 
 def _raise_http_error(exc: Exception) -> None:
@@ -159,6 +175,7 @@ async def ask(
     expect_json: bool = Form(False),
     keep_open: bool = Form(False),
     retries: Optional[int] = Form(None),
+    project_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> AskResponse:
     temp_path: Optional[Path] = None
@@ -169,7 +186,7 @@ async def ask(
                 handle.write(await file.read())
                 temp_path = Path(handle.name)
 
-        answer = await service.ask_question(
+        answer = await _service_for(project_url).ask_question(
             prompt=prompt,
             file_path=(str(temp_path) if temp_path is not None else None),
             expect_json=expect_json,
@@ -185,9 +202,20 @@ async def ask(
 
 
 @protected.get("/project-source-capabilities", dependencies=[Depends(require_service_token)])
-async def project_source_capabilities(keep_open: bool = False) -> dict:
+async def project_source_capabilities(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:
-        return await service.discover_project_source_capabilities(keep_open=keep_open)
+        return await _service_for(project_url).discover_project_source_capabilities(keep_open=keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/projects/resolve", dependencies=[Depends(require_service_token)])
+async def resolve_project(payload: ProjectResolveRequest) -> dict:
+    try:
+        return await _service_for(payload.project_url).resolve_project(
+            name=payload.name,
+            keep_open=payload.keep_open,
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 
@@ -195,7 +223,7 @@ async def project_source_capabilities(keep_open: bool = False) -> dict:
 @protected.post("/projects/ensure", dependencies=[Depends(require_service_token)])
 async def ensure_project(payload: ProjectEnsureRequest) -> dict:
     try:
-        return await service.ensure_project(
+        return await _service_for(payload.project_url).ensure_project(
             name=payload.name,
             icon=payload.icon,
             color=payload.color,
@@ -209,7 +237,7 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
 @protected.post("/projects/remove", dependencies=[Depends(require_service_token)])
 async def remove_project(payload: ProjectRemoveRequest) -> dict:
     try:
-        return await service.remove_project(keep_open=payload.keep_open)
+        return await _service_for(payload.project_url).remove_project(keep_open=payload.keep_open)
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 
@@ -220,6 +248,7 @@ async def add_project_source(
     value: Optional[str] = Form(default=None),
     display_name: Optional[str] = Form(default=None, alias="name"),
     keep_open: bool = Form(False),
+    project_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> dict:
     temp_path: Optional[Path] = None
@@ -234,7 +263,7 @@ async def add_project_source(
         elif source_kind in {"text", "link"} and not value:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"value is required when type={source_kind}")
 
-        return await service.add_project_source(
+        return await _service_for(project_url).add_project_source(
             source_kind=source_kind,
             value=value,
             file_path=(str(temp_path) if temp_path is not None else None),
@@ -253,7 +282,7 @@ async def add_project_source(
 @protected.post("/project-sources/remove", dependencies=[Depends(require_service_token)])
 async def remove_project_source(payload: ProjectSourceRemoveRequest) -> dict:
     try:
-        return await service.remove_project_source(
+        return await _service_for(payload.project_url).remove_project_source(
             source_name=payload.source_name,
             exact=payload.exact,
             keep_open=payload.keep_open,

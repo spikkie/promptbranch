@@ -13,6 +13,7 @@ from typing import Any, Optional, Sequence
 from dotenv import load_dotenv
 
 from chatgpt_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
+from chatgpt_service_client import ChatGPTServiceClient
 from chatgpt_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -210,7 +211,7 @@ def resolve_step_selection(
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Run a full browser-backed ChatGPT integration flow against the current client/service layer. "
+            "Run a full ChatGPT integration flow against either the direct Python automation stack or the Docker HTTP service. "
             "This script exercises login, project ensure/resolve/remove, project sources (link/text/file), and ask()."
         )
     )
@@ -241,6 +242,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--link-url", default="https://example.com/")
     parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
     parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
+    parser.add_argument("--service-base-url", default=os.getenv("CHATGPT_SERVICE_BASE_URL"), help="Optional Docker service base URL, e.g. http://localhost:8000. When set, this script runs against the HTTP service instead of importing the browser automation directly.")
+    parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN"), help="Optional bearer token for the Docker service.")
+    parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "300.0")), help="HTTP timeout when running against the Docker service.")
     return parser
 
 
@@ -263,7 +267,198 @@ def build_settings(args: argparse.Namespace, *, project_url: str) -> ChatGPTAuto
 
 
 
-def build_service(args: argparse.Namespace, *, project_url: str) -> ChatGPTAutomationService:
+class DockerServiceAdapter:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        token: Optional[str],
+        timeout_seconds: float,
+        project_url: str,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.timeout_seconds = timeout_seconds
+        self.project_url = project_url
+
+    def _client(self) -> ChatGPTServiceClient:
+        return ChatGPTServiceClient(
+            self.base_url,
+            token=self.token,
+            timeout=self.timeout_seconds,
+        )
+
+    async def run_login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._run_login_check_sync, keep_open)
+
+    def _run_login_check_sync(self, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.login_check(keep_open=keep_open)
+
+    async def resolve_project(self, *, name: str, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._resolve_project_sync, name, keep_open)
+
+    def _resolve_project_sync(self, name: str, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.resolve_project(name=name, keep_open=keep_open, project_url=self.project_url)
+
+    async def ensure_project(
+        self,
+        *,
+        name: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._ensure_project_sync,
+            name,
+            icon,
+            color,
+            memory_mode,
+            keep_open,
+        )
+
+    def _ensure_project_sync(
+        self,
+        name: str,
+        icon: Optional[str],
+        color: Optional[str],
+        memory_mode: str,
+        keep_open: bool,
+    ) -> dict[str, Any]:
+        with self._client() as client:
+            return client.ensure_project(
+                name=name,
+                icon=icon,
+                color=color,
+                memory_mode=memory_mode,
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
+
+    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._remove_project_sync, keep_open)
+
+    def _remove_project_sync(self, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.remove_project(keep_open=keep_open, project_url=self.project_url)
+
+    async def discover_project_source_capabilities(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._discover_project_source_capabilities_sync, keep_open)
+
+    def _discover_project_source_capabilities_sync(self, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.discover_project_source_capabilities(
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
+
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._add_project_source_sync,
+            source_kind,
+            value,
+            file_path,
+            display_name,
+            keep_open,
+        )
+
+    def _add_project_source_sync(
+        self,
+        source_kind: str,
+        value: Optional[str],
+        file_path: Optional[str],
+        display_name: Optional[str],
+        keep_open: bool,
+    ) -> dict[str, Any]:
+        with self._client() as client:
+            return client.add_project_source(
+                source_kind=source_kind,
+                value=value,
+                file_path=file_path,
+                display_name=display_name,
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
+
+    async def remove_project_source(
+        self,
+        *,
+        source_name: str,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._remove_project_source_sync,
+            source_name,
+            exact,
+            keep_open,
+        )
+
+    def _remove_project_source_sync(self, source_name: str, exact: bool, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.remove_project_source(
+                source_name,
+                exact=exact,
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
+
+    async def ask_question(
+        self,
+        *,
+        prompt: str,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> Any:
+        return await asyncio.to_thread(
+            self._ask_question_sync,
+            prompt,
+            file_path,
+            expect_json,
+            keep_open,
+            retries,
+        )
+
+    def _ask_question_sync(
+        self,
+        prompt: str,
+        file_path: Optional[str],
+        expect_json: bool,
+        keep_open: bool,
+        retries: Optional[int],
+    ) -> Any:
+        with self._client() as client:
+            return client.ask(
+                prompt,
+                file_path=file_path,
+                expect_json=expect_json,
+                keep_open=keep_open,
+                retries=retries,
+                project_url=self.project_url,
+            )
+
+
+def build_service(args: argparse.Namespace, *, project_url: str):
+    if args.service_base_url:
+        return DockerServiceAdapter(
+            base_url=args.service_base_url,
+            token=args.service_token,
+            timeout_seconds=args.service_timeout_seconds,
+            project_url=project_url,
+        )
     return ChatGPTAutomationService(build_settings(args, project_url=project_url))
 
 

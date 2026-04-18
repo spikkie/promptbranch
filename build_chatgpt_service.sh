@@ -2,7 +2,7 @@
 set -euo pipefail
 
 IMAGE_NAME="${IMAGE_NAME:-chatgpt-docker-service}"
-IMAGE_TAG="${IMAGE_TAG:-0.0.46}"
+IMAGE_TAG="${IMAGE_TAG:-0.0.47}"
 FULL_IMAGE="${FULL_IMAGE:-${IMAGE_NAME}:${IMAGE_TAG}}"
 
 echo "Building ${FULL_IMAGE}"
