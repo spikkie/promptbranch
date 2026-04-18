@@ -1,0 +1,16 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from chatgpt_container_api import app
+
+
+def test_healthz_reports_service_metadata():
+    client = TestClient(app)
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["service"] == "chatgpt-docker-service"
+    assert payload["version"] == "0.0.46"

@@ -1,0 +1,32 @@
+services:
+  chatgpt-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chatgpt-docker-service:0.0.46
+    ports:
+      - "8000:8000"
+    environment:
+      CHATGPT_UVICORN_APP: chatgpt_container_api:app
+      CHATGPT_PROJECT_URL: ${CHATGPT_PROJECT_URL:-https://chatgpt.com/}
+      CHATGPT_EMAIL: ${CHATGPT_EMAIL:-}
+      CHATGPT_PASSWORD_FILE: ${CHATGPT_PASSWORD_FILE:-/run/secrets/chatgpt_password}
+      CHATGPT_HEADLESS: ${CHATGPT_HEADLESS:-0}
+      CHATGPT_USE_PATCHRIGHT: ${CHATGPT_USE_PATCHRIGHT:-1}
+      CHATGPT_BROWSER_CHANNEL: ${CHATGPT_BROWSER_CHANNEL:-chrome}
+      CHATGPT_DISABLE_FEDCM: ${CHATGPT_DISABLE_FEDCM:-1}
+      CHATGPT_FILTER_NO_SANDBOX: ${CHATGPT_FILTER_NO_SANDBOX:-0}
+      CHATGPT_SERVICE_TOKEN: ${CHATGPT_SERVICE_TOKEN:-}
+      CHATGPT_MAX_RETRIES: ${CHATGPT_MAX_RETRIES:-2}
+      CHATGPT_RETRY_BACKOFF_SECONDS: ${CHATGPT_RETRY_BACKOFF_SECONDS:-2.0}
+      CHATGPT_MIN_CONTEXT_SPACING_SECONDS: ${CHATGPT_MIN_CONTEXT_SPACING_SECONDS:-8.0}
+      CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS: ${CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS:-120.0}
+    volumes:
+      - ./profile:/app/profile
+      - ./debug_artifacts:/app/debug_artifacts
+    secrets:
+      - chatgpt_password
+
+secrets:
+  chatgpt_password:
+    file: ${CHATGPT_PASSWORD_SECRET_FILE:-./secrets/chatgpt_password.txt}
