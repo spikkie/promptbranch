@@ -1181,14 +1181,26 @@ class ChatGPTBrowserClient:
         )
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
+        persistence_candidates = self._build_persistence_source_candidates(
+            requested_match=requested_match,
+            source_match_candidates=source_match_candidates,
+            matched_card=matched_source,
+        )
+        persisted_source = await self._verify_project_source_persistence(
+            page,
+            project_url=project_home_url,
+            source_match_candidates=persistence_candidates,
+        )
+        persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         result = {
             "ok": True,
             "action": "add",
             "project_url": project_home_url,
             "source_kind": normalized_kind,
-            "source_match": actual_match,
+            "source_match": persisted_match,
             "source_match_requested": requested_match,
-            "source_match_candidates": source_match_candidates,
+            "source_match_candidates": persistence_candidates,
+            "persistence_verified": True,
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-source-add", "project source added", **result)
@@ -2675,6 +2687,27 @@ class ChatGPTBrowserClient:
     def _normalize_source_match_text(self, value: Optional[str]) -> str:
         return re.sub(r"\s+", " ", (value or "").strip())
 
+    def _build_persistence_source_candidates(
+        self,
+        *,
+        requested_match: Optional[str],
+        source_match_candidates: Optional[list[str]],
+        matched_card: Optional[dict[str, str]],
+    ) -> list[str]:
+        candidates: list[str] = []
+
+        def add(candidate: Optional[str]) -> None:
+            normalized = self._normalize_source_match_text(candidate)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+        add(requested_match)
+        for candidate in source_match_candidates or []:
+            add(candidate)
+        for candidate in self._source_card_identity_candidates(matched_card):
+            add(candidate)
+        return candidates
+
     def _build_source_match_candidates(
         self,
         source_kind: str,
@@ -3300,6 +3333,33 @@ class ChatGPTBrowserClient:
             )
         await target.set_input_files(file_path)
         await page.wait_for_timeout(1_500)
+
+    async def _verify_project_source_persistence(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        source_match_candidates: list[str],
+        timeout_ms: int = 15_000,
+    ) -> Optional[dict[str, str]]:
+        if not source_match_candidates:
+            raise ResponseTimeoutError("Project source persistence check requires at least one source match candidate")
+        sources_url = self._project_sources_url(project_url)
+        self._log(
+            "project-source-add",
+            "verifying project source persistence after refresh",
+            project_url=project_url,
+            sources_url=sources_url,
+            source_match_candidates=source_match_candidates,
+        )
+        await self._goto(page, sources_url, label="project-source-add-persistence-refresh")
+        return await self._wait_for_source_presence(
+            page,
+            source_match_candidates=source_match_candidates,
+            before_sources=None,
+            accept_single_new_card=False,
+            timeout_ms=timeout_ms,
+        )
 
     async def _wait_for_source_presence(
         self,
