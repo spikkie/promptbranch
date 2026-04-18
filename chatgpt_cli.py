@@ -7,7 +7,7 @@ import os
 import shlex
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Protocol
 
 from dotenv import load_dotenv
 
@@ -19,10 +19,12 @@ from chatgpt_browser_auth.exceptions import (
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
+from chatgpt_service_client import ChatGPTServiceClient
 
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
+DEFAULT_SERVICE_TIMEOUT_SECONDS = 300.0
 COMMANDS = {
     "login-check",
     "ask",
@@ -49,7 +51,286 @@ GLOBAL_OPTION_HAS_VALUE = {
     "--retry-backoff-seconds": True,
     "--debug": False,
     "--dotenv": True,
+    "--service-base-url": True,
+    "--service-token": True,
+    "--service-timeout-seconds": True,
 }
+
+
+class CommandBackend(Protocol):
+    async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]: ...
+
+    async def create_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]: ...
+
+    async def ensure_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]: ...
+
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def remove_project_source(
+        self,
+        source_name: str,
+        *,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]: ...
+
+    async def ask(
+        self,
+        prompt: str,
+        *,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> Any: ...
+
+
+class DirectBackend:
+    def __init__(self, service: ChatGPTAutomationService) -> None:
+        self._service = service
+
+    async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._service.run_login_check(keep_open=keep_open)
+
+    async def create_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._service.create_project(
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
+    async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._service.resolve_project(name=name, keep_open=keep_open)
+
+    async def ensure_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._service.ensure_project(
+            name=name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+        )
+
+    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._service.remove_project(keep_open=keep_open)
+
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._service.add_project_source(
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+        )
+
+    async def remove_project_source(
+        self,
+        source_name: str,
+        *,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._service.remove_project_source(
+            source_name=source_name,
+            exact=exact,
+            keep_open=keep_open,
+        )
+
+    async def ask(
+        self,
+        prompt: str,
+        *,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> Any:
+        return await self._service.ask_question(
+            prompt=prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
+            retries=retries,
+        )
+
+
+class ServiceBackend:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        token: Optional[str],
+        timeout: float,
+        project_url: Optional[str],
+    ) -> None:
+        self._client = ChatGPTServiceClient(base_url, token=token, timeout=timeout)
+        self._project_url = project_url
+
+    async def _call(self, fn, /, *args, **kwargs):
+        return await asyncio.to_thread(fn, *args, **kwargs)
+
+    async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(self._client.login_check, keep_open=keep_open)
+
+    async def create_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.create_project,
+            name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(
+            self._client.resolve_project,
+            name,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def ensure_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.ensure_project,
+            name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(
+            self._client.remove_project,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def add_project_source(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.add_project_source,
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def remove_project_source(
+        self,
+        source_name: str,
+        *,
+        exact: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.remove_project_source,
+            source_name,
+            exact=exact,
+            keep_open=keep_open,
+            project_url=self._project_url,
+        )
+
+    async def ask(
+        self,
+        prompt: str,
+        *,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> Any:
+        return await self._call(
+            self._client.ask,
+            prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
+            retries=retries,
+            project_url=self._project_url,
+        )
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -87,16 +368,25 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
     return ChatGPTAutomationService(settings)
 
 
-async def cmd_login_check(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.run_login_check(keep_open=args.keep_open)
+def build_backend(args: argparse.Namespace) -> CommandBackend:
+    if args.service_base_url:
+        return ServiceBackend(
+            base_url=args.service_base_url,
+            token=args.service_token,
+            timeout=args.service_timeout_seconds,
+            project_url=args.project_url,
+        )
+    return DirectBackend(build_service(args))
+
+
+async def cmd_login_check(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.login_check(keep_open=args.keep_open)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
 
-
-
-async def cmd_project_create(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.create_project(
+async def cmd_project_create(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.create_project(
         name=args.name,
         icon=args.icon,
         color=args.color,
@@ -107,8 +397,8 @@ async def cmd_project_create(service: ChatGPTAutomationService, args: argparse.N
     return 0
 
 
-async def cmd_project_resolve(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.resolve_project(
+async def cmd_project_resolve(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.resolve_project(
         name=args.name,
         keep_open=args.keep_open,
     )
@@ -116,8 +406,8 @@ async def cmd_project_resolve(service: ChatGPTAutomationService, args: argparse.
     return 0 if result.get("ok") else 1
 
 
-async def cmd_project_ensure(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.ensure_project(
+async def cmd_project_ensure(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.ensure_project(
         name=args.name,
         icon=args.icon,
         color=args.color,
@@ -127,14 +417,14 @@ async def cmd_project_ensure(service: ChatGPTAutomationService, args: argparse.N
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("ok") else 1
 
-async def cmd_project_remove(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.remove_project(
-        keep_open=args.keep_open,
-    )
+
+async def cmd_project_remove(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.remove_project(keep_open=args.keep_open)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
-async def cmd_project_source_add(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+
+async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
     source_kind = args.type
     value = args.value
     file_path = args.file
@@ -145,7 +435,7 @@ async def cmd_project_source_add(service: ChatGPTAutomationService, args: argpar
         print(f"error: --value is required when --type={source_kind}", file=sys.stderr)
         return 2
 
-    result = await service.add_project_source(
+    result = await backend.add_project_source(
         source_kind=source_kind,
         value=value,
         file_path=file_path,
@@ -156,8 +446,8 @@ async def cmd_project_source_add(service: ChatGPTAutomationService, args: argpar
     return 0
 
 
-async def cmd_project_source_remove(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
-    result = await service.remove_project_source(
+async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.remove_project_source(
         source_name=args.source_name,
         exact=args.exact,
         keep_open=args.keep_open,
@@ -166,7 +456,7 @@ async def cmd_project_source_remove(service: ChatGPTAutomationService, args: arg
     return 0
 
 
-async def cmd_ask(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     prompt = args.prompt
     if not prompt and not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
@@ -174,7 +464,7 @@ async def cmd_ask(service: ChatGPTAutomationService, args: argparse.Namespace) -
         print("error: prompt is required", file=sys.stderr)
         return 2
 
-    response = await service.ask_question(
+    response = await backend.ask(
         prompt=prompt,
         file_path=args.file,
         expect_json=args.json,
@@ -201,7 +491,7 @@ Anything else is sent as a prompt to ChatGPT.
 """
 
 
-async def cmd_shell(service: ChatGPTAutomationService, args: argparse.Namespace) -> int:
+async def cmd_shell(backend: CommandBackend, args: argparse.Namespace) -> int:
     json_mode = args.json
     attached_file: Optional[str] = args.file
     retries: Optional[int] = args.retries
@@ -227,7 +517,7 @@ async def cmd_shell(service: ChatGPTAutomationService, args: argparse.Namespace)
         if line in {":quit", ":exit"}:
             return 0
         if line == ":login":
-            result = await service.run_login_check(keep_open=args.keep_open)
+            result = await backend.login_check(keep_open=args.keep_open)
             print(json.dumps(result, indent=2, ensure_ascii=False))
             continue
         if line.startswith(":json "):
@@ -275,7 +565,7 @@ async def cmd_shell(service: ChatGPTAutomationService, args: argparse.Namespace)
 
         print("\n--- response ---")
         try:
-            response = await service.ask_question(
+            response = await backend.ask(
                 prompt=line,
                 file_path=attached_file,
                 expect_json=json_mode,
@@ -331,7 +621,7 @@ def _normalize_global_options(argv: list[str]) -> list[str]:
 
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Single CLI tool for ChatGPT browser automation using chatgpt_automation.",
+        description="Single CLI tool for ChatGPT browser automation or the Docker service API.",
     )
     parser.add_argument("--project-url", default=os.getenv("CHATGPT_PROJECT_URL", DEFAULT_PROJECT_URL))
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
@@ -347,6 +637,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
+    parser.add_argument("--service-base-url", default=os.getenv("CHATGPT_SERVICE_BASE_URL"), help="Use the Docker service API instead of local browser automation.")
+    parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN"), help="Bearer token for the Docker service API.")
+    parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", str(DEFAULT_SERVICE_TIMEOUT_SECONDS))))
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -447,25 +740,25 @@ def _max_retries_was_configured(argv: list[str]) -> bool:
 
 
 async def _async_main(args: argparse.Namespace) -> int:
-    service = build_service(args)
+    backend = build_backend(args)
     if args.command == "login-check":
-        return await cmd_login_check(service, args)
+        return await cmd_login_check(backend, args)
     if args.command == "project-create":
-        return await cmd_project_create(service, args)
+        return await cmd_project_create(backend, args)
     if args.command == "project-resolve":
-        return await cmd_project_resolve(service, args)
+        return await cmd_project_resolve(backend, args)
     if args.command == "project-ensure":
-        return await cmd_project_ensure(service, args)
+        return await cmd_project_ensure(backend, args)
     if args.command == "project-remove":
-        return await cmd_project_remove(service, args)
+        return await cmd_project_remove(backend, args)
     if args.command == "project-source-add":
-        return await cmd_project_source_add(service, args)
+        return await cmd_project_source_add(backend, args)
     if args.command == "project-source-remove":
-        return await cmd_project_source_remove(service, args)
+        return await cmd_project_source_remove(backend, args)
     if args.command == "ask":
-        return await cmd_ask(service, args)
+        return await cmd_ask(backend, args)
     if args.command == "shell":
-        return await cmd_shell(service, args)
+        return await cmd_shell(backend, args)
     raise RuntimeError(f"Unknown command: {args.command}")
 
 

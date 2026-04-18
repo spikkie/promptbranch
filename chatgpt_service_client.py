@@ -116,6 +116,28 @@ class ChatGPTServiceClient:
         return self._json(self._client.get("/v1/project-source-capabilities", params=params))
 
 
+
+    def create_project(
+        self,
+        name: str,
+        *,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "default",
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "name": name,
+            "icon": icon,
+            "color": color,
+            "memory_mode": memory_mode,
+            "keep_open": keep_open,
+        }
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/projects/create", json=payload))
+
     def resolve_project(
         self,
         name: str,

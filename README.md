@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.51
+# ChatGPT ClaudeCode Workflow v0.0.52
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.51 .
+docker build -t chatgpt-docker-service:0.0.52 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.51
+  chatgpt-docker-service:0.0.52
 ```
 
 Compose option:
@@ -194,34 +194,78 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.51
+  chatgpt-docker-service:0.0.52
 ```
 
 ## CLI usage remains available
 
-Headed login check:
+The CLI can target either:
+- local browser automation directly
+- the Docker service API via `--service-base-url`
+
+Headed login check against local automation:
 
 ```bash
 python chatgpt_cli.py login-check --keep-open
 ```
 
-Ask one question:
+Ask one question against local automation:
 
 ```bash
 python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
 ```
 
-Add a source to a project:
+Ask one question through the Docker service:
 
 ```bash
-python chatgpt_cli.py project-source-add --type text --value "Reference notes for this project" --name "Notes" --dotenv .env
-python chatgpt_cli.py project-source-add --type file --file ./docs/spec.pdf --dotenv .env
+python chatgpt_cli.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  ask "Explain Python context managers in 5 lines"
+```
+
+Create a project through the Docker service:
+
+```bash
+python chatgpt_cli.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  project-create "Demo Project" --icon folder --color blue
+```
+
+Add a text source to a specific project through the Docker service:
+
+```bash
+python chatgpt_cli.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  --project-url https://chatgpt.com/g/g-p-.../project \
+  project-source-add --type text --value "Reference notes for this project" --name "Notes"
+```
+
+Add a file source to a specific project through the Docker service:
+
+```bash
+python chatgpt_cli.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  --project-url https://chatgpt.com/g/g-p-.../project \
+  project-source-add --type file --file ./docs/spec.pdf
 ```
 
 Remove a source from a project:
 
 ```bash
 python chatgpt_cli.py project-source-remove "Notes" --exact --dotenv .env
+```
+
+Open the interactive shell through the Docker service:
+
+```bash
+python chatgpt_cli.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  shell
 ```
 
 ## Environment variables
@@ -242,6 +286,8 @@ Core service settings:
 - `CHATGPT_MIN_CONTEXT_SPACING_SECONDS`
 - `CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS`
 - `CHATGPT_SERVICE_TOKEN`
+- `CHATGPT_SERVICE_BASE_URL`
+- `CHATGPT_SERVICE_TIMEOUT_SECONDS`
 - `CHATGPT_UVICORN_APP`
 - `PORT`
 
