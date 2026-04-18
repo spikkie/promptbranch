@@ -104,3 +104,30 @@ def test_http_error_includes_detail_from_json_body() -> None:
             assert "chrome profile in use" in str(exc)
         else:  # pragma: no cover - defensive
             raise AssertionError("expected HTTPStatusError")
+
+
+def test_create_project_posts_expected_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/projects/create"
+        payload = json.loads(request.read().decode("utf-8"))
+        assert payload == {
+            "name": "Demo",
+            "icon": "folder",
+            "color": "blue",
+            "memory_mode": "project-only",
+            "keep_open": False,
+            "project_url": "https://chatgpt.com/g/demo/project",
+        }
+        return httpx.Response(200, json={"ok": True, "project_url": "https://chatgpt.com/g/new/project"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.create_project(
+            "Demo",
+            icon="folder",
+            color="blue",
+            memory_mode="project-only",
+            project_url="https://chatgpt.com/g/demo/project",
+        )
+
+    assert payload["project_url"] == "https://chatgpt.com/g/new/project"

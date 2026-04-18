@@ -77,7 +77,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.51"
+SERVICE_VERSION = "0.0.52"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -210,6 +210,20 @@ async def ask(
 async def project_source_capabilities(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:
         return await _service_for(project_url).discover_project_source_capabilities(keep_open=keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/projects/create", dependencies=[Depends(require_service_token)])
+async def create_project(payload: ProjectEnsureRequest) -> dict:
+    try:
+        return await _service_for(payload.project_url).create_project(
+            name=payload.name,
+            icon=payload.icon,
+            color=payload.color,
+            memory_mode=payload.memory_mode,
+            keep_open=payload.keep_open,
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 
