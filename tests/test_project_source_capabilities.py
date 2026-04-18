@@ -163,6 +163,17 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
             "current_url": "https://chatgpt.com/g/g-p-123/project?tab=sources",
         }
 
+    async def fake_wait_for_save_quiet(*_args, **kwargs):
+        call_order.append("save_quiet")
+        assert kwargs["source_kind"] == "text"
+        return {
+            "saw_relevant": True,
+            "started": 1,
+            "finished": 1,
+            "failed": 0,
+            "inflight": 0,
+        }
+
     async def fake_verify_persistence(*_args, **kwargs):
         call_order.append("verify")
         assert kwargs["source_match_candidates"] == [
@@ -189,8 +200,11 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
     browser_client._add_project_textual_source = fake_add_textual_source  # type: ignore[method-assign]
     browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
     browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
     browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": False}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
     result = asyncio.run(
         browser_client._add_project_source_operation(
@@ -204,11 +218,102 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
         )
     )
 
-    assert call_order == ["presence", "settle", "verify"]
+    assert call_order == ["presence", "settle", "save_quiet", "verify"]
     assert result["ok"] is True
     assert result["source_match"] == "pasted.txt Document"
     assert result["source_match_requested"] == "Integration note for run 123"
     assert result["persistence_verified"] is True
+
+
+def test_wait_for_project_source_save_request_quiet_requires_relevant_requests_to_finish(browser_client: ChatGPTBrowserClient) -> None:
+    class _QuietPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _QuietPage()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        watch = {
+            "installed": True,
+            "source_kind": "text",
+            "started": 1,
+            "finished": 0,
+            "failed": 0,
+            "saw_relevant": True,
+            "inflight": {1},
+            "last_activity": loop.time(),
+        }
+
+        async def advance_state() -> None:
+            await asyncio.sleep(0)
+            watch["inflight"].clear()
+            watch["finished"] = 1
+            watch["last_activity"] = loop.time() - 2
+
+        loop.create_task(advance_state())
+        settled = loop.run_until_complete(
+            browser_client._wait_for_project_source_save_request_quiet(
+                page,
+                watch,
+                source_kind="text",
+                timeout_ms=1000,
+                observation_window_ms=200,
+                quiet_window_ms=100,
+                poll_interval_ms=10,
+            )
+        )
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+    assert settled["saw_relevant"] is True
+    assert settled["finished"] == 1
+    assert settled["inflight"] == 0
+    assert page.wait_calls
+
+
+def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_window(browser_client: ChatGPTBrowserClient) -> None:
+    class _QuietPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _QuietPage()
+    watch = {
+        "installed": True,
+        "source_kind": "text",
+        "started": 0,
+        "finished": 0,
+        "failed": 0,
+        "saw_relevant": False,
+        "inflight": set(),
+        "last_activity": None,
+    }
+
+    settled = asyncio.run(
+        browser_client._wait_for_project_source_save_request_quiet(
+            page,
+            watch,
+            source_kind="text",
+            timeout_ms=500,
+            observation_window_ms=50,
+            quiet_window_ms=100,
+            poll_interval_ms=10,
+        )
+    )
+
+    assert settled["saw_relevant"] is False
+    assert settled["observation_window_elapsed"] is True
+    assert settled["quiet_now"] is True
+    assert page.wait_calls
 
 
 def test_wait_for_project_source_post_save_settle_requires_stable_closed_dialog(browser_client: ChatGPTBrowserClient) -> None:

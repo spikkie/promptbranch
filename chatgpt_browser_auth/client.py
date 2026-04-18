@@ -1143,47 +1143,62 @@ class ChatGPTBrowserClient:
             raise ValueError(f"Unsupported source kind: {source_kind!r}")
 
         before_sources = await self._snapshot_project_source_cards(page)
-
-        source_match_candidates: list[str]
-        if normalized_kind == "file":
-            if not file_path:
-                raise ValueError("file_path is required when source_kind='file'")
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(file_path)
-            await self._add_project_file_source(page, file_path=file_path)
-            source_match_candidates = self._build_source_match_candidates(
-                normalized_kind,
-                value=None,
-                display_name=display_name,
-                file_path=file_path,
-            )
-        else:
-            if not value:
-                raise ValueError(f"value is required when source_kind={normalized_kind!r}")
-            await self._add_project_textual_source(
-                page,
-                source_kind=normalized_kind,
-                value=value,
-                display_name=display_name,
-            )
-            source_match_candidates = self._build_source_match_candidates(
-                normalized_kind,
-                value=value,
-                display_name=display_name,
-                file_path=None,
-            )
-
-        matched_source = await self._wait_for_source_presence(
-            page,
-            source_match_candidates=source_match_candidates,
-            before_sources=before_sources,
-            accept_single_new_card=normalized_kind == "text",
-        )
+        save_request_watch = None
         if normalized_kind in {"text", "file"}:
-            await self._wait_for_project_source_post_save_settle(
-                page,
+            save_request_watch = self._install_project_source_save_request_watch(
+                context,
                 source_kind=normalized_kind,
             )
+
+        try:
+            source_match_candidates: list[str]
+            if normalized_kind == "file":
+                if not file_path:
+                    raise ValueError("file_path is required when source_kind='file'")
+                if not os.path.exists(file_path):
+                    raise FileNotFoundError(file_path)
+                await self._add_project_file_source(page, file_path=file_path)
+                source_match_candidates = self._build_source_match_candidates(
+                    normalized_kind,
+                    value=None,
+                    display_name=display_name,
+                    file_path=file_path,
+                )
+            else:
+                if not value:
+                    raise ValueError(f"value is required when source_kind={normalized_kind!r}")
+                await self._add_project_textual_source(
+                    page,
+                    source_kind=normalized_kind,
+                    value=value,
+                    display_name=display_name,
+                )
+                source_match_candidates = self._build_source_match_candidates(
+                    normalized_kind,
+                    value=value,
+                    display_name=display_name,
+                    file_path=None,
+                )
+
+            matched_source = await self._wait_for_source_presence(
+                page,
+                source_match_candidates=source_match_candidates,
+                before_sources=before_sources,
+                accept_single_new_card=normalized_kind == "text",
+            )
+            if normalized_kind in {"text", "file"}:
+                await self._wait_for_project_source_post_save_settle(
+                    page,
+                    source_kind=normalized_kind,
+                )
+                await self._wait_for_project_source_save_request_quiet(
+                    page,
+                    save_request_watch,
+                    source_kind=normalized_kind,
+                )
+        finally:
+            if save_request_watch is not None:
+                self._dispose_project_source_save_request_watch(context, save_request_watch)
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
         persistence_candidates = self._build_persistence_source_candidates(
@@ -3338,6 +3353,206 @@ class ChatGPTBrowserClient:
             )
         await target.set_input_files(file_path)
         await page.wait_for_timeout(1_500)
+
+
+    def _is_project_source_save_request(self, request_or_url: Any, *, source_kind: str) -> bool:
+        try:
+            url = request_or_url.url if hasattr(request_or_url, "url") else str(request_or_url)
+        except Exception:
+            return False
+        normalized_url = (url or "").lower()
+        if not normalized_url:
+            return False
+        if '/backend-api/gizmos/snorlax/upsert' in normalized_url:
+            return True
+        if source_kind in {"text", "file"} and 'oaiusercontent.com/files/' in normalized_url and '/raw' in normalized_url:
+            return True
+        return False
+
+    def _install_project_source_save_request_watch(self, context: Any, *, source_kind: str) -> dict[str, Any]:
+        watch: dict[str, Any] = {
+            "source_kind": source_kind,
+            "installed": False,
+            "started": 0,
+            "finished": 0,
+            "failed": 0,
+            "saw_relevant": False,
+            "inflight": set(),
+            "last_activity": None,
+            "handlers": None,
+        }
+        if context is None or not hasattr(context, "on"):
+            return watch
+
+        loop = asyncio.get_running_loop()
+
+        def on_request(req: Any) -> None:
+            if not self._is_project_source_save_request(req, source_kind=source_kind):
+                return
+            inflight = watch.setdefault("inflight", set())
+            inflight.add(id(req))
+            watch["started"] = int(watch.get("started") or 0) + 1
+            watch["saw_relevant"] = True
+            watch["last_activity"] = loop.time()
+            self._log(
+                "project-source-add",
+                "observed project source save request start",
+                source_kind=source_kind,
+                method=getattr(req, "method", None),
+                url=getattr(req, "url", None),
+                started=watch.get("started"),
+                inflight=len(inflight),
+            )
+
+        def on_request_finished(req: Any) -> None:
+            inflight = watch.setdefault("inflight", set())
+            token = id(req)
+            if token not in inflight:
+                return
+            inflight.discard(token)
+            watch["finished"] = int(watch.get("finished") or 0) + 1
+            watch["last_activity"] = loop.time()
+            self._log(
+                "project-source-add",
+                "observed project source save request finish",
+                source_kind=source_kind,
+                method=getattr(req, "method", None),
+                url=getattr(req, "url", None),
+                finished=watch.get("finished"),
+                inflight=len(inflight),
+            )
+
+        def on_request_failed(req: Any) -> None:
+            token = id(req)
+            relevant = self._is_project_source_save_request(req, source_kind=source_kind)
+            inflight = watch.setdefault("inflight", set())
+            was_inflight = token in inflight
+            if not relevant and not was_inflight:
+                return
+            inflight.discard(token)
+            watch["failed"] = int(watch.get("failed") or 0) + 1
+            watch["saw_relevant"] = True
+            watch["last_activity"] = loop.time()
+            failure_text = None
+            try:
+                failure = req.failure
+                failure_text = failure if isinstance(failure, str) else getattr(failure, "error_text", None)
+            except Exception:
+                failure_text = None
+            self._log(
+                "project-source-add",
+                "observed project source save request failure",
+                source_kind=source_kind,
+                method=getattr(req, "method", None),
+                url=getattr(req, "url", None),
+                failure=failure_text,
+                failed=watch.get("failed"),
+                inflight=len(inflight),
+            )
+
+        context.on("request", on_request)
+        context.on("requestfinished", on_request_finished)
+        context.on("requestfailed", on_request_failed)
+        watch["installed"] = True
+        watch["handlers"] = {
+            "request": on_request,
+            "requestfinished": on_request_finished,
+            "requestfailed": on_request_failed,
+        }
+        return watch
+
+    def _dispose_project_source_save_request_watch(self, context: Any, watch: Optional[dict[str, Any]]) -> None:
+        if context is None or not watch or not watch.get("installed"):
+            return
+        handlers = watch.get("handlers") or {}
+        for event_name, handler in handlers.items():
+            if handler is None:
+                continue
+            try:
+                if hasattr(context, "remove_listener"):
+                    context.remove_listener(event_name, handler)
+                elif hasattr(context, "off"):
+                    context.off(event_name, handler)
+            except Exception as exc:
+                self._log(
+                    "project-source-add",
+                    "failed to dispose project source save request watch",
+                    source_kind=watch.get("source_kind"),
+                    event_name=event_name,
+                    error=str(exc),
+                )
+
+    async def _wait_for_project_source_save_request_quiet(
+        self,
+        page: Any,
+        watch: Optional[dict[str, Any]],
+        *,
+        source_kind: str,
+        timeout_ms: int = 12_000,
+        observation_window_ms: int = 6_000,
+        quiet_window_ms: int = 1_500,
+        poll_interval_ms: int = 150,
+    ) -> dict[str, Any]:
+        if watch is None:
+            await page.wait_for_timeout(observation_window_ms)
+            return {
+                "source_kind": source_kind,
+                "saw_relevant": False,
+                "started": 0,
+                "finished": 0,
+                "failed": 0,
+                "inflight": 0,
+                "quiet_window_ms": quiet_window_ms,
+                "observation_window_ms": observation_window_ms,
+            }
+
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        observation_deadline = min(deadline, asyncio.get_running_loop().time() + (observation_window_ms / 1000))
+        quiet_window_s = quiet_window_ms / 1000
+        last_state: dict[str, Any] = {}
+
+        while asyncio.get_running_loop().time() < deadline:
+            now = asyncio.get_running_loop().time()
+            saw_relevant = bool(watch.get("saw_relevant"))
+            inflight = watch.get("inflight") or set()
+            started = int(watch.get("started") or 0)
+            finished = int(watch.get("finished") or 0)
+            failed = int(watch.get("failed") or 0)
+            last_activity = watch.get("last_activity")
+            idle_for_s = None if last_activity is None else max(0.0, now - float(last_activity))
+            observation_window_elapsed = now >= observation_deadline
+            quiet_now = not inflight and (
+                (idle_for_s is not None and idle_for_s >= quiet_window_s)
+                or (not saw_relevant and observation_window_elapsed)
+            )
+            last_state = {
+                "source_kind": source_kind,
+                "saw_relevant": saw_relevant,
+                "started": started,
+                "finished": finished,
+                "failed": failed,
+                "inflight": len(inflight),
+                "idle_for_s": idle_for_s,
+                "observation_window_elapsed": observation_window_elapsed,
+                "quiet_now": quiet_now,
+            }
+            self._log(
+                "project-source-add",
+                "project source save quiet probe",
+                quiet_window_ms=quiet_window_ms,
+                observation_window_ms=observation_window_ms,
+                **last_state,
+            )
+            if quiet_now:
+                return last_state
+            await page.wait_for_timeout(poll_interval_ms)
+
+        raise ResponseTimeoutError(
+            "Timed out waiting for project source save requests to go quiet "
+            f"(source_kind={source_kind}, saw_relevant={last_state.get('saw_relevant')}, "
+            f"started={last_state.get('started')}, finished={last_state.get('finished')}, "
+            f"failed={last_state.get('failed')}, inflight={last_state.get('inflight')})"
+        )
 
     async def _verify_project_source_persistence(
         self,
