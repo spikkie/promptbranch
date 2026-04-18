@@ -4,12 +4,11 @@ import argparse
 import asyncio
 import json
 import os
-import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from dotenv import load_dotenv
 
@@ -26,6 +25,75 @@ DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 1
 
+CANONICAL_STEP_ORDER: tuple[str, ...] = (
+    "login_check",
+    "project_resolve_before_create",
+    "project_ensure_create_or_reuse",
+    "project_ensure_idempotent",
+    "project_resolve_after_ensure",
+    "project_source_capabilities",
+    "project_source_add_link",
+    "project_source_add_text",
+    "project_source_add_file",
+    "ask_question",
+    "project_source_remove_link",
+    "project_source_remove_text",
+    "project_source_remove_file",
+    "project_remove_cleanup",
+)
+
+STEP_ALIASES: dict[str, tuple[str, ...]] = {
+    "all": CANONICAL_STEP_ORDER,
+    "login": ("login_check",),
+    "project_ensure": (
+        "project_resolve_before_create",
+        "project_ensure_create_or_reuse",
+        "project_ensure_idempotent",
+        "project_resolve_after_ensure",
+    ),
+    "source_capabilities": ("project_source_capabilities",),
+    "source_add_link": ("project_source_add_link",),
+    "source_add_text": ("project_source_add_text",),
+    "source_add_file": ("project_source_add_file",),
+    "source_remove_link": ("project_source_remove_link",),
+    "source_remove_text": ("project_source_remove_text",),
+    "source_remove_file": ("project_source_remove_file",),
+    "source_add": (
+        "project_source_add_link",
+        "project_source_add_text",
+        "project_source_add_file",
+    ),
+    "source_remove": (
+        "project_source_remove_link",
+        "project_source_remove_text",
+        "project_source_remove_file",
+    ),
+    "ask": ("ask_question",),
+    "project_remove": ("project_remove_cleanup",),
+    "cleanup": ("project_remove_cleanup",),
+}
+
+SOURCE_FLOW_STEPS = {
+    "project_source_add_link",
+    "project_source_add_text",
+    "project_source_add_file",
+    "project_source_remove_link",
+    "project_source_remove_text",
+    "project_source_remove_file",
+}
+PROJECT_CONTEXT_REQUIRED_STEPS = {
+    "project_source_capabilities",
+    *SOURCE_FLOW_STEPS,
+    "ask_question",
+    "project_remove_cleanup",
+}
+REMOVAL_STEPS = {
+    "project_source_remove_link",
+    "project_source_remove_text",
+    "project_source_remove_file",
+}
+ALLOWED_STEP_TOKENS = set(CANONICAL_STEP_ORDER) | set(STEP_ALIASES)
+
 
 @dataclass
 class StepResult:
@@ -33,6 +101,13 @@ class StepResult:
     ok: bool
     duration_seconds: float
     details: Any
+
+
+@dataclass(frozen=True)
+class StepSelection:
+    requested_only: tuple[str, ...]
+    requested_skip: tuple[str, ...]
+    enabled_steps: tuple[str, ...]
 
 
 class IntegrationAssertionError(RuntimeError):
@@ -68,6 +143,70 @@ def _configure_logging(debug: bool) -> None:
     )
 
 
+
+def _split_step_tokens(values: Sequence[str]) -> tuple[str, ...]:
+    tokens: list[str] = []
+    for value in values:
+        for token in value.split(","):
+            normalized = token.strip()
+            if normalized:
+                tokens.append(normalized)
+    return tuple(tokens)
+
+
+
+def _expand_step_token(token: str) -> tuple[str, ...]:
+    if token in STEP_ALIASES:
+        return STEP_ALIASES[token]
+    if token in CANONICAL_STEP_ORDER:
+        return (token,)
+    raise ValueError(f"Unknown step selector: {token}")
+
+
+
+def resolve_step_selection(
+    *,
+    only_values: Sequence[str],
+    skip_values: Sequence[str],
+    keep_project: bool = False,
+) -> StepSelection:
+    requested_only = _split_step_tokens(only_values)
+    requested_skip = _split_step_tokens(skip_values)
+
+    invalid = [token for token in (*requested_only, *requested_skip) if token not in ALLOWED_STEP_TOKENS]
+    if invalid:
+        allowed = ", ".join(sorted(ALLOWED_STEP_TOKENS))
+        raise ValueError(f"Unknown step selector(s): {', '.join(sorted(set(invalid)))}. Allowed values: {allowed}")
+
+    enabled = set(CANONICAL_STEP_ORDER if not requested_only else ())
+    if requested_only:
+        for token in requested_only:
+            enabled.update(_expand_step_token(token))
+
+    for token in requested_skip:
+        enabled.difference_update(_expand_step_token(token))
+
+    if keep_project:
+        enabled.discard("project_remove_cleanup")
+
+    if enabled & (set(CANONICAL_STEP_ORDER) - {"project_remove_cleanup"}):
+        enabled.add("login_check")
+
+    if enabled & SOURCE_FLOW_STEPS:
+        enabled.add("project_source_capabilities")
+
+    enabled_steps = tuple(step for step in CANONICAL_STEP_ORDER if step in enabled)
+    if not enabled_steps:
+        raise ValueError("No steps remain after applying --only/--skip/--keep-project")
+
+    return StepSelection(
+        requested_only=requested_only,
+        requested_skip=requested_skip,
+        enabled_steps=enabled_steps,
+    )
+
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -91,6 +230,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--keep-open", action="store_true", help="Pass keep_open through to each browser action.")
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
+    parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
+    parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
+    parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
     parser.add_argument("--project-name", help="Explicit project name to use. Defaults to a generated unique name.")
     parser.add_argument("--project-name-prefix", default="itest-chatgpt-workflow")
     parser.add_argument("--run-id", help="Optional run identifier used when generating names.")
@@ -99,6 +241,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
     parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
     return parser
+
 
 
 def build_settings(args: argparse.Namespace, *, project_url: str) -> ChatGPTAutomationSettings:
@@ -116,6 +259,7 @@ def build_settings(args: argparse.Namespace, *, project_url: str) -> ChatGPTAuto
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
     )
+
 
 
 def build_service(args: argparse.Namespace, *, project_url: str) -> ChatGPTAutomationService:
@@ -150,13 +294,16 @@ async def _run_step(steps: list[StepResult], name: str, coro) -> Any:
         raise
 
 
+
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise IntegrationAssertionError(message)
 
 
+
 def _generated_run_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+
 
 
 def _extract_project_id(url: Optional[str]) -> Optional[str]:
@@ -172,6 +319,7 @@ def _extract_project_id(url: Optional[str]) -> Optional[str]:
     return None
 
 
+
 def _same_project(left: Optional[str], right: Optional[str]) -> bool:
     left_id = _extract_project_id(left)
     right_id = _extract_project_id(right)
@@ -181,6 +329,13 @@ def _same_project(left: Optional[str], right: Optional[str]) -> bool:
 
 
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
+    selection = resolve_step_selection(
+        only_values=args.only,
+        skip_values=args.skip,
+        keep_project=args.keep_project,
+    )
+    enabled_steps = set(selection.enabled_steps)
+
     steps: list[StepResult] = []
     cleanup_steps: list[StepResult] = []
     run_id = args.run_id or _generated_run_id()
@@ -202,13 +357,18 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     text_source_match = text_source_name
     file_source_match = file_source_path.name
 
+    cleanup_enabled = "project_remove_cleanup" in enabled_steps
     summary: dict[str, Any] = {
         "ok": False,
         "run_id": run_id,
         "project_name": project_name,
         "project_url": None,
         "project_id": None,
-        "kept_project": bool(args.keep_project),
+        "kept_project": not cleanup_enabled,
+        "strict_remove_ui": bool(args.strict_remove_ui),
+        "requested_only": list(selection.requested_only),
+        "requested_skip": list(selection.requested_skip),
+        "enabled_steps": list(selection.enabled_steps),
         "steps": [],
         "cleanup_steps": [],
         "artifacts": {
@@ -219,206 +379,257 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         },
     }
 
+    def should_run(step_name: str) -> bool:
+        return step_name in enabled_steps
+
+    remove_results: list[dict[str, Any]] = []
+
     try:
-        login = await _run_step(
-            steps,
-            "login_check",
-            base_service.run_login_check(keep_open=args.keep_open),
-        )
-        _require(login.get("logged_in") is True, f"login_check did not report an active session: {login}")
+        if should_run("login_check"):
+            login = await _run_step(
+                steps,
+                "login_check",
+                base_service.run_login_check(keep_open=args.keep_open),
+            )
+            _require(login.get("logged_in") is True, f"login_check did not report an active session: {login}")
 
-        initial_resolve = await _run_step(
-            steps,
-            "project_resolve_before_create",
-            base_service.resolve_project(name=project_name, keep_open=args.keep_open),
-        )
-        _require(initial_resolve.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve}")
-        _require(
-            initial_resolve.get("match_count") == 0 or bool(args.project_name),
-            (
-                "generated project name already exists before test start; refusing to continue because the run would not be isolated. "
-                "Pass --project-name only when you intentionally want to reuse an existing project."
-            ),
-        )
-
-        ensure_created = await _run_step(
-            steps,
-            "project_ensure_create_or_reuse",
-            base_service.ensure_project(
-                name=project_name,
-                icon=None,
-                color=None,
-                memory_mode=args.memory_mode,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(ensure_created.get("ok") is True, f"project_ensure failed: {ensure_created}")
-        project_url = ensure_created.get("project_url")
-        _require(bool(project_url), f"project_ensure did not return project_url: {ensure_created}")
+        project_url = args.project_url if _extract_project_id(args.project_url) else None
         project_id = _extract_project_id(project_url)
-        _require(bool(project_id), f"project_ensure returned a project_url without a project_id: {ensure_created}")
         summary["project_url"] = project_url
         summary["project_id"] = project_id
 
-        ensure_idempotent = await _run_step(
-            steps,
-            "project_ensure_idempotent",
-            base_service.ensure_project(
-                name=project_name,
-                icon=None,
-                color=None,
-                memory_mode=args.memory_mode,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(ensure_idempotent.get("ok") is True, f"second project_ensure failed: {ensure_idempotent}")
-        _require(ensure_idempotent.get("created") is False, f"second project_ensure was not idempotent: {ensure_idempotent}")
-        _require(
-            _same_project(ensure_idempotent.get("project_url"), project_url),
-            f"second project_ensure returned a different project identity: {ensure_idempotent}",
-        )
-
-        resolved = await _run_step(
-            steps,
-            "project_resolve_after_ensure",
-            base_service.resolve_project(name=project_name, keep_open=args.keep_open),
-        )
-        _require(resolved.get("ok") is True, f"project_resolve failed after ensure: {resolved}")
-        _require(resolved.get("match_count") == 1, f"project_resolve did not uniquely match the project: {resolved}")
-        _require(
-            _same_project(resolved.get("project_url"), project_url),
-            f"project_resolve returned a mismatched project identity: {resolved}",
-        )
-
-        project_service = build_service(args, project_url=project_url)
-
-        source_capabilities = await _run_step(
-            steps,
-            "project_source_capabilities",
-            project_service.discover_project_source_capabilities(keep_open=args.keep_open),
-        )
-        available_source_kinds = list(source_capabilities.get("available_source_kinds") or [])
-        summary["available_source_kinds"] = available_source_kinds
-        link_supported = "link" in set(available_source_kinds)
-        summary["link_source_supported"] = link_supported
-
-        link_add: Optional[dict[str, Any]] = None
-        if link_supported:
-            link_add = await _run_step(
+        if should_run("project_resolve_before_create"):
+            initial_resolve = await _run_step(
                 steps,
-                "project_source_add_link",
-                project_service.add_project_source(
-                    source_kind="link",
-                    value=args.link_url,
-                    display_name=link_source_name,
+                "project_resolve_before_create",
+                base_service.resolve_project(name=project_name, keep_open=args.keep_open),
+            )
+            _require(initial_resolve.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve}")
+            _require(
+                initial_resolve.get("match_count") == 0 or bool(args.project_name),
+                (
+                    "generated project name already exists before test start; refusing to continue because the run would not be isolated. "
+                    "Pass --project-name only when you intentionally want to reuse an existing project."
+                ),
+            )
+
+        if should_run("project_ensure_create_or_reuse"):
+            ensure_created = await _run_step(
+                steps,
+                "project_ensure_create_or_reuse",
+                base_service.ensure_project(
+                    name=project_name,
+                    icon=None,
+                    color=None,
+                    memory_mode=args.memory_mode,
                     keep_open=args.keep_open,
                 ),
             )
-            _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
-            link_source_match = str(link_add.get("source_match") or link_source_name)
-        else:
-            _record_step(
+            _require(ensure_created.get("ok") is True, f"project_ensure failed: {ensure_created}")
+            project_url = ensure_created.get("project_url")
+            _require(bool(project_url), f"project_ensure did not return project_url: {ensure_created}")
+            project_id = _extract_project_id(project_url)
+            _require(bool(project_id), f"project_ensure returned a project_url without a project_id: {ensure_created}")
+            summary["project_url"] = project_url
+            summary["project_id"] = project_id
+
+        if should_run("project_ensure_idempotent"):
+            _require(bool(project_url), "project_ensure_idempotent requires a project_url from project_ensure_create_or_reuse or --project-url")
+            ensure_idempotent = await _run_step(
                 steps,
-                "project_source_add_link",
-                ok=True,
-                details={
-                    "skipped": True,
-                    "reason": "unsupported",
-                    "requested_source_kind": "link",
-                    "available_source_kinds": available_source_kinds,
-                },
+                "project_ensure_idempotent",
+                base_service.ensure_project(
+                    name=project_name,
+                    icon=None,
+                    color=None,
+                    memory_mode=args.memory_mode,
+                    keep_open=args.keep_open,
+                ),
+            )
+            _require(ensure_idempotent.get("ok") is True, f"second project_ensure failed: {ensure_idempotent}")
+            _require(ensure_idempotent.get("created") is False, f"second project_ensure was not idempotent: {ensure_idempotent}")
+            _require(
+                _same_project(ensure_idempotent.get("project_url"), project_url),
+                f"second project_ensure returned a different project identity: {ensure_idempotent}",
             )
 
-        text_add = await _run_step(
-            steps,
-            "project_source_add_text",
-            project_service.add_project_source(
-                source_kind="text",
-                value=f"Integration note for run {run_id}",
-                display_name=text_source_name,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(text_add.get("ok") is True, f"text source add failed: {text_add}")
-        text_source_match = str(text_add.get("source_match") or text_source_name)
-
-        file_add = await _run_step(
-            steps,
-            "project_source_add_file",
-            project_service.add_project_source(
-                source_kind="file",
-                file_path=str(file_source_path),
-                display_name=None,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(file_add.get("ok") is True, f"file source add failed: {file_add}")
-        file_source_match = str(file_add.get("source_match") or file_source_match)
-
-        ask_result = await _run_step(
-            steps,
-            "ask_question",
-            project_service.ask_question(
-                prompt=args.ask_prompt,
-                expect_json=False,
-                keep_open=args.keep_open,
-                retries=0,
-            ),
-        )
-        if isinstance(ask_result, (dict, list)):
-            ask_text = json.dumps(ask_result, ensure_ascii=False)
-        else:
-            ask_text = str(ask_result)
-        _require(
-            "INTEGRATION_OK" in ask_text.upper(),
-            f"ask_question did not contain the expected token. response={ask_text!r}",
-        )
-
-        if link_supported:
-            link_remove = await _run_step(
+        if should_run("project_resolve_after_ensure"):
+            _require(bool(project_url), "project_resolve_after_ensure requires a project_url from project_ensure_create_or_reuse or --project-url")
+            resolved = await _run_step(
                 steps,
-                "project_source_remove_link",
+                "project_resolve_after_ensure",
+                base_service.resolve_project(name=project_name, keep_open=args.keep_open),
+            )
+            _require(resolved.get("ok") is True, f"project_resolve failed after ensure: {resolved}")
+            _require(resolved.get("match_count") == 1, f"project_resolve did not uniquely match the project: {resolved}")
+            _require(
+                _same_project(resolved.get("project_url"), project_url),
+                f"project_resolve returned a mismatched project identity: {resolved}",
+            )
+
+        project_context_needed = bool(enabled_steps & PROJECT_CONTEXT_REQUIRED_STEPS)
+        if project_context_needed:
+            _require(
+                bool(project_url) and bool(project_id),
+                (
+                    "A project-scoped step was selected, but no project context is available. "
+                    "Run project_ensure or pass --project-url pointing at an existing /g/g-p-.../project page."
+                ),
+            )
+
+        project_service = build_service(args, project_url=project_url or args.project_url)
+
+        source_capabilities: Optional[dict[str, Any]] = None
+        available_source_kinds: list[str] = []
+        link_supported = False
+        if should_run("project_source_capabilities"):
+            source_capabilities = await _run_step(
+                steps,
+                "project_source_capabilities",
+                project_service.discover_project_source_capabilities(keep_open=args.keep_open),
+            )
+            available_source_kinds = list(source_capabilities.get("available_source_kinds") or [])
+            link_supported = "link" in set(available_source_kinds)
+            summary["available_source_kinds"] = available_source_kinds
+            summary["link_source_supported"] = link_supported
+
+        if should_run("project_source_add_link"):
+            if link_supported:
+                link_add = await _run_step(
+                    steps,
+                    "project_source_add_link",
+                    project_service.add_project_source(
+                        source_kind="link",
+                        value=args.link_url,
+                        display_name=link_source_name,
+                        keep_open=args.keep_open,
+                    ),
+                )
+                _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
+                link_source_match = str(link_add.get("source_match") or link_source_name)
+            else:
+                _record_step(
+                    steps,
+                    "project_source_add_link",
+                    ok=True,
+                    details={
+                        "skipped": True,
+                        "reason": "unsupported",
+                        "requested_source_kind": "link",
+                        "available_source_kinds": available_source_kinds,
+                    },
+                )
+
+        if should_run("project_source_add_text"):
+            text_add = await _run_step(
+                steps,
+                "project_source_add_text",
+                project_service.add_project_source(
+                    source_kind="text",
+                    value=f"Integration note for run {run_id}",
+                    display_name=text_source_name,
+                    keep_open=args.keep_open,
+                ),
+            )
+            _require(text_add.get("ok") is True, f"text source add failed: {text_add}")
+            text_source_match = str(text_add.get("source_match") or text_source_name)
+
+        if should_run("project_source_add_file"):
+            file_add = await _run_step(
+                steps,
+                "project_source_add_file",
+                project_service.add_project_source(
+                    source_kind="file",
+                    file_path=str(file_source_path),
+                    display_name=None,
+                    keep_open=args.keep_open,
+                ),
+            )
+            _require(file_add.get("ok") is True, f"file source add failed: {file_add}")
+            file_source_match = str(file_add.get("source_match") or file_source_match)
+
+        if should_run("ask_question"):
+            ask_result = await _run_step(
+                steps,
+                "ask_question",
+                project_service.ask_question(
+                    prompt=args.ask_prompt,
+                    expect_json=False,
+                    keep_open=args.keep_open,
+                    retries=0,
+                ),
+            )
+            if isinstance(ask_result, (dict, list)):
+                ask_text = json.dumps(ask_result, ensure_ascii=False)
+            else:
+                ask_text = str(ask_result)
+            _require(
+                "INTEGRATION_OK" in ask_text.upper(),
+                f"ask_question did not contain the expected token. response={ask_text!r}",
+            )
+
+        if should_run("project_source_remove_link"):
+            if link_supported:
+                link_remove = await _run_step(
+                    steps,
+                    "project_source_remove_link",
+                    project_service.remove_project_source(
+                        source_name=link_source_match,
+                        exact=True,
+                        keep_open=args.keep_open,
+                    ),
+                )
+                _require(link_remove.get("ok") is True, f"link source remove failed: {link_remove}")
+                remove_results.append(link_remove)
+            else:
+                _record_step(
+                    steps,
+                    "project_source_remove_link",
+                    ok=True,
+                    details={
+                        "skipped": True,
+                        "reason": "unsupported",
+                        "requested_source_kind": "link",
+                        "available_source_kinds": available_source_kinds,
+                    },
+                )
+
+        if should_run("project_source_remove_text"):
+            text_remove = await _run_step(
+                steps,
+                "project_source_remove_text",
                 project_service.remove_project_source(
-                    source_name=link_source_match,
+                    source_name=text_source_match,
                     exact=True,
                     keep_open=args.keep_open,
                 ),
             )
-            _require(link_remove.get("ok") is True, f"link source remove failed: {link_remove}")
-        else:
-            _record_step(
+            _require(text_remove.get("ok") is True, f"text source remove failed: {text_remove}")
+            remove_results.append(text_remove)
+
+        if should_run("project_source_remove_file"):
+            file_remove = await _run_step(
                 steps,
-                "project_source_remove_link",
-                ok=True,
-                details={
-                    "skipped": True,
-                    "reason": "unsupported",
-                    "requested_source_kind": "link",
-                    "available_source_kinds": available_source_kinds,
-                },
+                "project_source_remove_file",
+                project_service.remove_project_source(
+                    source_name=file_source_match,
+                    exact=False,
+                    keep_open=args.keep_open,
+                ),
             )
+            _require(file_remove.get("ok") is True, f"file source remove failed: {file_remove}")
+            remove_results.append(file_remove)
 
-        text_remove = await _run_step(
-            steps,
-            "project_source_remove_text",
-            project_service.remove_project_source(
-                source_name=text_source_match,
-                exact=True,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(text_remove.get("ok") is True, f"text source remove failed: {text_remove}")
-
-        file_remove = await _run_step(
-            steps,
-            "project_source_remove_file",
-            project_service.remove_project_source(
-                source_name=file_source_match,
-                exact=False,
-                keep_open=args.keep_open,
-            ),
-        )
-        _require(file_remove.get("ok") is True, f"file source remove failed: {file_remove}")
+        if args.strict_remove_ui:
+            _require(
+                bool(enabled_steps & REMOVAL_STEPS),
+                "--strict-remove-ui requires at least one enabled source-removal step",
+            )
+            _require(bool(remove_results), "--strict-remove-ui was requested, but no source removals executed")
+            _require(
+                any(result.get("removed_via_ui") is True for result in remove_results),
+                f"--strict-remove-ui failed: no source removal used the actual UI path. remove_results={remove_results}",
+            )
 
         summary["ok"] = True
         return summary
@@ -428,7 +639,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["artifacts"]["file_source_match"] = file_source_match
         summary["steps"] = [asdict(step) for step in steps]
 
-        if project_url and not args.keep_project:
+        if project_url and cleanup_enabled:
             try:
                 project_service = build_service(args, project_url=project_url)
                 removal_result = await _run_step(
@@ -457,6 +668,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["cleanup_steps"] = [asdict(step) for step in cleanup_steps]
 
 
+
 def render_summary(summary: dict[str, Any]) -> str:
     return json.dumps(summary, indent=2, ensure_ascii=False)
 
@@ -474,6 +686,14 @@ async def _async_main(argv: Optional[list[str]] = None) -> int:
 
     try:
         summary = await run_integration(args)
+    except ValueError as exc:
+        summary = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(render_summary(summary))
+        return 16
     except ManualLoginRequiredError as exc:
         summary = {
             "ok": False,
@@ -535,6 +755,7 @@ async def _async_main(argv: Optional[list[str]] = None) -> int:
         Path(args.json_out).write_text(render_summary(summary) + "\n", encoding="utf-8")
     print(render_summary(summary))
     return 0 if summary.get("ok") else 1
+
 
 
 def main(argv: Optional[list[str]] = None) -> int:

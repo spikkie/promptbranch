@@ -1222,15 +1222,18 @@ class ChatGPTBrowserClient:
         )
         if options_button is None:
             if await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+                source_identity_used = match_candidates[0] if match_candidates else source_name
                 result = {
                     "ok": True,
                     "action": "remove",
                     "project_url": project_home_url,
                     "source_name": source_name,
-                    "source_match": source_name,
+                    "source_match": source_identity_used,
+                    "source_identity_used": source_identity_used,
                     "source_match_candidates": match_candidates,
                     "exact": exact,
                     "already_absent": True,
+                    "removed_via_ui": False,
                     "current_url": await self._safe_page_url(page),
                 }
                 self._log(
@@ -1263,14 +1266,18 @@ class ChatGPTBrowserClient:
             await confirm_button.click(timeout=5_000)
 
         await self._wait_for_source_absence(page, match_candidates, exact=exact)
+        source_identity_used = self._preferred_source_card_identity(matched_card) or source_name
         result = {
             "ok": True,
             "action": "remove",
             "project_url": project_home_url,
             "source_name": source_name,
-            "source_match": self._preferred_source_card_identity(matched_card) or source_name,
+            "source_match": source_identity_used,
+            "source_identity_used": source_identity_used,
             "source_match_candidates": match_candidates,
             "exact": exact,
+            "already_absent": False,
+            "removed_via_ui": True,
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-source-remove", "project source removed", **result)
