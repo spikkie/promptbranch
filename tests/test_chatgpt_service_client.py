@@ -58,3 +58,34 @@ def test_remove_project_source_posts_expected_json():
         payload = client.remove_project_source("Notes", exact=True)
 
     assert payload["removed"] is True
+
+
+def test_resolve_project_posts_expected_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/projects/resolve"
+        payload = json.loads(request.read().decode("utf-8"))
+        assert payload == {
+            "name": "Demo",
+            "keep_open": False,
+            "project_url": "https://chatgpt.com/g/demo/project",
+        }
+        return httpx.Response(200, json={"ok": True, "match_count": 1})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.resolve_project("Demo", project_url="https://chatgpt.com/g/demo/project")
+
+    assert payload["match_count"] == 1
+
+
+def test_project_source_capabilities_passes_project_url_query() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-source-capabilities"
+        assert request.url.params["project_url"] == "https://chatgpt.com/g/demo/project"
+        return httpx.Response(200, json={"ok": True, "available_source_kinds": ["file", "text"]})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.discover_project_source_capabilities(project_url="https://chatgpt.com/g/demo/project")
+
+    assert payload["available_source_kinds"] == ["file", "text"]

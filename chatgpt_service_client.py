@@ -59,6 +59,7 @@ class ChatGPTServiceClient:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        project_url: Optional[str] = None,
     ) -> Any:
         data: dict[str, Any] = {
             "prompt": prompt,
@@ -67,6 +68,8 @@ class ChatGPTServiceClient:
         }
         if retries is not None:
             data["retries"] = str(retries)
+        if project_url:
+            data["project_url"] = project_url
 
         if file_path:
             path = Path(file_path)
@@ -81,8 +84,32 @@ class ChatGPTServiceClient:
         payload = self._json(response)
         return payload.get("answer")
 
-    def discover_project_source_capabilities(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return self._json(self._client.get("/v1/project-source-capabilities", params={"keep_open": keep_open}))
+    def discover_project_source_capabilities(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"keep_open": keep_open}
+        if project_url:
+            params["project_url"] = project_url
+        return self._json(self._client.get("/v1/project-source-capabilities", params=params))
+
+
+    def resolve_project(
+        self,
+        name: str,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "name": name,
+            "keep_open": keep_open,
+        }
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/projects/resolve", json=payload))
 
     def ensure_project(
         self,
@@ -92,22 +119,29 @@ class ChatGPTServiceClient:
         color: Optional[str] = None,
         memory_mode: str = "default",
         keep_open: bool = False,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        return self._json(
-            self._client.post(
-                "/v1/projects/ensure",
-                json={
-                    "name": name,
-                    "icon": icon,
-                    "color": color,
-                    "memory_mode": memory_mode,
-                    "keep_open": keep_open,
-                },
-            )
-        )
+        payload: dict[str, Any] = {
+            "name": name,
+            "icon": icon,
+            "color": color,
+            "memory_mode": memory_mode,
+            "keep_open": keep_open,
+        }
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/projects/ensure", json=payload))
 
-    def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return self._json(self._client.post("/v1/projects/remove", json={"keep_open": keep_open}))
+    def remove_project(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"keep_open": keep_open}
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/projects/remove", json=payload))
 
     def add_project_source(
         self,
@@ -117,6 +151,7 @@ class ChatGPTServiceClient:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
         data = {
             "type": source_kind,
@@ -126,6 +161,8 @@ class ChatGPTServiceClient:
             data["value"] = value
         if display_name is not None:
             data["name"] = display_name
+        if project_url:
+            data["project_url"] = project_url
 
         if file_path:
             path = Path(file_path)
@@ -145,14 +182,13 @@ class ChatGPTServiceClient:
         *,
         exact: bool = False,
         keep_open: bool = False,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        return self._json(
-            self._client.post(
-                "/v1/project-sources/remove",
-                json={
-                    "source_name": source_name,
-                    "exact": exact,
-                    "keep_open": keep_open,
-                },
-            )
-        )
+        payload: dict[str, Any] = {
+            "source_name": source_name,
+            "exact": exact,
+            "keep_open": keep_open,
+        }
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/project-sources/remove", json=payload))

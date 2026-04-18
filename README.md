@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.46
+# ChatGPT ClaudeCode Workflow v0.0.47
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.46 .
+docker build -t chatgpt-docker-service:0.0.47 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.46
+  chatgpt-docker-service:0.0.47
 ```
 
 Compose option:
@@ -53,6 +53,39 @@ The service starts with:
 - OpenAPI docs at `/docs`
 - health endpoint at `/healthz`
 - versioned API under `/v1`
+
+
+## Testing the Docker service
+
+Start the service first:
+
+```bash
+docker compose -f docker-compose.chatgpt-service.yml up --build
+```
+
+Then run the existing integration harness against Docker instead of the in-process Python stack:
+
+```bash
+python ./chatgpt_full_integration_test.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me
+```
+
+Keep the project and skip cleanup while checking the currently stable surface:
+
+```bash
+python ./chatgpt_full_integration_test.py \
+  --service-base-url http://localhost:8000 \
+  --service-token change-me \
+  --keep-project \
+  --skip "project_source_remove_link,project_source_remove_text,project_source_remove_file"
+```
+
+Important:
+- `python ./chatgpt_full_integration_test.py` by itself still runs the local Python/browser stack directly.
+- Docker mode is enabled only when `--service-base-url` is provided.
+- The Docker service can now carry the active `project_url` between steps, so the same integration harness works against both modes.
+
 
 ## API surface
 
@@ -131,7 +164,7 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.46
+  chatgpt-docker-service:0.0.47
 ```
 
 ## CLI usage remains available

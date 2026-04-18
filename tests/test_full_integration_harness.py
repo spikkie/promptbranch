@@ -17,6 +17,12 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
             "--strict-remove-ui",
             "--step-delay-seconds",
             "0.25",
+            "--service-base-url",
+            "http://localhost:8000",
+            "--service-token",
+            "secret-token",
+            "--service-timeout-seconds",
+            "45",
         ]
     )
     assert args.only == ["source_add_text,ask"]
@@ -24,6 +30,9 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
     assert args.keep_project is True
     assert args.strict_remove_ui is True
     assert args.step_delay_seconds == 0.25
+    assert args.service_base_url == "http://localhost:8000"
+    assert args.service_token == "secret-token"
+    assert args.service_timeout_seconds == 45.0
 
 
 def test_resolve_step_selection_expands_aliases_and_forces_login_and_capabilities() -> None:
