@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: chatgpt-docker-service:0.0.47
+    image: chatgpt-docker-service:0.0.48
     ports:
       - "8000:8000"
     environment:
@@ -29,4 +29,4 @@ services:
 
 secrets:
   chatgpt_password:
-    file: ${CHATGPT_PASSWORD_SECRET_FILE:-./secrets/chatgpt_password.txt}
+    file: ${CHATGPT_PASSWORD_SECRET_FILE:-${HOME}/.config/chatgpt/password.txt}
