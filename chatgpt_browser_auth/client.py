@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -462,6 +463,28 @@ class ChatGPTBrowserClient:
         self._log('rate-limit', 'waiting for persisted conversation history cooldown', wait_seconds=round(remaining, 3), path=str(self._rate_limit_cooldown_path))
         await asyncio.sleep(remaining)
 
+    def _can_wait_for_keep_open(self) -> bool:
+        stdin = getattr(sys, "stdin", None)
+        if stdin is None:
+            return False
+        is_tty = getattr(stdin, "isatty", None)
+        if not callable(is_tty):
+            return False
+        try:
+            return bool(is_tty())
+        except Exception as exc:
+            self._log('debug', 'stdin tty check failed during keep-open evaluation', error=repr(exc))
+            return False
+
+    async def _pause_for_keep_open(self, prompt: str) -> None:
+        if not self._can_wait_for_keep_open():
+            self._log('debug', 'skipping keep-open wait because stdin is not interactive', prompt=prompt)
+            return
+        try:
+            await asyncio.to_thread(input, prompt)
+        except EOFError:
+            self._log('debug', 'skipping keep-open wait after stdin EOF', prompt=prompt)
+
     async def _wait_for_rate_limit_modal_to_clear(
         self,
         page: Any,
@@ -841,10 +864,7 @@ class ChatGPTBrowserClient:
         }
         self._log("login-check", "login result", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(
-                input,
-                "Login check passed. Press Enter to close the browser... ",
-            )
+            await self._pause_for_keep_open("Login check passed. Press Enter to close the browser... ")
         return result
 
     async def _ask_question_operation(
@@ -886,10 +906,7 @@ class ChatGPTBrowserClient:
             else await self._wait_and_get_response(page, response_context=response_context)
         )
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(
-                input,
-                "Question completed. Press Enter to close the browser... ",
-            )
+            await self._pause_for_keep_open("Question completed. Press Enter to close the browser... ")
         return result
 
     async def _create_project_operation(
@@ -917,7 +934,7 @@ class ChatGPTBrowserClient:
         )
         self._log("project-create", "project created", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project created. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Project created. Press Enter to close the browser... ")
         return result
 
     async def _resolve_project_operation(
@@ -943,7 +960,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-resolve", "project resolution completed", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project resolution finished. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Project resolution finished. Press Enter to close the browser... ")
         return result
 
     async def _ensure_project_operation(
@@ -982,7 +999,7 @@ class ChatGPTBrowserClient:
             }
             self._log("project-ensure", "project already exists", **result)
             if keep_open and self.config.is_headed:
-                await asyncio.to_thread(input, "Project already exists. Press Enter to close the browser... ")
+                await self._pause_for_keep_open("Project already exists. Press Enter to close the browser... ")
             return result
 
         if resolution["match_count"] > 1:
@@ -1004,7 +1021,7 @@ class ChatGPTBrowserClient:
             }
             self._log("project-ensure", "project ensure blocked by ambiguity", **result)
             if keep_open and self.config.is_headed:
-                await asyncio.to_thread(input, "Project ensure failed. Press Enter to close the browser... ")
+                await self._pause_for_keep_open("Project ensure failed. Press Enter to close the browser... ")
             return result
 
         created = await self._create_project_from_sidebar(
@@ -1025,7 +1042,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-ensure", "project created during ensure", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project ensured. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Project ensured. Press Enter to close the browser... ")
         return result
 
     async def _create_project_from_sidebar(
@@ -1247,7 +1264,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-remove", "project removed", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project removed. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Project removed. Press Enter to close the browser... ")
         return result
 
     async def _discover_project_source_capabilities_operation(
@@ -1274,7 +1291,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-source-capabilities", "discovered project source capabilities", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Project source capabilities discovered. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Project source capabilities discovered. Press Enter to close the browser... ")
         return result
 
     async def _add_project_source_operation(
@@ -1380,7 +1397,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-source-add", "project source added", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Source added. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Source added. Press Enter to close the browser... ")
         return result
 
     async def _remove_project_source_operation(
@@ -1429,7 +1446,7 @@ class ChatGPTBrowserClient:
                     **result,
                 )
                 if keep_open and self.config.is_headed:
-                    await asyncio.to_thread(input, "Source already absent. Press Enter to close the browser... ")
+                    await self._pause_for_keep_open("Source already absent. Press Enter to close the browser... ")
                 return result
             raise ResponseTimeoutError(f"Project source was not found: {source_name}")
         source_removed = False
@@ -1528,7 +1545,7 @@ class ChatGPTBrowserClient:
         }
         self._log("project-source-remove", "project source removed", **result)
         if keep_open and self.config.is_headed:
-            await asyncio.to_thread(input, "Source removed. Press Enter to close the browser... ")
+            await self._pause_for_keep_open("Source removed. Press Enter to close the browser... ")
         return result
 
     async def ensure_logged_in(self, page: Any, context: Any) -> bool:

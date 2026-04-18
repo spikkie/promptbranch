@@ -874,3 +874,100 @@ def test_respect_rate_limit_cooldown_waits_for_persisted_deadline(tmp_path: Path
     asyncio.run(client._respect_rate_limit_cooldown())
 
     assert slept == [10.0]
+
+
+class _FakeInteractiveStdin:
+    def isatty(self) -> bool:
+        return True
+
+
+class _FakeNonInteractiveStdin:
+    def isatty(self) -> bool:
+        return False
+
+
+def test_pause_for_keep_open_skips_when_stdin_is_not_interactive(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    called = False
+
+    async def fake_to_thread(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return None
+
+    monkeypatch.setattr(client_module.sys, "stdin", _FakeNonInteractiveStdin())
+    monkeypatch.setattr(client_module.asyncio, "to_thread", fake_to_thread)
+
+    asyncio.run(client._pause_for_keep_open("Project already exists. Press Enter to close the browser... "))
+
+    assert called is False
+
+
+def test_pause_for_keep_open_waits_when_stdin_is_interactive(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    prompts: list[str] = []
+
+    async def fake_to_thread(func, prompt: str):
+        prompts.append(prompt)
+        return None
+
+    monkeypatch.setattr(client_module.sys, "stdin", _FakeInteractiveStdin())
+    monkeypatch.setattr(client_module.asyncio, "to_thread", fake_to_thread)
+
+    asyncio.run(client._pause_for_keep_open("Project already exists. Press Enter to close the browser... "))
+
+    assert prompts == ["Project already exists. Press Enter to close the browser... "]
+
+
+def test_ensure_project_existing_skips_keep_open_prompt_without_interactive_stdin(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.headless = False
+    page = FakePage()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_resolve_projects_by_name(*_args, **_kwargs):
+        return {
+            "match_count": 1,
+            "project_url": "https://chatgpt.com/g/g-p-123/project",
+            "matches": [{"name": "demo-project", "url": "https://chatgpt.com/g/g-p-123/project"}],
+            "matched_by": "exact_name",
+            "error": None,
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/"
+
+    called = False
+
+    async def fake_to_thread(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("interactive input should not run without a tty")
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._resolve_projects_by_name = fake_resolve_projects_by_name  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    monkeypatch.setattr(client_module.sys, "stdin", _FakeNonInteractiveStdin())
+    monkeypatch.setattr(client_module.asyncio, "to_thread", fake_to_thread)
+
+    result = asyncio.run(
+        client._ensure_project_operation(
+            context=None,
+            page=page,
+            name="demo-project",
+            icon=None,
+            color=None,
+            memory_mode="default",
+            keep_open=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["created"] is False
+    assert result["project_url"] == "https://chatgpt.com/g/g-p-123/project"
+    assert called is False
