@@ -591,4 +591,6 @@ def test_remove_project_source_returns_idempotent_success_when_source_is_already
 
     assert result["ok"] is True
     assert result["already_absent"] is True
+    assert result["removed_via_ui"] is False
     assert result["source_match"] == "pasted.txt Document"
+    assert result["source_identity_used"] == "pasted.txt Document"
