@@ -1039,7 +1039,11 @@ class ChatGPTBrowserClient:
             except Exception:
                 pass
             try:
-                await options_button.click(timeout=5_000)
+                await self._click_locator_with_fallback(
+            options_button,
+            label="project-source-remove-options",
+            timeout_ms=5_000,
+        )
             except Exception:
                 await options_button.click(timeout=5_000, force=True)
 
@@ -1277,7 +1281,11 @@ class ChatGPTBrowserClient:
                     await asyncio.to_thread(input, "Source already absent. Press Enter to close the browser... ")
                 return result
             raise ResponseTimeoutError(f"Project source was not found: {source_name}")
-        await options_button.click(timeout=5_000)
+        await self._click_locator_with_fallback(
+            options_button,
+            label="project-source-remove-options",
+            timeout_ms=5_000,
+        )
         remove_button = await self._wait_for_visible_locator(
             page,
             PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
@@ -1286,7 +1294,11 @@ class ChatGPTBrowserClient:
         )
         if remove_button is None:
             raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
-        await remove_button.click(timeout=5_000)
+        await self._click_locator_with_fallback(
+            remove_button,
+            label="project-source-remove-action",
+            timeout_ms=5_000,
+        )
 
         confirm_button = await self._wait_for_visible_locator(
             page,
@@ -1295,7 +1307,11 @@ class ChatGPTBrowserClient:
             total_timeout_ms=4_000,
         )
         if confirm_button is not None:
-            await confirm_button.click(timeout=5_000)
+            await self._click_locator_with_fallback(
+                confirm_button,
+                label="project-source-remove-confirm",
+                timeout_ms=5_000,
+            )
 
         await self._wait_for_source_absence(page, match_candidates, exact=exact)
         source_identity_used = self._preferred_source_card_identity(matched_card) or source_name
@@ -3003,15 +3019,54 @@ class ChatGPTBrowserClient:
         )
         if button is None:
             raise ResponseTimeoutError("Add source button did not become visible on the Sources tab")
+        await self._click_locator_with_fallback(
+            button,
+            label="project-add-source-button",
+            timeout_ms=5_000,
+        )
+        await page.wait_for_timeout(500)
+
+    async def _click_locator_with_fallback(
+        self,
+        locator: Any,
+        *,
+        label: str,
+        timeout_ms: int = 5_000,
+        allow_force: bool = True,
+        allow_evaluate: bool = True,
+    ) -> None:
         try:
-            await button.scroll_into_view_if_needed(timeout=2_000)
+            await locator.scroll_into_view_if_needed(timeout=min(timeout_ms, 2_000))
         except Exception:
             pass
+
+        last_error: Exception | None = None
         try:
-            await button.click(timeout=5_000)
-        except Exception:
-            await button.click(timeout=5_000, force=True)
-        await page.wait_for_timeout(500)
+            await locator.click(timeout=timeout_ms)
+            return
+        except Exception as exc:
+            last_error = exc
+            self._log("click", "primary locator click failed", label=label, error=repr(exc))
+
+        if allow_force:
+            try:
+                await locator.click(timeout=timeout_ms, force=True)
+                return
+            except Exception as exc:
+                last_error = exc
+                self._log("click", "force locator click failed", label=label, error=repr(exc))
+
+        if allow_evaluate:
+            try:
+                await locator.evaluate("(el) => el.click()")
+                return
+            except Exception as exc:
+                last_error = exc
+                self._log("click", "evaluate locator click failed", label=label, error=repr(exc))
+
+        if last_error is not None:
+            raise last_error
+        raise ResponseTimeoutError(f"Could not click locator: {label}")
 
     def _project_source_input_selectors(self, source_kind: str) -> list[str]:
         if source_kind == "link":

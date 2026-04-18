@@ -545,6 +545,89 @@ def test_project_source_stable_absence_rejects_non_empty_unmatched_surface(tmp_p
 
 
 
+
+
+class FakeClickFailsThenForceSucceeds(FakeClickable):
+    def __init__(self) -> None:
+        super().__init__()
+        self.force_click_count = 0
+
+    async def click(self, *args, **kwargs) -> None:
+        self.click_count += 1
+        if kwargs.get("force"):
+            self.force_click_count += 1
+            return None
+        raise RuntimeError("pointer intercepted")
+
+
+def test_remove_project_source_retries_options_click_with_force(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    options_button = FakeClickFailsThenForceSucceeds()
+    remove_button = FakeClickable()
+    confirm_button = FakeClickable()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        return [
+            {
+                "identity": "pasted.txt Document",
+                "text": "pasted.txt Document",
+                "key": "pasted.txt document",
+            }
+        ]
+
+    async def fake_wait_for_project_source_action_button(*_args, **_kwargs):
+        return options_button, {"identity": "pasted.txt Document"}, ["pasted.txt Document"]
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == "project-source-remove-action":
+            return remove_button
+        if label == "project-source-remove-confirm":
+            return confirm_button
+        raise AssertionError(f"unexpected locator label: {label}")
+
+    async def fake_wait_for_source_absence(*_args, **_kwargs):
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._remove_project_source_operation(
+            context=None,
+            page=page,
+            source_name="pasted.txt Document",
+            exact=True,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert options_button.click_count == 2
+    assert options_button.force_click_count == 1
+    assert remove_button.click_count == 1
+    assert confirm_button.click_count == 1
+
 def test_remove_project_source_returns_idempotent_success_when_source_is_already_absent(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
