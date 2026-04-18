@@ -125,6 +125,7 @@ def test_verify_project_source_persistence_refreshes_sources_url(browser_client:
 
 def test_add_project_source_operation_requires_post_refresh_persistence(browser_client: ChatGPTBrowserClient) -> None:
     page = object()
+    call_order: list[str] = []
 
     async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
         return None
@@ -142,6 +143,7 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
         return None
 
     async def fake_wait_for_source_presence(*_args, **_kwargs):
+        call_order.append("presence")
         return {
             "identity": "pasted.txt Document",
             "title": "pasted.txt",
@@ -149,7 +151,20 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
             "text": "pasted.txt\nDocument",
         }
 
+    async def fake_wait_for_post_save_settle(*_args, **kwargs):
+        call_order.append("settle")
+        assert kwargs["source_kind"] == "text"
+        return {
+            "dialog_visible": False,
+            "add_button_visible": True,
+            "source_card_count": 1,
+            "empty_state_visible": False,
+            "url_stable": True,
+            "current_url": "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        }
+
     async def fake_verify_persistence(*_args, **kwargs):
+        call_order.append("verify")
         assert kwargs["source_match_candidates"] == [
             "Integration note for run 123",
             "itest-text-123",
@@ -173,6 +188,7 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
     browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._add_project_textual_source = fake_add_textual_source  # type: ignore[method-assign]
     browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
     browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
 
@@ -188,7 +204,67 @@ def test_add_project_source_operation_requires_post_refresh_persistence(browser_
         )
     )
 
+    assert call_order == ["presence", "settle", "verify"]
     assert result["ok"] is True
     assert result["source_match"] == "pasted.txt Document"
     assert result["source_match_requested"] == "Integration note for run 123"
     assert result["persistence_verified"] is True
+
+
+def test_wait_for_project_source_post_save_settle_requires_stable_closed_dialog(browser_client: ChatGPTBrowserClient) -> None:
+    class _SettlingPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+
+    page = _SettlingPage()
+    states = iter(
+        [
+            {"dialog_visible": True, "add_button_visible": False, "source_cards": [], "empty_state_visible": False, "url": "https://chatgpt.com/g/g-p-123/project?tab=sources"},
+            {"dialog_visible": False, "add_button_visible": True, "source_cards": [{"identity": "pasted.txt Document"}], "empty_state_visible": False, "url": "https://chatgpt.com/g/g-p-123/project?tab=sources"},
+            {"dialog_visible": False, "add_button_visible": True, "source_cards": [{"identity": "pasted.txt Document"}], "empty_state_visible": False, "url": "https://chatgpt.com/g/g-p-123/project?tab=sources"},
+            {"dialog_visible": False, "add_button_visible": True, "source_cards": [{"identity": "pasted.txt Document"}], "empty_state_visible": False, "url": "https://chatgpt.com/g/g-p-123/project?tab=sources"},
+        ]
+    )
+    current_state = {"dialog_visible": True, "add_button_visible": False, "source_cards": [], "empty_state_visible": False, "url": "https://chatgpt.com/g/g-p-123/project?tab=sources"}
+
+    async def fake_find_visible_locator(*_args, label: str, **_kwargs):
+        nonlocal current_state
+        if "post-save-dialog" in label:
+            current_state = next(states)
+            return object() if current_state["dialog_visible"] else None
+        if "post-save-add-button" in label:
+            return object() if current_state["add_button_visible"] else None
+        raise AssertionError(f"unexpected label: {label}")
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return current_state["source_cards"]
+
+    async def fake_empty_state(*_args, **_kwargs):
+        return current_state["empty_state_visible"]
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return current_state["url"]
+
+    browser_client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    settled = asyncio.run(
+        browser_client._wait_for_project_source_post_save_settle(
+            page,
+            source_kind="text",
+            poll_interval_ms=10,
+            required_observations=3,
+        )
+    )
+
+    assert settled["dialog_visible"] is False
+    assert settled["add_button_visible"] is True
+    assert settled["source_card_count"] == 1
+    assert settled["url_stable"] is True
+    assert page.wait_calls == [10, 10, 10]
+

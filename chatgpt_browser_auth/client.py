@@ -1179,6 +1179,11 @@ class ChatGPTBrowserClient:
             before_sources=before_sources,
             accept_single_new_card=normalized_kind == "text",
         )
+        if normalized_kind in {"text", "file"}:
+            await self._wait_for_project_source_post_save_settle(
+                page,
+                source_kind=normalized_kind,
+            )
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
         persistence_candidates = self._build_persistence_source_candidates(
@@ -3417,6 +3422,75 @@ class ChatGPTBrowserClient:
             await page.wait_for_timeout(500)
         target = candidates[0] if candidates else '<new source>'
         raise ResponseTimeoutError(f"Timed out waiting for project source to appear: {target}")
+
+    async def _wait_for_project_source_post_save_settle(
+        self,
+        page: Any,
+        *,
+        source_kind: str,
+        timeout_ms: int = 12_000,
+        poll_interval_ms: int = 400,
+        required_observations: int = 3,
+    ) -> dict[str, Any]:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        stable_observations = 0
+        last_url: Optional[str] = None
+        last_state: dict[str, Any] = {}
+
+        while asyncio.get_running_loop().time() < deadline:
+            dialog_visible = await self._find_visible_locator(
+                page,
+                PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS,
+                label=f"project-source-{source_kind}-post-save-dialog",
+                timeout_ms=250,
+            ) is not None
+            add_button_visible = await self._find_visible_locator(
+                page,
+                PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
+                label=f"project-source-{source_kind}-post-save-add-button",
+                timeout_ms=250,
+            ) is not None
+            source_cards = await self._snapshot_project_source_cards(page)
+            empty_state_visible = await self._project_sources_empty_state_visible(page)
+            current_url = await self._safe_page_url(page)
+            url_stable = bool(last_url and current_url == last_url)
+            sources_surface_ready = add_button_visible and (bool(source_cards) or empty_state_visible)
+            settled_now = not dialog_visible and sources_surface_ready and url_stable
+            last_state = {
+                "source_kind": source_kind,
+                "dialog_visible": dialog_visible,
+                "add_button_visible": add_button_visible,
+                "source_card_count": len(source_cards),
+                "empty_state_visible": empty_state_visible,
+                "sources_surface_ready": sources_surface_ready,
+                "url_stable": url_stable,
+                "current_url": current_url,
+            }
+            self._log(
+                "project-source-add",
+                "post-save settle probe",
+                stable_observations=stable_observations,
+                required_observations=max(required_observations, 1),
+                settled_now=settled_now,
+                **last_state,
+            )
+            if settled_now:
+                stable_observations += 1
+                if stable_observations >= max(required_observations, 1):
+                    return last_state
+            else:
+                stable_observations = 0
+            last_url = current_url
+            await page.wait_for_timeout(poll_interval_ms)
+
+        raise ResponseTimeoutError(
+            "Timed out waiting for project source post-save UI to settle "
+            f"(source_kind={source_kind}, dialog_visible={last_state.get('dialog_visible')}, "
+            f"add_button_visible={last_state.get('add_button_visible')}, "
+            f"source_card_count={last_state.get('source_card_count')}, "
+            f"empty_state_visible={last_state.get('empty_state_visible')}, "
+            f"url_stable={last_state.get('url_stable')})"
+        )
 
     async def _project_source_is_stably_absent(
         self,
