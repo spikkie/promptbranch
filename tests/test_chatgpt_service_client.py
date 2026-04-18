@@ -89,3 +89,18 @@ def test_project_source_capabilities_passes_project_url_query() -> None:
         payload = client.discover_project_source_capabilities(project_url="https://chatgpt.com/g/demo/project")
 
     assert payload["available_source_kinds"] == ["file", "text"]
+
+
+
+def test_http_error_includes_detail_from_json_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "RuntimeError: chrome profile in use"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        try:
+            client.login_check()
+        except httpx.HTTPStatusError as exc:
+            assert "chrome profile in use" in str(exc)
+        else:  # pragma: no cover - defensive
+            raise AssertionError("expected HTTPStatusError")

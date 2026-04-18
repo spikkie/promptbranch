@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Optional
 
@@ -42,7 +43,26 @@ class ChatGPTServiceClient:
         self.close()
 
     def _json(self, response: httpx.Response) -> Any:
-        response.raise_for_status()
+        if response.is_error:
+            detail: str | None = None
+            try:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    detail_value = payload.get("detail") or payload.get("error")
+                    if detail_value is not None:
+                        if isinstance(detail_value, (dict, list)):
+                            detail = json.dumps(detail_value, ensure_ascii=False)
+                        else:
+                            detail = str(detail_value)
+            except Exception:
+                detail = None
+            if not detail:
+                body = response.text.strip()
+                detail = body[:500] if body else None
+            message = f"{response.status_code} error for {response.request.method} {response.request.url}"
+            if detail:
+                message += f": {detail}"
+            raise httpx.HTTPStatusError(message, request=response.request, response=response)
         return response.json()
 
     def healthz(self) -> dict[str, Any]:

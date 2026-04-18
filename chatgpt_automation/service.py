@@ -45,6 +45,7 @@ class ChatGPTAutomationSettings:
     filter_no_sandbox: bool = True
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
+    clear_singleton_locks: bool = False
 
 
 class ChatGPTAutomationService:
@@ -79,6 +80,7 @@ class ChatGPTAutomationService:
             password_file=self.settings.password_file,
             disable_fedcm=self.settings.disable_fedcm,
             filter_no_sandbox=self.settings.filter_no_sandbox,
+            clear_singleton_locks=self.settings.clear_singleton_locks,
         )
 
 

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import time
 import traceback
 from datetime import datetime
@@ -714,8 +715,40 @@ class ChatGPTBrowserClient:
     def driver_name(self) -> str:
         return "patchright" if self.config.use_patchright else "playwright"
 
+    def _clear_profile_singleton_locks(self) -> list[str]:
+        if not self.config.clear_singleton_locks:
+            return []
+
+        removed: list[str] = []
+        profile_dir = Path(self.config.profile_dir)
+        for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+            target = profile_dir / name
+            try:
+                if target.is_dir() and not target.is_symlink():
+                    shutil.rmtree(target)
+                    removed.append(name)
+                elif target.exists() or target.is_symlink():
+                    target.unlink()
+                    removed.append(name)
+            except FileNotFoundError:
+                continue
+            except Exception as exc:
+                self._log(
+                    'driver',
+                    'failed to clear profile singleton lock artifact',
+                    artifact=name,
+                    path=str(target),
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
+        if removed:
+            self._log('driver', 'cleared profile singleton lock artifacts', artifacts=removed, profile_dir=self.config.profile_dir)
+        return removed
+
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
+        self._clear_profile_singleton_locks()
         await self._respect_rate_limit_cooldown()
         await self._respect_context_spacing()
         playwright_module = await self._start_driver()

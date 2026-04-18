@@ -118,6 +118,7 @@ class ChatGPTAutomation:
         conversation_history_rate_limit_cooldown_seconds: Optional[float] = None,
         rate_limit_modal_wait_timeout_ms: Optional[int] = None,
         rate_limit_modal_poll_interval_ms: Optional[int] = None,
+        clear_singleton_locks: Optional[bool] = None,
     ):
         self.project_url = project_url
         self.email = email
@@ -185,6 +186,11 @@ class ChatGPTAutomation:
             if rate_limit_modal_poll_interval_ms is None
             else int(rate_limit_modal_poll_interval_ms)
         )
+        self.clear_singleton_locks = (
+            _env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False)
+            if clear_singleton_locks is None
+            else bool(clear_singleton_locks)
+        )
 
     @property
     def client(self) -> ChatGPTBrowserClient:
@@ -214,6 +220,7 @@ class ChatGPTAutomation:
                 conversation_history_rate_limit_cooldown_seconds=self.conversation_history_rate_limit_cooldown_seconds,
                 rate_limit_modal_wait_timeout_ms=self.rate_limit_modal_wait_timeout_ms,
                 rate_limit_modal_poll_interval_ms=self.rate_limit_modal_poll_interval_ms,
+                clear_singleton_locks=self.clear_singleton_locks,
             )
         )
 
