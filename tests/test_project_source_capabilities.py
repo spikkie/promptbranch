@@ -7,7 +7,7 @@ import pytest
 
 from chatgpt_browser_auth.client import ChatGPTBrowserClient
 from chatgpt_browser_auth.config import ChatGPTBrowserConfig
-from chatgpt_browser_auth.exceptions import UnsupportedOperationError
+from chatgpt_browser_auth.exceptions import ResponseTimeoutError, UnsupportedOperationError
 
 
 class _FakePage:
@@ -121,6 +121,70 @@ def test_verify_project_source_persistence_refreshes_sources_url(browser_client:
     assert calls[1][2]["source_match_candidates"] == ["pasted.txt Document"]
     assert calls[1][2]["before_sources"] is None
     assert calls[1][2]["accept_single_new_card"] is False
+
+
+class _PersistenceRetryPage:
+    def __init__(self) -> None:
+        self.wait_calls: list[int] = []
+
+    async def wait_for_timeout(self, timeout_ms: int) -> None:
+        self.wait_calls.append(timeout_ms)
+        await asyncio.sleep(0)
+
+
+def test_verify_project_source_persistence_retries_after_timeout(browser_client: ChatGPTBrowserClient) -> None:
+    page = _PersistenceRetryPage()
+    calls: list[tuple[str, object]] = []
+    attempts = {"count": 0}
+
+    async def fake_goto(target_page, url: str, *, label: str) -> None:
+        calls.append(("goto", target_page, url, label))
+
+    async def fake_wait_for_source_presence(target_page, **kwargs):
+        attempts["count"] += 1
+        calls.append(("wait", target_page, kwargs, attempts["count"]))
+        if attempts["count"] == 1:
+            raise ResponseTimeoutError("Timed out waiting for project source to appear: pasted.txt Document")
+        return {"identity": "pasted.txt Document"}
+
+    async def fake_empty_state_visible(_page) -> bool:
+        return True
+
+    async def fake_snapshot_project_source_cards(_page):
+        return []
+
+    async def fake_safe_page_url(_page) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state_visible  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    persisted = asyncio.run(
+        browser_client._verify_project_source_persistence(
+            page,
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            source_match_candidates=["pasted.txt Document"],
+            retry_backoff_ms=(25,),
+        )
+    )
+
+    assert persisted == {"identity": "pasted.txt Document"}
+    assert calls[0] == (
+        "goto",
+        page,
+        "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        "project-source-add-persistence-refresh",
+    )
+    assert calls[2] == (
+        "goto",
+        page,
+        "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        "project-source-add-persistence-refresh-retry-2",
+    )
+    assert page.wait_calls == [25]
 
 
 def test_add_project_source_operation_requires_post_refresh_persistence(browser_client: ChatGPTBrowserClient) -> None:

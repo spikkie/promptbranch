@@ -3649,24 +3649,61 @@ class ChatGPTBrowserClient:
         project_url: str,
         source_match_candidates: list[str],
         timeout_ms: int = 15_000,
+        max_refresh_attempts: int = 3,
+        retry_backoff_ms: tuple[int, ...] = (2_000, 4_000),
     ) -> Optional[dict[str, str]]:
         if not source_match_candidates:
             raise ResponseTimeoutError("Project source persistence check requires at least one source match candidate")
         sources_url = self._project_sources_url(project_url)
-        self._log(
-            "project-source-add",
-            "verifying project source persistence after refresh",
-            project_url=project_url,
-            sources_url=sources_url,
-            source_match_candidates=source_match_candidates,
-        )
-        await self._goto(page, sources_url, label="project-source-add-persistence-refresh")
-        return await self._wait_for_source_presence(
-            page,
-            source_match_candidates=source_match_candidates,
-            before_sources=None,
-            accept_single_new_card=False,
-            timeout_ms=timeout_ms,
+        last_error: ResponseTimeoutError | None = None
+
+        for attempt in range(max(max_refresh_attempts, 1)):
+            label = "project-source-add-persistence-refresh"
+            if attempt:
+                label = f"project-source-add-persistence-refresh-retry-{attempt + 1}"
+            self._log(
+                "project-source-add",
+                "verifying project source persistence after refresh",
+                project_url=project_url,
+                sources_url=sources_url,
+                source_match_candidates=source_match_candidates,
+                attempt=attempt + 1,
+                max_refresh_attempts=max(max_refresh_attempts, 1),
+            )
+            await self._goto(page, sources_url, label=label)
+            try:
+                return await self._wait_for_source_presence(
+                    page,
+                    source_match_candidates=source_match_candidates,
+                    before_sources=None,
+                    accept_single_new_card=False,
+                    timeout_ms=timeout_ms,
+                )
+            except ResponseTimeoutError as exc:
+                last_error = exc
+                empty_state_visible = await self._project_sources_empty_state_visible(page)
+                source_cards = await self._snapshot_project_source_cards(page)
+                self._log(
+                    "project-source-add",
+                    "project source persistence attempt timed out",
+                    attempt=attempt + 1,
+                    max_refresh_attempts=max(max_refresh_attempts, 1),
+                    source_match_candidates=source_match_candidates,
+                    empty_state_visible=empty_state_visible,
+                    source_card_count=len(source_cards),
+                    current_url=await self._safe_page_url(page),
+                    error=str(exc),
+                )
+                if attempt + 1 >= max(max_refresh_attempts, 1):
+                    raise
+                backoff_ms = retry_backoff_ms[min(attempt, max(len(retry_backoff_ms) - 1, 0))] if retry_backoff_ms else 0
+                if backoff_ms > 0:
+                    await page.wait_for_timeout(backoff_ms)
+
+        if last_error is not None:
+            raise last_error
+        raise ResponseTimeoutError(
+            f"Timed out waiting for project source to appear: {source_match_candidates[0]}"
         )
 
     async def _wait_for_source_presence(
