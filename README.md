@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.49
+# ChatGPT ClaudeCode Workflow v0.0.50
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.49 .
+docker build -t chatgpt-docker-service:0.0.50 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.49
+  chatgpt-docker-service:0.0.50
 ```
 
 Compose option:
@@ -59,6 +59,7 @@ If your password file lives somewhere else, override it explicitly:
 
 ```bash
 CHATGPT_PASSWORD_SECRET_FILE="$HOME/.config/chatgpt/password.txt" \
+# Host-side `CHATGPT_PASSWORD_FILE` is intentionally ignored by the compose service.
 CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1 \
   docker compose -f docker-compose.chatgpt-service.yml up --build
 ```
@@ -87,6 +88,7 @@ Equivalent direct compose invocation:
 
 ```bash
 CHATGPT_PASSWORD_SECRET_FILE="$HOME/.config/chatgpt/password.txt" \
+# Host-side `CHATGPT_PASSWORD_FILE` is intentionally ignored by the compose service.
 CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1 \
   docker compose -f docker-compose.chatgpt-service.yml up --build
 ```
@@ -192,7 +194,7 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.49
+  chatgpt-docker-service:0.0.50
 ```
 
 ## CLI usage remains available
@@ -228,7 +230,7 @@ Core service settings:
 - `CHATGPT_PROJECT_URL`
 - `CHATGPT_EMAIL`
 - `CHATGPT_PASSWORD`
-- `CHATGPT_PASSWORD_FILE`
+- `CHATGPT_PASSWORD_FILE` (inside the container this is fixed to `/run/secrets/chatgpt_password` in the compose service)
 - `CHATGPT_PROFILE_DIR`
 - `CHATGPT_HEADLESS`
 - `CHATGPT_USE_PATCHRIGHT`

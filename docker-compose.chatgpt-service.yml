@@ -3,14 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: chatgpt-docker-service:0.0.49
+    image: chatgpt-docker-service:0.0.50
     ports:
       - "8000:8000"
     environment:
       CHATGPT_UVICORN_APP: chatgpt_container_api:app
       CHATGPT_PROJECT_URL: ${CHATGPT_PROJECT_URL:-https://chatgpt.com/}
       CHATGPT_EMAIL: ${CHATGPT_EMAIL:-}
-      CHATGPT_PASSWORD_FILE: ${CHATGPT_PASSWORD_FILE:-/run/secrets/chatgpt_password}
+      CHATGPT_PASSWORD_FILE: /run/secrets/chatgpt_password
       CHATGPT_HEADLESS: ${CHATGPT_HEADLESS:-0}
       CHATGPT_USE_PATCHRIGHT: ${CHATGPT_USE_PATCHRIGHT:-1}
       CHATGPT_BROWSER_CHANNEL: ${CHATGPT_BROWSER_CHANNEL:-chrome}

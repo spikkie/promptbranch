@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export CHATGPT_PASSWORD_SECRET_FILE="${CHATGPT_PASSWORD_SECRET_FILE:-${HOME}/.config/chatgpt/password.txt}"
+unset CHATGPT_PASSWORD_FILE
 
 if [[ ! -f "${CHATGPT_PASSWORD_SECRET_FILE}" ]]; then
   echo "Password file not found: ${CHATGPT_PASSWORD_SECRET_FILE}" >&2
