@@ -114,6 +114,10 @@ class ChatGPTAutomation:
         disable_fedcm: Optional[bool] = None,
         filter_no_sandbox: Optional[bool] = None,
         password_file: Optional[str] = None,
+        min_context_spacing_seconds: Optional[float] = None,
+        conversation_history_rate_limit_cooldown_seconds: Optional[float] = None,
+        rate_limit_modal_wait_timeout_ms: Optional[int] = None,
+        rate_limit_modal_poll_interval_ms: Optional[int] = None,
     ):
         self.project_url = project_url
         self.email = email
@@ -161,6 +165,26 @@ class ChatGPTAutomation:
             if filter_no_sandbox is None
             else filter_no_sandbox
         )
+        self.min_context_spacing_seconds = (
+            float(os.getenv("CHATGPT_MIN_CONTEXT_SPACING_SECONDS", "8.0"))
+            if min_context_spacing_seconds is None
+            else float(min_context_spacing_seconds)
+        )
+        self.conversation_history_rate_limit_cooldown_seconds = (
+            float(os.getenv("CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS", "120.0"))
+            if conversation_history_rate_limit_cooldown_seconds is None
+            else float(conversation_history_rate_limit_cooldown_seconds)
+        )
+        self.rate_limit_modal_wait_timeout_ms = (
+            int(os.getenv("CHATGPT_RATE_LIMIT_MODAL_WAIT_TIMEOUT_MS", "120000"))
+            if rate_limit_modal_wait_timeout_ms is None
+            else int(rate_limit_modal_wait_timeout_ms)
+        )
+        self.rate_limit_modal_poll_interval_ms = (
+            int(os.getenv("CHATGPT_RATE_LIMIT_MODAL_POLL_INTERVAL_MS", "1000"))
+            if rate_limit_modal_poll_interval_ms is None
+            else int(rate_limit_modal_poll_interval_ms)
+        )
 
     @property
     def client(self) -> ChatGPTBrowserClient:
@@ -186,6 +210,10 @@ class ChatGPTAutomation:
                 save_screenshot=self.save_screenshot,
                 disable_fedcm=self.disable_fedcm,
                 filter_no_sandbox=self.filter_no_sandbox,
+                min_context_spacing_seconds=self.min_context_spacing_seconds,
+                conversation_history_rate_limit_cooldown_seconds=self.conversation_history_rate_limit_cooldown_seconds,
+                rate_limit_modal_wait_timeout_ms=self.rate_limit_modal_wait_timeout_ms,
+                rate_limit_modal_poll_interval_ms=self.rate_limit_modal_poll_interval_ms,
             )
         )
 

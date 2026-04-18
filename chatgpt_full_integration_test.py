@@ -230,6 +230,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--keep-open", action="store_true", help="Pass keep_open through to each browser action.")
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
+    parser.add_argument("--step-delay-seconds", type=float, default=float(os.getenv("CHATGPT_STEP_DELAY_SECONDS", "5.0")), help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure during end-to-end runs.")
     parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -266,7 +267,9 @@ def build_service(args: argparse.Namespace, *, project_url: str) -> ChatGPTAutom
     return ChatGPTAutomationService(build_settings(args, project_url=project_url))
 
 
-async def _run_step(steps: list[StepResult], name: str, coro) -> Any:
+async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seconds: float = 0.0) -> Any:
+    if steps and step_delay_seconds > 0:
+        await asyncio.sleep(step_delay_seconds)
     started = time.perf_counter()
     try:
         result = await coro
@@ -390,6 +393,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "login_check",
                 base_service.run_login_check(keep_open=args.keep_open),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(login.get("logged_in") is True, f"login_check did not report an active session: {login}")
 
@@ -403,6 +407,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "project_resolve_before_create",
                 base_service.resolve_project(name=project_name, keep_open=args.keep_open),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(initial_resolve.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve}")
             _require(
@@ -424,6 +429,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     memory_mode=args.memory_mode,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(ensure_created.get("ok") is True, f"project_ensure failed: {ensure_created}")
             project_url = ensure_created.get("project_url")
@@ -445,6 +451,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     memory_mode=args.memory_mode,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(ensure_idempotent.get("ok") is True, f"second project_ensure failed: {ensure_idempotent}")
             _require(ensure_idempotent.get("created") is False, f"second project_ensure was not idempotent: {ensure_idempotent}")
@@ -459,6 +466,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "project_resolve_after_ensure",
                 base_service.resolve_project(name=project_name, keep_open=args.keep_open),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(resolved.get("ok") is True, f"project_resolve failed after ensure: {resolved}")
             _require(resolved.get("match_count") == 1, f"project_resolve did not uniquely match the project: {resolved}")
@@ -487,6 +495,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "project_source_capabilities",
                 project_service.discover_project_source_capabilities(keep_open=args.keep_open),
+                step_delay_seconds=args.step_delay_seconds,
             )
             available_source_kinds = list(source_capabilities.get("available_source_kinds") or [])
             link_supported = "link" in set(available_source_kinds)
@@ -504,6 +513,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                         display_name=link_source_name,
                         keep_open=args.keep_open,
                     ),
+                    step_delay_seconds=args.step_delay_seconds,
                 )
                 _require(link_add.get("ok") is True, f"link source add failed: {link_add}")
                 link_source_match = str(link_add.get("source_match") or link_source_name)
@@ -530,6 +540,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     display_name=text_source_name,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(text_add.get("ok") is True, f"text source add failed: {text_add}")
             text_source_match = str(text_add.get("source_match") or text_source_name)
@@ -544,6 +555,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     display_name=None,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(file_add.get("ok") is True, f"file source add failed: {file_add}")
             file_source_match = str(file_add.get("source_match") or file_source_match)
@@ -558,6 +570,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     keep_open=args.keep_open,
                     retries=0,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             if isinstance(ask_result, (dict, list)):
                 ask_text = json.dumps(ask_result, ensure_ascii=False)
@@ -578,6 +591,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                         exact=True,
                         keep_open=args.keep_open,
                     ),
+                    step_delay_seconds=args.step_delay_seconds,
                 )
                 _require(link_remove.get("ok") is True, f"link source remove failed: {link_remove}")
                 remove_results.append(link_remove)
@@ -603,6 +617,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     exact=True,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(text_remove.get("ok") is True, f"text source remove failed: {text_remove}")
             remove_results.append(text_remove)
@@ -616,6 +631,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     exact=False,
                     keep_open=args.keep_open,
                 ),
+                step_delay_seconds=args.step_delay_seconds,
             )
             _require(file_remove.get("ok") is True, f"file source remove failed: {file_remove}")
             remove_results.append(file_remove)
@@ -646,6 +662,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     cleanup_steps,
                     "project_remove_cleanup",
                     project_service.remove_project(keep_open=args.keep_open),
+                    step_delay_seconds=args.step_delay_seconds,
                 )
                 if removal_result.get("ok") is not True:
                     raise IntegrationAssertionError(f"project_remove cleanup failed: {removal_result}")

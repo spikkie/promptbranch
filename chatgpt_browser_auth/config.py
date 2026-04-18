@@ -30,6 +30,10 @@ class ChatGPTBrowserConfig:
     disable_fedcm: bool = True
     filter_no_sandbox: bool = True
     extra_browser_args: Sequence[str] = field(default_factory=tuple)
+    min_context_spacing_seconds: float = 8.0
+    conversation_history_rate_limit_cooldown_seconds: float = 120.0
+    rate_limit_modal_wait_timeout_ms: int = 120_000
+    rate_limit_modal_poll_interval_ms: int = 1_000
 
     def __post_init__(self) -> None:
         self.profile_dir = str(Path(self.profile_dir).expanduser().resolve())
@@ -42,6 +46,14 @@ class ChatGPTBrowserConfig:
             raise ValueError("manual_login_timeout_ms must be positive")
         if self.challenge_wait_timeout_ms <= 0:
             raise ValueError("challenge_wait_timeout_ms must be positive")
+        if self.min_context_spacing_seconds < 0:
+            raise ValueError("min_context_spacing_seconds must be non-negative")
+        if self.conversation_history_rate_limit_cooldown_seconds < 0:
+            raise ValueError("conversation_history_rate_limit_cooldown_seconds must be non-negative")
+        if self.rate_limit_modal_wait_timeout_ms <= 0:
+            raise ValueError("rate_limit_modal_wait_timeout_ms must be positive")
+        if self.rate_limit_modal_poll_interval_ms <= 0:
+            raise ValueError("rate_limit_modal_poll_interval_ms must be positive")
 
     @property
     def is_headed(self) -> bool:
