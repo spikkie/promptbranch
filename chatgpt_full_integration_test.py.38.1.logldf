@@ -1,0 +1,124 @@
+2026-04-18 10:59:20,911 | INFO | chatgpt_automation.service | Running ChatGPT browser login check
+2026-04-18 10:59:20,911 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 10:59:20.911] [login-check] starting login check | project_url='https://chatgpt.com/' profile_dir='/home/spikkie/git/chatgpt_claudecode_workflow/profile' headless=False driver='patchright' channel='chrome' keep_open=False
+[2026-04-18 10:59:20.911] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 10:59:21.179] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 10:59:21.463] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 10:59:21.464] [debug] browser debug hooks attached | operation='login_check'
+[2026-04-18 10:59:21.464] [trace] starting browser trace
+[2026-04-18 10:59:21.526] [auth] checking login state
+[2026-04-18 10:59:21.526] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 10:59:21.742] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 10:59:22.492] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 10:59:22.503] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 10:59:22.536] [auth-check] probing logged-in indicators
+[2026-04-18 10:59:22.773] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 10:59:23.332] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 10:59:23.712] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 10:59:23.920] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=34 visible=True
+[2026-04-18 10:59:23.957] [selector] selector probe failed | label='login-indicator' selector='button[data-testid="login-button"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.959] [selector] selector probe failed | label='login-indicator' selector='header button:has-text("Log in")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.961] [selector] selector probe failed | label='login-indicator' selector='button:has-text("Log in")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.962] [selector] selector probe failed | label='signup-indicator' selector='button[data-testid="signup-button"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.964] [selector] selector probe failed | label='signup-indicator' selector='button:has-text("Sign up for free")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.966] [selector] selector probe failed | label='anonymous-indicator' selector='text=Get responses tailored to you' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.967] [selector] selector probe failed | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.969] [composer-check] chat input selector probe failed | selector='#prompt-textarea' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.973] [composer-check] chat input selector probe failed | selector='div[contenteditable="true"]#prompt-textarea' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.975] [composer-check] chat input selector probe failed | selector='div[contenteditable="true"][data-testid="composer"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.976] [composer-check] chat input selector probe failed | selector='div[contenteditable="true"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.977] [composer-check] chat input selector probe failed | selector='textarea[placeholder]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.978] [composer-check] chat input selector probe failed | selector='textarea' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.978] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=False project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 10:59:23.978] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 10:59:23.978] [auth] session already active
+[2026-04-18 10:59:23.978] [login-check] login result | logged_in=True profile_dir='/home/spikkie/git/chatgpt_claudecode_workflow/profile' headless=False url='https://chatgpt.com/' driver='patchright' debug=True debug_artifact_dir='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts'
+[2026-04-18 10:59:23.978] [result] login_check completed | result_type='dict'
+[2026-04-18 10:59:23.979] [artifact] failed to save trace archive | error='Tracing.stop: Target page, context or browser has been closed'
+[2026-04-18 10:59:23.979] [driver] closing browser context
+[2026-04-18 10:59:23.979] [driver] browser context closed
+2026-04-18 10:59:24,007 | INFO | chatgpt_automation.service | Resolving ChatGPT project by name
+2026-04-18 10:59:24,007 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 10:59:24.007] [project-resolve] starting resolve_project | project_url='https://chatgpt.com/' name='itest-chatgpt-workflow-20260418-105920-2698340' keep_open=False
+[2026-04-18 10:59:24.008] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 10:59:24.266] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 10:59:24.546] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 10:59:24.547] [debug] browser debug hooks attached | operation='project_resolve'
+[2026-04-18 10:59:24.547] [trace] starting browser trace
+[2026-04-18 10:59:24.610] [auth] checking login state
+[2026-04-18 10:59:24.610] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 10:59:24.829] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 10:59:25.581] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 10:59:25.602] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 10:59:25.603] [auth-check] probing logged-in indicators
+[2026-04-18 10:59:26.598] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 10:59:26.767] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 10:59:26.923] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 10:59:27.275] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=34 visible=True
+[2026-04-18 10:59:27.296] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 10:59:27.326] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 10:59:27.351] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 10:59:27.371] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 10:59:27.391] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 10:59:27.413] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 10:59:27.444] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 10:59:27.502] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 10:59:27.502] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 10:59:27.502] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 10:59:27.502] [auth] session already active
+[2026-04-18 10:59:27.502] [nav] navigating | label='project-resolve-home' from_url='https://chatgpt.com/' to_url='https://chatgpt.com/'
+[2026-04-18 10:59:27.700] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776502767695&sid=50dfeb2c-40c7-44c9-ae27-867d725e4aa2&ec=1' failure='net::ERR_ABORTED'
+[2026-04-18 10:59:27.701] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 10:59:28.152] [nav] domcontentloaded reached | label='project-resolve-home' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 10:59:28.770] [selector] selector probe | label='project-new-button-visible' selector='button:has-text("New project")' count=0 visible=False
+[2026-04-18 10:59:28.778] [selector] selector probe failed | label='project-new-button-visible' selector='a:has-text("New project")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.780] [selector] selector probe failed | label='project-new-button-visible' selector='button[data-sidebar-item="true"]:has-text("New project")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.782] [selector] selector probe failed | label='project-new-button-visible' selector='a[data-sidebar-item="true"]:has-text("New project")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.783] [selector] selector probe failed | label='project-new-button-visible' selector='nav button:has-text("New project")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.785] [selector] selector probe failed | label='project-new-button-visible' selector='aside button:has-text("New project")' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.786] [selector] selector probe failed | label='project-new-button-visible' selector='[data-testid="new-project-button"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.788] [selector] selector probe failed | label='project-new-button-visible' selector='[aria-label*="New project" i]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.799] [selector] selector probe failed | label='project-close-sidebar' selector='button[data-testid="close-sidebar-button"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.800] [selector] selector probe failed | label='project-close-sidebar' selector='button[aria-label="Close sidebar"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.801] [selector] selector probe failed | label='project-close-sidebar' selector='button[aria-label*="Close sidebar" i]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.803] [selector] selector probe failed | label='project-open-sidebar' selector='button[aria-label="Open sidebar"]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.805] [selector] selector probe failed | label='project-open-sidebar' selector='button[aria-label*="Open sidebar" i]' error='Locator.count: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.806] [project-resolve] project enumeration attempt completed | attempt=1 discovered_count=0 total_count=0 match_count=0
+[2026-04-18 10:59:28.808] [error] project_resolve failed | error_type='TargetClosedError' error='Page.wait_for_timeout: Target page, context or browser has been closed' current_url='https://chatgpt.com/'
+[2026-04-18 10:59:28.810] [artifact] saved text artifact | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_resolve_20260418_105928_808.txt'
+[2026-04-18 10:59:28.811] [artifact] failed to save html snapshot | error='Page.content: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.814] [artifact] failed to save screenshot | error='Page.screenshot: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.814] [artifact] failed to save trace archive | error='Tracing.stop: Target page, context or browser has been closed'
+[2026-04-18 10:59:28.814] [driver] closing browser context
+[2026-04-18 10:59:28.814] [driver] browser context closed
+2026-04-18 10:59:28,854 | ERROR | chatgpt_automation.service | Unexpected ChatGPT browser failure during resolve_project
+Traceback (most recent call last):
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_automation/service.py", line 90, in _with_retries
+    return await func()
+           ^^^^^^^^^^^^
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_automation/automation.py", line 230, in resolve_project
+    return await self.client.resolve_project(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_browser_auth/client.py", line 477, in resolve_project
+    return await self._run_with_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_browser_auth/client.py", line 658, in _run_with_context
+    result = await operation(context=context, page=page, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_browser_auth/client.py", line 781, in _resolve_project_operation
+    resolution = await self._resolve_projects_by_name(page, name=name, label="project-resolve-home")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_browser_auth/client.py", line 2572, in _resolve_projects_by_name
+    await page.wait_for_timeout(350)
+  File "/home/spikkie/git/ai-aip/py_env/lib/python3.12/site-packages/patchright/async_api/_generated.py", line 11233, in wait_for_timeout
+    await self._impl_obj.wait_for_timeout(timeout=timeout)
+  File "/home/spikkie/git/ai-aip/py_env/lib/python3.12/site-packages/patchright/_impl/_page.py", line 1054, in wait_for_timeout
+    await self._main_frame.wait_for_timeout(timeout)
+  File "/home/spikkie/git/ai-aip/py_env/lib/python3.12/site-packages/patchright/_impl/_frame.py", line 832, in wait_for_timeout
+    await self._channel.send("waitForTimeout", None, {"waitTimeout": timeout})
+  File "/home/spikkie/git/ai-aip/py_env/lib/python3.12/site-packages/patchright/_impl/_connection.py", line 52, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/git/ai-aip/py_env/lib/python3.12/site-packages/patchright/_impl/_connection.py", line 500, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+patchright._impl._errors.TargetClosedError: Page.wait_for_timeout: Target page, context or browser has been closed

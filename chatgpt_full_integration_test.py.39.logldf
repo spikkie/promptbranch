@@ -1,0 +1,433 @@
+2026-04-18 11:55:47,276 | INFO | chatgpt_automation.service | Running ChatGPT browser login check
+2026-04-18 11:55:47,276 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:55:47.276] [login-check] starting login check | project_url='https://chatgpt.com/' profile_dir='/home/spikkie/git/chatgpt_claudecode_workflow/profile' headless=False driver='patchright' channel='chrome' keep_open=False
+[2026-04-18 11:55:47.276] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:55:47.546] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:55:47.848] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:55:47.850] [debug] browser debug hooks attached | operation='login_check'
+[2026-04-18 11:55:47.850] [trace] starting browser trace
+[2026-04-18 11:55:47.911] [auth] checking login state
+[2026-04-18 11:55:47.911] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 11:55:48.139] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:48.951] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:55:48.959] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:49.004] [auth-check] probing logged-in indicators
+[2026-04-18 11:55:49.259] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:55:49.667] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:55:49.828] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6'
+[2026-04-18 11:55:49.828] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:49.985] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:55:50.087] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=5 visible=True
+[2026-04-18 11:55:50.101] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:55:50.209] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6/conversations?cursor=0'
+[2026-04-18 11:55:50.209] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:50.247] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69cd3d7ec6348191810eeda936c8de4c/conversations?cursor=0'
+[2026-04-18 11:55:50.248] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:50.314] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:55:50.335] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:55:50.353] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:55:50.397] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:55:50.416] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:55:50.463] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:55:50.498] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:55:50.498] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 11:55:50.498] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 11:55:50.498] [auth] session already active
+[2026-04-18 11:55:50.498] [login-check] login result | logged_in=True profile_dir='/home/spikkie/git/chatgpt_claudecode_workflow/profile' headless=False url='https://chatgpt.com/' driver='patchright' debug=True debug_artifact_dir='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts'
+[2026-04-18 11:55:50.498] [result] login_check completed | result_type='dict'
+[2026-04-18 11:55:50.652] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/login_check_20260418_115550_498.trace.zip'
+[2026-04-18 11:55:50.652] [driver] closing browser context
+[2026-04-18 11:55:50.728] [driver] browser context closed
+2026-04-18 11:55:50,752 | INFO | chatgpt_automation.service | Resolving ChatGPT project by name
+2026-04-18 11:55:50,752 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:55:50.753] [project-resolve] starting resolve_project | project_url='https://chatgpt.com/' name='itest-chatgpt-workflow-20260418-115547-2877751' keep_open=False
+[2026-04-18 11:55:50.753] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:55:51.009] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:55:51.281] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:55:51.283] [debug] browser debug hooks attached | operation='project_resolve'
+[2026-04-18 11:55:51.283] [trace] starting browser trace
+[2026-04-18 11:55:51.344] [auth] checking login state
+[2026-04-18 11:55:51.344] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 11:55:51.562] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:52.309] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:55:52.323] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:52.356] [auth-check] probing logged-in indicators
+[2026-04-18 11:55:52.578] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:55:53.103] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:55:53.408] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:55:53.437] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=0 visible=False
+[2026-04-18 11:55:53.468] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:55:53.486] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:55:53.499] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:55:53.513] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:55:53.529] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:55:53.545] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:55:53.559] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:55:53.587] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:55:53.587] [auth-check] auth state summary | auth_visible=False login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 11:55:53.587] [auth-check] composer visible without anonymous markers; tentatively treating session as active
+[2026-04-18 11:55:53.587] [auth] session already active
+[2026-04-18 11:55:53.587] [nav] navigating | label='project-resolve-home' from_url='https://chatgpt.com/' to_url='https://chatgpt.com/'
+[2026-04-18 11:55:53.794] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6'
+[2026-04-18 11:55:53.795] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:53.924] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69cd3d7ec6348191810eeda936c8de4c'
+[2026-04-18 11:55:53.924] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:54.215] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.215] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69de5da345c0819183df0de4cb11b7b5/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69cd3d7ec6348191810eeda936c8de4c/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-68b2e058c8608191b27c2c818a9d1b43/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776506154207&sid=b06faa8b-ddfd-4ca1-844b-8f5b826a1ece&ec=14' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69cfcf67dbd48191b31a044c99656f9b/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/beacons/home' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69cfcf67dbd48191b31a044c99656f9b' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/estuary/content?id=file-9TrFWKq8W7mNBmLy1dP9QT&gizmo_id=g-67ec3b78892481918c89067962526695&ts=493473&p=gpp&cid=1&sig=ac8e2eb026ab7900c198864be2840e7dd4ca5512507093bfac59a071ae1d5c0b&v=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:55:54.216] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:54.816] [nav] domcontentloaded reached | label='project-resolve-home' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:55:55.293] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69cd3d7ec6348191810eeda936c8de4c'
+[2026-04-18 11:55:55.293] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:55.320] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6'
+[2026-04-18 11:55:55.320] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:55.606] [selector] selector probe | label='project-new-button-visible' selector='button:has-text("New project")' count=1 visible=True
+[2026-04-18 11:55:55.653] [project-resolve] project enumeration attempt completed | attempt=1 discovered_count=5 total_count=5 match_count=0
+[2026-04-18 11:55:55.716] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69e3467dcc1c8191ab0abf1abfb2aef6/conversations?cursor=0'
+[2026-04-18 11:55:55.716] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:55.748] [browser-response] http error response | status=404 url='https://chatgpt.com/backend-api/gizmos/g-p-69cd3d7ec6348191810eeda936c8de4c/conversations?cursor=0'
+[2026-04-18 11:55:55.748] [browser-console] Failed to load resource: the server responded with a status of 404 () | msg_type='error'
+[2026-04-18 11:55:56.088] [selector] selector probe | label='project-section-toggle' selector='button:has-text("Projects")' count=1 visible=True
+[2026-04-18 11:55:56.122] [project-resolve] project enumeration attempt completed | attempt=2 discovered_count=5 total_count=5 match_count=0
+[2026-04-18 11:55:56.993] [selector] selector probe | label='project-section-toggle' selector='button:has-text("Projects")' count=1 visible=True
+[2026-04-18 11:55:57.031] [project-resolve] project enumeration attempt completed | attempt=3 discovered_count=5 total_count=7 match_count=0
+[2026-04-18 11:55:57.399] [project-resolve] project resolution completed | ok=False action='resolve_project' project_name='itest-chatgpt-workflow-20260418-115547-2877751' project_url=None match_count=0 matches=[] matched_by=None error='project_not_found' current_url='https://chatgpt.com/'
+[2026-04-18 11:55:57.399] [result] project_resolve completed | result_type='dict'
+[2026-04-18 11:55:57.730] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_resolve_20260418_115557_399.trace.zip'
+[2026-04-18 11:55:57.730] [driver] closing browser context
+[2026-04-18 11:55:57.810] [driver] browser context closed
+2026-04-18 11:55:57,833 | INFO | chatgpt_automation.service | Ensuring ChatGPT project exists
+2026-04-18 11:55:57,834 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:55:57.834] [project-ensure] starting ensure_project | project_url='https://chatgpt.com/' name='itest-chatgpt-workflow-20260418-115547-2877751' icon=None color=None memory_mode='default' keep_open=False
+[2026-04-18 11:55:57.834] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:55:58.110] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:55:58.403] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:55:58.405] [debug] browser debug hooks attached | operation='project_ensure'
+[2026-04-18 11:55:58.405] [trace] starting browser trace
+[2026-04-18 11:55:58.463] [auth] checking login state
+[2026-04-18 11:55:58.463] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 11:55:58.678] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:59.424] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:55:59.439] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:55:59.472] [auth-check] probing logged-in indicators
+[2026-04-18 11:55:59.606] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:56:00.363] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:56:00.486] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:56:00.803] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=6 visible=True
+[2026-04-18 11:56:00.820] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:56:00.856] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:00.893] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:00.916] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:56:00.937] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:56:00.963] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:56:01.005] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:56:01.063] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:56:01.063] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 11:56:01.063] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 11:56:01.063] [auth] session already active
+[2026-04-18 11:56:01.063] [nav] navigating | label='project-ensure-home' from_url='https://chatgpt.com/' to_url='https://chatgpt.com/'
+[2026-04-18 11:56:01.299] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776506161291&sid=599abe00-e0d8-4e09-9ccd-e8d3b271a447&ec=3' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:01.300] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:01.300] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:01.300] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69cfcf67dbd48191b31a044c99656f9b' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:01.300] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/estuary/content?id=file-9TrFWKq8W7mNBmLy1dP9QT&gizmo_id=g-67ec3b78892481918c89067962526695&ts=493473&p=gpp&cid=1&sig=ac8e2eb026ab7900c198864be2840e7dd4ca5512507093bfac59a071ae1d5c0b&v=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:01.300] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:01.748] [nav] domcontentloaded reached | label='project-ensure-home' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:56:02.376] [selector] selector probe | label='project-new-button-visible' selector='button:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:02.682] [selector] selector probe | label='project-new-button-visible' selector='a:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:02.754] [selector] selector probe | label='project-new-button-visible' selector='button[data-sidebar-item="true"]:has-text("New project")' count=1 visible=True
+[2026-04-18 11:56:02.766] [project-resolve] project enumeration attempt completed | attempt=1 discovered_count=5 total_count=5 match_count=0
+[2026-04-18 11:56:03.202] [selector] selector probe | label='project-section-toggle' selector='button:has-text("Projects")' count=1 visible=True
+[2026-04-18 11:56:03.236] [project-resolve] project enumeration attempt completed | attempt=2 discovered_count=5 total_count=5 match_count=0
+[2026-04-18 11:56:04.125] [selector] selector probe | label='project-section-toggle' selector='button:has-text("Projects")' count=1 visible=True
+[2026-04-18 11:56:04.161] [project-resolve] project enumeration attempt completed | attempt=3 discovered_count=5 total_count=5 match_count=0
+[2026-04-18 11:56:04.610] [selector] selector probe | label='project-new-button' selector='button:has-text("New project")' count=1 visible=True
+[2026-04-18 11:56:04.610] [selector] wait-for-visible locator resolved | label='project-new-button' attempt=1
+[2026-04-18 11:56:05.566] [selector] selector probe | label='project-create-name-input' selector='[role="dialog"] input[placeholder*="project" i]' count=0 visible=False
+[2026-04-18 11:56:05.588] [selector] selector probe | label='project-create-name-input' selector='[role="dialog"] input[aria-label*="project" i]' count=0 visible=False
+[2026-04-18 11:56:05.624] [selector] selector probe | label='project-create-name-input' selector='dialog[open] input[placeholder*="project" i]' count=0 visible=False
+[2026-04-18 11:56:05.646] [selector] selector probe | label='project-create-name-input' selector='dialog[open] input[aria-label*="project" i]' count=0 visible=False
+[2026-04-18 11:56:05.667] [selector] selector probe | label='project-create-name-input' selector='[role="dialog"] input[type="text"]' count=0 visible=False
+[2026-04-18 11:56:05.727] [selector] selector probe | label='project-create-name-input' selector='dialog[open] input[type="text"]' count=1 visible=True
+[2026-04-18 11:56:05.727] [selector] wait-for-visible locator resolved | label='project-create-name-input' attempt=1
+[2026-04-18 11:56:05.925] [selector] selector probe | label='project-create-submit' selector='[role="dialog"] button:has-text("Create")' count=0 visible=False
+[2026-04-18 11:56:05.949] [selector] selector probe | label='project-create-submit' selector='[role="dialog"] button:has-text("Done")' count=0 visible=False
+[2026-04-18 11:56:06.008] [selector] selector probe | label='project-create-submit' selector='dialog[open] button:has-text("Create")' count=1 visible=True
+[2026-04-18 11:56:06.008] [selector] wait-for-visible locator resolved | label='project-create-submit' attempt=1
+[2026-04-18 11:56:09.535] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:09.813] [project-ensure] project created during ensure | ok=True action='ensure_project' project_name='itest-chatgpt-workflow-20260418-115547-2877751' project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' icon=None color=None memory_mode='default' icon_applied=False color_applied=False memory_mode_applied=True warnings=[] created=True match_count=0 matches=[] matched_by=None error=None
+[2026-04-18 11:56:09.813] [result] project_ensure completed | result_type='dict'
+[2026-04-18 11:56:10.131] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_ensure_20260418_115609_813.trace.zip'
+[2026-04-18 11:56:10.132] [driver] closing browser context
+[2026-04-18 11:56:10.216] [driver] browser context closed
+2026-04-18 11:56:10,240 | INFO | chatgpt_automation.service | Ensuring ChatGPT project exists
+2026-04-18 11:56:10,240 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:56:10.240] [project-ensure] starting ensure_project | project_url='https://chatgpt.com/' name='itest-chatgpt-workflow-20260418-115547-2877751' icon=None color=None memory_mode='default' keep_open=False
+[2026-04-18 11:56:10.240] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:56:10.499] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:56:10.797] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:56:10.799] [debug] browser debug hooks attached | operation='project_ensure'
+[2026-04-18 11:56:10.799] [trace] starting browser trace
+[2026-04-18 11:56:10.859] [auth] checking login state
+[2026-04-18 11:56:10.859] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 11:56:11.140] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:11.918] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:56:11.934] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:11.935] [auth-check] probing logged-in indicators
+[2026-04-18 11:56:12.204] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:56:12.821] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:56:13.111] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:56:13.384] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=34 visible=True
+[2026-04-18 11:56:13.429] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:56:13.456] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:13.475] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:13.491] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:56:13.508] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:56:13.526] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:56:13.543] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:56:13.581] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:56:13.581] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 11:56:13.581] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 11:56:13.581] [auth] session already active
+[2026-04-18 11:56:13.581] [nav] navigating | label='project-ensure-home' from_url='https://chatgpt.com/' to_url='https://chatgpt.com/'
+[2026-04-18 11:56:13.890] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:13.890] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69e3553644388191ad447e0661dc7f2e' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:13.890] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:13.890] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776506173884&sid=65f617a7-7fb0-4719-b053-6e1d7e933976&ec=3' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:13.892] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:14.462] [nav] domcontentloaded reached | label='project-ensure-home' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:56:15.081] [selector] selector probe | label='project-new-button-visible' selector='button:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.170] [selector] selector probe | label='project-new-button-visible' selector='a:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.332] [selector] selector probe | label='project-new-button-visible' selector='button[data-sidebar-item="true"]:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.348] [selector] selector probe | label='project-new-button-visible' selector='a[data-sidebar-item="true"]:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.359] [selector] selector probe | label='project-new-button-visible' selector='nav button:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.379] [selector] selector probe | label='project-new-button-visible' selector='aside button:has-text("New project")' count=0 visible=False
+[2026-04-18 11:56:15.393] [selector] selector probe | label='project-new-button-visible' selector='[data-testid="new-project-button"]' count=0 visible=False
+[2026-04-18 11:56:15.404] [selector] selector probe | label='project-new-button-visible' selector='[aria-label*="New project" i]' count=0 visible=False
+[2026-04-18 11:56:15.450] [selector] selector probe | label='project-close-sidebar' selector='button[data-testid="close-sidebar-button"]' count=1 visible=True
+[2026-04-18 11:56:15.450] [sidebar] sidebar already open for project flow
+[2026-04-18 11:56:15.890] [project-resolve] project enumeration attempt completed | attempt=1 discovered_count=5 total_count=5 match_count=1
+[2026-04-18 11:56:15.891] [project-ensure] project already exists | ok=True action='ensure_project' project_name='itest-chatgpt-workflow-20260418-115547-2877751' project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e-itest-chatgpt-workflow-20260418-115547-2877751/project' created=False match_count=1 matches=[{'name': 'itest-chatgpt-workflow-20260418-115547-2877751', 'url': 'https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e-itest-chatgpt-workflow-20260418-115547-2877751/project'}] matched_by='exact_name' error=None current_url='https://chatgpt.com/' icon=None color=None memory_mode='default' icon_applied=False color_applied=False memory_mode_applied=False warnings=[]
+[2026-04-18 11:56:15.891] [result] project_ensure completed | result_type='dict'
+[2026-04-18 11:56:16.238] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_ensure_20260418_115615_891.trace.zip'
+[2026-04-18 11:56:16.238] [driver] closing browser context
+[2026-04-18 11:56:16.321] [driver] browser context closed
+2026-04-18 11:56:16,345 | INFO | chatgpt_automation.service | Resolving ChatGPT project by name
+2026-04-18 11:56:16,345 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:56:16.345] [project-resolve] starting resolve_project | project_url='https://chatgpt.com/' name='itest-chatgpt-workflow-20260418-115547-2877751' keep_open=False
+[2026-04-18 11:56:16.345] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:56:16.608] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:56:16.883] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:56:16.884] [debug] browser debug hooks attached | operation='project_resolve'
+[2026-04-18 11:56:16.884] [trace] starting browser trace
+[2026-04-18 11:56:16.950] [auth] checking login state
+[2026-04-18 11:56:16.950] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/'
+[2026-04-18 11:56:17.150] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:17.908] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:56:17.922] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:17.953] [auth-check] probing logged-in indicators
+[2026-04-18 11:56:18.172] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:56:18.671] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:56:18.924] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:56:19.091] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=34 visible=True
+[2026-04-18 11:56:19.111] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:56:19.133] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:19.153] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:19.170] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:56:19.190] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:56:19.238] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:56:19.264] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:56:19.338] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:56:19.338] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=False current_url='https://chatgpt.com/'
+[2026-04-18 11:56:19.338] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 11:56:19.338] [auth] session already active
+[2026-04-18 11:56:19.338] [nav] navigating | label='project-resolve-home' from_url='https://chatgpt.com/' to_url='https://chatgpt.com/'
+[2026-04-18 11:56:19.525] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69dbabe62fac8191a7f7fa90dd2c7c00/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776506179508&sid=ad532d23-56b1-4192-8351-a7c358f1e129&ec=1' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/beacons/home' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/tasks' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.526] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/backend-api/aip/connectors/list_accessible?skip_actions=true&external_logos=true' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:19.527] [browser-nav] main frame navigated | url='https://chatgpt.com/'
+[2026-04-18 11:56:20.099] [nav] domcontentloaded reached | label='project-resolve-home' current_url='https://chatgpt.com/' title='ChatGPT'
+[2026-04-18 11:56:20.904] [selector] selector probe | label='project-new-button-visible' selector='button:has-text("New project")' count=1 visible=True
+[2026-04-18 11:56:20.944] [project-resolve] project enumeration attempt completed | attempt=1 discovered_count=5 total_count=5 match_count=1
+[2026-04-18 11:56:20.944] [project-resolve] project resolution completed | ok=True action='resolve_project' project_name='itest-chatgpt-workflow-20260418-115547-2877751' project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e-itest-chatgpt-workflow-20260418-115547-2877751/project' match_count=1 matches=[{'name': 'itest-chatgpt-workflow-20260418-115547-2877751', 'url': 'https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e-itest-chatgpt-workflow-20260418-115547-2877751/project'}] matched_by='exact_name' error=None current_url='https://chatgpt.com/'
+[2026-04-18 11:56:20.944] [result] project_resolve completed | result_type='dict'
+[2026-04-18 11:56:21.141] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_resolve_20260418_115620_944.trace.zip'
+[2026-04-18 11:56:21.141] [driver] closing browser context
+[2026-04-18 11:56:21.215] [driver] browser context closed
+2026-04-18 11:56:21,235 | INFO | chatgpt_automation.service | Discovering ChatGPT project source capabilities
+2026-04-18 11:56:21,235 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:56:21.235] [project-source-capabilities] starting discover_project_source_capabilities | project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' keep_open=False
+[2026-04-18 11:56:21.236] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:56:21.497] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:56:21.789] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:56:21.791] [debug] browser debug hooks attached | operation='project_source_capabilities'
+[2026-04-18 11:56:21.791] [trace] starting browser trace
+[2026-04-18 11:56:21.851] [auth] checking login state
+[2026-04-18 11:56:21.851] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:22.080] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:22.830] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:22.830] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' title='ChatGPT'
+[2026-04-18 11:56:22.870] [auth-check] probing logged-in indicators
+[2026-04-18 11:56:23.073] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:56:23.419] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:56:23.633] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:56:23.940] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=5 visible=True
+[2026-04-18 11:56:23.955] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:56:23.978] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:23.995] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:24.011] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:56:24.024] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:56:24.051] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:56:24.077] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:56:24.133] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:56:24.133] [auth-check] auth state summary | auth_visible=True login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=True current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:24.133] [auth-check] authenticated indicator is visible; session considered active
+[2026-04-18 11:56:24.133] [auth] session already active
+[2026-04-18 11:56:24.133] [nav] navigating | label='project-source-capabilities-home' from_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' to_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:24.331] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:24.331] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-68b2e058c8608191b27c2c818a9d1b43' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:24.331] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:24.331] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27?timezone_offset_min=-120' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:24.331] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/ces/v1/rgstr?k=client-nb0qtYlZuy2tCMN5s5ncnuIBCJncjRViT0IzFm7GqST&st=javascript-client&sv=3.32.6&t=1776506184315&sid=cf87f1ec-81ff-4069-95df-5509f120d948&ec=15' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:24.332] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:24.781] [nav] domcontentloaded reached | label='project-source-capabilities-home' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' title='ChatGPT'
+[2026-04-18 11:56:25.326] [selector] selector probe | label='project-sources-tab' selector='[role="tab"]:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:25.520] [selector] selector probe | label='project-sources-tab' selector='button:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:25.614] [selector] selector probe | label='project-sources-tab' selector='a:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:26.187] [selector] selector probe | label='project-sources-tab' selector='[role="tab"]:has-text("Sources")' count=1 visible=True
+[2026-04-18 11:56:26.187] [selector] wait-for-visible locator resolved | label='project-sources-tab' attempt=2
+[2026-04-18 11:56:26.247] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:26.267] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:27.106] [project-source] sources tab opened | current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:27.136] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=0 visible=False
+[2026-04-18 11:56:27.164] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add Source")' count=0 visible=False
+[2026-04-18 11:56:27.190] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] [aria-label*="Add source" i]' count=0 visible=False
+[2026-04-18 11:56:27.236] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add")' count=1 visible=True
+[2026-04-18 11:56:27.236] [selector] wait-for-visible locator resolved | label='project-add-source-button' attempt=1
+[2026-04-18 11:56:27.936] [project-source-capabilities] discovered project source capabilities | ok=True action='discover_project_source_capabilities' project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' available_source_kinds=['file', 'text', 'gdrive', 'slack'] available_source_labels=['Upload', 'Text input', 'Google Drive', 'Slack'] capabilities=[{'kind': 'file', 'label': 'Upload'}, {'kind': 'text', 'label': 'Text input'}, {'kind': 'gdrive', 'label': 'Google Drive'}, {'kind': 'slack', 'label': 'Slack'}] current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:27.936] [result] project_source_capabilities completed | result_type='dict'
+[2026-04-18 11:56:28.231] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_capabilities_20260418_115627_936.trace.zip'
+[2026-04-18 11:56:28.231] [driver] closing browser context
+[2026-04-18 11:56:28.309] [driver] browser context closed
+2026-04-18 11:56:28,333 | INFO | chatgpt_automation.service | Adding ChatGPT project source
+2026-04-18 11:56:28,333 | DEBUG | chatgpt_automation.service | Building ChatGPT automation bot with email=sp***@gmail.com password_set=True password_file=/home/spikkie/.config/chatgpt/password.txt profile_dir=./profile headed=True driver=patchright
+[2026-04-18 11:56:28.333] [project-source-add] starting add_project_source | project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' source_kind='text' value_preview='Integration note for run 20260418-115547-2877751' file_path=None display_name='itest-text-20260418-115547-2877751' keep_open=False
+[2026-04-18 11:56:28.333] [driver] resolving browser driver | driver='patchright'
+[2026-04-18 11:56:28.608] [driver] launching persistent chromium context | disable_fedcm=True filter_no_sandbox=True no_viewport=True channel='chrome' running_as_root=False browser_args=['--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics', '--disable-blink-features=FedCm'] ignore_default_args=['--no-sandbox', '--disable-setuid-sandbox']
+[2026-04-18 11:56:28.895] [debug] page debug hooks attached | url='about:blank'
+[2026-04-18 11:56:28.898] [debug] browser debug hooks attached | operation='project_source_add'
+[2026-04-18 11:56:28.898] [trace] starting browser trace
+[2026-04-18 11:56:28.964] [auth] checking login state
+[2026-04-18 11:56:28.965] [nav] navigating | label='initial-auth-check' from_url='about:blank' to_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:29.162] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:29.938] [nav] domcontentloaded reached | label='initial-auth-check' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' title='ChatGPT'
+[2026-04-18 11:56:29.955] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:29.994] [auth-check] probing logged-in indicators
+[2026-04-18 11:56:30.339] [selector] selector probe | label='authenticated-indicator' selector='button[data-testid="profile-button"]' count=0 visible=False
+[2026-04-18 11:56:30.627] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="user-menu-button"]' count=0 visible=False
+[2026-04-18 11:56:30.772] [selector] selector probe | label='authenticated-indicator' selector='[data-testid="share-chat-button"]' count=0 visible=False
+[2026-04-18 11:56:30.793] [selector] selector probe | label='authenticated-indicator' selector='nav button[aria-haspopup="menu"]:not([aria-label="Help"]):not([aria-label="Model selector"])' count=0 visible=False
+[2026-04-18 11:56:30.820] [selector] selector probe | label='login-indicator' selector='button[data-testid="login-button"]' count=0 visible=False
+[2026-04-18 11:56:30.846] [selector] selector probe | label='login-indicator' selector='header button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:30.862] [selector] selector probe | label='login-indicator' selector='button:has-text("Log in")' count=0 visible=False
+[2026-04-18 11:56:30.875] [selector] selector probe | label='signup-indicator' selector='button[data-testid="signup-button"]' count=0 visible=False
+[2026-04-18 11:56:30.889] [selector] selector probe | label='signup-indicator' selector='button:has-text("Sign up for free")' count=0 visible=False
+[2026-04-18 11:56:30.907] [selector] selector probe | label='anonymous-indicator' selector='text=Get responses tailored to you' count=0 visible=False
+[2026-04-18 11:56:30.918] [selector] selector probe | label='anonymous-indicator' selector='text=Log in to get answers based on saved chats' count=0 visible=False
+[2026-04-18 11:56:30.952] [composer-check] chat input selector probe | selector='#prompt-textarea' count=1 visible=True
+[2026-04-18 11:56:30.952] [auth-check] auth state summary | auth_visible=False login_visible=False signup_visible=False anonymous_visible=False composer_visible=True project_page_visible=True current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:30.952] [auth-check] composer visible without anonymous markers; tentatively treating session as active
+[2026-04-18 11:56:30.952] [auth] session already active
+[2026-04-18 11:56:30.952] [nav] navigating | label='project-source-add-home' from_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' to_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:31.142] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=5&limit=20' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/g-p-69e3553644388191ad447e0661dc7f2e/conversations?cursor=0' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/tasks' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/backend-api/aip/connectors/list_accessible?skip_actions=true&external_logos=true' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='POST' url='https://statsigapi.net/v1/sdk_exception' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.143] [browser-requestfailed] request failed | method='GET' url='https://chatgpt.com/backend-api/gizmos/bootstrap?limit=2' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:31.144] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project'
+[2026-04-18 11:56:31.727] [nav] domcontentloaded reached | label='project-source-add-home' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' title='ChatGPT'
+[2026-04-18 11:56:32.056] [selector] selector probe | label='project-sources-tab' selector='[role="tab"]:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:32.350] [selector] selector probe | label='project-sources-tab' selector='button:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:32.409] [selector] selector probe | label='project-sources-tab' selector='a:has-text("Sources")' count=0 visible=False
+[2026-04-18 11:56:33.048] [selector] selector probe | label='project-sources-tab' selector='[role="tab"]:has-text("Sources")' count=1 visible=True
+[2026-04-18 11:56:33.048] [selector] wait-for-visible locator resolved | label='project-sources-tab' attempt=2
+[2026-04-18 11:56:33.150] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:33.171] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:34.017] [project-source] sources tab opened | current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:34.075] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=0 visible=False
+[2026-04-18 11:56:34.097] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add Source")' count=0 visible=False
+[2026-04-18 11:56:34.114] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] [aria-label*="Add source" i]' count=0 visible=False
+[2026-04-18 11:56:34.158] [selector] selector probe | label='project-add-source-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add")' count=1 visible=True
+[2026-04-18 11:56:34.158] [selector] wait-for-visible locator resolved | label='project-add-source-button' attempt=1
+[2026-04-18 11:56:34.912] [selector] selector probe | label='project-source-text-input-preopened' selector='[role="dialog"] textarea' count=0 visible=False
+[2026-04-18 11:56:34.938] [selector] selector probe | label='project-source-text-input-preopened' selector='[role="dialog"] [contenteditable="true"]' count=0 visible=False
+[2026-04-18 11:56:34.958] [selector] selector probe | label='project-source-text-input-preopened' selector='[role="dialog"] [role="textbox"]' count=0 visible=False
+[2026-04-18 11:56:34.978] [selector] selector probe | label='project-source-text-input-preopened' selector='[role="dialog"] input[type="text"]' count=0 visible=False
+[2026-04-18 11:56:35.000] [selector] selector probe | label='project-source-text-input-preopened' selector='dialog[open] textarea' count=0 visible=False
+[2026-04-18 11:56:35.021] [selector] selector probe | label='project-source-text-input-preopened' selector='dialog[open] [contenteditable="true"]' count=0 visible=False
+[2026-04-18 11:56:35.042] [selector] selector probe | label='project-source-text-input-preopened' selector='dialog[open] [role="textbox"]' count=0 visible=False
+[2026-04-18 11:56:35.064] [selector] selector probe | label='project-source-text-input-preopened' selector='dialog[open] input[type="text"]' count=0 visible=False
+[2026-04-18 11:56:35.076] [project-source] discovered add-source capabilities | requested_source_kind='text' available_source_kinds=['file', 'text', 'gdrive', 'slack'] available_source_labels=['Upload', 'Text input', 'Google Drive', 'Slack']
+[2026-04-18 11:56:35.097] [selector] selector probe | label='project-source-kind-text' selector='[role="dialog"] [role="menuitem"]:has-text("Text")' count=0 visible=False
+[2026-04-18 11:56:35.124] [selector] selector probe | label='project-source-kind-text' selector='dialog[open] [role="menuitem"]:has-text("Text")' count=0 visible=False
+[2026-04-18 11:56:35.148] [selector] selector probe | label='project-source-kind-text' selector='[role="menu"] [role="menuitem"]:has-text("Text")' count=0 visible=False
+[2026-04-18 11:56:35.168] [selector] selector probe | label='project-source-kind-text' selector='[data-radix-popper-content-wrapper] [role="menuitem"]:has-text("Text")' count=0 visible=False
+[2026-04-18 11:56:35.209] [selector] selector probe | label='project-source-kind-text' selector='[role="dialog"] button:has-text("Text")' count=1 visible=True
+[2026-04-18 11:56:35.209] [selector] wait-for-visible locator resolved | label='project-source-kind-text' attempt=1
+[2026-04-18 11:56:35.901] [selector] selector probe | label='project-source-text-input-after-text' selector='[role="dialog"] textarea' count=1 visible=True
+[2026-04-18 11:56:36.088] [selector] selector probe | label='project-source-title-input' selector='[role="dialog"] input[placeholder*="Title" i]' count=0 visible=False
+[2026-04-18 11:56:36.119] [selector] selector probe | label='project-source-title-input' selector='[role="dialog"] input[aria-label*="Title" i]' count=0 visible=False
+[2026-04-18 11:56:36.141] [selector] selector probe | label='project-source-title-input' selector='dialog[open] input[placeholder*="Title" i]' count=0 visible=False
+[2026-04-18 11:56:36.160] [selector] selector probe | label='project-source-title-input' selector='dialog[open] input[aria-label*="Title" i]' count=0 visible=False
+[2026-04-18 11:56:36.177] [selector] selector probe | label='project-source-save-button' selector='[role="dialog"] button:has-text("Add")' count=0 visible=False
+[2026-04-18 11:56:36.213] [selector] selector probe | label='project-source-save-button' selector='[role="dialog"] button:has-text("Save")' count=1 visible=True
+[2026-04-18 11:56:36.213] [selector] wait-for-visible locator resolved | label='project-source-save-button' attempt=1
+[2026-04-18 11:56:37.524] [selector] selector probe | label='project-source-text-post-save-dialog' selector='[role="dialog"]' count=0 visible=False
+[2026-04-18 11:56:37.546] [selector] selector probe | label='project-source-text-post-save-dialog' selector='dialog[open]' count=0 visible=False
+[2026-04-18 11:56:37.625] [selector] selector probe | label='project-source-text-post-save-add-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=1 visible=True
+[2026-04-18 11:56:37.665] [project-source-add] post-save settle probe | stable_observations=0 required_observations=3 settled_now=False source_kind='text' dialog_visible=False add_button_visible=True source_card_count=1 empty_state_visible=False sources_surface_ready=True url_stable=False current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:38.125] [selector] selector probe | label='project-source-text-post-save-dialog' selector='[role="dialog"]' count=0 visible=False
+[2026-04-18 11:56:38.166] [selector] selector probe | label='project-source-text-post-save-dialog' selector='dialog[open]' count=0 visible=False
+[2026-04-18 11:56:38.249] [selector] selector probe | label='project-source-text-post-save-add-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=1 visible=True
+[2026-04-18 11:56:38.284] [project-source-add] post-save settle probe | stable_observations=0 required_observations=3 settled_now=True source_kind='text' dialog_visible=False add_button_visible=True source_card_count=1 empty_state_visible=False sources_surface_ready=True url_stable=True current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:38.744] [selector] selector probe | label='project-source-text-post-save-dialog' selector='[role="dialog"]' count=0 visible=False
+[2026-04-18 11:56:38.790] [selector] selector probe | label='project-source-text-post-save-dialog' selector='dialog[open]' count=0 visible=False
+[2026-04-18 11:56:38.888] [selector] selector probe | label='project-source-text-post-save-add-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=1 visible=True
+[2026-04-18 11:56:38.912] [project-source-add] post-save settle probe | stable_observations=1 required_observations=3 settled_now=True source_kind='text' dialog_visible=False add_button_visible=True source_card_count=1 empty_state_visible=False sources_surface_ready=True url_stable=True current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:39.345] [selector] selector probe | label='project-source-text-post-save-dialog' selector='[role="dialog"]' count=0 visible=False
+[2026-04-18 11:56:39.364] [selector] selector probe | label='project-source-text-post-save-dialog' selector='dialog[open]' count=0 visible=False
+[2026-04-18 11:56:39.418] [selector] selector probe | label='project-source-text-post-save-add-button' selector='[role="tabpanel"][data-state="active"] button:has-text("Add source")' count=1 visible=True
+[2026-04-18 11:56:39.447] [project-source-add] post-save settle probe | stable_observations=2 required_observations=3 settled_now=True source_kind='text' dialog_visible=False add_button_visible=True source_card_count=1 empty_state_visible=False sources_surface_ready=True url_stable=True current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:39.447] [project-source-add] verifying project source persistence after refresh | project_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project' sources_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources' source_match_candidates=['Integration note for run 20260418-115547-2877751', 'itest-text-20260418-115547-2877751', 'pasted.txt Document', 'pasted.txt', 'Document']
+[2026-04-18 11:56:39.447] [nav] navigating | label='project-source-add-persistence-refresh' from_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources' to_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:39.668] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/backend-api/gizmos/snorlax/upsert' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:39.668] [browser-requestfailed] request failed | method='POST' url='https://chatgpt.com/backend-api/lat/retrieval' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:39.668] [browser-requestfailed] request failed | method='POST' url='https://statsigapi.net/v1/sdk_exception' failure='net::ERR_ABORTED'
+[2026-04-18 11:56:39.669] [browser-nav] main frame navigated | url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:40.121] [nav] domcontentloaded reached | label='project-source-add-persistence-refresh' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources' title='ChatGPT'
+[2026-04-18 11:56:55.171] [error] project_source_add failed | error_type='ResponseTimeoutError' error='Timed out waiting for project source to appear: Integration note for run 20260418-115547-2877751' current_url='https://chatgpt.com/g/g-p-69e3553644388191ad447e0661dc7f2e/project?tab=sources'
+[2026-04-18 11:56:55.174] [artifact] saved text artifact | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_add_20260418_115655_171.txt'
+[2026-04-18 11:56:55.219] [artifact] saved text artifact | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_add_20260418_115655_171.html'
+[2026-04-18 11:56:55.219] [artifact] saved html snapshot | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_add_20260418_115655_171.html'
+[2026-04-18 11:56:55.373] [artifact] saved screenshot | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_add_20260418_115655_171.png'
+[2026-04-18 11:56:55.871] [artifact] saved trace archive | path='/home/spikkie/git/chatgpt_claudecode_workflow/debug_artifacts/project_source_add_20260418_115655_373.trace.zip'
+[2026-04-18 11:56:55.871] [driver] closing browser context
+[2026-04-18 11:56:55.947] [driver] browser context closed
+{
+  "ok": false,
+  "error_type": "ResponseTimeoutError",
+  "error": "Timed out waiting for project source to appear: Integration note for run 20260418-115547-2877751"
+}
