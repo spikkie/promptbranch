@@ -245,6 +245,7 @@ def test_wait_for_project_source_save_request_quiet_requires_relevant_requests_t
             "finished": 0,
             "failed": 0,
             "saw_relevant": True,
+            "saw_commit": True,
             "inflight": {1},
             "last_activity": loop.time(),
         }
@@ -294,6 +295,7 @@ def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_wi
         "finished": 0,
         "failed": 0,
         "saw_relevant": False,
+        "saw_commit": False,
         "inflight": set(),
         "last_activity": None,
     }
@@ -313,6 +315,72 @@ def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_wi
     assert settled["saw_relevant"] is False
     assert settled["observation_window_elapsed"] is True
     assert settled["quiet_now"] is True
+    assert page.wait_calls
+
+
+def test_is_project_source_save_request_matches_late_processing_commit(browser_client: ChatGPTBrowserClient) -> None:
+    assert browser_client._is_project_source_save_request(
+        "https://chatgpt.com/backend-api/files/process_upload_stream",
+        source_kind="text",
+    ) is True
+    assert browser_client._is_project_source_commit_request(
+        "https://chatgpt.com/backend-api/files/process_upload_stream",
+        source_kind="text",
+    ) is True
+
+
+def test_wait_for_project_source_save_request_quiet_waits_for_late_commit_window(browser_client: ChatGPTBrowserClient) -> None:
+    class _QuietPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _QuietPage()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        watch = {
+            "installed": True,
+            "source_kind": "text",
+            "started": 1,
+            "finished": 1,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": False,
+            "inflight": set(),
+            "last_activity": loop.time() - 1,
+        }
+
+        async def advance_state() -> None:
+            await asyncio.sleep(0)
+            watch["saw_commit"] = True
+            watch["started"] = 2
+            watch["finished"] = 2
+            watch["last_activity"] = loop.time() - 1
+
+        loop.create_task(advance_state())
+        settled = loop.run_until_complete(
+            browser_client._wait_for_project_source_save_request_quiet(
+                page,
+                watch,
+                source_kind="text",
+                timeout_ms=1000,
+                observation_window_ms=200,
+                quiet_window_ms=50,
+                poll_interval_ms=10,
+            )
+        )
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+    assert settled["saw_relevant"] is True
+    assert settled["saw_commit"] is True
+    assert settled["started"] == 2
+    assert settled["finished"] == 2
     assert page.wait_calls
 
 

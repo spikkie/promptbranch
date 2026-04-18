@@ -3355,7 +3355,7 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(1_500)
 
 
-    def _is_project_source_save_request(self, request_or_url: Any, *, source_kind: str) -> bool:
+    def _is_project_source_commit_request(self, request_or_url: Any, *, source_kind: str) -> bool:
         try:
             url = request_or_url.url if hasattr(request_or_url, "url") else str(request_or_url)
         except Exception:
@@ -3364,6 +3364,20 @@ class ChatGPTBrowserClient:
         if not normalized_url:
             return False
         if '/backend-api/gizmos/snorlax/upsert' in normalized_url:
+            return True
+        if source_kind in {"text", "file"} and '/backend-api/files/process_upload_stream' in normalized_url:
+            return True
+        return False
+
+    def _is_project_source_save_request(self, request_or_url: Any, *, source_kind: str) -> bool:
+        try:
+            url = request_or_url.url if hasattr(request_or_url, "url") else str(request_or_url)
+        except Exception:
+            return False
+        normalized_url = (url or "").lower()
+        if not normalized_url:
+            return False
+        if self._is_project_source_commit_request(normalized_url, source_kind=source_kind):
             return True
         if source_kind in {"text", "file"} and 'oaiusercontent.com/files/' in normalized_url and '/raw' in normalized_url:
             return True
@@ -3377,6 +3391,7 @@ class ChatGPTBrowserClient:
             "finished": 0,
             "failed": 0,
             "saw_relevant": False,
+            "saw_commit": False,
             "inflight": set(),
             "last_activity": None,
             "handlers": None,
@@ -3393,6 +3408,9 @@ class ChatGPTBrowserClient:
             inflight.add(id(req))
             watch["started"] = int(watch.get("started") or 0) + 1
             watch["saw_relevant"] = True
+            is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
+            if is_commit:
+                watch["saw_commit"] = True
             watch["last_activity"] = loop.time()
             self._log(
                 "project-source-add",
@@ -3400,6 +3418,7 @@ class ChatGPTBrowserClient:
                 source_kind=source_kind,
                 method=getattr(req, "method", None),
                 url=getattr(req, "url", None),
+                is_commit=is_commit,
                 started=watch.get("started"),
                 inflight=len(inflight),
             )
@@ -3432,6 +3451,9 @@ class ChatGPTBrowserClient:
             inflight.discard(token)
             watch["failed"] = int(watch.get("failed") or 0) + 1
             watch["saw_relevant"] = True
+            is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
+            if is_commit:
+                watch["saw_commit"] = True
             watch["last_activity"] = loop.time()
             failure_text = None
             try:
@@ -3445,6 +3467,7 @@ class ChatGPTBrowserClient:
                 source_kind=source_kind,
                 method=getattr(req, "method", None),
                 url=getattr(req, "url", None),
+                is_commit=is_commit,
                 failure=failure_text,
                 failed=watch.get("failed"),
                 inflight=len(inflight),
@@ -3488,9 +3511,9 @@ class ChatGPTBrowserClient:
         watch: Optional[dict[str, Any]],
         *,
         source_kind: str,
-        timeout_ms: int = 12_000,
-        observation_window_ms: int = 6_000,
-        quiet_window_ms: int = 1_500,
+        timeout_ms: int = 15_000,
+        observation_window_ms: int = 8_000,
+        quiet_window_ms: int = 2_000,
         poll_interval_ms: int = 150,
     ) -> dict[str, Any]:
         if watch is None:
@@ -3514,6 +3537,7 @@ class ChatGPTBrowserClient:
         while asyncio.get_running_loop().time() < deadline:
             now = asyncio.get_running_loop().time()
             saw_relevant = bool(watch.get("saw_relevant"))
+            saw_commit = bool(watch.get("saw_commit"))
             inflight = watch.get("inflight") or set()
             started = int(watch.get("started") or 0)
             finished = int(watch.get("finished") or 0)
@@ -3521,19 +3545,27 @@ class ChatGPTBrowserClient:
             last_activity = watch.get("last_activity")
             idle_for_s = None if last_activity is None else max(0.0, now - float(last_activity))
             observation_window_elapsed = now >= observation_deadline
+            quiet_enough = (idle_for_s is not None and idle_for_s >= quiet_window_s)
+            waiting_for_late_commit = source_kind in {"text", "file"} and saw_relevant and not saw_commit
             quiet_now = not inflight and (
-                (idle_for_s is not None and idle_for_s >= quiet_window_s)
+                (
+                    saw_relevant
+                    and quiet_enough
+                    and (not waiting_for_late_commit or observation_window_elapsed)
+                )
                 or (not saw_relevant and observation_window_elapsed)
             )
             last_state = {
                 "source_kind": source_kind,
                 "saw_relevant": saw_relevant,
+                "saw_commit": saw_commit,
                 "started": started,
                 "finished": finished,
                 "failed": failed,
                 "inflight": len(inflight),
                 "idle_for_s": idle_for_s,
                 "observation_window_elapsed": observation_window_elapsed,
+                "waiting_for_late_commit": waiting_for_late_commit,
                 "quiet_now": quiet_now,
             }
             self._log(
@@ -3550,8 +3582,9 @@ class ChatGPTBrowserClient:
         raise ResponseTimeoutError(
             "Timed out waiting for project source save requests to go quiet "
             f"(source_kind={source_kind}, saw_relevant={last_state.get('saw_relevant')}, "
-            f"started={last_state.get('started')}, finished={last_state.get('finished')}, "
-            f"failed={last_state.get('failed')}, inflight={last_state.get('inflight')})"
+            f"saw_commit={last_state.get('saw_commit')}, started={last_state.get('started')}, "
+            f"finished={last_state.get('finished')}, failed={last_state.get('failed')}, "
+            f"inflight={last_state.get('inflight')})"
         )
 
     async def _verify_project_source_persistence(
