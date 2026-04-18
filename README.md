@@ -1,40 +1,145 @@
-# ChatGPT ClaudeCode Workflow v0.0.12
+# ChatGPT ClaudeCode Workflow v0.0.46
 
-This reduced package is a single command-line tool that uses `chatgpt_automation` as the backbone library.
-It opens ChatGPT in a persistent browser profile, lets you verify login state, send one-off prompts, or run an interactive shell.
+This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
-## Files
+What is stable from the accepted baseline:
+- project source add for `text`
+- project source add for `file`
+- ask flow
 
-- `chatgpt_cli.py` — single entrypoint
-- `chatgpt_automation/` — automation wrapper
-- `chatgpt_browser_auth/` — Playwright/Patchright browser client
-- `requirements.txt`
+What this release adds:
+- a dedicated FastAPI app for ChatGPT browser automation: `chatgpt_container_api.py`
+- a thin Python client for other projects: `chatgpt_service_client.py`
+- a Docker default that now starts the dedicated ChatGPT service instead of the unrelated monolith app
+- a compose file and example client script for downstream projects
+- optional bearer-token protection for the service via `CHATGPT_SERVICE_TOKEN`
 
-## Install
+## Reusable Docker service
+
+Build the image:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-playwright install chromium
+./build_chatgpt_service.sh
 ```
 
-If you prefer Patchright-backed launches, keep `patchright` installed.
+Or directly:
 
-## Quick start
+```bash
+docker build -t chatgpt-docker-service:0.0.46 .
+```
+
+Run it:
+
+```bash
+docker run --rm -it \
+  -p 8000:8000 \
+  -e CHATGPT_EMAIL="you@example.com" \
+  -e CHATGPT_PASSWORD_FILE="/run/secrets/chatgpt_password" \
+  -e CHATGPT_PROJECT_URL="https://chatgpt.com/" \
+  -e CHATGPT_SERVICE_TOKEN="change-me" \
+  -v "$PWD/profile:/app/profile" \
+  -v "$PWD/debug_artifacts:/app/debug_artifacts" \
+  -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
+  chatgpt-docker-service:0.0.46
+```
+
+Compose option:
+
+```bash
+docker compose -f docker-compose.chatgpt-service.yml up --build
+```
+
+The service starts with:
+- OpenAPI docs at `/docs`
+- health endpoint at `/healthz`
+- versioned API under `/v1`
+
+## API surface
+
+### Health
+
+```bash
+curl http://localhost:8000/healthz
+```
+
+### Login check
+
+```bash
+curl -X POST http://localhost:8000/v1/login-check \
+  -H 'Authorization: Bearer change-me' \
+  -H 'Content-Type: application/json' \
+  -d '{"keep_open": false}'
+```
+
+### Ask ChatGPT
+
+```bash
+curl -X POST http://localhost:8000/v1/ask \
+  -H 'Authorization: Bearer change-me' \
+  -F 'prompt=Reply with one short sentence.' \
+  -F 'expect_json=false'
+```
+
+### Add a text source
+
+```bash
+curl -X POST http://localhost:8000/v1/project-sources \
+  -H 'Authorization: Bearer change-me' \
+  -F 'type=text' \
+  -F 'value=Reference notes for this run' \
+  -F 'name=Notes'
+```
+
+### Add a file source
+
+```bash
+curl -X POST http://localhost:8000/v1/project-sources \
+  -H 'Authorization: Bearer change-me' \
+  -F 'type=file' \
+  -F 'file=@./docs/spec.pdf'
+```
+
+### Remove a source
+
+```bash
+curl -X POST http://localhost:8000/v1/project-sources/remove \
+  -H 'Authorization: Bearer change-me' \
+  -H 'Content-Type: application/json' \
+  -d '{"source_name": "Notes", "exact": true, "keep_open": false}'
+```
+
+## Python client for downstream projects
+
+Example:
+
+```python
+from chatgpt_service_client import ChatGPTServiceClient
+
+with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
+    print(client.healthz())
+    answer = client.ask("Reply with one short sentence that says the service is ready.")
+    print(answer)
+```
+
+There is also a runnable sample at `examples/chatgpt_service_client_example.py`.
+
+## Running the old monolith app
+
+The repo still contains the previous `main:app` application. If you need that instead of the dedicated ChatGPT service, override the app module:
+
+```bash
+docker run --rm -it \
+  -e CHATGPT_UVICORN_APP=main:app \
+  -p 8000:8000 \
+  chatgpt-docker-service:0.0.46
+```
+
+## CLI usage remains available
 
 Headed login check:
 
 ```bash
 python chatgpt_cli.py login-check --keep-open
-```
-
-Global options can be placed either **before or after** the subcommand. These now both work:
-
-```bash
-python chatgpt_cli.py --dotenv .env login-check --keep-open
-python chatgpt_cli.py login-check --keep-open --dotenv .env
-python chatgpt_cli.py ask "hello" --email you@example.com --password-file ~/.config/chatgpt/password.txt
 ```
 
 Ask one question:
@@ -43,30 +148,9 @@ Ask one question:
 python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
 ```
 
-Debugging recommendation:
+Add a source to a project:
 
 ```bash
-python chatgpt_cli.py --max-retries 1 ask --dotenv .env "Say hello in one short sentence."
-```
-
-In debug mode, the CLI now defaults to `--max-retries 1` unless you explicitly override it or set `CHATGPT_MAX_RETRIES`. This reduces duplicate prompt submissions while you are diagnosing selector issues.
-
-Ask for JSON:
-
-```bash
-python chatgpt_cli.py ask --json "Return a JSON object with keys answer and confidence about Rust ownership"
-```
-
-Interactive shell:
-
-```bash
-python chatgpt_cli.py shell
-```
-
-Add a source to a project (requires `CHATGPT_PROJECT_URL` to point at a project page):
-
-```bash
-python chatgpt_cli.py project-source-add --type link --value "https://drive.google.com/drive/folders/..." --dotenv .env
 python chatgpt_cli.py project-source-add --type text --value "Reference notes for this project" --name "Notes" --dotenv .env
 python chatgpt_cli.py project-source-add --type file --file ./docs/spec.pdf --dotenv .env
 ```
@@ -75,82 +159,36 @@ Remove a source from a project:
 
 ```bash
 python chatgpt_cli.py project-source-remove "Notes" --exact --dotenv .env
-python chatgpt_cli.py project-source-remove "drive.google.com" --dotenv .env
-python chatgpt_cli.py project-remove --project-url "https://chatgpt.com/g/g-p-.../project" --dotenv .env
 ```
-
-## Shell commands
-
-- `:help`
-- `:login`
-- `:json on|off`
-- `:file <path>`
-- `:clearfile`
-- `:retry <n>`
-- `:show`
-- `:quit`
 
 ## Environment variables
 
-Optional settings:
-
-- `CHATGPT_PROJECT_URL` default `https://chatgpt.com/`
+Core service settings:
+- `CHATGPT_PROJECT_URL`
 - `CHATGPT_EMAIL`
 - `CHATGPT_PASSWORD`
 - `CHATGPT_PASSWORD_FILE`
 - `CHATGPT_PROFILE_DIR`
 - `CHATGPT_HEADLESS`
+- `CHATGPT_USE_PATCHRIGHT`
 - `CHATGPT_BROWSER_CHANNEL`
-- `CHATGPT_DEBUG`
+- `CHATGPT_DISABLE_FEDCM`
+- `CHATGPT_FILTER_NO_SANDBOX`
 - `CHATGPT_MAX_RETRIES`
 - `CHATGPT_RETRY_BACKOFF_SECONDS`
+- `CHATGPT_MIN_CONTEXT_SPACING_SECONDS`
+- `CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS`
+- `CHATGPT_SERVICE_TOKEN`
+- `CHATGPT_UVICORN_APP`
+- `PORT`
 
 ## Notes
 
-This is a browser automation proof of concept. The weak points remain the same:
-
+This remains browser automation, so the weak points are unchanged:
 - DOM selector drift on chatgpt.com
-- Cloudflare/browser challenges
+- Cloudflare or browser challenges
 - session expiration
-- manual re-login in headed mode when the profile loses auth state
+- manual re-login in headed mode when the persistent profile loses auth state
+- server-side rate limiting when runs are too aggressive
 
-For a POC and Playwright learning exercise, that is acceptable.
-
-The new project-source commands depend on the current ChatGPT project UI. As of early 2026, Projects have a dedicated Sources tab and support adding project sources from apps, quick text, and files, but the exact labels and menus can still drift. citeturn347089search0turn347089search1turn347089search9
-
-
-## Parser fix in v0.0.4
-
-The CLI now accepts root options such as `--dotenv`, `--email`, and `--password-file` in either position:
-
-- before the subcommand
-- after the subcommand
-
-This fixes the `unrecognized arguments` errors from v0.0.3.
-
-
-## Env loading fix in v0.0.6
-
-The CLI now loads `--dotenv` **before** building the main parser, so environment-backed defaults such as:
-
-- `CHATGPT_EMAIL`
-- `CHATGPT_PASSWORD`
-- `CHATGPT_PASSWORD_FILE`
-- `CHATGPT_PROFILE_DIR`
-
-are available to the login flow when you run commands like:
-
-```bash
-python chatgpt_cli.py login-check --keep-open --dotenv .env
-```
-
-In earlier builds, `.env` could be loaded too late for parser defaults, which left `email=None` even though the file was present.
-
-
-## Response scraper update in v0.0.7
-
-The assistant-response scraper now uses a multi-selector fallback instead of relying only on:
-
-- `[data-message-author-role="assistant"]`
-
-It now probes additional conversation container selectors and returns the first non-empty trailing response block it can extract. This is intended to handle current ChatGPT DOM variations where the response is visible in the browser but the original assistant selector does not resolve.
+The added Docker service does not remove those risks. It packages the currently working flow behind a cleaner boundary so other projects can consume it without embedding the browser automation directly.

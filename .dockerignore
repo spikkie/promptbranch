@@ -3,3 +3,7 @@ uploaded_receipts*
 __pycache__
 .pytest_cache
 profile
+.venv
+debug_artifacts
+*.log
+*.zip

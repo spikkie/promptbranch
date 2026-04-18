@@ -34,5 +34,7 @@ ENV CHATGPT_USE_PATCHRIGHT=1
 ENV CHATGPT_BROWSER_CHANNEL=chrome
 ENV CHATGPT_DISABLE_FEDCM=1
 ENV CHATGPT_FILTER_NO_SANDBOX=0
+ENV CHATGPT_UVICORN_APP=chatgpt_container_api:app
+ENV PORT=8000
 
-CMD ["sh", "-c", "xvfb-run -a -s '-screen 0 1920x1080x24' uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "xvfb-run -a -s '-screen 0 1920x1080x24' uvicorn ${CHATGPT_UVICORN_APP} --host 0.0.0.0 --port ${PORT}"]
