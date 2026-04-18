@@ -102,7 +102,7 @@ class ChatGPTAutomationService:
                 if attempt >= max_retries + 1:
                     break
                 await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
-            except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError):
+            except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError, EOFError):
                 raise
             except Exception as exc:  # pragma: no cover - defensive fallback
                 last_error = exc
