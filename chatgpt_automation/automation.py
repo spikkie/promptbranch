@@ -55,11 +55,18 @@ def _resolve_password_file_path(explicit_password_file: Optional[str] = None) ->
         os.getenv("GOOGLE_PASSWORD_FILE"),
         os.getenv("PASSWORD_FILE"),
     ]
+    first_candidate: Optional[str] = None
     for candidate in env_candidates:
-        if candidate:
-            return str(Path(candidate).expanduser().resolve())
+        if not candidate:
+            continue
+        resolved = str(Path(candidate).expanduser().resolve())
+        if first_candidate is None:
+            first_candidate = resolved
+        if Path(resolved).exists() and Path(resolved).is_file():
+            return resolved
 
     default_candidates = [
+        Path("/run/secrets/chatgpt_password"),
         Path("~/.config/chatgpt/password.txt"),
         Path("~/.config/chatgpt/google_password.txt"),
         Path("~/.config/bonnetjesapp/chatgpt_password.txt"),
@@ -70,7 +77,8 @@ def _resolve_password_file_path(explicit_password_file: Optional[str] = None) ->
         resolved = candidate.expanduser().resolve()
         if resolved.exists() and resolved.is_file():
             return str(resolved)
-    return None
+
+    return first_candidate
 
 
 def _resolve_password(password: Optional[str], password_file: Optional[str]) -> tuple[Optional[str], Optional[str]]:
