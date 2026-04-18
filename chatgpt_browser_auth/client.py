@@ -1281,39 +1281,86 @@ class ChatGPTBrowserClient:
                     await asyncio.to_thread(input, "Source already absent. Press Enter to close the browser... ")
                 return result
             raise ResponseTimeoutError(f"Project source was not found: {source_name}")
-        await self._click_locator_with_fallback(
-            options_button,
-            label="project-source-remove-options",
-            timeout_ms=5_000,
-        )
-        remove_button = await self._wait_for_visible_locator(
-            page,
-            PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
-            label="project-source-remove-action",
-            total_timeout_ms=8_000,
-        )
-        if remove_button is None:
-            raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
-        await self._click_locator_with_fallback(
-            remove_button,
-            label="project-source-remove-action",
-            timeout_ms=5_000,
-        )
+        source_removed = False
+        removal_triggered = False
+        max_remove_attempts = 3
 
-        confirm_button = await self._wait_for_visible_locator(
-            page,
-            PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS,
-            label="project-source-remove-confirm",
-            total_timeout_ms=4_000,
-        )
-        if confirm_button is not None:
+        for remove_attempt in range(1, max_remove_attempts + 1):
             await self._click_locator_with_fallback(
-                confirm_button,
-                label="project-source-remove-confirm",
+                options_button,
+                label="project-source-remove-options",
+                timeout_ms=5_000,
+            )
+            remove_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
+                label="project-source-remove-action",
+                total_timeout_ms=8_000,
+            )
+            if remove_button is None:
+                raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+            await self._click_locator_with_fallback(
+                remove_button,
+                label="project-source-remove-action",
                 timeout_ms=5_000,
             )
 
-        await self._wait_for_source_absence(page, match_candidates, exact=exact)
+            confirm_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS,
+                label="project-source-remove-confirm",
+                total_timeout_ms=4_000,
+            )
+            if confirm_button is not None:
+                await self._click_locator_with_fallback(
+                    confirm_button,
+                    label="project-source-remove-confirm",
+                    timeout_ms=5_000,
+                )
+                removal_triggered = True
+                break
+
+            try:
+                await self._wait_for_source_absence(page, match_candidates, exact=exact, timeout_ms=4_000)
+                source_removed = True
+                removal_triggered = True
+                break
+            except ResponseTimeoutError as exc:
+                self._log(
+                    "project-source-remove",
+                    "remove action did not trigger confirmation or disappearance yet",
+                    attempt=remove_attempt,
+                    max_attempts=max_remove_attempts,
+                    source_candidates=match_candidates,
+                    error=str(exc),
+                    current_url=await self._safe_page_url(page),
+                )
+                if remove_attempt >= max_remove_attempts:
+                    raise ResponseTimeoutError(
+                        f"Project source remove action did not trigger confirmation or disappearance: {source_name}"
+                    ) from exc
+                try:
+                    keyboard = getattr(page, "keyboard", None)
+                    if keyboard is not None:
+                        await keyboard.press("Escape")
+                except Exception:
+                    pass
+                await page.wait_for_timeout(400)
+                options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
+                    page,
+                    match_candidates,
+                    exact=exact,
+                    timeout_ms=8_000,
+                )
+                if options_button is None:
+                    if await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+                        source_removed = True
+                        removal_triggered = True
+                        break
+                    raise ResponseTimeoutError(f"Project source was not found during remove retry: {source_name}")
+
+        if removal_triggered and not source_removed:
+            await self._wait_for_source_absence(page, match_candidates, exact=exact)
         source_identity_used = self._preferred_source_card_identity(matched_card) or source_name
         result = {
             "ok": True,
