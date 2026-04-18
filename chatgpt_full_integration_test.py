@@ -245,6 +245,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-base-url", default=os.getenv("CHATGPT_SERVICE_BASE_URL"), help="Optional Docker service base URL, e.g. http://localhost:8000. When set, this script runs against the HTTP service instead of importing the browser automation directly.")
     parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN"), help="Optional bearer token for the Docker service.")
     parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "300.0")), help="HTTP timeout when running against the Docker service.")
+    parser.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts from the profile before launching a persistent browser context. Useful when reusing the same profile across host and Docker runs.")
     return parser
 
 
@@ -263,6 +264,7 @@ def build_settings(args: argparse.Namespace, *, project_url: str) -> ChatGPTAuto
         filter_no_sandbox=not args.keep_no_sandbox,
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
+        clear_singleton_locks=bool(getattr(args, 'clear_singleton_locks', False)),
     )
 
 

@@ -505,3 +505,26 @@ def test_wait_for_project_source_post_save_settle_requires_stable_closed_dialog(
     assert settled["url_stable"] is True
     assert page.wait_calls == [10, 10, 10]
 
+
+
+
+def test_clear_profile_singleton_locks_removes_artifacts(tmp_path: Path) -> None:
+    profile_dir = tmp_path / "profile"
+    profile_dir.mkdir()
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        (profile_dir / name).write_text("x", encoding="utf-8")
+
+    config = ChatGPTBrowserConfig(
+        project_url="https://chatgpt.com/",
+        email="user@example.com",
+        password="secret",
+        profile_dir=str(profile_dir),
+        clear_singleton_locks=True,
+    )
+    client = ChatGPTBrowserClient(config)
+
+    removed = client._clear_profile_singleton_locks()
+
+    assert removed == ["SingletonLock", "SingletonSocket", "SingletonCookie"]
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        assert not (profile_dir / name).exists()

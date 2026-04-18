@@ -77,7 +77,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.48"
+SERVICE_VERSION = "0.0.49"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -97,6 +97,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             filter_no_sandbox=_env_flag("CHATGPT_FILTER_NO_SANDBOX", False),
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
+            clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", True),
         )
     )
 
@@ -127,7 +128,11 @@ def _raise_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, ResponseTimeoutError):
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    logger.exception("Unhandled ChatGPT Docker service error", exc_info=exc)
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"{type(exc).__name__}: {exc}",
+    ) from exc
 
 
 async def require_service_token(authorization: Optional[str] = Header(default=None)) -> None:

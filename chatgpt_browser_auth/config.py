@@ -34,6 +34,7 @@ class ChatGPTBrowserConfig:
     conversation_history_rate_limit_cooldown_seconds: float = 120.0
     rate_limit_modal_wait_timeout_ms: int = 120_000
     rate_limit_modal_poll_interval_ms: int = 1_000
+    clear_singleton_locks: bool = False
 
     def __post_init__(self) -> None:
         self.profile_dir = str(Path(self.profile_dir).expanduser().resolve())

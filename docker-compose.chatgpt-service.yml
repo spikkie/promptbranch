@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: chatgpt-docker-service:0.0.48
+    image: chatgpt-docker-service:0.0.49
     ports:
       - "8000:8000"
     environment:
@@ -21,6 +21,7 @@ services:
       CHATGPT_RETRY_BACKOFF_SECONDS: ${CHATGPT_RETRY_BACKOFF_SECONDS:-2.0}
       CHATGPT_MIN_CONTEXT_SPACING_SECONDS: ${CHATGPT_MIN_CONTEXT_SPACING_SECONDS:-8.0}
       CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS: ${CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS:-120.0}
+      CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS: ${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}
     volumes:
       - ./profile:/app/profile
       - ./debug_artifacts:/app/debug_artifacts
