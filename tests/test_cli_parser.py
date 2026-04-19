@@ -63,3 +63,22 @@ def test_parser_accepts_project_remove_command() -> None:
     parser = make_parser()
     args = parser.parse_args(["project-remove"])
     assert args.command == "project-remove"
+
+
+def test_global_options_after_ask_include_config() -> None:
+    argv = [
+        "ask",
+        "hello",
+        "--config",
+        "config.json",
+    ]
+    normalized = _normalize_global_options(argv)
+    assert normalized[:2] == ["--config", "config.json"]
+    assert normalized[2:] == ["ask", "hello"]
+
+
+def test_parser_accepts_config_option() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["--config", "config.json", "ask", "hello"])
+    assert args.config == "config.json"
+    assert args.command == "ask"

@@ -26,6 +26,7 @@ DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 300.0
+DEFAULT_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 STATE_FILE_NAME = ".chatgpt_cli_state.json"
 COMMANDS = {
     "login-check",
@@ -53,6 +54,7 @@ GLOBAL_OPTION_HAS_VALUE = {
     "--retry-backoff-seconds": True,
     "--debug": False,
     "--dotenv": True,
+    "--config": True,
     "--service-base-url": True,
     "--service-token": True,
     "--service-timeout-seconds": True,
@@ -449,6 +451,54 @@ class ServiceBackend:
         return result
 
 
+def _env_or(*names: str) -> Optional[str]:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _load_cli_config(path: Optional[str]) -> dict[str, Any]:
+    if not path:
+        return {}
+    config_path = Path(path).expanduser()
+    if not config_path.exists():
+        return {}
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _option_was_provided(argv: list[str], option_name: str) -> bool:
+    return any(token == option_name or token.startswith(f"{option_name}=") for token in argv)
+
+
+def _apply_cli_config_defaults(args: argparse.Namespace, argv: list[str]) -> argparse.Namespace:
+    config = _load_cli_config(args.config)
+    mapping: dict[str, str] = {
+        "service_base_url": "service_base_url",
+        "service_token": "service_token",
+        "service_timeout_seconds": "service_timeout_seconds",
+    }
+    for arg_name, config_key in mapping.items():
+        option_name = f"--{arg_name.replace("_", "-")}"
+        if _option_was_provided(argv, option_name):
+            continue
+        current_value = getattr(args, arg_name)
+        if current_value is not None:
+            continue
+        if config_key in config:
+            setattr(args, arg_name, config[config_key])
+    if args.service_timeout_seconds is None:
+        args.service_timeout_seconds = DEFAULT_SERVICE_TIMEOUT_SECONDS
+    else:
+        args.service_timeout_seconds = float(args.service_timeout_seconds)
+    return args
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -761,9 +811,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
-    parser.add_argument("--service-base-url", default=os.getenv("CHATGPT_SERVICE_BASE_URL"), help="Use the Docker service API instead of local browser automation.")
-    parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN"), help="Bearer token for the Docker service API.")
-    parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", str(DEFAULT_SERVICE_TIMEOUT_SECONDS))))
+    parser.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH), help="Optional JSON config file for CLI defaults.")
+    parser.add_argument("--service-base-url", default=_env_or("CHATGPT_SERVICE_BASE_URL", "CHATGPT_API_BASE_URL"), help="Use the Docker service API instead of local browser automation.")
+    parser.add_argument("--service-token", default=_env_or("CHATGPT_SERVICE_TOKEN", "CHATGPT_API_TOKEN"), help="Bearer token for the Docker service API.")
+    parser.add_argument("--service-timeout-seconds", type=float, default=(_env_or("CHATGPT_SERVICE_TIMEOUT_SECONDS") or None))
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -847,11 +898,12 @@ def make_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _extract_dotenv_path(argv: list[str]) -> Optional[str]:
+def _extract_bootstrap_config(argv: list[str]) -> tuple[Optional[str], Optional[str]]:
     bootstrap = argparse.ArgumentParser(add_help=False)
     bootstrap.add_argument("--dotenv", default=".env")
+    bootstrap.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH))
     args, _ = bootstrap.parse_known_args(argv)
-    return args.dotenv
+    return args.dotenv, args.config
 
 
 def _max_retries_was_configured(argv: list[str]) -> bool:
@@ -890,12 +942,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     normalized_argv = _normalize_global_options(raw_argv)
 
-    dotenv_path = _extract_dotenv_path(normalized_argv)
+    dotenv_path, _ = _extract_bootstrap_config(normalized_argv)
     if dotenv_path:
         load_dotenv(dotenv_path, override=False)
 
     parser = make_parser()
     args = parser.parse_args(normalized_argv)
+    args = _apply_cli_config_defaults(args, normalized_argv)
     if args.debug and not _max_retries_was_configured(normalized_argv):
         args.max_retries = 1
     _configure_logging(args.debug)
