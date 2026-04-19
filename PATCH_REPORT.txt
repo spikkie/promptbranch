@@ -1,59 +1,16 @@
-[summary]
-- repaired broken v0.0.58 patch artifacts that caused SyntaxError/NameError regressions
-- fixed JSON wait completion check to avoid candidate_text NameError
-- added explicit ask conversation targeting via --conversation-url
-- threaded conversation_url through CLI -> service client -> API -> automation service -> browser client
-- preserved/returned conversation_url in ask responses
-- bumped release metadata to 0.0.61
+Baseline: chatgpt_claudecode_workflow_v0.0.62.zip
+Release: chatgpt_claudecode_workflow_v0.0.63.zip
 
-[chatgpt_browser_auth/client.py]
-- removed invalid injected line in _run_with_context that broke try/except structure
-- ask_question_result now forwards conversation_url to _ask_question_operation
-- _ask_question_operation now opens conversation_url when provided, otherwise project_url
-- _wait_and_get_json completion check now uses text_length instead of undefined candidate_text
-- removed stray undefined conversation_url references in unrelated helpers
-- repaired ask_chatgpt convenience wrapper signature/call path
+Changes:
+- Added stateful CLI commands: `state`, `prompt`, `state-clear`
+- Added reusable state module: `chatgpt_state.py`
+- Made project-scoped commands reuse remembered current project when `--project-url` is omitted/defaulted
+- Added reusable package facade: `chatgpt_workflow`
+- Added console entry point: `chatgpt`
+- Updated client example to import from `chatgpt_workflow`
+- Updated README with stateful CLI and packaging guidance
 
-[chatgpt_automation/automation.py]
-- ask_question_result forwards conversation_url to browser client
-- repaired ask_chatgpt convenience wrapper signature/call path
-
-[chatgpt_automation/service.py]
-- ask_question_result forwards conversation_url to automation layer during retries
-
-[chatgpt_container_api.py]
-- /v1/ask accepts form field conversation_url and forwards it
-- service version updated to 0.0.61
-
-[chatgpt_service_client.py]
-- ask/ask_result accept conversation_url and include it in form payloads
-
-[chatgpt_cli.py]
-- ask subcommand accepts --conversation-url
-- cmd_ask forwards --conversation-url to backend.ask
-- direct and service backends honor explicit conversation_url override before remembered conversation state
-- removed invalid build_service reference to missing global args.conversation_url
-
-[tests]
-- updated container API version assertions to 0.0.61
-- added parser coverage for ask --conversation-url
-- added service client coverage for conversation_url form payloads
-
-[validation]
-- python -m py_compile on key runtime modules: PASS
-- pytest -q tests/test_cli_parser.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py: PASS (20 passed)
-
-Additional v0.0.61 fix
-- removed stray undefined conversation_url reference from ChatGPTServiceClient.add_project_source
-- validation rerun: python -m py_compile key modules; pytest -q tests/test_cli_parser.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py (20 passed)
-
-[0.0.61]
-- Fixed cmd_ask to emit full JSON payload including conversation_url when --json is set.
-- Fixed browser client ask_question_result to forward conversation_url into _run_with_context.
-- Added CLI regression test covering JSON ask output with conversation_url.
-
-
-[chatgpt_cli_sequence_v5.py]
-- upgraded project-source-remove flow to prefer source_match/source_match_candidates from project-source-add
-- added idempotent remove verification with already_absent=true
-- retained heuristic fallback candidates only as secondary recovery path
+Validation:
+- python -m py_compile chatgpt_cli.py chatgpt_state.py chatgpt_service_client.py chatgpt_container_api.py chatgpt_workflow/__init__.py chatgpt_workflow/cli.py chatgpt_workflow/client.py chatgpt_workflow/state.py chatgpt_workflow/automation.py
+- pytest -q tests/test_cli_state.py tests/test_cli_parser.py tests/test_chatgpt_cli.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py
+- Result: 34 passed

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chatgpt-claudecode-workflow"
-version = "0.0.62"
-description = "Browser-driven ChatGPT automation with a reusable Docker service and Python client"
+version = "0.0.63"
+description = "Browser-driven ChatGPT automation with a reusable Docker service, stateful CLI, and Python client"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,7 +21,11 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["chatgpt_cli", "chatgpt_container_api", "chatgpt_service_client"]
+py-modules = ["chatgpt_cli", "chatgpt_container_api", "chatgpt_service_client", "chatgpt_state"]
 
 [tool.setuptools.packages.find]
-include = ["chatgpt_automation*", "chatgpt_browser_auth*"]
+include = ["chatgpt_automation*", "chatgpt_browser_auth*", "chatgpt_workflow*"]
+
+[project.scripts]
+chatgpt = "chatgpt_workflow.cli:main"
+

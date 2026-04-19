@@ -8,7 +8,6 @@ import shlex
 import sys
 from pathlib import Path
 from typing import Any, Optional, Protocol
-from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -21,13 +20,19 @@ from chatgpt_browser_auth.exceptions import (
     UnsupportedOperationError,
 )
 from chatgpt_service_client import ChatGPTServiceClient
+from chatgpt_state import (
+    DEFAULT_PROJECT_URL,
+    STATE_FILE_NAME,
+    ConversationStateStore,
+    conversation_id_from_url,
+    project_home_url_from_url,
+    project_name_from_url,
+)
 
-DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-STATE_FILE_NAME = ".chatgpt_cli_state.json"
 COMMANDS = {
     "login-check",
     "ask",
@@ -38,6 +43,9 @@ COMMANDS = {
     "project-remove",
     "project-source-add",
     "project-source-remove",
+    "state",
+    "prompt",
+    "state-clear",
 }
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
@@ -59,141 +67,6 @@ GLOBAL_OPTION_HAS_VALUE = {
     "--service-token": True,
     "--service-timeout-seconds": True,
 }
-
-
-class CommandBackend(Protocol):
-    async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]: ...
-
-    async def create_project(
-        self,
-        name: str,
-        *,
-        icon: Optional[str] = None,
-        color: Optional[str] = None,
-        memory_mode: str = "default",
-        keep_open: bool = False,
-    ) -> dict[str, Any]: ...
-
-    async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]: ...
-
-    async def ensure_project(
-        self,
-        name: str,
-        *,
-        icon: Optional[str] = None,
-        color: Optional[str] = None,
-        memory_mode: str = "default",
-        keep_open: bool = False,
-    ) -> dict[str, Any]: ...
-
-    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]: ...
-
-    async def add_project_source(
-        self,
-        *,
-        source_kind: str,
-        value: Optional[str] = None,
-        file_path: Optional[str] = None,
-        display_name: Optional[str] = None,
-        keep_open: bool = False,
-    ) -> dict[str, Any]: ...
-
-    async def remove_project_source(
-        self,
-        source_name: str,
-        *,
-        exact: bool = False,
-        keep_open: bool = False,
-    ) -> dict[str, Any]: ...
-
-    async def ask(
-        self,
-        prompt: str,
-        *,
-        file_path: Optional[str] = None,
-        conversation_url: Optional[str] = None,
-        expect_json: bool = False,
-        keep_open: bool = False,
-        retries: Optional[int] = None,
-    ) -> Any: ...
-
-
-def _project_home_url_from_url(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return None
-    parsed = urlparse(url)
-    if not parsed.scheme or not parsed.netloc:
-        return None
-    parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) < 3 or parts[0] != "g":
-        return None
-    slug = parts[1]
-    if parts[2] == "project":
-        return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
-    if parts[2] == "c" and len(parts) >= 4:
-        return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
-    return None
-
-
-def _is_project_conversation_url(url: Optional[str]) -> bool:
-    if not url:
-        return False
-    parsed = urlparse(url)
-    parts = [part for part in parsed.path.split("/") if part]
-    return len(parts) >= 4 and parts[0] == "g" and parts[2] == "c"
-
-
-class ConversationStateStore:
-    def __init__(self, profile_dir: str) -> None:
-        self._path = Path(profile_dir).expanduser() / STATE_FILE_NAME
-
-    def resolve(self, project_url: Optional[str]) -> Optional[str]:
-        if not project_url:
-            return project_url
-        if _is_project_conversation_url(project_url):
-            return project_url
-        home_url = _project_home_url_from_url(project_url)
-        if not home_url:
-            return project_url
-        payload = self._load()
-        projects = payload.get("projects") if isinstance(payload, dict) else None
-        if not isinstance(projects, dict):
-            return project_url
-        entry = projects.get(home_url)
-        if not isinstance(entry, dict):
-            return project_url
-        conversation_url = entry.get("conversation_url")
-        if not isinstance(conversation_url, str):
-            return project_url
-        if _project_home_url_from_url(conversation_url) != home_url:
-            return project_url
-        return conversation_url
-
-    def remember(self, project_url: Optional[str], conversation_url: Optional[str]) -> None:
-        if not conversation_url:
-            return
-        home_url = _project_home_url_from_url(conversation_url) or _project_home_url_from_url(project_url)
-        if not home_url:
-            return
-        payload = self._load()
-        if not isinstance(payload, dict):
-            payload = {}
-        projects = payload.get("projects")
-        if not isinstance(projects, dict):
-            projects = {}
-        projects[home_url] = {"conversation_url": conversation_url}
-        payload["projects"] = projects
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    def _load(self) -> dict[str, Any]:
-        if not self._path.exists():
-            return {}
-        try:
-            payload = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
 
 
 def _split_ask_response(response: Any) -> tuple[Any, Optional[str]]:
@@ -218,6 +91,11 @@ class DirectBackend:
     async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await self._service.run_login_check(keep_open=keep_open)
 
+    def _effective_project_home_url(self) -> Optional[str]:
+        if self._conversation_state is None:
+            return self._project_url
+        return self._conversation_state.project_url_for_operations(self._project_url)
+
     async def create_project(
         self,
         name: str,
@@ -227,16 +105,22 @@ class DirectBackend:
         memory_mode: str = "default",
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._service.create_project(
+        result = await self._service.create_project(
             name=name,
             icon=icon,
             color=color,
             memory_mode=memory_mode,
             keep_open=keep_open,
         )
+        if self._conversation_state is not None:
+            self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]:
-        return await self._service.resolve_project(name=name, keep_open=keep_open)
+        result = await self._service.resolve_project(name=name, keep_open=keep_open)
+        if self._conversation_state is not None and result.get("ok"):
+            self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def ensure_project(
         self,
@@ -247,16 +131,28 @@ class DirectBackend:
         memory_mode: str = "default",
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._service.ensure_project(
+        result = await self._service.ensure_project(
             name=name,
             icon=icon,
             color=color,
             memory_mode=memory_mode,
             keep_open=keep_open,
         )
+        if self._conversation_state is not None and result.get("ok"):
+            self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return await self._service.remove_project(keep_open=keep_open)
+        effective_project_url = self._effective_project_home_url()
+        original_project_url = self._service.settings.project_url
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            result = await self._service.remove_project(keep_open=keep_open)
+        finally:
+            self._service.settings.project_url = original_project_url
+        if self._conversation_state is not None:
+            self._conversation_state.forget_project(effective_project_url)
+        return result
 
     async def add_project_source(
         self,
@@ -267,13 +163,19 @@ class DirectBackend:
         display_name: Optional[str] = None,
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._service.add_project_source(
-            source_kind=source_kind,
-            value=value,
-            file_path=file_path,
-            display_name=display_name,
-            keep_open=keep_open,
-        )
+        effective_project_url = self._effective_project_home_url()
+        original_project_url = self._service.settings.project_url
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.add_project_source(
+                source_kind=source_kind,
+                value=value,
+                file_path=file_path,
+                display_name=display_name,
+                keep_open=keep_open,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
 
     async def remove_project_source(
         self,
@@ -282,11 +184,17 @@ class DirectBackend:
         exact: bool = False,
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._service.remove_project_source(
-            source_name=source_name,
-            exact=exact,
-            keep_open=keep_open,
-        )
+        effective_project_url = self._effective_project_home_url()
+        original_project_url = self._service.settings.project_url
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.remove_project_source(
+                source_name=source_name,
+                exact=exact,
+                keep_open=keep_open,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
 
     async def ask(
         self,
@@ -322,6 +230,15 @@ class DirectBackend:
             self._conversation_state.remember(self._project_url, conversation_url)
         return result
 
+    def state_snapshot(self) -> dict[str, Any]:
+        if self._conversation_state is None:
+            return {}
+        return self._conversation_state.snapshot(self._project_url)
+
+    def clear_state(self) -> None:
+        if self._conversation_state is not None:
+            self._conversation_state.clear()
+
 
 class ServiceBackend:
     def __init__(
@@ -331,11 +248,14 @@ class ServiceBackend:
         token: Optional[str],
         timeout: float,
         project_url: Optional[str],
-        profile_dir: str,
+        conversation_state: ConversationStateStore,
     ) -> None:
         self._client = ChatGPTServiceClient(base_url, token=token, timeout=timeout)
         self._project_url = project_url
-        self._conversation_state = ConversationStateStore(profile_dir)
+        self._conversation_state = conversation_state
+
+    def _effective_project_home_url(self) -> Optional[str]:
+        return self._conversation_state.project_url_for_operations(self._project_url)
 
     async def _call(self, fn, /, *args, **kwargs):
         return await asyncio.to_thread(fn, *args, **kwargs)
@@ -352,7 +272,7 @@ class ServiceBackend:
         memory_mode: str = "default",
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._call(
+        result = await self._call(
             self._client.create_project,
             name,
             icon=icon,
@@ -361,14 +281,19 @@ class ServiceBackend:
             keep_open=keep_open,
             project_url=self._project_url,
         )
+        self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def resolve_project(self, name: str, *, keep_open: bool = False) -> dict[str, Any]:
-        return await self._call(
+        result = await self._call(
             self._client.resolve_project,
             name,
             keep_open=keep_open,
             project_url=self._project_url,
         )
+        if result.get("ok"):
+            self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def ensure_project(
         self,
@@ -379,7 +304,7 @@ class ServiceBackend:
         memory_mode: str = "default",
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await self._call(
+        result = await self._call(
             self._client.ensure_project,
             name,
             icon=icon,
@@ -388,13 +313,19 @@ class ServiceBackend:
             keep_open=keep_open,
             project_url=self._project_url,
         )
+        if result.get("ok"):
+            self._conversation_state.remember_project(result.get("project_url"), project_name=name)
+        return result
 
     async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return await self._call(
+        effective_project_url = self._effective_project_home_url()
+        result = await self._call(
             self._client.remove_project,
             keep_open=keep_open,
-            project_url=self._project_url,
+            project_url=effective_project_url,
         )
+        self._conversation_state.forget_project(effective_project_url)
+        return result
 
     async def add_project_source(
         self,
@@ -412,7 +343,7 @@ class ServiceBackend:
             file_path=file_path,
             display_name=display_name,
             keep_open=keep_open,
-            project_url=self._project_url,
+            project_url=self._effective_project_home_url(),
         )
 
     async def remove_project_source(
@@ -427,7 +358,7 @@ class ServiceBackend:
             source_name,
             exact=exact,
             keep_open=keep_open,
-            project_url=self._project_url,
+            project_url=self._effective_project_home_url(),
         )
 
     async def ask(
@@ -454,6 +385,12 @@ class ServiceBackend:
         _, conversation_url = _split_ask_response(result)
         self._conversation_state.remember(self._project_url, conversation_url)
         return result
+
+    def state_snapshot(self) -> dict[str, Any]:
+        return self._conversation_state.snapshot(self._project_url)
+
+    def clear_state(self) -> None:
+        self._conversation_state.clear()
 
 
 def _env_or(*names: str) -> Optional[str]:
@@ -547,7 +484,7 @@ def build_backend(args: argparse.Namespace) -> CommandBackend:
             token=args.service_token,
             timeout=args.service_timeout_seconds,
             project_url=args.project_url,
-            profile_dir=args.profile_dir,
+            conversation_state=conversation_state,
         )
     return DirectBackend(
         build_service(args),
@@ -658,6 +595,46 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         print(json.dumps(answer, indent=2, ensure_ascii=False))
     else:
         print(answer)
+    return 0
+
+
+def _compact_prompt_text(snapshot: dict[str, Any]) -> str:
+    project_name = snapshot.get("project_name") or snapshot.get("project_slug") or "no-project"
+    conversation_id = snapshot.get("conversation_id")
+    if conversation_id:
+        return f"chatgpt:{project_name}#{str(conversation_id)[:8]}"
+    return f"chatgpt:{project_name}"
+
+
+def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
+    return ConversationStateStore(args.profile_dir)
+
+
+async def cmd_state(backend: CommandBackend, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot()
+    if args.json:
+        print(json.dumps(snapshot, indent=2, ensure_ascii=False))
+        return 0
+    print(f"state_file={snapshot.get('state_file')}")
+    print(f"project={snapshot.get('project_name') or snapshot.get('project_slug') or 'none'}")
+    print(f"project_home_url={snapshot.get('resolved_project_home_url') or 'none'}")
+    print(f"conversation_url={snapshot.get('conversation_url') or 'none'}")
+    print(f"conversation_id={snapshot.get('conversation_id') or 'none'}")
+    return 0
+
+
+async def cmd_prompt(backend: CommandBackend, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot()
+    if args.json:
+        print(json.dumps({"prompt": _compact_prompt_text(snapshot), "state": snapshot}, indent=2, ensure_ascii=False))
+        return 0
+    print(_compact_prompt_text(snapshot))
+    return 0
+
+
+async def cmd_state_clear(backend: CommandBackend, args: argparse.Namespace) -> int:
+    backend.clear_state()
+    print(json.dumps({"ok": True, "cleared": True}, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -896,6 +873,14 @@ def make_parser() -> argparse.ArgumentParser:
     source_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
     source_remove.add_argument("--keep-open", action="store_true")
 
+    state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")
+    state.add_argument("--json", action="store_true", help="Emit state as JSON.")
+
+    prompt = subparsers.add_parser("prompt", help="Emit a compact one-line state string for shell prompts or menu bars.")
+    prompt.add_argument("--json", action="store_true", help="Emit prompt and backing state as JSON.")
+
+    state_clear = subparsers.add_parser("state-clear", help="Clear remembered current project/chat state for the active profile.")
+
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--file", help="Optional file to upload with the prompt.")
@@ -946,6 +931,12 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_project_source_add(backend, args)
     if args.command == "project-source-remove":
         return await cmd_project_source_remove(backend, args)
+    if args.command == "state":
+        return await cmd_state(backend, args)
+    if args.command == "prompt":
+        return await cmd_prompt(backend, args)
+    if args.command == "state-clear":
+        return await cmd_state_clear(backend, args)
     if args.command == "ask":
         return await cmd_ask(backend, args)
     if args.command == "shell":
