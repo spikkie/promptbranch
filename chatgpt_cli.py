@@ -46,6 +46,8 @@ COMMANDS = {
     "state",
     "prompt",
     "state-clear",
+    "use",
+    "completion",
 }
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
@@ -606,6 +608,174 @@ def _compact_prompt_text(snapshot: dict[str, Any]) -> str:
     return f"chatgpt:{project_name}"
 
 
+
+def _looks_like_chatgpt_url(value: str) -> bool:
+    return value.startswith("https://") or value.startswith("http://")
+
+
+def _completion_command_names() -> list[str]:
+    return sorted(COMMANDS)
+
+
+def _global_option_names() -> list[str]:
+    return sorted(GLOBAL_OPTION_HAS_VALUE.keys())
+
+
+def _subcommand_option_names() -> dict[str, list[str]]:
+    return {
+        "login-check": ["--keep-open"],
+        "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
+        "project-resolve": ["--keep-open"],
+        "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
+        "project-remove": ["--keep-open"],
+        "project-source-add": ["--type", "--value", "--file", "--name", "--keep-open"],
+        "project-source-remove": ["--exact", "--keep-open"],
+        "state": ["--json"],
+        "prompt": ["--json"],
+        "state-clear": [],
+        "use": ["--conversation-url", "--project-name", "--json", "--keep-open"],
+        "completion": [],
+        "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries"],
+        "shell": ["--file", "--json", "--keep-open", "--retries"],
+    }
+
+
+def _render_completion_bash() -> str:
+    commands = " ".join(_completion_command_names())
+    global_opts = " ".join(_global_option_names())
+    sub_opts = _subcommand_option_names()
+    case_lines: list[str] = []
+    for name, options in sub_opts.items():
+        opts = " ".join(options)
+        case_lines.append(f'        {name}) opts="{opts} $global_opts" ;;')
+    case_block = "\n".join(case_lines)
+    command_case = "|".join(_completion_command_names())
+    return f"""_chatgpt_complete() {{
+    local cur prev cmd global_opts
+    COMPREPLY=()
+    cur="${{COMP_WORDS[COMP_CWORD]}}"
+    prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+    global_opts="{global_opts}"
+
+    case "$prev" in
+        --file|--password-file|--dotenv|--config)
+            COMPREPLY=( $(compgen -f -- "$cur") )
+            return 0
+            ;;
+        --type)
+            COMPREPLY=( $(compgen -W "link text file" -- "$cur") )
+            return 0
+            ;;
+    esac
+
+    for word in "${{COMP_WORDS[@]:1}}"; do
+        case "$word" in
+            {command_case})
+                cmd="$word"
+                break
+                ;;
+        esac
+    done
+
+    if [[ "$cur" == -* ]]; then
+        local opts="$global_opts"
+        if [[ -n "$cmd" ]]; then
+            case "$cmd" in
+{case_block}
+            esac
+        fi
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+        return 0
+    fi
+
+    if [[ -z "$cmd" ]]; then
+        COMPREPLY=( $(compgen -W "{commands}" -- "$cur") )
+        return 0
+    fi
+
+    return 0
+}}
+
+complete -F _chatgpt_complete chatgpt
+"""
+
+
+def _render_completion_zsh() -> str:
+    command_specs = " ".join(f'"{name}:{name}"' for name in _completion_command_names())
+    sub_lines: list[str] = []
+    for name, options in _subcommand_option_names().items():
+        opts = " ".join(f'"{opt}[{opt}]"' for opt in options)
+        sub_lines.append(f"        {name}) _arguments {opts} ;;")
+    sub_block = "\n".join(sub_lines)
+    return f"""#compdef chatgpt
+local context state line
+typeset -A opt_args
+
+_arguments -C \
+  "--project-url[project or conversation URL]:url:" \
+  "--email[ChatGPT email]:email:" \
+  "--password[ChatGPT password]:password:" \
+  "--password-file[path to password file]:file:_files" \
+  "--profile-dir[path to browser profile]:dir:_files -/" \
+  "--headless[run browser headless]" \
+  "--use-playwright[use playwright instead of patchright]" \
+  "--browser-channel[browser channel]:channel:" \
+  "--enable-fedcm[do not disable FedCM]" \
+  "--keep-no-sandbox[keep no-sandbox args]" \
+  "--max-retries[max retries]:count:" \
+  "--retry-backoff-seconds[retry backoff seconds]:seconds:" \
+  "--debug[enable debug logging]" \
+  "--dotenv[path to .env file]:file:_files" \
+  "--config[path to CLI config]:file:_files" \
+  "--service-base-url[service base URL]:url:" \
+  "--service-token[bearer token]:token:" \
+  "--service-timeout-seconds[service timeout seconds]:seconds:" \
+  "1:command:(({command_specs}))" \
+  '*::arg:->args'
+
+case $state in
+  args)
+    case $words[1] in
+{sub_block}
+    esac
+  ;;
+esac
+"""
+
+
+def _render_completion_fish() -> str:
+    needs_arg = {
+        "--project-url", "--email", "--password", "--password-file", "--profile-dir", "--browser-channel",
+        "--max-retries", "--retry-backoff-seconds", "--dotenv", "--config", "--service-base-url",
+        "--service-token", "--service-timeout-seconds", "--type", "--value", "--file", "--name",
+        "--conversation-url", "--project-name", "--retries", "--icon", "--color", "--memory-mode",
+    }
+    lines = ["complete -c chatgpt -f"]
+    for opt in _global_option_names():
+        long_opt = opt[2:]
+        flag = " -r" if opt in needs_arg else ""
+        lines.append(f"complete -c chatgpt -l {long_opt}{flag}")
+    for cmd in _completion_command_names():
+        lines.append(f"complete -c chatgpt -n '__fish_use_subcommand' -a '{cmd}'")
+    for cmd, options in _subcommand_option_names().items():
+        for opt in options:
+            long_opt = opt[2:]
+            flag = " -r" if opt in needs_arg else ""
+            lines.append(f"complete -c chatgpt -n '__fish_seen_subcommand_from {cmd}' -l {long_opt}{flag}")
+    lines.append("complete -c chatgpt -n '__fish_seen_subcommand_from project-source-add; and __fish_prev_arg_in --type' -a 'link text file'")
+    return "\n".join(lines) + "\n"
+
+
+def _render_completion(shell_name: str) -> str:
+    if shell_name == "bash":
+        return _render_completion_bash()
+    if shell_name == "zsh":
+        return _render_completion_zsh()
+    if shell_name == "fish":
+        return _render_completion_fish()
+    raise ValueError(f"unsupported shell: {shell_name}")
+
+
 def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
     return ConversationStateStore(args.profile_dir)
 
@@ -635,6 +805,57 @@ async def cmd_prompt(backend: CommandBackend, args: argparse.Namespace) -> int:
 async def cmd_state_clear(backend: CommandBackend, args: argparse.Namespace) -> int:
     backend.clear_state()
     print(json.dumps({"ok": True, "cleared": True}, indent=2, ensure_ascii=False))
+    return 0
+
+
+
+async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
+    store = _state_store_from_args(args)
+    project_name = args.project_name
+    target = args.target
+    conversation_url = args.conversation_url
+
+    if _looks_like_chatgpt_url(target):
+        home_url = project_home_url_from_url(target) or target
+        if conversation_id_from_url(target):
+            conversation_url = target
+            home_url = project_home_url_from_url(target) or home_url
+        store.remember_project(home_url, project_name=project_name or project_name_from_url(home_url))
+        if conversation_url:
+            store.remember(home_url, conversation_url, project_name=project_name)
+        payload = store.snapshot(home_url)
+        if not args.json:
+            payload = {
+                "ok": True,
+                "action": "use",
+                "project_home_url": payload.get("resolved_project_home_url"),
+                "conversation_url": payload.get("conversation_url"),
+                "project_name": payload.get("project_name"),
+                "project_slug": payload.get("project_slug"),
+            }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    result = await backend.resolve_project(name=target, keep_open=args.keep_open)
+    if result.get("ok"):
+        resolved_url = result.get("project_url")
+        store.remember_project(resolved_url, project_name=project_name or target)
+        if conversation_url:
+            store.remember(resolved_url, conversation_url, project_name=project_name or target)
+        snapshot = store.snapshot(resolved_url)
+        result = {
+            **result,
+            "action": "use",
+            "current_project_home_url": snapshot.get("resolved_project_home_url"),
+            "current_conversation_url": snapshot.get("conversation_url"),
+        }
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+async def cmd_completion(backend: CommandBackend, args: argparse.Namespace) -> int:
+    del backend
+    print(_render_completion(args.shell), end="")
     return 0
 
 
@@ -881,6 +1102,16 @@ def make_parser() -> argparse.ArgumentParser:
 
     state_clear = subparsers.add_parser("state-clear", help="Clear remembered current project/chat state for the active profile.")
 
+    use = subparsers.add_parser("use", help="Set the current project/chat state from a project name or ChatGPT URL.")
+    use.add_argument("target", help="Project name, project URL, or conversation URL to make current.")
+    use.add_argument("--conversation-url", help="Optional conversation URL to remember alongside the selected project.")
+    use.add_argument("--project-name", help="Optional display name override when selecting by URL.")
+    use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
+    use.add_argument("--keep-open", action="store_true")
+
+    completion = subparsers.add_parser("completion", help="Emit shell completion script for bash, zsh, or fish.")
+    completion.add_argument("shell", choices=["bash", "zsh", "fish"])
+
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--file", help="Optional file to upload with the prompt.")
@@ -937,6 +1168,10 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_prompt(backend, args)
     if args.command == "state-clear":
         return await cmd_state_clear(backend, args)
+    if args.command == "use":
+        return await cmd_use(backend, args)
+    if args.command == "completion":
+        return await cmd_completion(backend, args)
     if args.command == "ask":
         return await cmd_ask(backend, args)
     if args.command == "shell":

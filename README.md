@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.63
+# ChatGPT ClaudeCode Workflow v0.0.64
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.63 .
+docker build -t chatgpt-docker-service:0.0.64 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.63
+  chatgpt-docker-service:0.0.64
 ```
 
 Compose option:
@@ -207,8 +207,55 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.63
+  chatgpt-docker-service:0.0.64
 ```
+
+
+## Installing the CLI
+
+Preferred for command-line use:
+
+```bash
+pipx install ./chatgpt_claudecode_workflow_v0.0.64.zip
+```
+
+From an extracted checkout:
+
+```bash
+python -m pip install .
+```
+
+After installation the `chatgpt` command is available:
+
+```bash
+chatgpt state
+chatgpt prompt
+chatgpt use "My Project"
+chatgpt ask "hello"
+```
+
+Shell completion:
+
+```bash
+# bash
+eval "$(chatgpt completion bash)"
+
+# zsh
+mkdir -p ~/.zsh/completions
+chatgpt completion zsh > ~/.zsh/completions/_chatgpt
+
+# fish
+mkdir -p ~/.config/fish/completions
+chatgpt completion fish > ~/.config/fish/completions/chatgpt.fish
+```
+
+For other Python programs, prefer importing the package facade instead of the smoke harness:
+
+```python
+from chatgpt_workflow import ChatGPTServiceClient, ConversationStateStore
+```
+
+`chatgpt_cli_sequence_v5.py` remains a smoke/integration harness, not the recommended library entry point.
 
 ## CLI usage remains available
 
@@ -357,6 +404,8 @@ The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.cha
 - `chatgpt state` shows the remembered current project and conversation
 - `chatgpt prompt` emits a compact one-line value for shell prompts or menu-bar widgets
 - `chatgpt state-clear` clears the remembered state
+- `chatgpt use <project-name|project-url|conversation-url>` selects the current project/chat state
+- `chatgpt completion <bash|zsh|fish>` emits shell completion scripts
 
 Typical flow:
 
@@ -365,6 +414,8 @@ chatgpt project-ensure "My Project"
 chatgpt ask --json "hello"
 chatgpt prompt
 chatgpt state
+chatgpt use "My Project"
+chatgpt completion bash
 ```
 
 If no `--project-url` is supplied for project-scoped commands, the CLI reuses the remembered current project when available.
