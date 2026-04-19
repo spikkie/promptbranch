@@ -585,6 +585,7 @@ class ChatGPTBrowserClient:
             operation=self._ask_question_operation,
             prompt=prompt,
             file_path=file_path,
+            conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
         )
