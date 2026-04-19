@@ -519,6 +519,7 @@ def _configure_logging(debug: bool) -> None:
 def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
     settings = ChatGPTAutomationSettings(
         project_url=args.project_url,
+        conversation_url=args.conversation_url,
         email=args.email,
         password=args.password,
         profile_dir=args.profile_dir,

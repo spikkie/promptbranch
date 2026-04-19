@@ -1,0 +1,22 @@
+[chatgpt_browser_auth/client.py]
+- ask_question_result signature +conversation_url
+- _ask_question_operation signature +conversation_url
+- forwarded conversation_url after project_url in 2 call site(s)
+- refresh conversation_url inside polling loop
+- added result["conversation_url"] = page.url before return result
+
+[chatgpt_automation/automation.py]
+- ask_question_result signature +conversation_url
+- ask_question_result forwarded conversation_url at 1 call site(s)
+
+[chatgpt_automation/service.py]
+- ask_question_result signature +conversation_url
+
+[chatgpt_container_api.py]
+- no changes detected
+
+[chatgpt_service_client.py]
+- ask signature +conversation_url
+
+[chatgpt_cli.py]
+- forwarded args.conversation_url in cmd_ask
