@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: chatgpt-docker-service:0.0.59
+    image: chatgpt-docker-service:0.0.60
     init: true
     ports:
       - "8000:8000"

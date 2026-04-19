@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chatgpt-claudecode-workflow"
-version = "0.0.59"
+version = "0.0.60"
 description = "Browser-driven ChatGPT automation with a reusable Docker service and Python client"
 readme = "README.md"
 requires-python = ">=3.11"

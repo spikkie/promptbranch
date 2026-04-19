@@ -229,8 +229,6 @@ class ChatGPTServiceClient:
             data["name"] = display_name
         if project_url:
             data["project_url"] = project_url
-        if conversation_url:
-            data["conversation_url"] = conversation_url
 
         if file_path:
             path = Path(file_path)

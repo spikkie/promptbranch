@@ -4,7 +4,7 @@
 - added explicit ask conversation targeting via --conversation-url
 - threaded conversation_url through CLI -> service client -> API -> automation service -> browser client
 - preserved/returned conversation_url in ask responses
-- bumped release metadata to 0.0.59
+- bumped release metadata to 0.0.60
 
 [chatgpt_browser_auth/client.py]
 - removed invalid injected line in _run_with_context that broke try/except structure
@@ -23,7 +23,7 @@
 
 [chatgpt_container_api.py]
 - /v1/ask accepts form field conversation_url and forwards it
-- service version updated to 0.0.59
+- service version updated to 0.0.60
 
 [chatgpt_service_client.py]
 - ask/ask_result accept conversation_url and include it in form payloads
@@ -35,10 +35,14 @@
 - removed invalid build_service reference to missing global args.conversation_url
 
 [tests]
-- updated container API version assertions to 0.0.59
+- updated container API version assertions to 0.0.60
 - added parser coverage for ask --conversation-url
 - added service client coverage for conversation_url form payloads
 
 [validation]
 - python -m py_compile on key runtime modules: PASS
 - pytest -q tests/test_cli_parser.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py: PASS (20 passed)
+
+Additional v0.0.60 fix
+- removed stray undefined conversation_url reference from ChatGPTServiceClient.add_project_source
+- validation rerun: python -m py_compile key modules; pytest -q tests/test_cli_parser.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py (20 passed)
