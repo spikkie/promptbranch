@@ -66,10 +66,10 @@ def test_build_backend_uses_service_client_when_base_url_is_present() -> None:
 
 def test_main_can_ask_via_service_backend(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             assert base_url == "http://localhost:8000"
             assert token == "secret"
-            assert timeout == 300.0
+            assert timeout == 900.0
 
         def ask_result(self, prompt: str, **kwargs):
             assert prompt == "hello"
@@ -100,7 +100,7 @@ def test_main_can_ask_via_service_backend(monkeypatch, capsys, tmp_path) -> None
 
 def test_main_can_create_project_via_service_backend(monkeypatch, capsys) -> None:
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
         def create_project(self, name: str, **kwargs):
@@ -137,7 +137,7 @@ def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monke
     conversation_url = "https://chatgpt.com/g/demo/c/123"
 
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
         def ask_result(self, prompt: str, **kwargs):
@@ -185,10 +185,10 @@ def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monke
 
 def test_main_can_ask_via_service_backend_from_env(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             assert base_url == "http://localhost:8000"
             assert token == "secret"
-            assert timeout == 300.0
+            assert timeout == 900.0
 
         def ask_result(self, prompt: str, **kwargs):
             assert prompt == "hello"
@@ -214,7 +214,7 @@ def test_main_can_ask_via_service_backend_from_env(monkeypatch, capsys, tmp_path
 
 def test_main_can_ask_via_service_backend_from_config(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             assert base_url == "http://localhost:8000"
             assert token == "secret"
             assert timeout == 123.0
@@ -258,7 +258,7 @@ def test_main_can_ask_via_service_backend_from_config(monkeypatch, capsys, tmp_p
 
 def test_main_can_ask_via_service_backend_from_default_config_path(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             assert base_url == "http://localhost:8000"
             assert token == "secret"
             assert timeout == 123.0

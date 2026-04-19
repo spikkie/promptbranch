@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.53
+# ChatGPT ClaudeCode Workflow v0.0.57
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.53 .
+docker build -t chatgpt-docker-service:0.0.57 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.53
+  chatgpt-docker-service:0.0.57
 ```
 
 Compose option:
@@ -48,6 +48,14 @@ Compose option:
 ```bash
 docker compose -f docker-compose.chatgpt-service.yml up --build
 ```
+
+Development mode with Compose Watch:
+
+```bash
+./run_chatgpt_service_dev.sh
+```
+
+This enables `docker compose ... up --watch` and turns on Uvicorn reload inside the container so Python edits are applied without a manual rebuild. Changes to `Dockerfile`, `requirements.txt`, and `pyproject.toml` trigger an image rebuild instead of a file sync.
 
 By default, the compose file now reads the host password file from:
 
@@ -71,6 +79,7 @@ Or use the helper script:
 ```
 
 The service starts with:
+- Compose `develop.watch` rules for sync/rebuild in development mode
 - OpenAPI docs at `/docs`
 - health endpoint at `/healthz`
 - versioned API under `/v1`
@@ -92,6 +101,8 @@ CHATGPT_PASSWORD_SECRET_FILE="$HOME/.config/chatgpt/password.txt" \
 CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1 \
   docker compose -f docker-compose.chatgpt-service.yml up --build
 ```
+
+For auto-reload during development, use `./run_chatgpt_service_dev.sh` instead.
 
 Then run the existing integration harness against Docker instead of the in-process Python stack:
 
@@ -196,7 +207,7 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.53
+  chatgpt-docker-service:0.0.57
 ```
 
 ## CLI usage remains available
@@ -324,6 +335,7 @@ Core service settings:
 - `CHATGPT_API_BASE_URL` (alias for the CLI service base URL)
 - `CHATGPT_SERVICE_TIMEOUT_SECONDS`
 - `CHATGPT_UVICORN_APP`
+- `CHATGPT_UVICORN_RELOAD` (enable Uvicorn auto-reload for `docker compose ... up --watch`)
 - `PORT`
 
 ## Notes

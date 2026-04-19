@@ -27,6 +27,7 @@ RUN playwright install --with-deps chromium
 RUN rm -rf /app/profile
 
 COPY . .
+RUN chmod +x /app/docker/run-chatgpt-service-in-container.sh
 
 ENV PYTHONUNBUFFERED=1
 ENV CHATGPT_HEADLESS=0
@@ -36,6 +37,7 @@ ENV CHATGPT_DISABLE_FEDCM=1
 ENV CHATGPT_FILTER_NO_SANDBOX=0
 ENV CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1
 ENV CHATGPT_UVICORN_APP=chatgpt_container_api:app
+ENV CHATGPT_UVICORN_RELOAD=0
 ENV PORT=8000
 
-CMD ["sh", "-c", "xvfb-run -a -s '-screen 0 1920x1080x24' uvicorn ${CHATGPT_UVICORN_APP} --host 0.0.0.0 --port ${PORT}"]
+CMD ["/app/docker/run-chatgpt-service-in-container.sh"]

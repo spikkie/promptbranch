@@ -57,6 +57,9 @@ AUTHENTICATED_INDICATORS = [
 ]
 ASSISTANT_MESSAGE_SELECTORS = [
     '[data-message-author-role="assistant"]',
+    'section[data-testid*="conversation-turn"][data-turn="assistant"]',
+    'section[data-turn="assistant"]',
+    '[data-testid*="conversation-turn"][data-turn="assistant"]',
     'article[data-testid*="conversation-turn"]',
     'div[data-testid*="conversation-turn"]',
     'main article',
