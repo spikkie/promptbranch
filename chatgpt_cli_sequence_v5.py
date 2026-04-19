@@ -12,9 +12,9 @@ import sys
 import tempfile
 import textwrap
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 
 @dataclass
@@ -38,6 +38,9 @@ class State:
     project_url_resolved: str | None = None
     project_id: str | None = None
     source_id: str | None = None
+    source_match: str | None = None
+    source_match_candidates: list[str] = field(default_factory=list)
+    source_identity_used: str | None = None
     conversation_url_1: str | None = None
     conversation_url_2: str | None = None
 
@@ -84,6 +87,18 @@ class Runner:
         return set(re.findall(r"--[a-zA-Z0-9][a-zA-Z0-9-]*", help_text))
 
     @staticmethod
+    def unique_preserve_order(values: Iterable[str]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            normalized = value.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(normalized)
+        return out
+
+    @staticmethod
     def _try_json_objects(text: str) -> list[object]:
         text = text.strip()
         if not text:
@@ -97,6 +112,13 @@ class Runner:
             except Exception:
                 pass
         return out
+
+    @classmethod
+    def extract_json_dict(cls, text: str) -> dict[str, Any]:
+        for obj in cls._try_json_objects(text):
+            if isinstance(obj, dict):
+                return obj
+        return {}
 
     @classmethod
     def _search_key_recursive(cls, obj: object, keys: set[str]) -> str | None:
@@ -216,8 +238,24 @@ class Runner:
             [["project-source-add", "--type", "file", "--file", s.source_path, "--name", s.source_name]],
             project_url=self.project_scope_url(s),
         )
+        payload = self.extract_json_dict(r.combined)
         s.source_id = self.extract(r.combined, ["source_id", "id", "uuid"])
-        self.log("project-source-add.parse", True, f"source_id={s.source_id or 'unknown'}")
+        source_match = payload.get("source_match")
+        if isinstance(source_match, str) and source_match.strip():
+            s.source_match = source_match.strip()
+        source_candidates = payload.get("source_match_candidates")
+        if isinstance(source_candidates, list):
+            s.source_match_candidates = self.unique_preserve_order(
+                item for item in source_candidates if isinstance(item, str)
+            )
+        persistence_verified = payload.get("persistence_verified")
+        self.log(
+            "project-source-add.parse",
+            True,
+            f"source_id={s.source_id or 'unknown'}, source_match={s.source_match or 'unknown'}, persistence_verified={persistence_verified!r}",
+        )
+        if payload and payload.get("action") != "add":
+            raise SmokeError(f"project-source-add returned unexpected action: {payload.get('action')!r}")
 
     def ask_first(self, s: State) -> None:
         prompt = "Reply with compact JSON including keys status and topic, with topic='smoke-test-first'."
@@ -257,21 +295,68 @@ class Runner:
         self.log("shell", False, "all variants failed")
         raise SmokeError("\n\n".join(self.fmt_result(f"Attempt {i+1}", r) for i, r in enumerate(attempts)))
 
-    def project_source_remove(self, s: State) -> None:
+    def remove_lookup_candidates(self, s: State) -> list[str]:
         base = os.path.basename(s.source_path)
         root = os.path.splitext(base)[0]
-        candidates = [
-            s.source_name,
-            base,
-            f"{base} Document",
-            f"{root} Document",
-            os.path.abspath(s.source_path),
-        ]
+        authoritative = self.unique_preserve_order(
+            [
+                s.source_match or "",
+                *s.source_match_candidates,
+            ]
+        )
+        legacy = self.unique_preserve_order(
+            [
+                s.source_name,
+                base,
+                f"{base} Document",
+                f"{root} Document",
+                os.path.abspath(s.source_path),
+            ]
+        )
+        return authoritative + [c for c in legacy if c not in authoritative]
+
+    def project_source_remove(self, s: State) -> None:
+        candidates = self.remove_lookup_candidates(s)
         variants: list[list[str]] = []
+        authoritative = set(self.unique_preserve_order([s.source_match or "", *s.source_match_candidates]))
         for candidate in candidates:
             variants.append(["project-source-remove", "--exact", candidate])
-            variants.append(["project-source-remove", candidate])
-        self.try_variants("project-source-remove", variants, project_url=self.project_scope_url(s))
+            if candidate not in authoritative:
+                variants.append(["project-source-remove", candidate])
+        r = self.try_variants("project-source-remove", variants, project_url=self.project_scope_url(s))
+        payload = self.extract_json_dict(r.combined)
+        s.source_identity_used = self.extract(r.combined, ["source_identity_used", "source_match", "source_name"]) or s.source_identity_used
+        if payload and payload.get("action") != "remove":
+            raise SmokeError(f"project-source-remove returned unexpected action: {payload.get('action')!r}")
+        if payload and payload.get("ok") is False:
+            raise SmokeError("project-source-remove returned ok=false")
+        self.log(
+            "project-source-remove.parse",
+            True,
+            f"source_identity_used={s.source_identity_used or 'unknown'}, already_absent={payload.get('already_absent')!r}, removed_via_ui={payload.get('removed_via_ui')!r}",
+        )
+
+    def project_source_remove_idempotent(self, s: State) -> None:
+        exact_target = s.source_identity_used or s.source_match
+        if not exact_target:
+            raise SmokeError("cannot verify idempotent project-source-remove without a resolved source identity")
+        r = self.try_variants(
+            "project-source-remove.idempotent",
+            [["project-source-remove", "--exact", exact_target]],
+            project_url=self.project_scope_url(s),
+        )
+        payload = self.extract_json_dict(r.combined)
+        if payload and payload.get("action") != "remove":
+            raise SmokeError(f"project-source-remove.idempotent returned unexpected action: {payload.get('action')!r}")
+        if payload and payload.get("ok") is False:
+            raise SmokeError("project-source-remove.idempotent returned ok=false")
+        if payload and payload.get("already_absent") is not True:
+            raise SmokeError(f"project-source-remove.idempotent did not confirm already_absent=true: {payload!r}")
+        self.log(
+            "project-source-remove.idempotent.parse",
+            True,
+            f"source_identity_used={payload.get('source_identity_used')!r}, already_absent={payload.get('already_absent')!r}, removed_via_ui={payload.get('removed_via_ui')!r}",
+        )
 
     def project_remove(self, s: State) -> None:
         self.try_variants("project-remove", [["project-remove"]], project_url=self.project_scope_url(s))
@@ -288,6 +373,7 @@ class Runner:
             self.ask_reply(s)
             self.shell(s)
             self.project_source_remove(s)
+            self.project_source_remove_idempotent(s)
             self.project_remove(s)
             self.log("suite", True, "completed")
             return 0
