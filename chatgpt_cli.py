@@ -649,6 +649,10 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         keep_open=args.keep_open,
         retries=args.retries,
     )
+    if args.json:
+        print(json.dumps(response, indent=2, ensure_ascii=False))
+        return 0
+
     answer, _ = _split_ask_response(response)
     if isinstance(answer, (dict, list)):
         print(json.dumps(answer, indent=2, ensure_ascii=False))
