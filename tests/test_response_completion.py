@@ -151,6 +151,9 @@ def test_run_with_context_preserves_original_exception_when_operation_fails(tmp_
         def set_default_timeout(self, _timeout: int) -> None:
             return None
 
+        def on(self, _event: str, _handler) -> None:
+            return None
+
     class DummyChromium:
         async def launch_persistent_context(self, **kwargs):
             return DummyContext()
@@ -193,3 +196,58 @@ def test_run_with_context_preserves_original_exception_when_operation_fails(tmp_
         assert str(exc) == 'boom'
     else:
         raise AssertionError('expected original ValueError to be raised')
+
+
+class _FakeLastLocator:
+    def __init__(self, visible: bool) -> None:
+        self._visible = visible
+
+    async def is_visible(self, timeout: int = 1_000) -> bool:
+        return self._visible
+
+
+class _FakeLocator:
+    def __init__(self, count: int, texts: list[str], *, visible: bool = False) -> None:
+        self._count = count
+        self._texts = texts
+        self.last = _FakeLastLocator(visible)
+
+    async def count(self) -> int:
+        return self._count
+
+    async def evaluate_all(self, _script: str):
+        return list(self._texts)
+
+
+class _FakePage:
+    def __init__(self, selector_map: dict[str, tuple[int, list[str], bool]]) -> None:
+        self._selector_map = selector_map
+
+    def locator(self, selector: str) -> _FakeLocator:
+        count, texts, visible = self._selector_map.get(selector, (0, [], False))
+        return _FakeLocator(count, texts, visible=visible)
+
+
+def test_extract_last_text_from_selectors_supports_section_assistant_turns(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = _FakePage(
+        {
+            '[data-message-author-role="assistant"]': (1, [''], False),
+            'section[data-testid*="conversation-turn"][data-turn="assistant"]': (1, ['1 + 1 = 2'], True),
+        }
+    )
+
+    import asyncio
+
+    selector, count, text, probes = asyncio.run(client._extract_last_text_from_selectors(page, client_module_selectors()))
+
+    assert selector == 'section[data-testid*="conversation-turn"][data-turn="assistant"]'
+    assert count == 1
+    assert text == '1 + 1 = 2'
+    assert any(probe['selector'] == selector and probe['text_length'] == len(text) for probe in probes)
+
+
+def client_module_selectors() -> list[str]:
+    from chatgpt_browser_auth.client import ASSISTANT_MESSAGE_SELECTORS
+
+    return ASSISTANT_MESSAGE_SELECTORS

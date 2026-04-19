@@ -3,11 +3,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: chatgpt-docker-service:0.0.50
+    image: chatgpt-docker-service:0.0.57
+    init: true
     ports:
       - "8000:8000"
     environment:
       CHATGPT_UVICORN_APP: chatgpt_container_api:app
+      CHATGPT_UVICORN_RELOAD: ${CHATGPT_UVICORN_RELOAD:-0}
       CHATGPT_PROJECT_URL: ${CHATGPT_PROJECT_URL:-https://chatgpt.com/}
       CHATGPT_EMAIL: ${CHATGPT_EMAIL:-}
       CHATGPT_PASSWORD_FILE: /run/secrets/chatgpt_password
@@ -27,6 +29,45 @@ services:
       - ./debug_artifacts:/app/debug_artifacts
     secrets:
       - chatgpt_password
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    develop:
+      watch:
+        - path: .
+          action: sync
+          target: /app
+          initial_sync: true
+          ignore:
+            - .git/
+            - .pytest_cache/
+            - .venv/
+            - __pycache__/
+            - profile/
+            - debug_artifacts/
+            - uploaded_receipts*
+            - '*.log'
+            - '*.zip'
+            - Dockerfile
+            - docker-compose.chatgpt-service.yml
+            - requirements.txt
+            - pyproject.toml
+            - docker/run-chatgpt-service-in-container.sh
+        - path: docker/run-chatgpt-service-in-container.sh
+          action: sync+restart
+          target: /app/docker/run-chatgpt-service-in-container.sh
+        - path: Dockerfile
+          action: rebuild
+        - path: requirements.txt
+          action: rebuild
+        - path: pyproject.toml
+          action: rebuild
 
 secrets:
   chatgpt_password:

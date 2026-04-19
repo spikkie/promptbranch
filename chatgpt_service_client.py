@@ -15,7 +15,7 @@ class ChatGPTServiceClient:
         base_url: str,
         *,
         token: Optional[str] = None,
-        timeout: float = 300.0,
+        timeout: float = 900.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")

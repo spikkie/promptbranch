@@ -25,7 +25,7 @@ from chatgpt_service_client import ChatGPTServiceClient
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
-DEFAULT_SERVICE_TIMEOUT_SECONDS = 300.0
+DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 STATE_FILE_NAME = ".chatgpt_cli_state.json"
 COMMANDS = {
