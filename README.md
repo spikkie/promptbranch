@@ -241,7 +241,7 @@ CHATGPT_SERVICE_TOKEN=change-me
 python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
 ```
 
-You can also use a JSON config file, for example `~/.config/chatgpt-cli/config.json`:
+You can also use a JSON config file. The CLI already checks `~/.config/chatgpt-cli/config.json` by default, so you only need `--config` when overriding that path:
 
 ```json
 {
