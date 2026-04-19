@@ -181,3 +181,76 @@ def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monke
         "https://chatgpt.com/g/demo/c/123",
     ]
     assert captured.out.strip().splitlines() == ["one", "two"]
+
+
+def test_main_can_ask_via_service_backend_from_env(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 300.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    monkeypatch.setenv("CHATGPT_SERVICE_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("CHATGPT_SERVICE_TOKEN", "secret")
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--profile-dir",
+            str(tmp_path),
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"
+
+
+def test_main_can_ask_via_service_backend_from_config(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 123.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "service_base_url": "http://localhost:8000",
+                "service_token": "secret",
+                "service_timeout_seconds": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("CHATGPT_SERVICE_BASE_URL", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--config",
+            str(config_path),
+            "--profile-dir",
+            str(tmp_path),
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"

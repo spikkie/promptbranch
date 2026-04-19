@@ -217,13 +217,43 @@ Ask one question against local automation:
 python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
 ```
 
-Ask one question through the Docker service:
+Ask one question through the Docker service with explicit flags:
 
 ```bash
 python chatgpt_cli.py \
   --service-base-url http://localhost:8000 \
   --service-token change-me \
   ask "Explain Python context managers in 5 lines"
+```
+
+Ask one question through the Docker service without repeating flags each time:
+
+1. Put the service settings in `.env` (loaded automatically by default):
+
+```dotenv
+CHATGPT_SERVICE_BASE_URL=http://localhost:8000
+CHATGPT_SERVICE_TOKEN=change-me
+```
+
+2. Then run the shorter command:
+
+```bash
+python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
+```
+
+You can also use a JSON config file, for example `~/.config/chatgpt-cli/config.json`:
+
+```json
+{
+  "service_base_url": "http://localhost:8000",
+  "service_token": "change-me",
+  "service_timeout_seconds": 300
+}
+```
+
+```bash
+python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
+python chatgpt_cli.py --config ~/.config/chatgpt-cli/config.json ask "Explain Python context managers in 5 lines"
 ```
 
 Create a project through the Docker service:
@@ -278,6 +308,7 @@ Core service settings:
 - `CHATGPT_PASSWORD`
 - `CHATGPT_PASSWORD_FILE` (inside the container this is fixed to `/run/secrets/chatgpt_password` in the compose service)
 - `CHATGPT_PROFILE_DIR`
+- `CHATGPT_CLI_CONFIG` (optional JSON config file path for CLI defaults)
 - `CHATGPT_HEADLESS`
 - `CHATGPT_USE_PATCHRIGHT`
 - `CHATGPT_BROWSER_CHANNEL`
@@ -288,7 +319,9 @@ Core service settings:
 - `CHATGPT_MIN_CONTEXT_SPACING_SECONDS`
 - `CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS`
 - `CHATGPT_SERVICE_TOKEN`
+- `CHATGPT_API_TOKEN` (alias for the CLI service token)
 - `CHATGPT_SERVICE_BASE_URL`
+- `CHATGPT_API_BASE_URL` (alias for the CLI service base URL)
 - `CHATGPT_SERVICE_TIMEOUT_SECONDS`
 - `CHATGPT_UVICORN_APP`
 - `PORT`
