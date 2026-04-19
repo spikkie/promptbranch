@@ -151,3 +151,18 @@ def test_create_project_posts_expected_json() -> None:
         )
 
     assert payload["project_url"] == "https://chatgpt.com/g/new/project"
+
+
+def test_ask_result_includes_conversation_url_form_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert "conversation_url" in body
+        assert "conversation_url=https%3A%2F%2Fchatgpt.com%2Fg%2Fdemo%2Fc%2F123" in body
+        return httpx.Response(200, json={"ok": True, "answer": "ready", "conversation_url": "https://chatgpt.com/g/demo/c/123"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.ask_result("Reply with one short sentence.", conversation_url="https://chatgpt.com/g/demo/c/123")
+
+    assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/123"

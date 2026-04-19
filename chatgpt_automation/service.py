@@ -284,6 +284,7 @@ class ChatGPTAutomationService:
                     return await self._build_bot().ask_question_result(
                         prompt=prompt,
                         file_path=file_path,
+                        conversation_url=conversation_url,
                         expect_json=expect_json,
                         keep_open=keep_open,
                     )

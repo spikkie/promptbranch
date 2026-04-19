@@ -1,22 +1,44 @@
+[summary]
+- repaired broken v0.0.58 patch artifacts that caused SyntaxError/NameError regressions
+- fixed JSON wait completion check to avoid candidate_text NameError
+- added explicit ask conversation targeting via --conversation-url
+- threaded conversation_url through CLI -> service client -> API -> automation service -> browser client
+- preserved/returned conversation_url in ask responses
+- bumped release metadata to 0.0.59
+
 [chatgpt_browser_auth/client.py]
-- ask_question_result signature +conversation_url
-- _ask_question_operation signature +conversation_url
-- forwarded conversation_url after project_url in 2 call site(s)
-- refresh conversation_url inside polling loop
-- added result["conversation_url"] = page.url before return result
+- removed invalid injected line in _run_with_context that broke try/except structure
+- ask_question_result now forwards conversation_url to _ask_question_operation
+- _ask_question_operation now opens conversation_url when provided, otherwise project_url
+- _wait_and_get_json completion check now uses text_length instead of undefined candidate_text
+- removed stray undefined conversation_url references in unrelated helpers
+- repaired ask_chatgpt convenience wrapper signature/call path
 
 [chatgpt_automation/automation.py]
-- ask_question_result signature +conversation_url
-- ask_question_result forwarded conversation_url at 1 call site(s)
+- ask_question_result forwards conversation_url to browser client
+- repaired ask_chatgpt convenience wrapper signature/call path
 
 [chatgpt_automation/service.py]
-- ask_question_result signature +conversation_url
+- ask_question_result forwards conversation_url to automation layer during retries
 
 [chatgpt_container_api.py]
-- no changes detected
+- /v1/ask accepts form field conversation_url and forwards it
+- service version updated to 0.0.59
 
 [chatgpt_service_client.py]
-- ask signature +conversation_url
+- ask/ask_result accept conversation_url and include it in form payloads
 
 [chatgpt_cli.py]
-- forwarded args.conversation_url in cmd_ask
+- ask subcommand accepts --conversation-url
+- cmd_ask forwards --conversation-url to backend.ask
+- direct and service backends honor explicit conversation_url override before remembered conversation state
+- removed invalid build_service reference to missing global args.conversation_url
+
+[tests]
+- updated container API version assertions to 0.0.59
+- added parser coverage for ask --conversation-url
+- added service client coverage for conversation_url form payloads
+
+[validation]
+- python -m py_compile on key runtime modules: PASS
+- pytest -q tests/test_cli_parser.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py: PASS (20 passed)

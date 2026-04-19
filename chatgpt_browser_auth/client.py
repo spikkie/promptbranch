@@ -848,7 +848,6 @@ class ChatGPTBrowserClient:
             try:
                 result = await operation(context=context, page=page, **kwargs)
                 self._log("result", f"{operation_name} completed", result_type=type(result).__name__)
-        result["conversation_url"] = page.url
                 return result
             except Exception as exc:
                 current_url = await self._safe_page_url(page)
@@ -899,7 +898,8 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
-        await self._goto(page, self.config.project_url, label="chat-home-after-login")
+        target_url = conversation_url or self.config.project_url
+        await self._goto(page, target_url, label="chat-home-after-login")
         input_locator = await self._wait_for_chat_input(page)
         await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
         self._log("composer", "chat input resolved; clicking")
@@ -3914,7 +3914,6 @@ class ChatGPTBrowserClient:
                 "project-source-add",
                 "verifying project source persistence after refresh",
                 project_url=project_url,
-                conversation_url=conversation_url,
                 sources_url=sources_url,
                 source_match_candidates=source_match_candidates,
                 attempt=attempt + 1,
@@ -4982,7 +4981,7 @@ class ChatGPTBrowserClient:
 
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
-                    content_present=bool(candidate_text),
+                    content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
                     observed_running_state=observed_running_state,
@@ -5162,7 +5161,7 @@ class ChatGPTBrowserClient:
 
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
-                    content_present=bool(candidate_text),
+                    content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
                     observed_running_state=observed_running_state,
@@ -5495,6 +5494,7 @@ async def ask_chatgpt(
     password: Optional[str],
     prompt: str,
     file_path: Optional[str] = None,
+    conversation_url: Optional[str] = None,
     expect_json: bool = False,
     profile_dir: str = ".profiles/chatgpt",
     headless: bool = False,
@@ -5503,7 +5503,6 @@ async def ask_chatgpt(
     client = ChatGPTBrowserClient(
         ChatGPTBrowserConfig(
             project_url=project_url,
-            conversation_url=conversation_url,
             email=email,
             password=password,
             profile_dir=profile_dir,
@@ -5511,8 +5510,10 @@ async def ask_chatgpt(
             use_patchright=use_patchright,
         )
     )
-    return await client.ask_question(
+    result = await client.ask_question_result(
         prompt=prompt,
         file_path=file_path,
+        conversation_url=conversation_url,
         expect_json=expect_json,
     )
+    return result["answer"]
