@@ -51,3 +51,9 @@ Additional v0.0.61 fix
 - Fixed cmd_ask to emit full JSON payload including conversation_url when --json is set.
 - Fixed browser client ask_question_result to forward conversation_url into _run_with_context.
 - Added CLI regression test covering JSON ask output with conversation_url.
+
+
+[chatgpt_cli_sequence_v5.py]
+- upgraded project-source-remove flow to prefer source_match/source_match_candidates from project-source-add
+- added idempotent remove verification with already_absent=true
+- retained heuristic fallback candidates only as secondary recovery path
