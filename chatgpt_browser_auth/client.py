@@ -549,6 +549,21 @@ class ChatGPTBrowserClient:
         expect_json: bool = False,
         keep_open: bool = False,
     ) -> Any:
+        result = await self.ask_question_result(
+            prompt=prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
+        )
+        return result["answer"]
+
+    async def ask_question_result(
+        self,
+        prompt: str,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
         self._log(
             "ask",
             "starting ask_question",
@@ -876,7 +891,7 @@ class ChatGPTBrowserClient:
         file_path: Optional[str],
         expect_json: bool,
         keep_open: bool = False,
-    ) -> Any:
+    ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         await self._goto(page, self.config.project_url, label="chat-home-after-login")
         input_locator = await self._wait_for_chat_input(page)
@@ -900,14 +915,26 @@ class ChatGPTBrowserClient:
 
         response_context = await self._capture_response_context(page)
         await self._submit_prompt(page)
-        result = (
+        answer = (
             await self._wait_and_get_json(page, response_context=response_context)
             if expect_json
             else await self._wait_and_get_response(page, response_context=response_context)
         )
+        current_url = await self._safe_page_url(page)
+        conversation_url = current_url if self._is_conversation_url(current_url) else None
+        self._log(
+            "ask",
+            "ask_question completed",
+            current_url=current_url,
+            conversation_url=conversation_url,
+            expect_json=expect_json,
+        )
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Question completed. Press Enter to close the browser... ")
-        return result
+        return {
+            "answer": answer,
+            "conversation_url": conversation_url,
+        }
 
     async def _create_project_operation(
         self,

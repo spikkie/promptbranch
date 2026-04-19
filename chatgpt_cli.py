@@ -8,6 +8,7 @@ import shlex
 import sys
 from pathlib import Path
 from typing import Any, Optional, Protocol
+from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -25,6 +26,7 @@ DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 300.0
+STATE_FILE_NAME = ".chatgpt_cli_state.json"
 COMMANDS = {
     "login-check",
     "ask",
@@ -113,9 +115,102 @@ class CommandBackend(Protocol):
     ) -> Any: ...
 
 
+def _project_home_url_from_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 3 or parts[0] != "g":
+        return None
+    slug = parts[1]
+    if parts[2] == "project":
+        return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
+    if parts[2] == "c" and len(parts) >= 4:
+        return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
+    return None
+
+
+def _is_project_conversation_url(url: Optional[str]) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    return len(parts) >= 4 and parts[0] == "g" and parts[2] == "c"
+
+
+class ConversationStateStore:
+    def __init__(self, profile_dir: str) -> None:
+        self._path = Path(profile_dir).expanduser() / STATE_FILE_NAME
+
+    def resolve(self, project_url: Optional[str]) -> Optional[str]:
+        if not project_url:
+            return project_url
+        if _is_project_conversation_url(project_url):
+            return project_url
+        home_url = _project_home_url_from_url(project_url)
+        if not home_url:
+            return project_url
+        payload = self._load()
+        projects = payload.get("projects") if isinstance(payload, dict) else None
+        if not isinstance(projects, dict):
+            return project_url
+        entry = projects.get(home_url)
+        if not isinstance(entry, dict):
+            return project_url
+        conversation_url = entry.get("conversation_url")
+        if not isinstance(conversation_url, str):
+            return project_url
+        if _project_home_url_from_url(conversation_url) != home_url:
+            return project_url
+        return conversation_url
+
+    def remember(self, project_url: Optional[str], conversation_url: Optional[str]) -> None:
+        if not conversation_url:
+            return
+        home_url = _project_home_url_from_url(conversation_url) or _project_home_url_from_url(project_url)
+        if not home_url:
+            return
+        payload = self._load()
+        if not isinstance(payload, dict):
+            payload = {}
+        projects = payload.get("projects")
+        if not isinstance(projects, dict):
+            projects = {}
+        projects[home_url] = {"conversation_url": conversation_url}
+        payload["projects"] = projects
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def _load(self) -> dict[str, Any]:
+        if not self._path.exists():
+            return {}
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+
+def _split_ask_response(response: Any) -> tuple[Any, Optional[str]]:
+    if isinstance(response, dict) and "answer" in response:
+        conversation_url = response.get("conversation_url")
+        return response["answer"], conversation_url if isinstance(conversation_url, str) else None
+    return response, None
+
+
 class DirectBackend:
-    def __init__(self, service: ChatGPTAutomationService) -> None:
+    def __init__(
+        self,
+        service: ChatGPTAutomationService,
+        *,
+        conversation_state: Optional[ConversationStateStore] = None,
+        project_url: Optional[str] = None,
+    ) -> None:
         self._service = service
+        self._conversation_state = conversation_state
+        self._project_url = project_url or service.settings.project_url
 
     async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await self._service.run_login_check(keep_open=keep_open)
@@ -199,13 +294,28 @@ class DirectBackend:
         keep_open: bool = False,
         retries: Optional[int] = None,
     ) -> Any:
-        return await self._service.ask_question(
-            prompt=prompt,
-            file_path=file_path,
-            expect_json=expect_json,
-            keep_open=keep_open,
-            retries=retries,
+        effective_project_url = (
+            self._conversation_state.resolve(self._project_url)
+            if self._conversation_state is not None
+            else self._project_url
         )
+        original_project_url = self._service.settings.project_url
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            result = await self._service.ask_question_result(
+                prompt=prompt,
+                file_path=file_path,
+                expect_json=expect_json,
+                keep_open=keep_open,
+                retries=retries,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
+
+        _, conversation_url = _split_ask_response(result)
+        if self._conversation_state is not None:
+            self._conversation_state.remember(self._project_url, conversation_url)
+        return result
 
 
 class ServiceBackend:
@@ -216,9 +326,11 @@ class ServiceBackend:
         token: Optional[str],
         timeout: float,
         project_url: Optional[str],
+        profile_dir: str,
     ) -> None:
         self._client = ChatGPTServiceClient(base_url, token=token, timeout=timeout)
         self._project_url = project_url
+        self._conversation_state = ConversationStateStore(profile_dir)
 
     async def _call(self, fn, /, *args, **kwargs):
         return await asyncio.to_thread(fn, *args, **kwargs)
@@ -322,15 +434,19 @@ class ServiceBackend:
         keep_open: bool = False,
         retries: Optional[int] = None,
     ) -> Any:
-        return await self._call(
-            self._client.ask,
+        effective_project_url = self._conversation_state.resolve(self._project_url)
+        result = await self._call(
+            self._client.ask_result,
             prompt,
             file_path=file_path,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
-            project_url=self._project_url,
+            project_url=effective_project_url,
         )
+        _, conversation_url = _split_ask_response(result)
+        self._conversation_state.remember(self._project_url, conversation_url)
+        return result
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -369,14 +485,20 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
 
 
 def build_backend(args: argparse.Namespace) -> CommandBackend:
+    conversation_state = ConversationStateStore(args.profile_dir)
     if args.service_base_url:
         return ServiceBackend(
             base_url=args.service_base_url,
             token=args.service_token,
             timeout=args.service_timeout_seconds,
             project_url=args.project_url,
+            profile_dir=args.profile_dir,
         )
-    return DirectBackend(build_service(args))
+    return DirectBackend(
+        build_service(args),
+        conversation_state=conversation_state,
+        project_url=args.project_url,
+    )
 
 
 async def cmd_login_check(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -471,10 +593,11 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         keep_open=args.keep_open,
         retries=args.retries,
     )
-    if isinstance(response, (dict, list)):
-        print(json.dumps(response, indent=2, ensure_ascii=False))
+    answer, _ = _split_ask_response(response)
+    if isinstance(answer, (dict, list)):
+        print(json.dumps(answer, indent=2, ensure_ascii=False))
     else:
-        print(response)
+        print(answer)
     return 0
 
 
@@ -572,10 +695,11 @@ async def cmd_shell(backend: CommandBackend, args: argparse.Namespace) -> int:
                 keep_open=args.keep_open,
                 retries=retries,
             )
-            if isinstance(response, (dict, list)):
-                print(json.dumps(response, indent=2, ensure_ascii=False))
+            answer, _ = _split_ask_response(response)
+            if isinstance(answer, (dict, list)):
+                print(json.dumps(answer, indent=2, ensure_ascii=False))
             else:
-                print(response)
+                print(answer)
         except KeyboardInterrupt:
             print("interrupted", file=sys.stderr)
             return 130

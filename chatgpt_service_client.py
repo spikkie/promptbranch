@@ -81,6 +81,26 @@ class ChatGPTServiceClient:
         retries: Optional[int] = None,
         project_url: Optional[str] = None,
     ) -> Any:
+        payload = self.ask_result(
+            prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
+            retries=retries,
+            project_url=project_url,
+        )
+        return payload.get("answer")
+
+    def ask_result(
+        self,
+        prompt: str,
+        *,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
         data: dict[str, Any] = {
             "prompt": prompt,
             "expect_json": str(expect_json).lower(),
@@ -101,8 +121,7 @@ class ChatGPTServiceClient:
                 )
         else:
             response = self._client.post("/v1/ask", data=data)
-        payload = self._json(response)
-        return payload.get("answer")
+        return self._json(response)
 
     def discover_project_source_capabilities(
         self,

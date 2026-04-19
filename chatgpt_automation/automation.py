@@ -233,15 +233,35 @@ class ChatGPTAutomation:
         )
 
     async def ask_question(
-        self, prompt: str, file_path: Optional[str] = None, expect_json: bool = False
+        self,
+        prompt: str,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
     ) -> Any:
-        if expect_json:
-            prompt = prompt + _JSON_PROMPT_DEFAULT_RULES + _JSON_PROMPT_END_STATEMENT
-
-        return await self.client.ask_question(
+        result = await self.ask_question_result(
             prompt=prompt,
             file_path=file_path,
             expect_json=expect_json,
+            keep_open=keep_open,
+        )
+        return result["answer"]
+
+    async def ask_question_result(
+        self,
+        prompt: str,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        if expect_json:
+            prompt = prompt + _JSON_PROMPT_DEFAULT_RULES + _JSON_PROMPT_END_STATEMENT
+
+        return await self.client.ask_question_result(
+            prompt=prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
         )
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:

@@ -248,6 +248,24 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
         retries: Optional[int] = None,
     ) -> Any:
+        result = await self.ask_question_result(
+            prompt=prompt,
+            file_path=file_path,
+            expect_json=expect_json,
+            keep_open=keep_open,
+            retries=retries,
+        )
+        return result["answer"]
+
+    async def ask_question_result(
+        self,
+        *,
+        prompt: str,
+        file_path: Optional[str] = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> dict[str, Any]:
         max_retries = self.settings.max_retries if retries is None else max(0, retries)
 
         async with self._lock:
@@ -262,10 +280,11 @@ class ChatGPTAutomationService:
                             "file_path": file_path,
                         },
                     )
-                    return await self._build_bot().ask_question(
+                    return await self._build_bot().ask_question_result(
                         prompt=prompt,
                         file_path=file_path,
                         expect_json=expect_json,
+                        keep_open=keep_open,
                     )
                 except (ResponseTimeoutError, BotChallengeError) as exc:
                     last_error = exc
