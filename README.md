@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.57
+# ChatGPT ClaudeCode Workflow v0.0.59
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.57 .
+docker build -t chatgpt-docker-service:0.0.59 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.57
+  chatgpt-docker-service:0.0.59
 ```
 
 Compose option:
@@ -207,7 +207,7 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.57
+  chatgpt-docker-service:0.0.59
 ```
 
 ## CLI usage remains available

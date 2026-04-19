@@ -82,3 +82,10 @@ def test_parser_accepts_config_option() -> None:
     args = parser.parse_args(["--config", "config.json", "ask", "hello"])
     assert args.config == "config.json"
     assert args.command == "ask"
+
+
+def test_parser_accepts_ask_conversation_url_option() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["ask", "hello", "--conversation-url", "https://chatgpt.com/g/demo/c/123"])
+    assert args.command == "ask"
+    assert args.conversation_url == "https://chatgpt.com/g/demo/c/123"

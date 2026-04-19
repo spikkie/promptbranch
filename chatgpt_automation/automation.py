@@ -261,6 +261,7 @@ class ChatGPTAutomation:
         return await self.client.ask_question_result(
             prompt=prompt,
             file_path=file_path,
+            conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
         )
@@ -368,6 +369,7 @@ async def ask_chatgpt(
     password: Optional[str],
     prompt: str,
     file_path: Optional[str] = None,
+    conversation_url: Optional[str] = None,
     expect_json: bool = False,
     profile_dir: str = "/app/profile",
     *,
@@ -380,7 +382,6 @@ async def ask_chatgpt(
 ) -> Any:
     bot = ChatGPTAutomation(
         project_url=project_url,
-        conversation_url=conversation_url,
         email=email,
         password=password,
         profile_dir=profile_dir,
@@ -391,8 +392,10 @@ async def ask_chatgpt(
         disable_fedcm=disable_fedcm,
         filter_no_sandbox=filter_no_sandbox,
     )
-    return await bot.ask_question(
+    result = await bot.ask_question_result(
         prompt=prompt,
         file_path=file_path,
+        conversation_url=conversation_url,
         expect_json=expect_json,
     )
+    return result["answer"]

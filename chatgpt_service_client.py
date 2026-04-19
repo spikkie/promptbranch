@@ -85,6 +85,7 @@ class ChatGPTServiceClient:
         payload = self.ask_result(
             prompt,
             file_path=file_path,
+            conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
@@ -97,6 +98,7 @@ class ChatGPTServiceClient:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
@@ -111,6 +113,8 @@ class ChatGPTServiceClient:
             data["retries"] = str(retries)
         if project_url:
             data["project_url"] = project_url
+        if conversation_url:
+            data["conversation_url"] = conversation_url
 
         if file_path:
             path = Path(file_path)
@@ -225,6 +229,8 @@ class ChatGPTServiceClient:
             data["name"] = display_name
         if project_url:
             data["project_url"] = project_url
+        if conversation_url:
+            data["conversation_url"] = conversation_url
 
         if file_path:
             path = Path(file_path)

@@ -111,6 +111,7 @@ class CommandBackend(Protocol):
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        conversation_url: Optional[str] = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
@@ -292,11 +293,12 @@ class DirectBackend:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        conversation_url: Optional[str] = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
     ) -> Any:
-        effective_project_url = (
+        effective_project_url = conversation_url or (
             self._conversation_state.resolve(self._project_url)
             if self._conversation_state is not None
             else self._project_url
@@ -307,6 +309,7 @@ class DirectBackend:
             result = await self._service.ask_question_result(
                 prompt=prompt,
                 file_path=file_path,
+                conversation_url=conversation_url,
                 expect_json=expect_json,
                 keep_open=keep_open,
                 retries=retries,
@@ -432,15 +435,17 @@ class ServiceBackend:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        conversation_url: Optional[str] = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
     ) -> Any:
-        effective_project_url = self._conversation_state.resolve(self._project_url)
+        effective_project_url = conversation_url or self._conversation_state.resolve(self._project_url)
         result = await self._call(
             self._client.ask_result,
             prompt,
             file_path=file_path,
+            conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
@@ -519,7 +524,6 @@ def _configure_logging(debug: bool) -> None:
 def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
     settings = ChatGPTAutomationSettings(
         project_url=args.project_url,
-        conversation_url=args.conversation_url,
         email=args.email,
         password=args.password,
         profile_dir=args.profile_dir,
@@ -640,6 +644,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     response = await backend.ask(
         prompt=prompt,
         file_path=args.file,
+        conversation_url=args.conversation_url,
         expect_json=args.json,
         keep_open=args.keep_open,
         retries=args.retries,
@@ -891,6 +896,7 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--file", help="Optional file to upload with the prompt.")
     ask.add_argument("--json", action="store_true", help="Request strict JSON mode.")
+    ask.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
     ask.add_argument("--keep-open", action="store_true")
     ask.add_argument("--retries", type=int)
 

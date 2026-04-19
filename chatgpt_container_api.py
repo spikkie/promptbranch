@@ -78,7 +78,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.57"
+SERVICE_VERSION = "0.0.59"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -182,6 +182,7 @@ async def ask(
     keep_open: bool = Form(False),
     retries: Optional[int] = Form(None),
     project_url: Optional[str] = Form(default=None),
+    conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> AskResponse:
     temp_path: Optional[Path] = None
@@ -195,6 +196,7 @@ async def ask(
         result = await _service_for(project_url).ask_question_result(
             prompt=prompt,
             file_path=(str(temp_path) if temp_path is not None else None),
+            conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
@@ -272,6 +274,7 @@ async def add_project_source(
     display_name: Optional[str] = Form(default=None, alias="name"),
     keep_open: bool = Form(False),
     project_url: Optional[str] = Form(default=None),
+    conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> dict:
     temp_path: Optional[Path] = None
