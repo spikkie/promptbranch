@@ -262,6 +262,7 @@ class ChatGPTAutomationService:
         *,
         prompt: str,
         file_path: Optional[str] = None,
+        conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,

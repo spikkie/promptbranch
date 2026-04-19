@@ -564,6 +564,7 @@ class ChatGPTBrowserClient:
         self,
         prompt: str,
         file_path: Optional[str] = None,
+        conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
     ) -> dict[str, Any]:
@@ -847,6 +848,7 @@ class ChatGPTBrowserClient:
             try:
                 result = await operation(context=context, page=page, **kwargs)
                 self._log("result", f"{operation_name} completed", result_type=type(result).__name__)
+        result["conversation_url"] = page.url
                 return result
             except Exception as exc:
                 current_url = await self._safe_page_url(page)
@@ -892,6 +894,7 @@ class ChatGPTBrowserClient:
         page: Any,
         prompt: str,
         file_path: Optional[str],
+        conversation_url: str | None = None,
         expect_json: bool,
         keep_open: bool = False,
     ) -> dict[str, Any]:
@@ -3911,6 +3914,7 @@ class ChatGPTBrowserClient:
                 "project-source-add",
                 "verifying project source persistence after refresh",
                 project_url=project_url,
+                conversation_url=conversation_url,
                 sources_url=sources_url,
                 source_match_candidates=source_match_candidates,
                 attempt=attempt + 1,
@@ -5099,6 +5103,8 @@ class ChatGPTBrowserClient:
         min_completion_delay_s = 1.0
 
         while asyncio.get_running_loop().time() < deadline:
+
+            conversation_url = page.url
             attempt += 1
             elapsed_s = asyncio.get_running_loop().time() - start
 
@@ -5497,6 +5503,7 @@ async def ask_chatgpt(
     client = ChatGPTBrowserClient(
         ChatGPTBrowserConfig(
             project_url=project_url,
+            conversation_url=conversation_url,
             email=email,
             password=password,
             profile_dir=profile_dir,

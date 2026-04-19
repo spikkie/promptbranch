@@ -251,6 +251,7 @@ class ChatGPTAutomation:
         self,
         prompt: str,
         file_path: Optional[str] = None,
+        conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
     ) -> dict[str, Any]:
@@ -379,6 +380,7 @@ async def ask_chatgpt(
 ) -> Any:
     bot = ChatGPTAutomation(
         project_url=project_url,
+        conversation_url=conversation_url,
         email=email,
         password=password,
         profile_dir=profile_dir,

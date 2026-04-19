@@ -1,0 +1,27 @@
+{
+  "ask_request": {
+    "project_url": "string",
+    "prompt": "string",
+    "expect_json": true,
+    "conversation_url": "string | null"
+  },
+  "ask_response": {
+    "conversation_url": "string",
+    "content": "string | object",
+    "raw_text": "string",
+    "metadata": {
+      "current_url": "string"
+    }
+  },
+  "cli_plain_output": {
+    "must_include": [
+      "conversation_url=<url>"
+    ]
+  },
+  "cli_json_output": {
+    "must_include_keys": [
+      "conversation_url",
+      "content"
+    ]
+  }
+}
