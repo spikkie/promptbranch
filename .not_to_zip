@@ -36,3 +36,6 @@ venv/
 
 #profile
 profile/
+
+# debug files
+debug_artifacts/
