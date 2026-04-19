@@ -11,6 +11,8 @@ def test_parser_accepts_state_prompt_and_state_clear() -> None:
     assert parser.parse_args(["state"]).command == "state"
     assert parser.parse_args(["prompt"]).command == "prompt"
     assert parser.parse_args(["state-clear"]).command == "state-clear"
+    assert parser.parse_args(["use", "Demo"]).command == "use"
+    assert parser.parse_args(["completion", "bash"]).command == "completion"
 
 
 def test_main_prompt_uses_saved_state(monkeypatch, capsys, tmp_path) -> None:
@@ -104,3 +106,80 @@ def test_project_source_remove_uses_saved_current_project_when_project_url_is_de
     assert exit_code == 0
     assert json.loads(captured.out)["removed"] == "Notes"
     assert calls == ["https://chatgpt.com/g/g-p-demo-my-project/project"]
+
+
+def test_main_use_by_project_name_updates_current_state(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def resolve_project(self, name: str, **kwargs):
+            assert name == "my-project"
+            return {"ok": True, "project_url": "https://chatgpt.com/g/g-p-demo-my-project/project"}
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "use",
+        "my-project",
+    ])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["action"] == "use"
+
+    store = ConversationStateStore(str(tmp_path))
+    snapshot = store.snapshot()
+    assert snapshot["resolved_project_home_url"] == "https://chatgpt.com/g/g-p-demo-my-project/project"
+    assert snapshot["project_name"] == "my-project"
+
+
+def test_main_use_by_conversation_url_sets_current_chat(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "use",
+        conversation_url,
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["conversation_url"] == conversation_url
+    assert payload["conversation_id"] == "12345678-1234-1234-1234-1234567890ab"
+
+
+def test_main_completion_emits_bash_script(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "completion",
+        "bash",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "complete -F _chatgpt_complete chatgpt" in captured.out

@@ -1,16 +1,10 @@
-Baseline: chatgpt_claudecode_workflow_v0.0.62.zip
-Release: chatgpt_claudecode_workflow_v0.0.63.zip
+Release: chatgpt_claudecode_workflow_v0.0.64.zip
 
 Changes:
-- Added stateful CLI commands: `state`, `prompt`, `state-clear`
-- Added reusable state module: `chatgpt_state.py`
-- Made project-scoped commands reuse remembered current project when `--project-url` is omitted/defaulted
-- Added reusable package facade: `chatgpt_workflow`
-- Added console entry point: `chatgpt`
-- Updated client example to import from `chatgpt_workflow`
-- Updated README with stateful CLI and packaging guidance
+- Added `chatgpt use` to select current project/chat state from a project name or URL
+- Added `chatgpt completion <bash|zsh|fish>` shell-completion output
+- Added install/documentation guidance for CLI packaging and Python reuse
 
 Validation:
-- python -m py_compile chatgpt_cli.py chatgpt_state.py chatgpt_service_client.py chatgpt_container_api.py chatgpt_workflow/__init__.py chatgpt_workflow/cli.py chatgpt_workflow/client.py chatgpt_workflow/state.py chatgpt_workflow/automation.py
-- pytest -q tests/test_cli_state.py tests/test_cli_parser.py tests/test_chatgpt_cli.py tests/test_chatgpt_service_client.py tests/test_chatgpt_container_api.py
-- Result: 34 passed
+- py_compile for cli/state modules
+- targeted pytest for parser, state, and CLI command behavior

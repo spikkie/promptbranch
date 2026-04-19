@@ -1,3 +1,4 @@
+from .cli import main
 from .client import ChatGPTServiceClient
 from .state import ConversationStateStore
 from .automation import ChatGPTAutomationService, ChatGPTAutomationSettings
@@ -7,4 +8,5 @@ __all__ = [
     "ConversationStateStore",
     "ChatGPTAutomationService",
     "ChatGPTAutomationSettings",
+    "main",
 ]
