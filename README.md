@@ -1,4 +1,4 @@
-# ChatGPT ClaudeCode Workflow v0.0.62
+# ChatGPT ClaudeCode Workflow v0.0.63
 
 This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
 
@@ -25,7 +25,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.62 .
+docker build -t chatgpt-docker-service:0.0.63 .
 ```
 
 Run it:
@@ -40,7 +40,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.62
+  chatgpt-docker-service:0.0.63
 ```
 
 Compose option:
@@ -207,7 +207,7 @@ The repo still contains the previous `main:app` application. If you need that in
 docker run --rm -it \
   -e CHATGPT_UVICORN_APP=main:app \
   -p 8000:8000 \
-  chatgpt-docker-service:0.0.62
+  chatgpt-docker-service:0.0.63
 ```
 
 ## CLI usage remains available
@@ -348,3 +348,37 @@ This remains browser automation, so the weak points are unchanged:
 - server-side rate limiting when runs are too aggressive
 
 The added Docker service does not remove those risks. It packages the currently working flow behind a cleaner boundary so other projects can consume it without embedding the browser automation directly.
+
+
+## Stateful CLI usage
+
+The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.chatgpt_cli_state.json` so it can behave more like `git`:
+
+- `chatgpt state` shows the remembered current project and conversation
+- `chatgpt prompt` emits a compact one-line value for shell prompts or menu-bar widgets
+- `chatgpt state-clear` clears the remembered state
+
+Typical flow:
+
+```bash
+chatgpt project-ensure "My Project"
+chatgpt ask --json "hello"
+chatgpt prompt
+chatgpt state
+```
+
+If no `--project-url` is supplied for project-scoped commands, the CLI reuses the remembered current project when available.
+
+## Python packaging
+
+The preferred Python import surface is now the `chatgpt_workflow` package:
+
+```python
+from chatgpt_workflow import ChatGPTServiceClient, ConversationStateStore
+```
+
+The console entry point is installed as:
+
+```bash
+chatgpt
+```
