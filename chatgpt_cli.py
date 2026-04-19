@@ -811,7 +811,11 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
-    parser.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH), help="Optional JSON config file for CLI defaults.")
+    parser.add_argument(
+        "--config",
+        default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH),
+        help=f"Optional JSON config file for CLI defaults. Defaults to {DEFAULT_CONFIG_PATH}.",
+    )
     parser.add_argument("--service-base-url", default=_env_or("CHATGPT_SERVICE_BASE_URL", "CHATGPT_API_BASE_URL"), help="Use the Docker service API instead of local browser automation.")
     parser.add_argument("--service-token", default=_env_or("CHATGPT_SERVICE_TOKEN", "CHATGPT_API_TOKEN"), help="Bearer token for the Docker service API.")
     parser.add_argument("--service-timeout-seconds", type=float, default=(_env_or("CHATGPT_SERVICE_TIMEOUT_SECONDS") or None))
