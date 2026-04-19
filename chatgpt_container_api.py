@@ -36,6 +36,7 @@ class LoginCheckRequest(BaseModel):
 class AskResponse(BaseModel):
     ok: bool = True
     answer: object
+    conversation_url: Optional[str] = None
 
 
 class ProjectResolveRequest(BaseModel):
@@ -77,7 +78,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.52"
+SERVICE_VERSION = "0.0.53"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -191,14 +192,17 @@ async def ask(
                 handle.write(await file.read())
                 temp_path = Path(handle.name)
 
-        answer = await _service_for(project_url).ask_question(
+        result = await _service_for(project_url).ask_question_result(
             prompt=prompt,
             file_path=(str(temp_path) if temp_path is not None else None),
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
         )
-        return AskResponse(answer=answer)
+        return AskResponse(
+            answer=result["answer"],
+            conversation_url=result.get("conversation_url"),
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
     finally:

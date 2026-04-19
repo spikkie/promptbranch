@@ -33,13 +33,33 @@ def test_ask_with_file_posts_multipart_and_returns_answer(tmp_path: Path):
         body = request.read().decode("utf-8", errors="ignore")
         assert "Reply with one short sentence." in body
         assert "note.txt" in body
-        return httpx.Response(200, json={"ok": True, "answer": "ready"})
+        return httpx.Response(200, json={"ok": True, "answer": "ready", "conversation_url": "https://chatgpt.com/g/demo/c/123"})
 
     transport = httpx.MockTransport(handler)
     with ChatGPTServiceClient("http://example.test", transport=transport) as client:
         answer = client.ask("Reply with one short sentence.", file_path=str(file_path))
 
     assert answer == "ready"
+
+
+def test_ask_result_returns_full_payload() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "answer": "ready",
+                "conversation_url": "https://chatgpt.com/g/demo/c/123",
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.ask_result("Reply with one short sentence.")
+
+    assert payload["answer"] == "ready"
+    assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/123"
 
 
 def test_remove_project_source_posts_expected_json():

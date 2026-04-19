@@ -64,17 +64,17 @@ def test_build_backend_uses_service_client_when_base_url_is_present() -> None:
     assert backend.__class__.__name__ == "ServiceBackend"
 
 
-def test_main_can_ask_via_service_backend(monkeypatch, capsys) -> None:
+def test_main_can_ask_via_service_backend(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
             assert base_url == "http://localhost:8000"
             assert token == "secret"
             assert timeout == 300.0
 
-        def ask(self, prompt: str, **kwargs):
+        def ask_result(self, prompt: str, **kwargs):
             assert prompt == "hello"
             assert kwargs["project_url"] == "https://chatgpt.com/g/demo/project"
-            return "world"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
 
     monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
 
@@ -84,6 +84,8 @@ def test_main_can_ask_via_service_backend(monkeypatch, capsys) -> None:
             "http://localhost:8000",
             "--service-token",
             "secret",
+            "--profile-dir",
+            str(tmp_path),
             "--project-url",
             "https://chatgpt.com/g/demo/project",
             "ask",
@@ -128,3 +130,54 @@ def test_main_can_create_project_via_service_backend(monkeypatch, capsys) -> Non
     captured = capsys.readouterr()
     assert exit_code == 0
     assert json.loads(captured.out)["project_url"] == "https://chatgpt.com/g/new/project"
+
+
+def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[str | None] = []
+    conversation_url = "https://chatgpt.com/g/demo/c/123"
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 300.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            calls.append(kwargs.get("project_url"))
+            if prompt == "first":
+                return {"answer": "one", "conversation_url": conversation_url}
+            return {"answer": "two", "conversation_url": conversation_url}
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    first_exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "first",
+        ]
+    )
+    second_exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "second",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert first_exit_code == 0
+    assert second_exit_code == 0
+    assert calls == [
+        "https://chatgpt.com/g/demo/project",
+        "https://chatgpt.com/g/demo/c/123",
+    ]
+    assert captured.out.strip().splitlines() == ["one", "two"]
