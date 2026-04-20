@@ -404,3 +404,110 @@ def test_main_project_list_json_emits_full_payload(monkeypatch, capsys, tmp_path
     payload = json.loads(captured.out)
     assert payload["count"] == 1
     assert payload["projects"][0]["name"] == "Demo"
+
+
+def test_main_project_list_current_filters_to_current(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "projects": [
+                    {"name": "Alpha", "url": "https://chatgpt.com/g/alpha/project", "is_current": False},
+                    {"name": "Demo", "url": "https://chatgpt.com/g/demo/project", "is_current": True},
+                ],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "project-list", "--current",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Demo	https://chatgpt.com/g/demo/project" in captured.out
+    assert "Alpha	https://chatgpt.com/g/alpha/project" not in captured.out
+
+
+def test_main_use_pick_selects_project_and_updates_state(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "projects": [
+                    {"name": "Alpha", "url": "https://chatgpt.com/g/g-p-alpha/project", "is_current": False},
+                    {"name": "Demo", "url": "https://chatgpt.com/g/g-p-demo/project", "is_current": True},
+                ],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("builtins.input", lambda prompt='': "1")
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "use", "--pick", "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["ok"] is True
+    assert payload["selected_via"] == "pick"
+    assert payload["project_name"] == "Alpha"
+    assert payload["project_home_url"] == "https://chatgpt.com/g/g-p-alpha/project"
+
+    state_payload = json.loads((tmp_path / ".promptbranch_state.json").read_text(encoding="utf-8"))
+    assert state_payload["current"]["project_home_url"] == "https://chatgpt.com/g/g-p-alpha/project"
+    assert state_payload["current"]["project_name"] == "Alpha"
+
+
+def test_main_use_pick_with_filter_and_single_match_does_not_prompt(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "projects": [
+                    {"name": "Alpha Project", "url": "https://chatgpt.com/g/g-p-alpha/project", "is_current": False},
+                    {"name": "Beta Project", "url": "https://chatgpt.com/g/g-p-beta/project", "is_current": False},
+                ],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    def _unexpected_input(prompt=''):
+        raise AssertionError("input() should not be called for a single filtered match")
+
+    monkeypatch.setattr("builtins.input", _unexpected_input)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "use", "Alpha", "--pick", "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["project_name"] == "Alpha Project"
+
+
+def test_main_use_without_target_or_pick_returns_usage_error(monkeypatch, capsys, tmp_path) -> None:
+    exit_code = main(["--profile-dir", str(tmp_path), "use"])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "target is required unless --pick is used" in captured.err
