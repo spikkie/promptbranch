@@ -116,3 +116,50 @@ def test_collect_all_sidebar_projects_scrolls_until_stable(tmp_path: Path) -> No
     result = asyncio.run(client._collect_all_sidebar_projects(page, label="project-list", max_scroll_rounds=5))
     assert [item["name"] for item in result] == ["Alpha", "Beta"]
     assert page.waits == [250]
+
+
+def test_collect_all_sidebar_projects_opens_more_menu_once(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.waits: list[int] = []
+
+        async def wait_for_timeout(self, ms):
+            self.waits.append(ms)
+            return None
+
+    page = DummyPage()
+
+    discovered = iter(
+        [
+            [{"name": "Alpha", "url": "https://chatgpt.com/g/g-p-alpha-demo/project"}],
+            [
+                {"name": "Alpha", "url": "https://chatgpt.com/g/g-p-alpha-demo/project"},
+                {"name": "Beta", "url": "https://chatgpt.com/g/g-p-beta-demo/project"},
+            ],
+        ]
+    )
+    moved = iter([False])
+    opened: list[bool] = []
+
+    async def fake_collect(_page):
+        return next(discovered)
+
+    async def fake_scroll(_page):
+        return next(moved)
+
+    async def fake_open_more(_page):
+        opened.append(True)
+        return True
+
+    client._collect_sidebar_projects = fake_collect
+    client._scroll_project_sidebar_step = fake_scroll
+    client._open_more_projects_menu = fake_open_more
+
+    import asyncio
+
+    result = asyncio.run(client._collect_all_sidebar_projects(page, label="project-list", max_scroll_rounds=3))
+    assert [item["name"] for item in result] == ["Alpha", "Beta"]
+    assert opened == [True]
+

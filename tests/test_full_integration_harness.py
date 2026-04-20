@@ -69,3 +69,34 @@ def test_resolve_step_selection_rejects_unknown_steps(token: str) -> None:
 def test_resolve_step_selection_raises_when_all_steps_removed() -> None:
     with pytest.raises(ValueError):
         resolve_step_selection(only_values=["login"], skip_values=["login"], keep_project=False)
+
+
+def test_resolve_step_selection_supports_project_list_debug() -> None:
+    selection = resolve_step_selection(
+        only_values=["project_list_debug"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert selection.enabled_steps == (
+        "login_check",
+        "project_list_debug",
+    )
+
+
+def test_parser_accepts_project_list_debug_options() -> None:
+    parser = make_parser()
+    args = parser.parse_args(
+        [
+            "--only",
+            "project_list_debug",
+            "--project-list-debug-scroll-rounds",
+            "9",
+            "--project-list-debug-wait-ms",
+            "500",
+            "--project-list-debug-manual-pause",
+        ]
+    )
+    assert args.only == ["project_list_debug"]
+    assert args.project_list_debug_scroll_rounds == 9
+    assert args.project_list_debug_wait_ms == 500
+    assert args.project_list_debug_manual_pause is True

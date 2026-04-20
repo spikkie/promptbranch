@@ -1,0 +1,1 @@
+Error('BrowserType.launch_persistent_context: Chromium distribution \'msedge\' is not found at /opt/microsoft/msedge/msedge\nRun "playwright install msedge"')

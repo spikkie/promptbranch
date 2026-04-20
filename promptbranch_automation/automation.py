@@ -278,6 +278,21 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def debug_project_list(
+        self,
+        *,
+        scroll_rounds: int = 12,
+        wait_ms: int = 350,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.debug_project_list(
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            manual_pause=manual_pause,
+            keep_open=keep_open,
+        )
+
     async def create_project(
         self,
         *,

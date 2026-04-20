@@ -607,6 +607,32 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def debug_project_list(
+        self,
+        *,
+        scroll_rounds: int = 12,
+        wait_ms: int = 350,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-list-debug",
+            "starting debug_project_list",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            manual_pause=manual_pause,
+        )
+        return await self._run_with_context(
+            operation_name="project_list_debug",
+            operation=self._debug_project_list_operation,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            manual_pause=manual_pause,
+            keep_open=keep_open,
+        )
+
     async def create_project(
         self,
         *,
@@ -1017,6 +1043,128 @@ class ChatGPTBrowserClient:
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Project list completed. Press Enter to close the browser... ")
         return result
+
+    async def _debug_project_list_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        scroll_rounds: int = 12,
+        wait_ms: int = 350,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        home_url = self._chatgpt_home_url()
+        await self._goto(page, home_url, label="project-list-debug-home")
+        await self._ensure_sidebar_open(page)
+
+        artifact_dir = self._artifact_dir / f"project_list_debug_{self._timestamp_for_filename()}"
+        await asyncio.to_thread(artifact_dir.mkdir, True, True)
+
+        async def capture(label: str) -> dict[str, Any]:
+            safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", label).strip("-")[:80] or "item"
+            screenshot_path = artifact_dir / f"{safe}.png"
+            html_path = artifact_dir / f"{safe}.html"
+            json_path = artifact_dir / f"{safe}.json"
+            await page.screenshot(path=str(screenshot_path), full_page=True)
+            await self._write_text(html_path, await page.content())
+            payload = {
+                "label": label,
+                "url": await self._safe_page_url(page),
+                "title": await page.title(),
+                "project_links": await self._project_link_debug_snapshot(page),
+                "dialog_like_nodes": await self._dialog_like_debug_snapshot(page),
+                "candidate_scrollables": await self._scrollable_debug_snapshot(page),
+                "more_candidates": await self._more_candidate_debug_snapshot(page),
+            }
+            await self._write_json(json_path, payload)
+            return payload
+
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open("Inspect state before expanding Projects. Press Enter to continue...")
+        before_expand = await capture("01-before-expand")
+
+        await self._expand_projects_section(page)
+        await page.wait_for_timeout(wait_ms)
+        after_expand = await capture("02-after-expand")
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open("Inspect state after expanding Projects. Press Enter to continue...")
+
+        opened_more = await self._open_more_projects_menu(page)
+        await page.wait_for_timeout(wait_ms)
+        after_more = await capture("03-after-open-more")
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open("Inspect state after opening More. Press Enter to continue...")
+
+        manual_collected: list[dict[str, str]] = []
+        rounds: list[dict[str, Any]] = []
+        for round_index in range(max(1, scroll_rounds)):
+            visible = await self._collect_sidebar_projects(page)
+            manual_collected = self._dedupe_projects([*manual_collected, *visible])
+            dom_state = await capture(f"round-{round_index + 1:02d}")
+            moved = await self._scroll_project_sidebar_step(page)
+            rounds.append({
+                "round": round_index + 1,
+                "visible_count": len(visible),
+                "manual_collected_count": len(manual_collected),
+                "moved": bool(moved),
+                "visible_projects": visible,
+                "dom_project_count": len(dom_state["project_links"]),
+            })
+            if not moved:
+                break
+            await page.wait_for_timeout(wait_ms)
+
+        helper_projects = await self._collect_all_sidebar_projects(page, label="project-list-debug")
+        final_state = await capture("99-final")
+        current_project_url = self._project_home_url_from_url(self.config.project_url)
+        normalized_helper: list[dict[str, Any]] = []
+        for project in helper_projects:
+            project_url = project.get("url") or ""
+            normalized_helper.append({
+                "name": project.get("name") or "",
+                "url": project_url,
+                "project_id": self._extract_project_id_from_url(project_url),
+                "project_slug": self._project_slug_from_url(project_url),
+                "is_current": bool(project_url and current_project_url and self._project_urls_refer_to_same_project(project_url, current_project_url)),
+            })
+
+        summary = {
+            "ok": True,
+            "action": "project_list_debug",
+            "artifact_dir": str(artifact_dir),
+            "opened_more": bool(opened_more),
+            "scroll_rounds_requested": scroll_rounds,
+            "wait_ms": wait_ms,
+            "before_expand_count": len(before_expand["project_links"]),
+            "after_expand_count": len(after_expand["project_links"]),
+            "after_more_count": len(after_more["project_links"]),
+            "manual_scroll_rounds": rounds,
+            "manual_collected_projects": manual_collected,
+            "manual_collected_count": len(manual_collected),
+            "helper_collected_projects": normalized_helper,
+            "helper_collected_count": len(normalized_helper),
+            "final_dom_project_count": len(final_state["project_links"]),
+            "final_dom_projects": final_state["project_links"],
+            "dialog_like_nodes_after_more": after_more["dialog_like_nodes"],
+            "candidate_scrollables_after_more": after_more["candidate_scrollables"][:10],
+            "more_candidates_after_more": after_more["more_candidates"],
+            "current_url": await self._safe_page_url(page),
+            "current_project_url": current_project_url,
+        }
+        await self._write_json(artifact_dir / "summary.json", summary)
+        self._log(
+            "project-list-debug",
+            "debug_project_list completed",
+            artifact_dir=str(artifact_dir),
+            helper_collected_count=len(normalized_helper),
+            final_dom_project_count=len(final_state["project_links"]),
+            opened_more=bool(opened_more),
+        )
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open("Project-list debug completed. Press Enter to close the browser...")
+        return summary
 
     async def _create_project_operation(
         self,
@@ -2876,6 +3024,57 @@ class ChatGPTBrowserClient:
         except Exception:
             return
         await page.wait_for_timeout(400)
+
+    async def _open_more_projects_menu(self, page: Any) -> bool:
+        button = await self._find_visible_locator(
+            page,
+            [
+                'aside button:has-text("More")',
+                'nav button:has-text("More")',
+                '[data-testid*="sidebar"] button:has-text("More")',
+                'aside [role="button"]:has-text("More")',
+                'nav [role="button"]:has-text("More")',
+            ],
+            label='project-more-button',
+            timeout_ms=800,
+        )
+        if button is not None:
+            try:
+                await button.click(timeout=2_500)
+                self._log('project-list', 'opened More projects menu via locator click')
+                await page.wait_for_timeout(350)
+                return True
+            except Exception as exc:
+                self._log('project-list', 'More projects locator click failed; falling back to DOM click', error=str(exc))
+
+        try:
+            opened = await page.evaluate(
+                r'''
+                () => {
+                    const normalizeText = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const normalizeMore = value => normalizeText(value).replace(/^[^a-z]+/i, '');
+                    const roots = Array.from(document.querySelectorAll('aside, nav, [data-testid*="sidebar"], [class*="sidebar"], [class*="Sidebar"]'));
+                    for (const root of roots) {
+                        for (const control of Array.from(root.querySelectorAll('button, [role="button"], summary'))) {
+                            const text = normalizeMore(control.innerText || control.textContent || control.getAttribute('aria-label') || '');
+                            if (text !== 'more') continue;
+                            if (control instanceof HTMLElement && control.offsetParent === null) continue;
+                            control.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                '''
+            )
+        except Exception:
+            return False
+        if opened:
+            self._log('project-list', 'opened More projects menu via DOM fallback')
+            await page.wait_for_timeout(350)
+            return True
+        return False
+
     async def _scroll_project_sidebar_step(self, page: Any) -> bool:
         try:
             moved = await page.evaluate(
@@ -2938,9 +3137,24 @@ class ChatGPTBrowserClient:
         max_scroll_rounds: int = 40,
     ) -> list[dict[str, str]]:
         collected: list[dict[str, str]] = []
+        more_opened = False
         for round_index in range(max_scroll_rounds):
             projects = await self._collect_sidebar_projects(page)
             collected = self._dedupe_projects([*collected, *projects])
+
+            if not more_opened:
+                more_opened = await self._open_more_projects_menu(page)
+                if more_opened:
+                    more_projects = await self._collect_sidebar_projects(page)
+                    collected = self._dedupe_projects([*collected, *more_projects])
+                    self._log(
+                        label,
+                        'opened More projects menu during enumeration',
+                        round=round_index + 1,
+                        discovered_count=len(more_projects),
+                        total_count=len(collected),
+                    )
+
             moved = await self._scroll_project_sidebar_step(page)
             self._log(
                 label,
@@ -2949,6 +3163,7 @@ class ChatGPTBrowserClient:
                 discovered_count=len(projects),
                 total_count=len(collected),
                 moved=moved,
+                more_opened=more_opened,
             )
             if not moved:
                 break
@@ -5608,6 +5823,141 @@ class ChatGPTBrowserClient:
         self._log("driver", "closing browser context")
         await context.close()
         self._log("driver", "browser context closed")
+
+    async def _write_json(self, path: Path, payload: Any) -> None:
+        await self._write_text(path, json.dumps(payload, indent=2, ensure_ascii=False))
+
+    async def _project_link_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
+        links = await page.evaluate(
+            """
+            () => {
+              const anchors = Array.from(document.querySelectorAll('a[href*="/g/g-p-"][href$="/project"]'));
+              return anchors.map((a, idx) => {
+                const href = a.href || a.getAttribute("href") || "";
+                const text = (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim();
+                const rect = a.getBoundingClientRect();
+                const style = getComputedStyle(a);
+                return {
+                  index: idx,
+                  href,
+                  text,
+                  visible: !!(rect.width && rect.height && style.visibility !== "hidden" && style.display !== "none"),
+                  top: rect.top,
+                  left: rect.left,
+                  width: rect.width,
+                  height: rect.height,
+                  outer_html: a.outerHTML.slice(0, 800),
+                };
+              });
+            }
+            """
+        )
+        dedup: dict[str, dict[str, Any]] = {}
+        for item in links:
+            href = str(item.get("href") or "")
+            item["project_id"] = self._extract_project_id_from_url(href)
+            dedup[href] = item
+        return sorted(dedup.values(), key=lambda x: (x.get("top", 0), x.get("left", 0), x.get("text", ""), x.get("href", "")))
+
+    async def _dialog_like_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
+        return await page.evaluate(
+            """
+            () => {
+              const sels = ['[role="dialog"]', '[role="menu"]', '[role="listbox"]', '[data-radix-popper-content-wrapper]', '[data-radix-menu-content]'];
+              const out = [];
+              for (const sel of sels) {
+                for (const el of document.querySelectorAll(sel)) {
+                  const rect = el.getBoundingClientRect();
+                  if (!(rect.width && rect.height)) continue;
+                  out.push({
+                    selector: sel,
+                    tag: el.tagName.toLowerCase(),
+                    role: el.getAttribute("role"),
+                    aria_label: el.getAttribute("aria-label"),
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                    text_preview: (el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 240),
+                    outer_html: el.outerHTML.slice(0, 1500),
+                  });
+                }
+              }
+              return out;
+            }
+            """
+        )
+
+    async def _scrollable_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
+        return await page.evaluate(
+            """
+            () => {
+              const nodes = Array.from(document.querySelectorAll('*'));
+              const out = [];
+              for (const el of nodes) {
+                const style = getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                const scrollable = el.scrollHeight > el.clientHeight + 20 || el.scrollWidth > el.clientWidth + 20;
+                const overflowY = style.overflowY;
+                const overflowX = style.overflowX;
+                if (!scrollable && !["auto", "scroll"].includes(overflowY) && !["auto", "scroll"].includes(overflowX)) continue;
+                out.push({
+                  tag: el.tagName.toLowerCase(),
+                  id: el.id || null,
+                  cls: (el.className && String(el.className)) || null,
+                  role: el.getAttribute("role"),
+                  aria_label: el.getAttribute("aria-label"),
+                  clientHeight: el.clientHeight,
+                  scrollHeight: el.scrollHeight,
+                  scrollTop: el.scrollTop,
+                  clientWidth: el.clientWidth,
+                  scrollWidth: el.scrollWidth,
+                  top: rect.top,
+                  left: rect.left,
+                  width: rect.width,
+                  height: rect.height,
+                  text_preview: (el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 240),
+                  outer_html: el.outerHTML.slice(0, 1000),
+                });
+              }
+              out.sort((a, b) => {
+                const diff = (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight);
+                if (diff !== 0) return diff;
+                return (b.height * b.width) - (a.height * a.width);
+              });
+              return out.slice(0, 25);
+            }
+            """
+        )
+
+    async def _more_candidate_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
+        return await page.evaluate(
+            """
+            () => {
+              const matches = [];
+              const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, span, summary'));
+              for (const el of nodes) {
+                const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+                if (!/more/i.test(text)) continue;
+                const rect = el.getBoundingClientRect();
+                if (!(rect.width && rect.height)) continue;
+                matches.push({
+                  text,
+                  tag: el.tagName.toLowerCase(),
+                  role: el.getAttribute("role"),
+                  aria_label: el.getAttribute("aria-label"),
+                  top: rect.top,
+                  left: rect.left,
+                  width: rect.width,
+                  height: rect.height,
+                  outer_html: el.outerHTML.slice(0, 1000),
+                });
+              }
+              matches.sort((a, b) => a.top - b.top || a.left - b.left);
+              return matches;
+            }
+            """
+        )
 
     async def _write_text(self, path: Path, text: str) -> None:
         await asyncio.to_thread(path.write_text, text, "utf-8")

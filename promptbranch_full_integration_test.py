@@ -42,9 +42,15 @@ CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "project_source_remove_file",
     "project_remove_cleanup",
 )
+OPTIONAL_STEP_ORDER: tuple[str, ...] = (
+    "project_list_debug",
+)
+FULL_STEP_ORDER: tuple[str, ...] = CANONICAL_STEP_ORDER + OPTIONAL_STEP_ORDER
 
 STEP_ALIASES: dict[str, tuple[str, ...]] = {
     "all": CANONICAL_STEP_ORDER,
+    "project_list": ("project_list_debug",),
+    "project_list_debug": ("project_list_debug",),
     "login": ("login_check",),
     "project_ensure": (
         "project_resolve_before_create",
@@ -93,7 +99,7 @@ REMOVAL_STEPS = {
     "project_source_remove_text",
     "project_source_remove_file",
 }
-ALLOWED_STEP_TOKENS = set(CANONICAL_STEP_ORDER) | set(STEP_ALIASES)
+ALLOWED_STEP_TOKENS = set(FULL_STEP_ORDER) | set(STEP_ALIASES)
 
 
 @dataclass
@@ -159,7 +165,7 @@ def _split_step_tokens(values: Sequence[str]) -> tuple[str, ...]:
 def _expand_step_token(token: str) -> tuple[str, ...]:
     if token in STEP_ALIASES:
         return STEP_ALIASES[token]
-    if token in CANONICAL_STEP_ORDER:
+    if token in FULL_STEP_ORDER:
         return (token,)
     raise ValueError(f"Unknown step selector: {token}")
 
@@ -190,13 +196,13 @@ def resolve_step_selection(
     if keep_project:
         enabled.discard("project_remove_cleanup")
 
-    if enabled & (set(CANONICAL_STEP_ORDER) - {"project_remove_cleanup"}):
+    if enabled - {"project_remove_cleanup"}:
         enabled.add("login_check")
 
     if enabled & SOURCE_FLOW_STEPS:
         enabled.add("project_source_capabilities")
 
-    enabled_steps = tuple(step for step in CANONICAL_STEP_ORDER if step in enabled)
+    enabled_steps = tuple(step for step in FULL_STEP_ORDER if step in enabled)
     if not enabled_steps:
         raise ValueError("No steps remain after applying --only/--skip/--keep-project")
 
@@ -242,6 +248,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--link-url", default="https://example.com/")
     parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
     parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
+    parser.add_argument("--project-list-debug-scroll-rounds", type=int, default=12, help="Scroll rounds for the local project-list debug step.")
+    parser.add_argument("--project-list-debug-wait-ms", type=int, default=350, help="Per-round wait in milliseconds for the local project-list debug step.")
+    parser.add_argument("--project-list-debug-manual-pause", action="store_true", help="Pause between project-list debug phases in headed local runs.")
     parser.add_argument("--service-base-url", default=os.getenv("CHATGPT_SERVICE_BASE_URL"), help="Optional Docker service base URL, e.g. http://localhost:8000. When set, this script runs against the HTTP service instead of importing the browser automation directly.")
     parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN"), help="Optional bearer token for the Docker service.")
     parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "300.0")), help="HTTP timeout when running against the Docker service.")
@@ -303,6 +312,18 @@ class DockerServiceAdapter:
     def _resolve_project_sync(self, name: str, keep_open: bool) -> dict[str, Any]:
         with self._client() as client:
             return client.resolve_project(name=name, keep_open=keep_open, project_url=self.project_url)
+
+    async def debug_project_list(
+        self,
+        *,
+        scroll_rounds: int = 12,
+        wait_ms: int = 350,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        raise UnsupportedOperationError(
+            "project_list_debug is only supported in direct local mode; omit --service-base-url for this step"
+        )
 
     async def ensure_project(
         self,
@@ -672,6 +693,26 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 f"project_resolve returned a mismatched project identity: {resolved}",
             )
 
+        if should_run("project_list_debug"):
+            debug_result = await _run_step(
+                steps,
+                "project_list_debug",
+                base_service.debug_project_list(
+                    scroll_rounds=args.project_list_debug_scroll_rounds,
+                    wait_ms=args.project_list_debug_wait_ms,
+                    manual_pause=args.project_list_debug_manual_pause,
+                    keep_open=args.keep_open,
+                ),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+            _require(debug_result.get("ok") is True, f"project_list_debug failed: {debug_result}")
+            summary["project_list_debug"] = {
+                "artifact_dir": debug_result.get("artifact_dir"),
+                "helper_collected_count": debug_result.get("helper_collected_count"),
+                "final_dom_project_count": debug_result.get("final_dom_project_count"),
+                "opened_more": debug_result.get("opened_more"),
+            }
+
         project_context_needed = bool(enabled_steps & PROJECT_CONTEXT_REQUIRED_STEPS)
         if project_context_needed:
             _require(
@@ -978,3 +1019,5 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
