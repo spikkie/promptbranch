@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chatgpt-claudecode-workflow"
-version = "0.0.64"
-description = "Browser-driven ChatGPT automation with a reusable Docker service, stateful CLI, and Python client"
+name = "promptbranch"
+version = "0.0.65"
+description = "Stateful ChatGPT workflow CLI and reusable browser-automation service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -24,11 +24,15 @@ dependencies = [
 py-modules = ["chatgpt_cli", "chatgpt_container_api", "chatgpt_service_client", "chatgpt_state"]
 
 [tool.setuptools.packages.find]
-include = ["chatgpt_automation*", "chatgpt_browser_auth*", "chatgpt_workflow*"]
+include = ["chatgpt_automation*", "chatgpt_browser_auth*", "chatgpt_workflow*", "promptbranch*"]
 
 [project.scripts]
+promptbranch = "promptbranch.cli:main"
 chatgpt = "chatgpt_workflow.cli:main"
-
 
 [tool.setuptools.package-data]
 chatgpt_workflow = ["completions/*"]
+
+[project.urls]
+Homepage = "https://github.com/spikkie/promptbranch"
+Repository = "https://github.com/spikkie/promptbranch"

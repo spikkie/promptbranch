@@ -10,7 +10,7 @@ import pytest
 
 DEFAULT_TIMEOUT = float(os.getenv("API_TEST_TIMEOUT", "30"))
 DEFAULT_UPLOAD_TIMEOUT = float(os.getenv("API_TEST_UPLOAD_TIMEOUT", "660"))
-DEFAULT_BASE_URL = os.getenv("API_BASE_URL", "https://bonnetjes-app.spikkies-it.nl")
+DEFAULT_BASE_URL = os.getenv("API_BASE_URL", "https://example.invalid")
 
 
 def _truthy(value: str | None) -> bool:

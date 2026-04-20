@@ -12,7 +12,7 @@ def test_healthz_reports_service_metadata():
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["service"] == "chatgpt-docker-service"
+    assert payload["service"] == "promptbranch-service"
     assert payload["version"] == "0.0.60"
 
 
