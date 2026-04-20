@@ -13,14 +13,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.73"
+    assert payload["version"] == "0.0.74"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.73"
+    assert response.json()["version"] == "0.0.74"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
