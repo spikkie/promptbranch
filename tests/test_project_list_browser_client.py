@@ -163,3 +163,108 @@ def test_collect_all_sidebar_projects_opens_more_menu_once(tmp_path: Path) -> No
     assert [item["name"] for item in result] == ["Alpha", "Beta"]
     assert opened == [True]
 
+
+
+def test_determine_project_discovery_mode_prefers_more_when_sidebar_project_controls_missing(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    async def fake_find_visible_locator(page, selectors, label=None, timeout_ms=0):
+        return None
+
+    client._find_visible_locator = fake_find_visible_locator
+
+    import asyncio
+
+    mode = asyncio.run(client._determine_project_discovery_mode(page=object()))
+    assert mode == "more-first"
+
+
+def test_debug_project_list_operation_creates_nested_artifacts(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._artifact_dir = tmp_path / "debug_artifacts"
+    client._artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    class DummyPage:
+        url = "https://chatgpt.com/"
+
+        async def wait_for_timeout(self, ms):
+            return None
+
+        async def screenshot(self, path, full_page=True):
+            Path(path).write_bytes(b"png")
+            return None
+
+        async def content(self):
+            return "<html></html>"
+
+        async def title(self):
+            return "ChatGPT"
+
+    page = DummyPage()
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_sidebar(page):
+        return None
+
+    async def fake_determine(page):
+        return "more-first"
+
+    async def fake_open_more(page):
+        return True
+
+    async def fake_expand(page):
+        return False
+
+    async def fake_collect(page):
+        return []
+
+    async def fake_scroll(page):
+        return False
+
+    async def fake_collect_all(page, label, max_scroll_rounds=40):
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/"
+
+    async def fake_snapshot(page):
+        return []
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._ensure_sidebar_open = fake_sidebar
+    client._determine_project_discovery_mode = fake_determine
+    client._open_more_projects_menu = fake_open_more
+    client._expand_projects_section = fake_expand
+    client._collect_sidebar_projects = fake_collect
+    client._scroll_project_sidebar_step = fake_scroll
+    client._collect_all_sidebar_projects = fake_collect_all
+    client._safe_page_url = fake_safe_page_url
+    client._project_link_debug_snapshot = fake_snapshot
+    client._dialog_like_debug_snapshot = fake_snapshot
+    client._scrollable_debug_snapshot = fake_snapshot
+    client._more_candidate_debug_snapshot = fake_snapshot
+
+    import asyncio
+
+    result = asyncio.run(
+        client._debug_project_list_operation(
+            context=None,
+            page=page,
+            scroll_rounds=1,
+            wait_ms=0,
+            manual_pause=False,
+            keep_open=False,
+        )
+    )
+
+    artifact_dir = Path(result["artifact_dir"])
+    assert artifact_dir.exists()
+    assert (artifact_dir / "01-before-discovery.png").exists()
+    assert (artifact_dir / "summary.json").exists()
+    assert result["discovery_mode"] == "more-first"

@@ -1001,11 +1001,7 @@ class ChatGPTBrowserClient:
         current_project_url = self._project_home_url_from_url(self.config.project_url)
         collected: list[dict[str, str]] = []
         for attempt in range(3):
-            if attempt == 1:
-                await self._expand_projects_section(page)
-            elif attempt == 2:
-                await self._prime_project_sidebar(page)
-                await self._expand_projects_section(page)
+            prep = await self._prepare_project_discovery(page, label='project-list', attempt=attempt)
 
             discovered = await self._collect_all_sidebar_projects(page, label="project-list")
             collected = self._dedupe_projects([*collected, *discovered])
@@ -1015,6 +1011,8 @@ class ChatGPTBrowserClient:
                 attempt=attempt + 1,
                 discovered_count=len(discovered),
                 total_count=len(collected),
+                discovery_mode=prep.get('mode'),
+                opened_more=prep.get('opened_more'),
             )
             if collected:
                 break
@@ -1060,13 +1058,16 @@ class ChatGPTBrowserClient:
         await self._ensure_sidebar_open(page)
 
         artifact_dir = self._artifact_dir / f"project_list_debug_{self._timestamp_for_filename()}"
-        await asyncio.to_thread(artifact_dir.mkdir, True, True)
+        await self._ensure_dir(artifact_dir)
 
         async def capture(label: str) -> dict[str, Any]:
             safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", label).strip("-")[:80] or "item"
             screenshot_path = artifact_dir / f"{safe}.png"
             html_path = artifact_dir / f"{safe}.html"
             json_path = artifact_dir / f"{safe}.json"
+            await self._ensure_parent_dir(screenshot_path)
+            await self._ensure_parent_dir(html_path)
+            await self._ensure_parent_dir(json_path)
             await page.screenshot(path=str(screenshot_path), full_page=True)
             await self._write_text(html_path, await page.content())
             payload = {
@@ -1082,18 +1083,27 @@ class ChatGPTBrowserClient:
             return payload
 
         if manual_pause and self.config.is_headed:
-            await self._pause_for_keep_open("Inspect state before expanding Projects. Press Enter to continue...")
-        before_expand = await capture("01-before-expand")
+            await self._pause_for_keep_open("Inspect state before project discovery. Press Enter to continue...")
+        before_expand = await capture("01-before-discovery")
 
-        await self._expand_projects_section(page)
-        await page.wait_for_timeout(wait_ms)
-        after_expand = await capture("02-after-expand")
-        if manual_pause and self.config.is_headed:
-            await self._pause_for_keep_open("Inspect state after expanding Projects. Press Enter to continue...")
-
-        opened_more = await self._open_more_projects_menu(page)
-        await page.wait_for_timeout(wait_ms)
-        after_more = await capture("03-after-open-more")
+        discovery_mode = await self._determine_project_discovery_mode(page)
+        opened_more = False
+        if discovery_mode == 'more-first':
+            opened_more = await self._open_more_projects_menu(page)
+            await page.wait_for_timeout(wait_ms)
+            after_more = await capture("02-after-open-more")
+            await self._expand_projects_section(page)
+            await page.wait_for_timeout(wait_ms)
+            after_expand = await capture("03-after-expand")
+        else:
+            await self._expand_projects_section(page)
+            await page.wait_for_timeout(wait_ms)
+            after_expand = await capture("02-after-expand")
+            if manual_pause and self.config.is_headed:
+                await self._pause_for_keep_open("Inspect state after expanding Projects. Press Enter to continue...")
+            opened_more = await self._open_more_projects_menu(page)
+            await page.wait_for_timeout(wait_ms)
+            after_more = await capture("03-after-open-more")
         if manual_pause and self.config.is_headed:
             await self._pause_for_keep_open("Inspect state after opening More. Press Enter to continue...")
 
@@ -1137,6 +1147,7 @@ class ChatGPTBrowserClient:
             "opened_more": bool(opened_more),
             "scroll_rounds_requested": scroll_rounds,
             "wait_ms": wait_ms,
+            "discovery_mode": discovery_mode,
             "before_expand_count": len(before_expand["project_links"]),
             "after_expand_count": len(after_expand["project_links"]),
             "after_more_count": len(after_more["project_links"]),
@@ -2953,6 +2964,37 @@ class ChatGPTBrowserClient:
         normalized = re.sub(r'\s+', ' ', (value or '')).strip()
         return normalized.casefold()
 
+
+    async def _determine_project_discovery_mode(self, page: Any) -> str:
+        has_project_entrypoint = bool(
+            await self._find_visible_locator(
+                page,
+                PROJECT_NEW_BUTTON_SELECTORS + PROJECT_SECTION_TOGGLE_SELECTORS,
+                label='project-discovery-entrypoint',
+                timeout_ms=500,
+            )
+        )
+        mode = 'sidebar-first' if has_project_entrypoint else 'more-first'
+        self._log('project-list', 'selected project discovery mode', mode=mode, has_project_entrypoint=has_project_entrypoint)
+        return mode
+
+    async def _prepare_project_discovery(self, page: Any, *, label: str, attempt: int = 0) -> dict[str, Any]:
+        mode = await self._determine_project_discovery_mode(page)
+        opened_more = False
+        if mode == 'more-first':
+            opened_more = await self._open_more_projects_menu(page)
+            await page.wait_for_timeout(250)
+            if attempt > 0:
+                await self._prime_project_sidebar(page)
+            await self._expand_projects_section(page)
+        else:
+            if attempt > 0:
+                await self._prime_project_sidebar(page)
+            await self._expand_projects_section(page)
+            opened_more = await self._open_more_projects_menu(page)
+        self._log(label, 'prepared project discovery surface', mode=mode, opened_more=opened_more, attempt=attempt + 1)
+        return {'mode': mode, 'opened_more': opened_more}
+
     async def _expand_projects_section(self, page: Any) -> bool:
         toggle = await self._find_visible_locator(
             page,
@@ -3081,7 +3123,7 @@ class ChatGPTBrowserClient:
                 r'''
                 () => {
                     const candidates = Array.from(document.querySelectorAll(
-                        'aside, nav, [data-testid*="sidebar"], [class*="sidebar"], [class*="Sidebar"], [role="navigation"], [role="tree"], [role="list"]'
+                        'aside, nav, [data-testid*="sidebar"], [class*="sidebar"], [class*="Sidebar"], [role="navigation"], [role="tree"], [role="list"], [role="menu"], [role="dialog"], [role="listbox"], [data-radix-popper-content-wrapper], [data-radix-menu-content]'
                     ));
                     const containers = [];
                     const seen = new Set();
@@ -3091,7 +3133,8 @@ class ChatGPTBrowserClient:
                         seen.add(element);
                         const style = window.getComputedStyle(element);
                         const overflowY = style?.overflowY || '';
-                        const hasProjects = !!element.querySelector('a[href*="/project"]') || /projects/i.test(element.innerText || element.textContent || '');
+                        const text = element.innerText || element.textContent || '';
+                        const hasProjects = !!element.querySelector('a[href*="/project"]') || /projects|new project|folder/i.test(text);
                         const canScroll = (element.scrollHeight - element.clientHeight) > 24 || /(auto|scroll)/i.test(overflowY);
                         if (hasProjects && canScroll) containers.push(element);
                     }
@@ -3198,11 +3241,7 @@ class ChatGPTBrowserClient:
         normalized_name = self._normalize_project_name(name)
         collected: list[dict[str, str]] = []
         for attempt in range(3):
-            if attempt == 1:
-                await self._expand_projects_section(page)
-            elif attempt == 2:
-                await self._prime_project_sidebar(page)
-                await self._expand_projects_section(page)
+            prep = await self._prepare_project_discovery(page, label='project-resolve', attempt=attempt)
 
             discovered = await self._collect_all_sidebar_projects(page, label='project-resolve')
             collected = self._dedupe_projects([*collected, *discovered])
@@ -3214,6 +3253,8 @@ class ChatGPTBrowserClient:
                 discovered_count=len(discovered),
                 total_count=len(collected),
                 match_count=len(matches),
+                discovery_mode=prep.get('mode'),
+                opened_more=prep.get('opened_more'),
             )
             if len(matches) == 1:
                 return {
@@ -3303,7 +3344,7 @@ class ChatGPTBrowserClient:
                     const seen = new Set();
                     const results = [];
                     for (const root of roots) {
-                        for (const anchor of Array.from(root.querySelectorAll('a[href*="/project"]'))) {
+                        for (const anchor of Array.from(root.querySelectorAll('a[href*="/project"], [role="menu"] a[href*="/project"], [role="dialog"] a[href*="/project"], [data-radix-popper-content-wrapper] a[href*="/project"]'))) {
                             const absoluteUrl = toAbsolute(anchor.getAttribute('href') || '');
                             const normalizedPath = normalizePath(absoluteUrl);
                             if (!isProjectPath(normalizedPath)) continue;
@@ -5827,6 +5868,12 @@ class ChatGPTBrowserClient:
     async def _write_json(self, path: Path, payload: Any) -> None:
         await self._write_text(path, json.dumps(payload, indent=2, ensure_ascii=False))
 
+    async def _ensure_dir(self, path: Path) -> None:
+        await asyncio.to_thread(path.mkdir, parents=True, exist_ok=True)
+
+    async def _ensure_parent_dir(self, path: Path) -> None:
+        await self._ensure_dir(path.parent)
+
     async def _project_link_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         links = await page.evaluate(
             """
@@ -5960,6 +6007,7 @@ class ChatGPTBrowserClient:
         )
 
     async def _write_text(self, path: Path, text: str) -> None:
+        await self._ensure_parent_dir(path)
         await asyncio.to_thread(path.write_text, text, "utf-8")
         self._log("artifact", "saved text artifact", path=str(path))
 
