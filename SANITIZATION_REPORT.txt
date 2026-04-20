@@ -1,0 +1,15 @@
+Release: chatgpt_claudecode_workflow_v0.0.65.zip
+Baseline: chatgpt_claudecode_workflow_v0.0.64.zip
+
+Removed:
+- cached state/profile artifact
+- __pycache__ directories
+- integration log artifacts
+- patch bundle and obsolete test scripts
+- unrelated monolith/backend files and production-only API tests
+- personal references and hard-coded test credentials from removed files
+
+Retained for compatibility:
+- chatgpt command
+- chatgpt_workflow import surface
+- internal ChatGPT-specific module names

@@ -1,4 +1,4 @@
-from chatgpt_workflow import ChatGPTServiceClient
+from promptbranch import ChatGPTServiceClient
 
 
 if __name__ == "__main__":

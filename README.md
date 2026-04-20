@@ -1,18 +1,15 @@
-# ChatGPT ClaudeCode Workflow v0.0.64
+# promptbranch v0.0.65
 
-This build turns the current green `v0.0.45` browser workflow into a reusable Docker-first service that other projects can call over HTTP.
+promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
-What is stable from the accepted baseline:
-- project source add for `text`
-- project source add for `file`
-- ask flow
+Primary interfaces:
+- CLI: `promptbranch` (with `chatgpt` kept as a compatibility alias)
+- Python package: `promptbranch` (with `chatgpt_workflow` kept as a compatibility alias)
+- HTTP service: FastAPI app in `chatgpt_container_api.py`
 
-What this release adds:
-- a dedicated FastAPI app for ChatGPT browser automation: `chatgpt_container_api.py`
-- a thin Python client for other projects: `chatgpt_service_client.py`
-- a Docker default that now starts the dedicated ChatGPT service instead of the unrelated monolith app
-- a compose file and example client script for downstream projects
-- optional bearer-token protection for the service via `CHATGPT_SERVICE_TOKEN`
+Compatibility note:
+- existing `chatgpt` command lines keep working
+- existing `from chatgpt_workflow import ...` imports keep working
 
 ## Reusable Docker service
 
@@ -25,7 +22,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t chatgpt-docker-service:0.0.64 .
+docker build -t promptbranch-service:0.0.65 .
 ```
 
 Run it:
@@ -40,7 +37,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  chatgpt-docker-service:0.0.64
+  promptbranch-service:0.0.65
 ```
 
 Compose option:
@@ -199,24 +196,12 @@ with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
 
 There is also a runnable sample at `examples/chatgpt_service_client_example.py`.
 
-## Running the old monolith app
-
-The repo still contains the previous `main:app` application. If you need that instead of the dedicated ChatGPT service, override the app module:
-
-```bash
-docker run --rm -it \
-  -e CHATGPT_UVICORN_APP=main:app \
-  -p 8000:8000 \
-  chatgpt-docker-service:0.0.64
-```
-
-
 ## Installing the CLI
 
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.64.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.65.zip
 ```
 
 From an extracted checkout:
@@ -252,7 +237,7 @@ chatgpt completion fish > ~/.config/fish/completions/chatgpt.fish
 For other Python programs, prefer importing the package facade instead of the smoke harness:
 
 ```python
-from chatgpt_workflow import ChatGPTServiceClient, ConversationStateStore
+from promptbranch import ChatGPTServiceClient, ConversationStateStore
 ```
 
 `chatgpt_cli_sequence_v5.py` remains a smoke/integration harness, not the recommended library entry point.
@@ -422,14 +407,15 @@ If no `--project-url` is supplied for project-scoped commands, the CLI reuses th
 
 ## Python packaging
 
-The preferred Python import surface is now the `chatgpt_workflow` package:
+The preferred Python import surface is now the `promptbranch` package:
 
 ```python
-from chatgpt_workflow import ChatGPTServiceClient, ConversationStateStore
+from promptbranch import ChatGPTServiceClient, ConversationStateStore
 ```
 
-The console entry point is installed as:
+The console entry points are installed as:
 
 ```bash
+promptbranch
 chatgpt
 ```

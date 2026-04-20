@@ -156,7 +156,7 @@ async def require_service_token(authorization: Optional[str] = Header(default=No
 async def healthz() -> ServiceInfo:
     settings = service.settings
     return ServiceInfo(
-        service="chatgpt-docker-service",
+        service="promptbranch-service",
         version=SERVICE_VERSION,
         profile_dir=settings.profile_dir,
         project_url=settings.project_url,

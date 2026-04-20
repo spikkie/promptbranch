@@ -12,14 +12,14 @@ def test_client_adds_bearer_token_and_healthz_round_trip():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/healthz"
         assert request.headers["Authorization"] == "Bearer secret-token"
-        return httpx.Response(200, json={"ok": True, "service": "chatgpt-docker-service"})
+        return httpx.Response(200, json={"ok": True, "service": "promptbranch-service"})
 
     transport = httpx.MockTransport(handler)
     with ChatGPTServiceClient("http://example.test", token="secret-token", transport=transport) as client:
         payload = client.healthz()
 
     assert payload["ok"] is True
-    assert payload["service"] == "chatgpt-docker-service"
+    assert payload["service"] == "promptbranch-service"
 
 
 def test_ask_with_file_posts_multipart_and_returns_answer(tmp_path: Path):
