@@ -1,4 +1,4 @@
-# promptbranch v0.0.65
+# promptbranch v0.0.66
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -22,7 +22,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.65 .
+docker build -t promptbranch-service:0.0.66 .
 ```
 
 Run it:
@@ -37,7 +37,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.65
+  promptbranch-service:0.0.66
 ```
 
 Compose option:
@@ -196,12 +196,12 @@ with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
 
 There is also a runnable sample at `examples/chatgpt_service_client_example.py`.
 
-## Installing the CLI
+## Installing the promptbranch CLI
 
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.65.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.66.zip
 ```
 
 From an extracted checkout:
@@ -210,28 +210,29 @@ From an extracted checkout:
 python -m pip install .
 ```
 
-After installation the `chatgpt` command is available:
+After installation the preferred `promptbranch` command is available. The legacy `chatgpt` console alias remains available for compatibility:
+
 
 ```bash
-chatgpt state
-chatgpt prompt
-chatgpt use "My Project"
-chatgpt ask "hello"
+promptbranch state
+promptbranch prompt
+promptbranch use "My Project"
+promptbranch ask "hello"
 ```
 
 Shell completion:
 
 ```bash
 # bash
-eval "$(chatgpt completion bash)"
+eval "$(promptbranch completion bash)"
 
 # zsh
 mkdir -p ~/.zsh/completions
-chatgpt completion zsh > ~/.zsh/completions/_chatgpt
+promptbranch completion zsh > ~/.zsh/completions/_promptbranch
 
 # fish
 mkdir -p ~/.config/fish/completions
-chatgpt completion fish > ~/.config/fish/completions/chatgpt.fish
+promptbranch completion fish > ~/.config/fish/completions/promptbranch.fish
 ```
 
 For other Python programs, prefer importing the package facade instead of the smoke harness:
@@ -242,7 +243,9 @@ from promptbranch import ChatGPTServiceClient, ConversationStateStore
 
 `chatgpt_cli_sequence_v5.py` remains a smoke/integration harness, not the recommended library entry point.
 
-## CLI usage remains available
+## Low-level compatibility CLI usage
+
+The preferred command is `promptbranch`. The legacy `chatgpt` alias and direct `python chatgpt_cli.py` entry point remain available for compatibility.
 
 The CLI can target either:
 - local browser automation directly
@@ -251,22 +254,19 @@ The CLI can target either:
 Headed login check against local automation:
 
 ```bash
-python chatgpt_cli.py login-check --keep-open
+promptbranch login-check --keep-open
 ```
 
 Ask one question against local automation:
 
 ```bash
-python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
+promptbranch ask "Explain Python context managers in 5 lines"
 ```
 
 Ask one question through the Docker service with explicit flags:
 
 ```bash
-python chatgpt_cli.py \
-  --service-base-url http://localhost:8000 \
-  --service-token change-me \
-  ask "Explain Python context managers in 5 lines"
+promptbranch --service-base-url http://localhost:8000 --service-token change-me ask "Explain Python context managers in 5 lines"
 ```
 
 Ask one question through the Docker service without repeating flags each time:
@@ -281,7 +281,7 @@ CHATGPT_SERVICE_TOKEN=change-me
 2. Then run the shorter command:
 
 ```bash
-python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
+promptbranch ask "Explain Python context managers in 5 lines"
 ```
 
 You can also use a JSON config file. The CLI already checks `~/.config/chatgpt-cli/config.json` by default, so you only need `--config` when overriding that path:
@@ -295,52 +295,38 @@ You can also use a JSON config file. The CLI already checks `~/.config/chatgpt-c
 ```
 
 ```bash
-python chatgpt_cli.py ask "Explain Python context managers in 5 lines"
-python chatgpt_cli.py --config ~/.config/chatgpt-cli/config.json ask "Explain Python context managers in 5 lines"
+promptbranch ask "Explain Python context managers in 5 lines"
+promptbranch --config ~/.config/chatgpt-cli/config.json ask "Explain Python context managers in 5 lines"
 ```
 
 Create a project through the Docker service:
 
 ```bash
-python chatgpt_cli.py \
-  --service-base-url http://localhost:8000 \
-  --service-token change-me \
-  project-create "Demo Project" --icon folder --color blue
+promptbranch --service-base-url http://localhost:8000 --service-token change-me project-create "Demo Project" --icon folder --color blue
 ```
 
 Add a text source to a specific project through the Docker service:
 
 ```bash
-python chatgpt_cli.py \
-  --service-base-url http://localhost:8000 \
-  --service-token change-me \
-  --project-url https://chatgpt.com/g/g-p-.../project \
-  project-source-add --type text --value "Reference notes for this project" --name "Notes"
+promptbranch --service-base-url http://localhost:8000 --service-token change-me --project-url https://chatgpt.com/g/g-p-.../project project-source-add --type text --value "Reference notes for this project" --name "Notes"
 ```
 
 Add a file source to a specific project through the Docker service:
 
 ```bash
-python chatgpt_cli.py \
-  --service-base-url http://localhost:8000 \
-  --service-token change-me \
-  --project-url https://chatgpt.com/g/g-p-.../project \
-  project-source-add --type file --file ./docs/spec.pdf
+promptbranch --service-base-url http://localhost:8000 --service-token change-me --project-url https://chatgpt.com/g/g-p-.../project project-source-add --type file --file ./docs/spec.pdf
 ```
 
 Remove a source from a project:
 
 ```bash
-python chatgpt_cli.py project-source-remove "Notes" --exact --dotenv .env
+promptbranch project-source-remove "Notes" --exact --dotenv .env
 ```
 
 Open the interactive shell through the Docker service:
 
 ```bash
-python chatgpt_cli.py \
-  --service-base-url http://localhost:8000 \
-  --service-token change-me \
-  shell
+promptbranch --service-base-url http://localhost:8000 --service-token change-me shell
 ```
 
 ## Environment variables
@@ -386,21 +372,21 @@ The added Docker service does not remove those risks. It packages the currently 
 
 The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.chatgpt_cli_state.json` so it can behave more like `git`:
 
-- `chatgpt state` shows the remembered current project and conversation
-- `chatgpt prompt` emits a compact one-line value for shell prompts or menu-bar widgets
-- `chatgpt state-clear` clears the remembered state
-- `chatgpt use <project-name|project-url|conversation-url>` selects the current project/chat state
-- `chatgpt completion <bash|zsh|fish>` emits shell completion scripts
+- `promptbranch state` shows the remembered current project and conversation
+- `promptbranch prompt` emits a compact one-line value for shell prompts or menu-bar widgets
+- `promptbranch state-clear` clears the remembered state
+- `promptbranch use <project-name|project-url|conversation-url>` selects the current project/chat state
+- `promptbranch completion <bash|zsh|fish>` emits shell completion scripts
 
 Typical flow:
 
 ```bash
-chatgpt project-ensure "My Project"
-chatgpt ask --json "hello"
-chatgpt prompt
-chatgpt state
-chatgpt use "My Project"
-chatgpt completion bash
+promptbranch project-ensure "My Project"
+promptbranch ask --json "hello"
+promptbranch prompt
+promptbranch state
+promptbranch use "My Project"
+promptbranch completion bash
 ```
 
 If no `--project-url` is supplied for project-scoped commands, the CLI reuses the remembered current project when available.

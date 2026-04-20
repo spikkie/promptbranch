@@ -42,7 +42,7 @@ def test_main_prompt_uses_saved_state(monkeypatch, capsys, tmp_path) -> None:
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "chatgpt:my-project#12345678"
+    assert captured.out.strip() == "promptbranch:my-project#12345678"
 
 
 def test_main_state_clear_removes_saved_context(monkeypatch, capsys, tmp_path) -> None:
@@ -182,4 +182,51 @@ def test_main_completion_emits_bash_script(monkeypatch, capsys, tmp_path) -> Non
 
     captured = capsys.readouterr()
     assert exit_code == 0
+    assert "complete -F _promptbranch_complete promptbranch" in captured.out
+
+
+
+def test_main_completion_honors_chatgpt_alias(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("sys.argv", ["chatgpt", "completion", "bash"])
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "completion",
+        "bash",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
     assert "complete -F _chatgpt_complete chatgpt" in captured.out
+
+
+def test_main_prompt_honors_chatgpt_alias(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-my-project/project", project_name="my-project")
+
+    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("sys.argv", ["chatgpt", "prompt"])
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "prompt",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "chatgpt:my-project"
