@@ -1,0 +1,93 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment directories
+venv/
+env/
+.venv/
+.env/
+
+# Distribution / packaging
+dist/
+*.egg-info/
+
+# VS Code settings
+.vscode/
+
+# PyCharm settings
+.idea/
+
+# MyPy
+.mypy_cache/
+
+# pytest
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Sphinx documentation
+docs/_build/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Docker
+*.log
+*.env.*
+
+
+# SQLite
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Secrets and credentials
+*.key
+*.pem
+*.env
+
+# macOS
+.DS_Store
+
+# Linux
+*.swp
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# my changes
+frontend/node_modules/
+artifacts/
+
+#
+.dev
+
+
+#log debug files
+log.*
+
+# transfer/
+transfer*/
+
+# test prod ssh keys
+.test/
+.prod/
+
+frontend/test-results/
+todo_dir/
+out/
+
+#zip versions
+chatgpt_claudecode_workflow*.zip
+
+#browser profile
+profile/
+
+#debug info
+debug_artifacts/
