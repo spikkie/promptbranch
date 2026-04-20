@@ -131,3 +131,27 @@ def test_global_options_after_project_list_are_normalized() -> None:
     normalized = _normalize_global_options(argv)
     assert normalized[:2] == ["--service-base-url", "http://localhost:8000"]
     assert normalized[2:] == ["project-list"]
+
+
+def test_parser_accepts_project_list_current_and_use_pick() -> None:
+    parser = make_parser()
+    project_list_args = parser.parse_args(["project-list", "--current"])
+    use_args = parser.parse_args(["use", "--pick", "alpha", "--json"])
+    assert project_list_args.command == "project-list"
+    assert project_list_args.current is True
+    assert use_args.command == "use"
+    assert use_args.pick is True
+    assert use_args.target == "alpha"
+    assert use_args.json is True
+
+
+def test_global_options_after_project_list_current_are_normalized() -> None:
+    argv = [
+        "project-list",
+        "--current",
+        "--service-base-url",
+        "http://localhost:8000",
+    ]
+    normalized = _normalize_global_options(argv)
+    assert normalized[:2] == ["--service-base-url", "http://localhost:8000"]
+    assert normalized[2:] == ["project-list", "--current"]

@@ -34,6 +34,7 @@ promptbranch state-clear
 
 ```bash
 promptbranch use "My Project"
+promptbranch use --pick
 promptbranch use "https://chatgpt.com/g/.../project"
 promptbranch use "https://chatgpt.com/g/.../c/..."
 ```

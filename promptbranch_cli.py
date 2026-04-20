@@ -528,23 +528,75 @@ async def cmd_login_check(backend: CommandBackend, args: argparse.Namespace) -> 
     return 0
 
 
+def _project_list_payload(result: Any, *, current_only: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    payload = dict(result) if isinstance(result, dict) else {"ok": False, "projects": []}
+    raw_projects = payload.get("projects") if isinstance(payload.get("projects"), list) else []
+    projects = [item for item in raw_projects if isinstance(item, dict)]
+    if current_only:
+        projects = [item for item in projects if item.get("is_current")]
+    payload["projects"] = projects
+    payload["count"] = len(projects)
+    if current_only:
+        payload["current_only"] = True
+    return projects, payload
+
+
 async def cmd_project_list(backend: CommandBackend, args: argparse.Namespace) -> int:
     result = await backend.list_projects(keep_open=args.keep_open)
+    projects, payload = _project_list_payload(result, current_only=args.current)
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
-    projects = result.get("projects") if isinstance(result, dict) else None
-    if not isinstance(projects, list) or not projects:
-        print("(no projects found)")
+    if not projects:
+        print("(no current project found)" if args.current else "(no projects found)")
         return 0
     for item in projects:
-        if not isinstance(item, dict):
-            continue
         marker = "*" if item.get("is_current") else " "
         name = str(item.get("name") or "<unnamed>")
         url = str(item.get("url") or "")
         print(f"{marker} {name}	{url}")
     return 0
+
+
+def _choose_project_from_list(projects: list[dict[str, Any]], *, filter_text: Optional[str] = None) -> dict[str, Any]:
+    filtered = projects
+    if filter_text:
+        needle = filter_text.strip().lower()
+        filtered = [item for item in projects if needle in str(item.get("name") or "").lower()]
+    if not filtered:
+        raise ValueError("no projects matched the requested filter")
+    if len(filtered) == 1:
+        return filtered[0]
+
+    print("Available projects:", file=sys.stderr)
+    current_index = None
+    for idx, item in enumerate(filtered, start=1):
+        is_current = bool(item.get("is_current"))
+        if is_current and current_index is None:
+            current_index = idx
+        marker = "*" if is_current else " "
+        name = str(item.get("name") or "<unnamed>")
+        url = str(item.get("url") or "")
+        print(f"  {idx:>2}. {marker} {name}\t{url}", file=sys.stderr)
+
+    prompt = "Select project number"
+    if current_index is not None:
+        prompt += f" [{current_index}]"
+    prompt += ": "
+
+    while True:
+        print(prompt, end="", file=sys.stderr, flush=True)
+        selection = input().strip()
+        if not selection and current_index is not None:
+            return filtered[current_index - 1]
+        if selection.isdigit():
+            index = int(selection)
+            if 1 <= index <= len(filtered):
+                return filtered[index - 1]
+        exact = [item for item in filtered if str(item.get("name") or "") == selection]
+        if len(exact) == 1:
+            return exact[0]
+        print("Invalid selection. Enter a number from the list or an exact visible project name.", file=sys.stderr)
 
 
 async def cmd_project_create(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -680,7 +732,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
-        "project-list": ["--json", "--keep-open"],
+        "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
         "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-remove": ["--keep-open"],
@@ -689,7 +741,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "state": ["--json"],
         "prompt": ["--json"],
         "state-clear": [],
-        "use": ["--conversation-url", "--project-name", "--json", "--keep-open"],
+        "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
@@ -871,6 +923,39 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
     project_name = args.project_name
     target = args.target
     conversation_url = args.conversation_url
+
+    if args.pick:
+        result = await backend.list_projects(keep_open=args.keep_open)
+        projects, _ = _project_list_payload(result, current_only=False)
+        if not projects:
+            print(json.dumps({"ok": False, "action": "use", "error": "no_projects_found"}, indent=2, ensure_ascii=False))
+            return 1
+        try:
+            selected = _choose_project_from_list(projects, filter_text=target)
+        except ValueError as exc:
+            print(json.dumps({"ok": False, "action": "use", "error": "project_not_found", "detail": str(exc)}, indent=2, ensure_ascii=False))
+            return 1
+        resolved_url = str(selected.get("url") or "")
+        resolved_name = project_name or str(selected.get("name") or target or "")
+        store.remember_project(resolved_url, project_name=resolved_name)
+        if conversation_url:
+            store.remember(resolved_url, conversation_url, project_name=resolved_name)
+        snapshot = store.snapshot(resolved_url)
+        payload = {
+            "ok": True,
+            "action": "use",
+            "selected_via": "pick",
+            "project_name": snapshot.get("project_name"),
+            "project_slug": snapshot.get("project_slug"),
+            "project_home_url": snapshot.get("resolved_project_home_url"),
+            "conversation_url": snapshot.get("conversation_url"),
+        }
+        print(json.dumps(payload if args.json else payload, indent=2, ensure_ascii=False))
+        return 0
+
+    if not target:
+        print("error: target is required unless --pick is used", file=sys.stderr)
+        return 2
 
     if _looks_like_chatgpt_url(target):
         home_url = project_home_url_from_url(target) or target
@@ -1111,6 +1196,7 @@ def make_parser() -> argparse.ArgumentParser:
         help="List all ChatGPT projects visible in the sidebar for the current account/profile.",
     )
     project_list.add_argument("--json", action="store_true", help="Emit the full project list payload as JSON.")
+    project_list.add_argument("--current", action="store_true", help="Show only the current remembered/currently matched project.")
     project_list.add_argument("--keep-open", action="store_true")
 
     project_resolve = subparsers.add_parser(
@@ -1168,7 +1254,8 @@ def make_parser() -> argparse.ArgumentParser:
     state_clear = subparsers.add_parser("state-clear", help="Clear remembered current project/chat state for the active profile.")
 
     use = subparsers.add_parser("use", help="Set the current project/chat state from a project name or ChatGPT URL.")
-    use.add_argument("target", help="Project name, project URL, or conversation URL to make current.")
+    use.add_argument("target", nargs="?", help="Project name, project URL, conversation URL, or optional name filter when used with --pick.")
+    use.add_argument("--pick", action="store_true", help="Interactively pick from visible ChatGPT projects instead of resolving one exact name.")
     use.add_argument("--conversation-url", help="Optional conversation URL to remember alongside the selected project.")
     use.add_argument("--project-name", help="Optional display name override when selecting by URL.")
     use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
