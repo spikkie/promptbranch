@@ -115,6 +115,20 @@ class ChatGPTAutomationService:
             raise RuntimeError(f"{operation_name} failed without an exception")
         raise last_error
 
+    async def list_projects(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Listing ChatGPT projects")
+        async with self._lock:
+            return await self._with_retries(
+                "list_projects",
+                lambda: self._build_bot().list_projects(
+                    keep_open=keep_open,
+                ),
+            )
+
     async def create_project(
         self,
         *,

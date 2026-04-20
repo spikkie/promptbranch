@@ -40,6 +40,7 @@ COMMANDS = {
     "ask",
     "shell",
     "project-create",
+    "project-list",
     "project-resolve",
     "project-ensure",
     "project-remove",
@@ -99,6 +100,15 @@ class DirectBackend:
         if self._conversation_state is None:
             return self._project_url
         return self._conversation_state.project_url_for_operations(self._project_url)
+
+    async def list_projects(self, *, keep_open: bool = False) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.list_projects(keep_open=keep_open)
+        finally:
+            self._service.settings.project_url = original_project_url
 
     async def create_project(
         self,
@@ -266,6 +276,15 @@ class ServiceBackend:
 
     async def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await self._call(self._client.login_check, keep_open=keep_open)
+
+    async def list_projects(self, *, keep_open: bool = False) -> dict[str, Any]:
+        result = await self._call(
+            self._client.list_projects,
+            keep_open=keep_open,
+            project_url=self._effective_project_home_url(),
+        )
+        return result
+
 
     async def create_project(
         self,
@@ -509,6 +528,25 @@ async def cmd_login_check(backend: CommandBackend, args: argparse.Namespace) -> 
     return 0
 
 
+async def cmd_project_list(backend: CommandBackend, args: argparse.Namespace) -> int:
+    result = await backend.list_projects(keep_open=args.keep_open)
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    projects = result.get("projects") if isinstance(result, dict) else None
+    if not isinstance(projects, list) or not projects:
+        print("(no projects found)")
+        return 0
+    for item in projects:
+        if not isinstance(item, dict):
+            continue
+        marker = "*" if item.get("is_current") else " "
+        name = str(item.get("name") or "<unnamed>")
+        url = str(item.get("url") or "")
+        print(f"{marker} {name}	{url}")
+    return 0
+
+
 async def cmd_project_create(backend: CommandBackend, args: argparse.Namespace) -> int:
     result = await backend.create_project(
         name=args.name,
@@ -642,6 +680,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
+        "project-list": ["--json", "--keep-open"],
         "project-resolve": ["--keep-open"],
         "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-remove": ["--keep-open"],
@@ -1067,6 +1106,13 @@ def make_parser() -> argparse.ArgumentParser:
     )
     project_create.add_argument("--keep-open", action="store_true")
 
+    project_list = subparsers.add_parser(
+        "project-list",
+        help="List all ChatGPT projects visible in the sidebar for the current account/profile.",
+    )
+    project_list.add_argument("--json", action="store_true", help="Emit the full project list payload as JSON.")
+    project_list.add_argument("--keep-open", action="store_true")
+
     project_resolve = subparsers.add_parser(
         "project-resolve",
         help="Resolve a ChatGPT project by exact name and return its URL when uniquely matched.",
@@ -1171,6 +1217,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_login_check(backend, args)
     if args.command == "project-create":
         return await cmd_project_create(backend, args)
+    if args.command == "project-list":
+        return await cmd_project_list(backend, args)
     if args.command == "project-resolve":
         return await cmd_project_resolve(backend, args)
     if args.command == "project-ensure":

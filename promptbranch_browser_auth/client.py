@@ -590,6 +590,23 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def list_projects(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-list",
+            "starting list_projects",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_list",
+            operation=self._list_projects_operation,
+            keep_open=keep_open,
+        )
+
     async def create_project(
         self,
         *,
@@ -2551,6 +2568,13 @@ class ChatGPTBrowserClient:
             base = path.split('/c/', 1)[0].rstrip('/') + '/project'
             return urlunparse(parsed._replace(path=base, query='', fragment=''))
         return urlunparse(parsed._replace(path=path, query='', fragment=''))
+
+    def _project_slug_from_url(self, url: str) -> Optional[str]:
+        path = urlparse(url).path or ''
+        match = re.search(r'/g/([^/]+)/', path, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
 
     def _extract_project_id_from_url(self, url: str) -> Optional[str]:
         path = urlparse(url).path or ''
