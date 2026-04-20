@@ -3,12 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.0.66
+    image: promptbranch-service:0.0.68
     init: true
     ports:
       - "8000:8000"
     environment:
-      CHATGPT_UVICORN_APP: chatgpt_container_api:app
+      CHATGPT_UVICORN_APP: promptbranch_container_api:app
       CHATGPT_UVICORN_RELOAD: ${CHATGPT_UVICORN_RELOAD:-0}
       CHATGPT_PROJECT_URL: ${CHATGPT_PROJECT_URL:-https://chatgpt.com/}
       CHATGPT_EMAIL: ${CHATGPT_EMAIL:-}

@@ -1,3 +1,3 @@
-from chatgpt_service_client import ChatGPTServiceClient
+from promptbranch.client import ChatGPTServiceClient
 
 __all__ = ["ChatGPTServiceClient"]

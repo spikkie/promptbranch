@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from chatgpt_automation.automation import _resolve_password_file_path
+from promptbranch_automation.automation import _resolve_password_file_path
 
 
 def test_resolve_password_file_path_prefers_existing_secret_fallback(monkeypatch, tmp_path):

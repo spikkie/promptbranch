@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from chatgpt_browser_auth.client import ChatGPTBrowserClient
-from chatgpt_browser_auth.config import ChatGPTBrowserConfig
+from promptbranch_browser_auth.client import ChatGPTBrowserClient
+from promptbranch_browser_auth.config import ChatGPTBrowserConfig
 
 
 def _make_client(tmp_path: Path) -> ChatGPTBrowserClient:
@@ -248,6 +248,6 @@ def test_extract_last_text_from_selectors_supports_section_assistant_turns(tmp_p
 
 
 def client_module_selectors() -> list[str]:
-    from chatgpt_browser_auth.client import ASSISTANT_MESSAGE_SELECTORS
+    from promptbranch_browser_auth.client import ASSISTANT_MESSAGE_SELECTORS
 
     return ASSISTANT_MESSAGE_SELECTORS

@@ -1,15 +1,13 @@
-# promptbranch v0.0.66
+# promptbranch v0.0.68
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
 Primary interfaces:
-- CLI: `promptbranch` (with `chatgpt` kept as a compatibility alias)
-- Python package: `promptbranch` (with `chatgpt_workflow` kept as a compatibility alias)
-- HTTP service: FastAPI app in `chatgpt_container_api.py`
+- CLI: `promptbranch`
+- Python package: `promptbranch`
+- HTTP service: FastAPI app in `promptbranch_container_api.py`
 
-Compatibility note:
-- existing `chatgpt` command lines keep working
-- existing `from chatgpt_workflow import ...` imports keep working
+Legacy `chatgpt_*` command/module/package aliases were removed in v0.0.68.
 
 ## Reusable Docker service
 
@@ -22,7 +20,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.66 .
+docker build -t promptbranch-service:0.0.68 .
 ```
 
 Run it:
@@ -37,7 +35,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.66
+  promptbranch-service:0.0.68
 ```
 
 Compose option:
@@ -104,7 +102,7 @@ For auto-reload during development, use `./run_chatgpt_service_dev.sh` instead.
 Then run the existing integration harness against Docker instead of the in-process Python stack:
 
 ```bash
-python ./chatgpt_full_integration_test.py \
+python ./promptbranch_full_integration_test.py \
   --service-base-url http://localhost:8000 \
   --service-token change-me
 ```
@@ -112,7 +110,7 @@ python ./chatgpt_full_integration_test.py \
 Keep the project and skip cleanup while checking the currently stable surface:
 
 ```bash
-python ./chatgpt_full_integration_test.py \
+python ./promptbranch_full_integration_test.py \
   --service-base-url http://localhost:8000 \
   --service-token change-me \
   --keep-project \
@@ -120,7 +118,7 @@ python ./chatgpt_full_integration_test.py \
 ```
 
 Important:
-- `python ./chatgpt_full_integration_test.py` by itself still runs the local Python/browser stack directly.
+- `python ./promptbranch_full_integration_test.py` by itself still runs the local Python/browser stack directly.
 - Docker mode is enabled only when `--service-base-url` is provided.
 - The Docker service can now carry the active `project_url` between steps, so the same integration harness works against both modes.
 
@@ -186,7 +184,7 @@ curl -X POST http://localhost:8000/v1/project-sources/remove \
 Example:
 
 ```python
-from chatgpt_service_client import ChatGPTServiceClient
+from promptbranch import ChatGPTServiceClient
 
 with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
     print(client.healthz())
@@ -194,14 +192,14 @@ with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
     print(answer)
 ```
 
-There is also a runnable sample at `examples/chatgpt_service_client_example.py`.
+There is also a runnable sample at `examples/promptbranch_service_client_example.py` (with the old example name kept as compatibility).
 
 ## Installing the promptbranch CLI
 
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.66.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.68.zip
 ```
 
 From an extracted checkout:
@@ -210,7 +208,7 @@ From an extracted checkout:
 python -m pip install .
 ```
 
-After installation the preferred `promptbranch` command is available. The legacy `chatgpt` console alias remains available for compatibility:
+After installation the `promptbranch` command is available:
 
 
 ```bash
@@ -241,11 +239,11 @@ For other Python programs, prefer importing the package facade instead of the sm
 from promptbranch import ChatGPTServiceClient, ConversationStateStore
 ```
 
-`chatgpt_cli_sequence_v5.py` remains a smoke/integration harness, not the recommended library entry point.
+`promptbranch_cli_sequence_v5.py` remains the primary smoke/integration harness.
 
 ## Low-level compatibility CLI usage
 
-The preferred command is `promptbranch`. The legacy `chatgpt` alias and direct `python chatgpt_cli.py` entry point remain available for compatibility.
+The preferred command is `promptbranch`.
 
 The CLI can target either:
 - local browser automation directly
@@ -284,7 +282,7 @@ CHATGPT_SERVICE_TOKEN=change-me
 promptbranch ask "Explain Python context managers in 5 lines"
 ```
 
-You can also use a JSON config file. The CLI already checks `~/.config/chatgpt-cli/config.json` by default, so you only need `--config` when overriding that path:
+You can also use a JSON config file. The CLI now checks `~/.config/promptbranch/config.json` by default and falls back to `~/.config/chatgpt-cli/config.json` when the new path is absent:
 
 ```json
 {
@@ -296,7 +294,7 @@ You can also use a JSON config file. The CLI already checks `~/.config/chatgpt-c
 
 ```bash
 promptbranch ask "Explain Python context managers in 5 lines"
-promptbranch --config ~/.config/chatgpt-cli/config.json ask "Explain Python context managers in 5 lines"
+promptbranch --config ~/.config/promptbranch/config.json ask "Explain Python context managers in 5 lines"
 ```
 
 Create a project through the Docker service:
@@ -370,7 +368,7 @@ The added Docker service does not remove those risks. It packages the currently 
 
 ## Stateful CLI usage
 
-The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.chatgpt_cli_state.json` so it can behave more like `git`:
+The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.promptbranch_state.json` so it can behave more like `git`. If that file is missing it will fall back to the legacy `.chatgpt_cli_state.json`:
 
 - `promptbranch state` shows the remembered current project and conversation
 - `promptbranch prompt` emits a compact one-line value for shell prompts or menu-bar widgets
