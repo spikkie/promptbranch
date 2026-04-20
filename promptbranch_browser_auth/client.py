@@ -960,6 +960,64 @@ class ChatGPTBrowserClient:
             "conversation_url": conversation_url,
         }
 
+    async def _list_projects_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        home_url = self._chatgpt_home_url()
+        await self._goto(page, home_url, label="project-list-home")
+        await self._ensure_sidebar_open(page)
+
+        current_project_url = self._project_home_url_from_url(self.config.project_url)
+        collected: list[dict[str, str]] = []
+        for attempt in range(3):
+            if attempt == 1:
+                await self._expand_projects_section(page)
+            elif attempt == 2:
+                await self._prime_project_sidebar(page)
+                await self._expand_projects_section(page)
+
+            projects = await self._collect_sidebar_projects(page)
+            collected = self._dedupe_projects([*collected, *projects])
+            self._log(
+                "project-list",
+                "project enumeration attempt completed",
+                attempt=attempt + 1,
+                discovered_count=len(projects),
+                total_count=len(collected),
+            )
+            if collected:
+                break
+            await page.wait_for_timeout(350)
+
+        normalized_projects: list[dict[str, Any]] = []
+        for project in collected:
+            project_url = project.get("url") or ""
+            normalized_projects.append({
+                "name": project.get("name") or "",
+                "url": project_url,
+                "project_id": self._extract_project_id_from_url(project_url),
+                "project_slug": self._project_slug_from_url(project_url),
+                "is_current": bool(project_url and current_project_url and self._project_urls_refer_to_same_project(project_url, current_project_url)),
+            })
+
+        result = {
+            "ok": True,
+            "action": "list_projects",
+            "count": len(normalized_projects),
+            "current_project_url": current_project_url,
+            "projects": normalized_projects,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-list", "project enumeration completed", **result)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open("Project list completed. Press Enter to close the browser... ")
+        return result
+
     async def _create_project_operation(
         self,
         *,
