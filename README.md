@@ -1,4 +1,4 @@
-# promptbranch v0.0.69
+# promptbranch v0.0.70
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -9,8 +9,20 @@ Primary interfaces:
 
 Migration notes:
 - `UPGRADING.md` documents the v0.0.68 alias removal and old-to-new name mapping
+- `docs/howto/README.md` indexes task-focused how-to manuals for each main topic
 
 Legacy `chatgpt_*` command/module/package aliases were removed in v0.0.68. See `UPGRADING.md` for the migration map from old names to `promptbranch_*`.
+
+
+## How-to manuals
+
+The repository now includes focused manuals under `docs/howto/` instead of forcing everything through one long README. Start with:
+
+- `docs/howto/01-install-the-cli.md`
+- `docs/howto/02-run-the-docker-service.md`
+- `docs/howto/04-use-the-stateful-cli.md`
+- `docs/howto/07-use-the-python-client.md`
+- `docs/howto/12-troubleshooting.md`
 
 ## Reusable Docker service
 
@@ -23,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.69 .
+docker build -t promptbranch-service:0.0.70 .
 ```
 
 Run it:
@@ -38,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.69
+  promptbranch-service:0.0.70
 ```
 
 Compose option:
