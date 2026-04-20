@@ -1,0 +1,26 @@
+#compdef promptbranch
+local context state line
+typeset -A opt_args
+
+_arguments -C   "--project-url[project or conversation URL]:url:"   "--email[ChatGPT email]:email:"   "--password[ChatGPT password]:password:"   "--password-file[path to password file]:file:_files"   "--profile-dir[path to browser profile]:dir:_files -/"   "--headless[run browser headless]"   "--use-playwright[use playwright instead of patchright]"   "--browser-channel[browser channel]:channel:"   "--enable-fedcm[do not disable FedCM]"   "--keep-no-sandbox[keep no-sandbox args]"   "--max-retries[max retries]:count:"   "--retry-backoff-seconds[retry backoff seconds]:seconds:"   "--debug[enable debug logging]"   "--dotenv[path to .env file]:file:_files"   "--config[path to CLI config]:file:_files"   "--service-base-url[service base URL]:url:"   "--service-token[bearer token]:token:"   "--service-timeout-seconds[service timeout seconds]:seconds:"   "1:command:(("ask:ask" "completion:completion" "login-check:login-check" "project-create:project-create" "project-ensure:project-ensure" "project-remove:project-remove" "project-resolve:project-resolve" "project-source-add:project-source-add" "project-source-remove:project-source-remove" "prompt:prompt" "shell:shell" "state:state" "state-clear:state-clear" "use:use"))"   '*::arg:->args'
+
+case $state in
+  args)
+    case $words[1] in
+        login-check) _arguments "--keep-open[--keep-open]" ;;
+        project-create) _arguments "--icon[--icon]" "--color[--color]" "--memory-mode[--memory-mode]" "--keep-open[--keep-open]" ;;
+        project-resolve) _arguments "--keep-open[--keep-open]" ;;
+        project-ensure) _arguments "--icon[--icon]" "--color[--color]" "--memory-mode[--memory-mode]" "--keep-open[--keep-open]" ;;
+        project-remove) _arguments "--keep-open[--keep-open]" ;;
+        project-source-add) _arguments "--type[--type]" "--value[--value]" "--file[--file]" "--name[--name]" "--keep-open[--keep-open]" ;;
+        project-source-remove) _arguments "--exact[--exact]" "--keep-open[--keep-open]" ;;
+        state) _arguments "--json[--json]" ;;
+        prompt) _arguments "--json[--json]" ;;
+        state-clear) _arguments  ;;
+        use) _arguments "--conversation-url[--conversation-url]" "--project-name[--project-name]" "--json[--json]" "--keep-open[--keep-open]" ;;
+        completion) _arguments  ;;
+        ask) _arguments "--file[--file]" "--json[--json]" "--conversation-url[--conversation-url]" "--keep-open[--keep-open]" "--retries[--retries]" ;;
+        shell) _arguments "--file[--file]" "--json[--json]" "--keep-open[--keep-open]" "--retries[--retries]" ;;
+    esac
+  ;;
+esac

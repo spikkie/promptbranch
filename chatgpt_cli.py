@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -600,12 +601,26 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     return 0
 
 
-def _compact_prompt_text(snapshot: dict[str, Any]) -> str:
+def _cli_command_name(argv0: Optional[str] = None) -> str:
+    candidate = Path(argv0 or sys.argv[0]).name.strip()
+    if candidate == "chatgpt":
+        return "chatgpt"
+    if candidate == "promptbranch":
+        return "promptbranch"
+    return "promptbranch"
+
+
+def _completion_function_name(command_name: str) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9_]", "_", command_name)
+    return f"_{sanitized}_complete"
+
+
+def _compact_prompt_text(snapshot: dict[str, Any], *, command_name: str = "promptbranch") -> str:
     project_name = snapshot.get("project_name") or snapshot.get("project_slug") or "no-project"
     conversation_id = snapshot.get("conversation_id")
     if conversation_id:
-        return f"chatgpt:{project_name}#{str(conversation_id)[:8]}"
-    return f"chatgpt:{project_name}"
+        return f"{command_name}:{project_name}#{str(conversation_id)[:8]}"
+    return f"{command_name}:{project_name}"
 
 
 
@@ -640,17 +655,18 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     }
 
 
-def _render_completion_bash() -> str:
+def _render_completion_bash(command_name: str) -> str:
     commands = " ".join(_completion_command_names())
     global_opts = " ".join(_global_option_names())
     sub_opts = _subcommand_option_names()
+    function_name = _completion_function_name(command_name)
     case_lines: list[str] = []
     for name, options in sub_opts.items():
         opts = " ".join(options)
         case_lines.append(f'        {name}) opts="{opts} $global_opts" ;;')
     case_block = "\n".join(case_lines)
     command_case = "|".join(_completion_command_names())
-    return f"""_chatgpt_complete() {{
+    return f"""{function_name}() {{
     local cur prev cmd global_opts
     COMPREPLY=()
     cur="${{COMP_WORDS[COMP_CWORD]}}"
@@ -696,18 +712,18 @@ def _render_completion_bash() -> str:
     return 0
 }}
 
-complete -F _chatgpt_complete chatgpt
+complete -F {function_name} {command_name}
 """
 
 
-def _render_completion_zsh() -> str:
+def _render_completion_zsh(command_name: str) -> str:
     command_specs = " ".join(f'"{name}:{name}"' for name in _completion_command_names())
     sub_lines: list[str] = []
     for name, options in _subcommand_option_names().items():
         opts = " ".join(f'"{opt}[{opt}]"' for opt in options)
         sub_lines.append(f"        {name}) _arguments {opts} ;;")
     sub_block = "\n".join(sub_lines)
-    return f"""#compdef chatgpt
+    return f"""#compdef {command_name}
 local context state line
 typeset -A opt_args
 
@@ -743,36 +759,36 @@ esac
 """
 
 
-def _render_completion_fish() -> str:
+def _render_completion_fish(command_name: str) -> str:
     needs_arg = {
         "--project-url", "--email", "--password", "--password-file", "--profile-dir", "--browser-channel",
         "--max-retries", "--retry-backoff-seconds", "--dotenv", "--config", "--service-base-url",
         "--service-token", "--service-timeout-seconds", "--type", "--value", "--file", "--name",
         "--conversation-url", "--project-name", "--retries", "--icon", "--color", "--memory-mode",
     }
-    lines = ["complete -c chatgpt -f"]
+    lines = [f"complete -c {command_name} -f"]
     for opt in _global_option_names():
         long_opt = opt[2:]
         flag = " -r" if opt in needs_arg else ""
-        lines.append(f"complete -c chatgpt -l {long_opt}{flag}")
+        lines.append(f"complete -c {command_name} -l {long_opt}{flag}")
     for cmd in _completion_command_names():
-        lines.append(f"complete -c chatgpt -n '__fish_use_subcommand' -a '{cmd}'")
+        lines.append(f"complete -c {command_name} -n '__fish_use_subcommand' -a '{cmd}'")
     for cmd, options in _subcommand_option_names().items():
         for opt in options:
             long_opt = opt[2:]
             flag = " -r" if opt in needs_arg else ""
-            lines.append(f"complete -c chatgpt -n '__fish_seen_subcommand_from {cmd}' -l {long_opt}{flag}")
-    lines.append("complete -c chatgpt -n '__fish_seen_subcommand_from project-source-add; and __fish_prev_arg_in --type' -a 'link text file'")
+            lines.append(f"complete -c {command_name} -n '__fish_seen_subcommand_from {cmd}' -l {long_opt}{flag}")
+    lines.append(f"complete -c {command_name} -n '__fish_seen_subcommand_from project-source-add; and __fish_prev_arg_in --type' -a 'link text file'")
     return "\n".join(lines) + "\n"
 
 
-def _render_completion(shell_name: str) -> str:
+def _render_completion(shell_name: str, command_name: str) -> str:
     if shell_name == "bash":
-        return _render_completion_bash()
+        return _render_completion_bash(command_name)
     if shell_name == "zsh":
-        return _render_completion_zsh()
+        return _render_completion_zsh(command_name)
     if shell_name == "fish":
-        return _render_completion_fish()
+        return _render_completion_fish(command_name)
     raise ValueError(f"unsupported shell: {shell_name}")
 
 
@@ -796,9 +812,9 @@ async def cmd_state(backend: CommandBackend, args: argparse.Namespace) -> int:
 async def cmd_prompt(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     if args.json:
-        print(json.dumps({"prompt": _compact_prompt_text(snapshot), "state": snapshot}, indent=2, ensure_ascii=False))
+        print(json.dumps({"prompt": _compact_prompt_text(snapshot, command_name=_cli_command_name()), "state": snapshot}, indent=2, ensure_ascii=False))
         return 0
-    print(_compact_prompt_text(snapshot))
+    print(_compact_prompt_text(snapshot, command_name=_cli_command_name()))
     return 0
 
 
@@ -855,7 +871,7 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
 
 async def cmd_completion(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
-    print(_render_completion(args.shell), end="")
+    print(_render_completion(args.shell, _cli_command_name()), end="")
     return 0
 
 
@@ -877,12 +893,12 @@ async def cmd_shell(backend: CommandBackend, args: argparse.Namespace) -> int:
     attached_file: Optional[str] = args.file
     retries: Optional[int] = args.retries
 
-    print("ChatGPT CLI shell")
+    print(f"{_cli_command_name()} shell")
     print("Type :help for commands.")
 
     while True:
         try:
-            line = input("chatgpt> ").strip()
+            line = input(f"{_cli_command_name()}> ").strip()
         except EOFError:
             print()
             return 0
@@ -1003,7 +1019,8 @@ def _normalize_global_options(argv: list[str]) -> list[str]:
 
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Single CLI tool for ChatGPT browser automation or the Docker service API.",
+        prog=_cli_command_name(),
+        description="promptbranch: stateful ChatGPT workflow CLI for browser automation or the Docker service API.",
     )
     parser.add_argument("--project-url", default=os.getenv("CHATGPT_PROJECT_URL", DEFAULT_PROJECT_URL))
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
