@@ -981,13 +981,13 @@ class ChatGPTBrowserClient:
                 await self._prime_project_sidebar(page)
                 await self._expand_projects_section(page)
 
-            projects = await self._collect_sidebar_projects(page)
-            collected = self._dedupe_projects([*collected, *projects])
+            discovered = await self._collect_all_sidebar_projects(page, label="project-list")
+            collected = self._dedupe_projects([*collected, *discovered])
             self._log(
                 "project-list",
                 "project enumeration attempt completed",
                 attempt=attempt + 1,
-                discovered_count=len(projects),
+                discovered_count=len(discovered),
                 total_count=len(collected),
             )
             if collected:
@@ -2876,6 +2876,86 @@ class ChatGPTBrowserClient:
         except Exception:
             return
         await page.wait_for_timeout(400)
+    async def _scroll_project_sidebar_step(self, page: Any) -> bool:
+        try:
+            moved = await page.evaluate(
+                r'''
+                () => {
+                    const candidates = Array.from(document.querySelectorAll(
+                        'aside, nav, [data-testid*="sidebar"], [class*="sidebar"], [class*="Sidebar"], [role="navigation"], [role="tree"], [role="list"]'
+                    ));
+                    const containers = [];
+                    const seen = new Set();
+                    for (const element of candidates) {
+                        if (!(element instanceof HTMLElement)) continue;
+                        if (seen.has(element)) continue;
+                        seen.add(element);
+                        const style = window.getComputedStyle(element);
+                        const overflowY = style?.overflowY || '';
+                        const hasProjects = !!element.querySelector('a[href*="/project"]') || /projects/i.test(element.innerText || element.textContent || '');
+                        const canScroll = (element.scrollHeight - element.clientHeight) > 24 || /(auto|scroll)/i.test(overflowY);
+                        if (hasProjects && canScroll) containers.push(element);
+                    }
+
+                    let moved = false;
+                    for (const element of containers) {
+                        const maxTop = Math.max(0, element.scrollHeight - element.clientHeight);
+                        const step = Math.max(Math.floor(element.clientHeight * 0.85), 280);
+                        const nextTop = Math.min(maxTop, element.scrollTop + step);
+                        if (nextTop > element.scrollTop + 1) {
+                            element.scrollTop = nextTop;
+                            element.dispatchEvent(new Event('scroll', { bubbles: true }));
+                            moved = true;
+                        }
+                    }
+
+                    if (!moved) {
+                        const doc = document.scrollingElement || document.documentElement || document.body;
+                        if (doc instanceof HTMLElement) {
+                            const maxTop = Math.max(0, doc.scrollHeight - doc.clientHeight);
+                            const step = Math.max(Math.floor(window.innerHeight * 0.85), 400);
+                            const nextTop = Math.min(maxTop, doc.scrollTop + step);
+                            if (nextTop > doc.scrollTop + 1) {
+                                doc.scrollTop = nextTop;
+                                window.dispatchEvent(new Event('scroll'));
+                                moved = true;
+                            }
+                        }
+                    }
+                    return moved;
+                }
+                '''
+            )
+        except Exception:
+            return False
+        return bool(moved)
+
+    async def _collect_all_sidebar_projects(
+        self,
+        page: Any,
+        *,
+        label: str,
+        max_scroll_rounds: int = 40,
+    ) -> list[dict[str, str]]:
+        collected: list[dict[str, str]] = []
+        for round_index in range(max_scroll_rounds):
+            projects = await self._collect_sidebar_projects(page)
+            collected = self._dedupe_projects([*collected, *projects])
+            moved = await self._scroll_project_sidebar_step(page)
+            self._log(
+                label,
+                'sidebar project scroll round completed',
+                round=round_index + 1,
+                discovered_count=len(projects),
+                total_count=len(collected),
+                moved=moved,
+            )
+            if not moved:
+                break
+            await page.wait_for_timeout(250)
+
+        return collected
+
 
     def _dedupe_projects(self, projects: list[dict[str, str]]) -> list[dict[str, str]]:
         deduped: list[dict[str, str]] = []
@@ -2909,14 +2989,14 @@ class ChatGPTBrowserClient:
                 await self._prime_project_sidebar(page)
                 await self._expand_projects_section(page)
 
-            projects = await self._collect_sidebar_projects(page)
-            collected = self._dedupe_projects([*collected, *projects])
+            discovered = await self._collect_all_sidebar_projects(page, label='project-resolve')
+            collected = self._dedupe_projects([*collected, *discovered])
             matches = [project for project in collected if self._normalize_project_name(project.get('name', '')) == normalized_name]
             self._log(
                 'project-resolve',
                 'project enumeration attempt completed',
                 attempt=attempt + 1,
-                discovered_count=len(projects),
+                discovered_count=len(discovered),
                 total_count=len(collected),
                 match_count=len(matches),
             )
