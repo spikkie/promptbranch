@@ -1,4 +1,4 @@
-# promptbranch v0.0.68
+# promptbranch v0.0.69
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -7,7 +7,10 @@ Primary interfaces:
 - Python package: `promptbranch`
 - HTTP service: FastAPI app in `promptbranch_container_api.py`
 
-Legacy `chatgpt_*` command/module/package aliases were removed in v0.0.68.
+Migration notes:
+- `UPGRADING.md` documents the v0.0.68 alias removal and old-to-new name mapping
+
+Legacy `chatgpt_*` command/module/package aliases were removed in v0.0.68. See `UPGRADING.md` for the migration map from old names to `promptbranch_*`.
 
 ## Reusable Docker service
 
@@ -20,7 +23,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.68 .
+docker build -t promptbranch-service:0.0.69 .
 ```
 
 Run it:
@@ -35,7 +38,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.68
+  promptbranch-service:0.0.69
 ```
 
 Compose option:
@@ -192,14 +195,14 @@ with ChatGPTServiceClient("http://localhost:8000", token="change-me") as client:
     print(answer)
 ```
 
-There is also a runnable sample at `examples/promptbranch_service_client_example.py` (with the old example name kept as compatibility).
+There is also a runnable sample at `examples/promptbranch_service_client_example.py`.
 
 ## Installing the promptbranch CLI
 
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.68.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.69.zip
 ```
 
 From an extracted checkout:
