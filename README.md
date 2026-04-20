@@ -1,4 +1,4 @@
-# promptbranch v0.0.76
+# promptbranch v0.0.78
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.76 .
+docker build -t promptbranch-service:0.0.78 .
 ```
 
 Run it:
@@ -50,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/profile:/app/profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.76
+  promptbranch-service:0.0.78
 ```
 
 Compose option:
@@ -113,6 +113,21 @@ CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1 \
 ```
 
 For auto-reload during development, use `./run_chatgpt_service_dev.sh` instead.
+
+For local headed debugging of the project sidebar using the existing promptbranch login/profile flow (no Docker service), run:
+
+```bash
+python ./promptbranch_full_integration_test.py \
+  --config ~/.config/promptbranch/config.json \
+  --profile-dir ./profile \
+  --only project_list_debug \
+  --keep-open
+```
+
+Optional debug tuning flags:
+- `--project-list-debug-scroll-rounds <n>`
+- `--project-list-debug-wait-ms <ms>`
+- `--project-list-debug-manual-pause`
 
 Then run the existing integration harness against Docker instead of the in-process Python stack:
 
@@ -214,7 +229,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.76.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.78.zip
 ```
 
 From an extracted checkout:

@@ -164,5 +164,11 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.76" in out
+    assert "0.0.78" in out
     assert "promptbranch" in out
+
+
+def test_parser_accepts_version_subcommand() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["version"])
+    assert args.command == "version"

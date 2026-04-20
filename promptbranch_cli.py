@@ -35,7 +35,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.76"
+CLI_VERSION = "0.0.78"
 COMMANDS = {
     "login-check",
     "ask",
@@ -52,6 +52,7 @@ COMMANDS = {
     "state-clear",
     "use",
     "completion",
+    "version",
 }
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
@@ -744,6 +745,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
+        "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
     }
@@ -1176,6 +1178,8 @@ def make_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    subparsers.add_parser("version", help="Show the installed promptbranch version and exit.")
+
     login = subparsers.add_parser("login-check", help="Open the browser and verify whether the profile is logged in.")
     login.add_argument("--keep-open", action="store_true")
 
@@ -1329,6 +1333,9 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_use(backend, args)
     if args.command == "completion":
         return await cmd_completion(backend, args)
+    if args.command == "version":
+        print(f"promptbranch {CLI_VERSION}")
+        return 0
     if args.command == "ask":
         return await cmd_ask(backend, args)
     if args.command == "shell":

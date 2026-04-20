@@ -511,3 +511,10 @@ def test_main_use_without_target_or_pick_returns_usage_error(monkeypatch, capsys
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "target is required unless --pick is used" in captured.err
+
+
+def test_main_version_subcommand_outputs_release(capsys) -> None:
+    exit_code = main(["version"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "promptbranch 0.0.78"
