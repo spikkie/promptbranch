@@ -35,6 +35,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
+CLI_VERSION = "0.0.73"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1146,7 +1147,7 @@ def _normalize_global_options(argv: list[str]) -> list[str]:
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_cli_command_name(),
-        description="promptbranch: stateful ChatGPT workflow CLI for browser automation or the service API.",
+        description=f"promptbranch v{CLI_VERSION}: stateful ChatGPT workflow CLI for browser automation or the service API.",
     )
     parser.add_argument("--project-url", default=os.getenv("CHATGPT_PROJECT_URL", DEFAULT_PROJECT_URL))
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
@@ -1170,6 +1171,8 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-base-url", default=_env_or("CHATGPT_SERVICE_BASE_URL", "CHATGPT_API_BASE_URL"), help="Use the Docker service API instead of local browser automation.")
     parser.add_argument("--service-token", default=_env_or("CHATGPT_SERVICE_TOKEN", "CHATGPT_API_TOKEN"), help="Bearer token for the Docker service API.")
     parser.add_argument("--service-timeout-seconds", type=float, default=(_env_or("CHATGPT_SERVICE_TIMEOUT_SECONDS") or None))
+
+    parser.add_argument("--version", action="version", version=f"%(prog)s {CLI_VERSION}")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 

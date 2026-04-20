@@ -155,3 +155,14 @@ def test_global_options_after_project_list_current_are_normalized() -> None:
     normalized = _normalize_global_options(argv)
     assert normalized[:2] == ["--service-base-url", "http://localhost:8000"]
     assert normalized[2:] == ["project-list", "--current"]
+
+
+def test_parser_version_option_outputs_release(capsys) -> None:
+    parser = make_parser()
+    try:
+        parser.parse_args(["--version"])
+    except SystemExit as exc:
+        assert exc.code == 0
+    out = capsys.readouterr().out
+    assert "0.0.73" in out
+    assert "promptbranch" in out
