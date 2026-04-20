@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from chatgpt_browser_auth.client import ChatGPTBrowserClient
-from chatgpt_browser_auth.config import ChatGPTBrowserConfig
-from chatgpt_browser_auth.exceptions import ResponseTimeoutError, UnsupportedOperationError
+from promptbranch_browser_auth.client import ChatGPTBrowserClient
+from promptbranch_browser_auth.config import ChatGPTBrowserConfig
+from promptbranch_browser_auth.exceptions import ResponseTimeoutError, UnsupportedOperationError
 
 
 class _FakePage:

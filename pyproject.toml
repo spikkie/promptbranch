@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promptbranch"
-version = "0.0.66"
+version = "0.0.68"
 description = "Stateful ChatGPT workflow CLI and reusable browser-automation service"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,15 +21,13 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["chatgpt_cli", "chatgpt_container_api", "chatgpt_service_client", "chatgpt_state"]
+py-modules = ["promptbranch_cli", "promptbranch_container_api", "promptbranch_service_client", "promptbranch_state", "promptbranch_full_integration_test", "promptbranch_login_test", "promptbranch_cli_sequence_v5"]
 
 [tool.setuptools.packages.find]
-include = ["chatgpt_automation*", "chatgpt_browser_auth*", "chatgpt_workflow*", "promptbranch*"]
+include = ["promptbranch*", "promptbranch_automation*", "promptbranch_browser_auth*"]
 
 [project.scripts]
 promptbranch = "promptbranch.cli:main"
-chatgpt = "chatgpt_workflow.cli:main"
 
 [tool.setuptools.package-data]
-chatgpt_workflow = ["completions/*"]
 promptbranch = ["completions/*"]

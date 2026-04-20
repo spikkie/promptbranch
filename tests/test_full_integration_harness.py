@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from chatgpt_full_integration_test import make_parser, resolve_step_selection
+from promptbranch_full_integration_test import make_parser, resolve_step_selection
 
 
 def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:

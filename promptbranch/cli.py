@@ -1,3 +1,3 @@
-from chatgpt_workflow.cli import main
+from promptbranch_cli import main
 
 __all__ = ["main"]

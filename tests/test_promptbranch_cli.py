@@ -1,0 +1,338 @@
+from __future__ import annotations
+
+import argparse
+import json
+
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options
+
+
+def test_parser_accepts_service_options() -> None:
+    parser = make_parser()
+    args = parser.parse_args(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--service-token",
+            "secret",
+            "ask",
+            "hello",
+        ]
+    )
+    assert args.service_base_url == "http://localhost:8000"
+    assert args.service_token == "secret"
+    assert args.command == "ask"
+
+
+def test_global_options_after_subcommand_include_service_flags() -> None:
+    argv = [
+        "ask",
+        "hello",
+        "--service-base-url",
+        "http://localhost:8000",
+        "--service-token",
+        "secret",
+    ]
+    normalized = _normalize_global_options(argv)
+    assert normalized[:4] == [
+        "--service-base-url",
+        "http://localhost:8000",
+        "--service-token",
+        "secret",
+    ]
+    assert normalized[4:] == ["ask", "hello"]
+
+
+def test_build_backend_uses_service_client_when_base_url_is_present() -> None:
+    args = argparse.Namespace(
+        service_base_url="http://localhost:8000",
+        service_token="secret",
+        service_timeout_seconds=123.0,
+        project_url="https://chatgpt.com/g/demo/project",
+        email=None,
+        password=None,
+        password_file=None,
+        profile_dir="./profile",
+        headless=False,
+        use_playwright=False,
+        browser_channel=None,
+        enable_fedcm=False,
+        keep_no_sandbox=False,
+        max_retries=2,
+        retry_backoff_seconds=2.0,
+    )
+    backend = build_backend(args)
+    assert backend.__class__.__name__ == "ServiceBackend"
+
+
+def test_main_can_ask_via_service_backend(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 900.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            assert kwargs["project_url"] == "https://chatgpt.com/g/demo/project"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--service-token",
+            "secret",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"
+
+
+def test_main_json_ask_emits_full_payload_with_conversation_url(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 900.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            assert kwargs["project_url"] == "https://chatgpt.com/g/demo/project"
+            return {"answer": {"status": "ok"}, "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--service-token",
+            "secret",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "--json",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["answer"] == {"status": "ok"}
+    assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/123"
+
+
+def test_main_can_create_project_via_service_backend(monkeypatch, capsys) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def create_project(self, name: str, **kwargs):
+            assert name == "Demo"
+            assert kwargs["icon"] == "folder"
+            assert kwargs["color"] == "blue"
+            assert kwargs["memory_mode"] == "project-only"
+            return {"ok": True, "project_url": "https://chatgpt.com/g/new/project"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "project-create",
+            "Demo",
+            "--icon",
+            "folder",
+            "--color",
+            "blue",
+            "--memory-mode",
+            "project-only",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert json.loads(captured.out)["project_url"] == "https://chatgpt.com/g/new/project"
+
+
+def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[str | None] = []
+    conversation_url = "https://chatgpt.com/g/demo/c/123"
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            calls.append(kwargs.get("project_url"))
+            if prompt == "first":
+                return {"answer": "one", "conversation_url": conversation_url}
+            return {"answer": "two", "conversation_url": conversation_url}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    first_exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "first",
+        ]
+    )
+    second_exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "ask",
+            "second",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert first_exit_code == 0
+    assert second_exit_code == 0
+    assert calls == [
+        "https://chatgpt.com/g/demo/project",
+        "https://chatgpt.com/g/demo/c/123",
+    ]
+    assert captured.out.strip().splitlines() == ["one", "two"]
+
+
+def test_main_can_ask_via_service_backend_from_env(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 900.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    monkeypatch.setenv("CHATGPT_SERVICE_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("CHATGPT_SERVICE_TOKEN", "secret")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--profile-dir",
+            str(tmp_path),
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"
+
+
+def test_main_can_ask_via_service_backend_from_config(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 123.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "service_base_url": "http://localhost:8000",
+                "service_token": "secret",
+                "service_timeout_seconds": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("CHATGPT_SERVICE_BASE_URL", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--config",
+            str(config_path),
+            "--profile-dir",
+            str(tmp_path),
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"
+
+
+def test_main_can_ask_via_service_backend_from_default_config_path(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+            assert token == "secret"
+            assert timeout == 123.0
+
+        def ask_result(self, prompt: str, **kwargs):
+            assert prompt == "hello"
+            return {"answer": "world", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    config_dir = tmp_path / ".config" / "chatgpt-cli"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "service_base_url": "http://localhost:8000",
+                "service_token": "secret",
+                "service_timeout_seconds": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CHATGPT_CLI_CONFIG", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_BASE_URL", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--profile-dir",
+            str(tmp_path / "profile"),
+            "ask",
+            "hello",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "world"

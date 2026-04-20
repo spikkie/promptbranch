@@ -1,1 +1,3 @@
-from chatgpt_workflow.automation import *
+from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
+
+__all__ = ["ChatGPTAutomationService", "ChatGPTAutomationSettings"]

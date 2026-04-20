@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from chatgpt_cli import main, make_parser
-from chatgpt_state import ConversationStateStore
+from promptbranch_cli import main, make_parser
+from promptbranch_state import ConversationStateStore
 
 
 def test_parser_accepts_state_prompt_and_state_clear() -> None:
@@ -28,7 +28,7 @@ def test_main_prompt_uses_saved_state(monkeypatch, capsys, tmp_path) -> None:
         project_name="my-project",
     )
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     exit_code = main(
         [
@@ -53,7 +53,7 @@ def test_main_state_clear_removes_saved_context(monkeypatch, capsys, tmp_path) -
     store = ConversationStateStore(str(tmp_path))
     store.remember_project("https://chatgpt.com/g/g-p-demo-my-project/project", project_name="my-project")
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     exit_code = main(
         [
@@ -88,7 +88,7 @@ def test_project_source_remove_uses_saved_current_project_when_project_url_is_de
     store = ConversationStateStore(str(tmp_path))
     store.remember_project("https://chatgpt.com/g/g-p-demo-my-project/project", project_name="my-project")
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     exit_code = main(
         [
@@ -117,7 +117,7 @@ def test_main_use_by_project_name_updates_current_state(monkeypatch, capsys, tmp
             assert name == "my-project"
             return {"ok": True, "project_url": "https://chatgpt.com/g/g-p-demo-my-project/project"}
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     exit_code = main([
         "--service-base-url",
@@ -144,7 +144,7 @@ def test_main_use_by_conversation_url_sets_current_chat(monkeypatch, capsys, tmp
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
     exit_code = main([
@@ -169,7 +169,7 @@ def test_main_completion_emits_bash_script(monkeypatch, capsys, tmp_path) -> Non
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
     exit_code = main([
         "--service-base-url",
@@ -186,47 +186,3 @@ def test_main_completion_emits_bash_script(monkeypatch, capsys, tmp_path) -> Non
 
 
 
-def test_main_completion_honors_chatgpt_alias(monkeypatch, capsys, tmp_path) -> None:
-    class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
-            pass
-
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
-    monkeypatch.setattr("sys.argv", ["chatgpt", "completion", "bash"])
-
-    exit_code = main([
-        "--service-base-url",
-        "http://localhost:8000",
-        "--profile-dir",
-        str(tmp_path),
-        "completion",
-        "bash",
-    ])
-
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    assert "complete -F _chatgpt_complete chatgpt" in captured.out
-
-
-def test_main_prompt_honors_chatgpt_alias(monkeypatch, capsys, tmp_path) -> None:
-    class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
-            pass
-
-    store = ConversationStateStore(str(tmp_path))
-    store.remember_project("https://chatgpt.com/g/g-p-demo-my-project/project", project_name="my-project")
-
-    monkeypatch.setattr("chatgpt_cli.ChatGPTServiceClient", FakeServiceClient)
-    monkeypatch.setattr("sys.argv", ["chatgpt", "prompt"])
-
-    exit_code = main([
-        "--service-base-url",
-        "http://localhost:8000",
-        "--profile-dir",
-        str(tmp_path),
-        "prompt",
-    ])
-
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    assert captured.out.strip() == "chatgpt:my-project"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chatgpt_cli import make_parser, _normalize_global_options
+from promptbranch_cli import make_parser, _normalize_global_options
 
 
 def test_global_options_after_project_source_add_are_normalized() -> None:

@@ -1,4 +1,7 @@
-from chatgpt_workflow import ChatGPTServiceClient, ConversationStateStore, ChatGPTAutomationService, ChatGPTAutomationSettings, main
+from .cli import main
+from .client import ChatGPTServiceClient
+from .state import ConversationStateStore
+from .automation import ChatGPTAutomationService, ChatGPTAutomationSettings
 
 __all__ = [
     "ChatGPTServiceClient",

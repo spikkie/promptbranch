@@ -1,3 +1,3 @@
-from chatgpt_cli import main
+from promptbranch.cli import main
 
 __all__ = ["main"]

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import chatgpt_browser_auth.client as client_module
-from chatgpt_browser_auth.client import ChatGPTBrowserClient
-from chatgpt_browser_auth.config import ChatGPTBrowserConfig
+import promptbranch_browser_auth.client as client_module
+from promptbranch_browser_auth.client import ChatGPTBrowserClient
+from promptbranch_browser_auth.config import ChatGPTBrowserConfig
 
 
 @dataclass
