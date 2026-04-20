@@ -141,6 +141,17 @@ class ChatGPTServiceClient:
 
 
 
+    def list_projects(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"keep_open": keep_open}
+        if project_url:
+            params["project_url"] = project_url
+        return self._json(self._client.get("/v1/projects", params=params))
+
     def create_project(
         self,
         name: str,

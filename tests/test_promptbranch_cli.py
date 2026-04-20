@@ -336,3 +336,71 @@ def test_main_can_ask_via_service_backend_from_default_config_path(monkeypatch, 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert captured.out.strip() == "world"
+
+
+def test_main_can_list_projects_via_service_backend(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            assert base_url == "http://localhost:8000"
+
+        def list_projects(self, **kwargs):
+            assert kwargs["project_url"] == "https://chatgpt.com/g/demo/project"
+            return {
+                "ok": True,
+                "count": 2,
+                "projects": [
+                    {"name": "Alpha", "url": "https://chatgpt.com/g/demo-alpha/project", "is_current": False},
+                    {"name": "Demo", "url": "https://chatgpt.com/g/demo/project", "is_current": True},
+                ],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "--project-url",
+            "https://chatgpt.com/g/demo/project",
+            "project-list",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Alpha	https://chatgpt.com/g/demo-alpha/project" in captured.out
+    assert "* Demo	https://chatgpt.com/g/demo/project" in captured.out
+
+
+def test_main_project_list_json_emits_full_payload(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 1,
+                "projects": [{"name": "Demo", "url": "https://chatgpt.com/g/demo/project", "is_current": True}],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "--profile-dir",
+            str(tmp_path),
+            "project-list",
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["count"] == 1
+    assert payload["projects"][0]["name"] == "Demo"

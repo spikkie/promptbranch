@@ -113,3 +113,21 @@ def test_global_options_after_use_are_normalized() -> None:
     normalized = _normalize_global_options(argv)
     assert normalized[:2] == ["--profile-dir", "./profile"]
     assert normalized[2:] == ["use", "My Project"]
+
+
+def test_parser_accepts_project_list_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["project-list", "--json"])
+    assert args.command == "project-list"
+    assert args.json is True
+
+
+def test_global_options_after_project_list_are_normalized() -> None:
+    argv = [
+        "project-list",
+        "--service-base-url",
+        "http://localhost:8000",
+    ]
+    normalized = _normalize_global_options(argv)
+    assert normalized[:2] == ["--service-base-url", "http://localhost:8000"]
+    assert normalized[2:] == ["project-list"]
