@@ -9,7 +9,7 @@ Install the `promptbranch` command so it can be used like a normal terminal tool
 This is the best choice for command-line use because it keeps the tool isolated from your main Python environment.
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.73.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.74.zip
 ```
 
 After install:
