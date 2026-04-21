@@ -288,6 +288,18 @@ PROJECT_SECTION_TOGGLE_SELECTORS = [
     '[role="button"]:has-text("Projects")',
     'summary:has-text("Projects")',
 ]
+PROJECT_MORE_BUTTON_SELECTORS = [
+    '[data-sidebar-item="true"][aria-haspopup="menu"]:has-text("More")',
+    '[data-sidebar-item="true"]:has-text("More")',
+    'div[data-sidebar-item="true"]:has-text("More")',
+    'aside [data-sidebar-item="true"]:has-text("More")',
+    'nav [data-sidebar-item="true"]:has-text("More")',
+    'button:has-text("More")',
+    'a:has-text("More")',
+    '[role="button"]:has-text("More")',
+    'summary:has-text("More")',
+    '[aria-haspopup="menu"]:has-text("More")',
+]
 PROJECT_CREATE_DIALOG_SELECTORS = [
     '[role="dialog"]',
     'dialog[open]',
@@ -1060,6 +1072,68 @@ class ChatGPTBrowserClient:
         artifact_dir = self._artifact_dir / f"project_list_debug_{self._timestamp_for_filename()}"
         await self._ensure_dir(artifact_dir)
 
+        snorlax_sidebar_requests: list[dict[str, Any]] = []
+        snorlax_sidebar_responses: list[dict[str, Any]] = []
+        response_tasks: list[asyncio.Task[Any]] = []
+        loop = asyncio.get_running_loop()
+
+        def observe_request(req: Any) -> None:
+            try:
+                url = getattr(req, 'url', '') or ''
+                if not self._is_snorlax_sidebar_url(url):
+                    return
+                snorlax_sidebar_requests.append({
+                    'method': getattr(req, 'method', None),
+                    'url': url,
+                    'resource_type': getattr(req, 'resource_type', None),
+                })
+                self._log('project-list-debug', 'observed snorlax sidebar request', method=getattr(req, 'method', None), url=url)
+            except Exception as exc:
+                self._log('project-list-debug', 'failed to inspect snorlax sidebar request', error=str(exc))
+
+        async def capture_snorlax_response(resp: Any) -> None:
+            url = getattr(resp, 'url', '') or ''
+            if not self._is_snorlax_sidebar_url(url):
+                return
+            try:
+                headers = await resp.all_headers()
+            except Exception:
+                headers = {}
+            try:
+                body_text = await resp.text()
+            except Exception as exc:
+                body_text = f'<failed to read body: {exc}>'
+            body_preview = body_text[:4000]
+            json_keys = None
+            try:
+                parsed = json.loads(body_text)
+                if isinstance(parsed, dict):
+                    json_keys = sorted(str(key) for key in parsed.keys())[:40]
+            except Exception:
+                pass
+            payload = {
+                'status': getattr(resp, 'status', None),
+                'url': url,
+                'content_type': headers.get('content-type') if isinstance(headers, dict) else None,
+                'body_preview': body_preview,
+                'json_keys': json_keys,
+            }
+            snorlax_sidebar_responses.append(payload)
+            self._log('project-list-debug', 'observed snorlax sidebar response', status=payload['status'], url=url, content_type=payload['content_type'], json_keys=json_keys)
+
+        def observe_response(resp: Any) -> None:
+            try:
+                url = getattr(resp, 'url', '') or ''
+                if not self._is_snorlax_sidebar_url(url):
+                    return
+                response_tasks.append(loop.create_task(capture_snorlax_response(resp)))
+            except Exception as exc:
+                self._log('project-list-debug', 'failed to schedule snorlax sidebar response capture', error=str(exc))
+
+        if hasattr(context, 'on'):
+            context.on('request', observe_request)
+            context.on('response', observe_response)
+
         async def capture(label: str) -> dict[str, Any]:
             safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", label).strip("-")[:80] or "item"
             screenshot_path = artifact_dir / f"{safe}.png"
@@ -1140,6 +1214,9 @@ class ChatGPTBrowserClient:
                 "is_current": bool(project_url and current_project_url and self._project_urls_refer_to_same_project(project_url, current_project_url)),
             })
 
+        if response_tasks:
+            await asyncio.gather(*response_tasks, return_exceptions=True)
+
         summary = {
             "ok": True,
             "action": "project_list_debug",
@@ -1148,6 +1225,8 @@ class ChatGPTBrowserClient:
             "scroll_rounds_requested": scroll_rounds,
             "wait_ms": wait_ms,
             "discovery_mode": discovery_mode,
+            "snorlax_sidebar_requests": snorlax_sidebar_requests,
+            "snorlax_sidebar_responses": snorlax_sidebar_responses,
             "before_expand_count": len(before_expand["project_links"]),
             "after_expand_count": len(after_expand["project_links"]),
             "after_more_count": len(after_more["project_links"]),
@@ -1164,6 +1243,7 @@ class ChatGPTBrowserClient:
             "current_url": await self._safe_page_url(page),
             "current_project_url": current_project_url,
         }
+        await self._write_json(artifact_dir / "snorlax-sidebar-network.json", {"requests": snorlax_sidebar_requests, "responses": snorlax_sidebar_responses})
         await self._write_json(artifact_dir / "summary.json", summary)
         self._log(
             "project-list-debug",
@@ -2964,6 +3044,8 @@ class ChatGPTBrowserClient:
         normalized = re.sub(r'\s+', ' ', (value or '')).strip()
         return normalized.casefold()
 
+    def _is_snorlax_sidebar_url(self, url: str) -> bool:
+        return '/backend-api/gizmos/snorlax/sidebar' in (url or '').lower()
 
     async def _determine_project_discovery_mode(self, page: Any) -> str:
         has_project_entrypoint = bool(
@@ -2974,7 +3056,18 @@ class ChatGPTBrowserClient:
                 timeout_ms=500,
             )
         )
-        mode = 'sidebar-first' if has_project_entrypoint else 'more-first'
+        if has_project_entrypoint:
+            mode = 'sidebar-first'
+        else:
+            has_more_entrypoint = bool(
+                await self._find_visible_locator(
+                    page,
+                    PROJECT_MORE_BUTTON_SELECTORS,
+                    label='project-more-entrypoint',
+                    timeout_ms=500,
+                )
+            )
+            mode = 'more-first' if has_more_entrypoint else 'sidebar-first'
         self._log('project-list', 'selected project discovery mode', mode=mode, has_project_entrypoint=has_project_entrypoint)
         return mode
 
@@ -3070,13 +3163,7 @@ class ChatGPTBrowserClient:
     async def _open_more_projects_menu(self, page: Any) -> bool:
         button = await self._find_visible_locator(
             page,
-            [
-                'aside button:has-text("More")',
-                'nav button:has-text("More")',
-                '[data-testid*="sidebar"] button:has-text("More")',
-                'aside [role="button"]:has-text("More")',
-                'nav [role="button"]:has-text("More")',
-            ],
+            PROJECT_MORE_BUTTON_SELECTORS,
             label='project-more-button',
             timeout_ms=800,
         )
@@ -3096,11 +3183,17 @@ class ChatGPTBrowserClient:
                     const normalizeText = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
                     const normalizeMore = value => normalizeText(value).replace(/^[^a-z]+/i, '');
                     const roots = Array.from(document.querySelectorAll('aside, nav, [data-testid*="sidebar"], [class*="sidebar"], [class*="Sidebar"]'));
+                    const isVisible = element => {
+                        if (!(element instanceof HTMLElement)) return false;
+                        const style = window.getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                    };
                     for (const root of roots) {
-                        for (const control of Array.from(root.querySelectorAll('button, [role="button"], summary'))) {
+                        for (const control of Array.from(root.querySelectorAll('[data-sidebar-item="true"], button, [role="button"], summary, a, [tabindex]'))) {
                             const text = normalizeMore(control.innerText || control.textContent || control.getAttribute('aria-label') || '');
                             if (text !== 'more') continue;
-                            if (control instanceof HTMLElement && control.offsetParent === null) continue;
+                            if (!isVisible(control)) continue;
                             control.click();
                             return true;
                         }
@@ -3322,7 +3415,7 @@ class ChatGPTBrowserClient:
                             push(node.getAttribute?.('aria-label'));
                             push(node.textContent);
                         }
-                        const container = anchor.closest('[data-sidebar-item], li, [role="treeitem"], [role="listitem"], [class*="sidebar"]');
+                        const container = anchor.closest('[data-sidebar-item], li, [role="treeitem"], [role="listitem"], [class*="sidebar"], [role="menu"], [role="dialog"], [role="listbox"], [data-radix-popper-content-wrapper], [data-radix-menu-content], [popover]');
                         push(container?.getAttribute?.('aria-label'));
                         push(container?.textContent);
                         return parts;
@@ -5771,6 +5864,8 @@ class ChatGPTBrowserClient:
             url = getattr(resp, "url", "")
             if status == 429 and self._is_conversation_history_url(url):
                 self._note_conversation_history_rate_limit(trigger="response", url=url, status=status)
+            if self._is_snorlax_sidebar_url(url):
+                self._log("browser-response", "snorlax sidebar response", status=status, url=url)
             if self.config.debug and status and status >= 400:
                 self._log("browser-response", "http error response", status=status, url=url)
 
@@ -5982,10 +6077,10 @@ class ChatGPTBrowserClient:
             """
             () => {
               const matches = [];
-              const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, span, summary'));
+              const nodes = Array.from(document.querySelectorAll('[data-sidebar-item="true"], button, [role="button"], a, div, span, summary, [tabindex]'));
               for (const el of nodes) {
                 const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-                if (!/more/i.test(text)) continue;
+                if (!/\bmore\b/i.test(text)) continue;
                 const rect = el.getBoundingClientRect();
                 if (!(rect.width && rect.height)) continue;
                 matches.push({
@@ -5993,6 +6088,8 @@ class ChatGPTBrowserClient:
                   tag: el.tagName.toLowerCase(),
                   role: el.getAttribute("role"),
                   aria_label: el.getAttribute("aria-label"),
+                  data_sidebar_item: el.getAttribute('data-sidebar-item'),
+                  aria_haspopup: el.getAttribute('aria-haspopup'),
                   top: rect.top,
                   left: rect.left,
                   width: rect.width,
