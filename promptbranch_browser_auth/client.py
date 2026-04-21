@@ -1012,7 +1012,15 @@ class ChatGPTBrowserClient:
 
         current_project_url = self._project_home_url_from_url(self.config.project_url)
         collected: list[dict[str, str]] = []
+        try:
+            collected = await self._collect_all_projects_via_snorlax_sidebar(page, label='project-list')
+        except Exception as exc:
+            self._log('project-list', 'snorlax sidebar enumeration failed; falling back to DOM enumeration', error=str(exc))
+            collected = []
+
         for attempt in range(3):
+            if collected:
+                break
             prep = await self._prepare_project_discovery(page, label='project-list', attempt=attempt)
 
             discovered = await self._collect_all_sidebar_projects(page, label="project-list")
@@ -1200,7 +1208,11 @@ class ChatGPTBrowserClient:
                 break
             await page.wait_for_timeout(wait_ms)
 
-        helper_projects = await self._collect_all_sidebar_projects(page, label="project-list-debug")
+        try:
+            helper_projects = await self._collect_all_projects_via_snorlax_sidebar(page, label="project-list-debug")
+        except Exception as exc:
+            self._log('project-list-debug', 'snorlax sidebar enumeration failed during debug; falling back to DOM enumeration', error=str(exc))
+            helper_projects = await self._collect_all_sidebar_projects(page, label="project-list-debug")
         final_state = await capture("99-final")
         current_project_url = self._project_home_url_from_url(self.config.project_url)
         normalized_helper: list[dict[str, Any]] = []
@@ -3047,6 +3059,144 @@ class ChatGPTBrowserClient:
     def _is_snorlax_sidebar_url(self, url: str) -> bool:
         return '/backend-api/gizmos/snorlax/sidebar' in (url or '').lower()
 
+    def _project_url_from_short_url(self, short_url: str) -> Optional[str]:
+        slug = re.sub(r'^/+', '', str(short_url or '').strip())
+        if not slug:
+            return None
+        if slug.startswith('g/'):
+            slug = slug[2:]
+        if slug.startswith('g-p-'):
+            return urljoin(self._chatgpt_home_url(), f'g/{slug}/project')
+        return None
+
+    def _extract_projects_from_snorlax_sidebar_payload(self, payload: Any) -> tuple[list[dict[str, str]], Optional[str]]:
+        if not isinstance(payload, dict):
+            return [], None
+
+        items = payload.get('items')
+        if not isinstance(items, list):
+            return [], None
+
+        extracted: list[dict[str, str]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            gizmo = item.get('gizmo')
+            if isinstance(gizmo, dict):
+                gizmo = gizmo.get('gizmo', gizmo)
+            if not isinstance(gizmo, dict):
+                continue
+
+            short_url = gizmo.get('short_url') or gizmo.get('shortUrl') or gizmo.get('slug') or gizmo.get('id')
+            project_url = self._project_url_from_short_url(str(short_url or ''))
+            if not project_url:
+                continue
+
+            display = gizmo.get('display') if isinstance(gizmo.get('display'), dict) else {}
+            name = (display.get('name') or gizmo.get('display_name') or gizmo.get('name') or '').strip()
+            if not name:
+                continue
+
+            extracted.append({'name': name, 'url': project_url})
+
+        cursor = payload.get('cursor')
+        if cursor is not None:
+            cursor = str(cursor).strip() or None
+        return self._dedupe_projects(extracted), cursor
+
+    async def _fetch_snorlax_sidebar_page(
+        self,
+        page: Any,
+        *,
+        cursor: Optional[str] = None,
+        limit: int = 20,
+        conversations_per_gizmo: int = 5,
+    ) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            async ({ cursor, limit, conversationsPerGizmo }) => {
+                const base = new URL('/backend-api/gizmos/snorlax/sidebar', window.location.origin);
+                base.searchParams.set('owned_only', 'true');
+                base.searchParams.set('conversations_per_gizmo', String(conversationsPerGizmo));
+                base.searchParams.set('limit', String(limit));
+                if (cursor) {
+                    base.searchParams.set('cursor', cursor);
+                }
+                const response = await fetch(base.toString(), {
+                    credentials: 'include',
+                    headers: { 'accept': 'application/json' },
+                });
+                const text = await response.text();
+                const headers = {};
+                for (const [key, value] of response.headers.entries()) {
+                    headers[key] = value;
+                }
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    url: response.url || base.toString(),
+                    text,
+                    headers,
+                };
+            }
+            ''',
+            {
+                'cursor': cursor,
+                'limit': limit,
+                'conversationsPerGizmo': conversations_per_gizmo,
+            },
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError('Unexpected snorlax sidebar response shape')
+        text_body = str(result.get('text') or '')
+        parsed_payload: Any = None
+        if text_body:
+            parsed_payload = json.loads(text_body)
+        return {
+            'ok': bool(result.get('ok')),
+            'status': result.get('status'),
+            'url': result.get('url'),
+            'headers': result.get('headers') if isinstance(result.get('headers'), dict) else {},
+            'payload': parsed_payload,
+            'text': text_body,
+        }
+
+    async def _collect_all_projects_via_snorlax_sidebar(
+        self,
+        page: Any,
+        *,
+        label: str,
+        max_pages: int = 25,
+    ) -> list[dict[str, str]]:
+        collected: list[dict[str, str]] = []
+        cursor: Optional[str] = None
+        seen_cursors: set[str] = set()
+
+        for page_index in range(max_pages):
+            response = await self._fetch_snorlax_sidebar_page(page, cursor=cursor)
+            payload = response.get('payload')
+            projects, next_cursor = self._extract_projects_from_snorlax_sidebar_payload(payload)
+            collected = self._dedupe_projects([*collected, *projects])
+            self._log(
+                label,
+                'collected projects via snorlax sidebar',
+                page=page_index + 1,
+                status=response.get('status'),
+                discovered_count=len(projects),
+                total_count=len(collected),
+                cursor=cursor,
+                next_cursor=next_cursor,
+            )
+            if not next_cursor:
+                break
+            if next_cursor in seen_cursors:
+                self._log(label, 'stopping snorlax pagination because cursor repeated', repeated_cursor=next_cursor)
+                break
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+
+        return collected
+
     async def _determine_project_discovery_mode(self, page: Any) -> str:
         has_project_entrypoint = bool(
             await self._find_visible_locator(
@@ -3333,7 +3483,31 @@ class ChatGPTBrowserClient:
 
         normalized_name = self._normalize_project_name(name)
         collected: list[dict[str, str]] = []
+        try:
+            collected = await self._collect_all_projects_via_snorlax_sidebar(page, label='project-resolve')
+        except Exception as exc:
+            self._log('project-resolve', 'snorlax sidebar enumeration failed; falling back to DOM enumeration', error=str(exc))
+            collected = []
+
         for attempt in range(3):
+            matches = [project for project in collected if self._normalize_project_name(project.get('name', '')) == normalized_name]
+            if len(matches) == 1:
+                return {
+                    'project_url': matches[0]['url'],
+                    'match_count': 1,
+                    'matches': matches,
+                    'matched_by': 'exact_name',
+                    'error': None,
+                }
+            if len(matches) > 1:
+                return {
+                    'project_url': None,
+                    'match_count': len(matches),
+                    'matches': matches,
+                    'matched_by': None,
+                    'error': 'ambiguous_project_name',
+                }
+
             prep = await self._prepare_project_discovery(page, label='project-resolve', attempt=attempt)
 
             discovered = await self._collect_all_sidebar_projects(page, label='project-resolve')
