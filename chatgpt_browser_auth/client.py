@@ -1356,9 +1356,15 @@ class ChatGPTBrowserClient:
             raise RuntimeError('A project must be selected before listing chats')
         await self._goto(page, project_url, label='chat-list-home')
         await self._open_project_chats_tab(page)
+        try:
+            snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-snorlax')
+        except Exception as exc:
+            self._log('chat-list', 'snorlax project chat enumeration failed; continuing with history and DOM sources', error=repr(exc), project_id=project_id)
+            snorlax_chats = []
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-        chats = self._merge_project_chat_lists(history_chats, dom_chats)
+        chats = self._merge_project_chat_lists(history_chats, snorlax_chats)
+        chats = self._merge_project_chat_lists(chats, dom_chats)
         result = {
             'ok': True,
             'action': 'list_chats',
@@ -1369,7 +1375,7 @@ class ChatGPTBrowserClient:
             'chats': chats,
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), dom_count=len(dom_chats))
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats))
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result
@@ -3399,6 +3405,123 @@ class ChatGPTBrowserClient:
             cursor = next_cursor
 
         return collected
+
+    def _extract_project_chats_from_snorlax_sidebar_payload(
+        self,
+        payload: Any,
+        *,
+        project_id: str,
+        project_url: Optional[str] = None,
+    ) -> tuple[list[dict[str, Any]], Optional[str], bool]:
+        if not isinstance(payload, dict):
+            return [], None, False
+
+        items = payload.get('items')
+        if not isinstance(items, list):
+            return [], None, False
+
+        normalized_project_id = (project_id or '').strip().lower()
+        chats: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        found_project = False
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            gizmo = item.get('gizmo')
+            if isinstance(gizmo, dict):
+                gizmo = gizmo.get('gizmo', gizmo)
+            if not isinstance(gizmo, dict):
+                continue
+            candidate_project_id = str(gizmo.get('id') or gizmo.get('gizmo_id') or gizmo.get('gizmoId') or '').strip().lower()
+            if normalized_project_id and candidate_project_id != normalized_project_id:
+                continue
+            found_project = True
+            conversations = item.get('conversations') if isinstance(item.get('conversations'), dict) else {}
+            raw_items = conversations.get('items') if isinstance(conversations.get('items'), list) else []
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                conversation_id = str(raw.get('id') or '').strip()
+                if not conversation_id or conversation_id in seen_ids:
+                    continue
+                seen_ids.add(conversation_id)
+                title = re.sub(r'\s+', ' ', str(raw.get('title') or '')).strip() or '(untitled)'
+                conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url)
+                if not conversation_url:
+                    continue
+                chats.append({
+                    'id': conversation_id,
+                    'title': title,
+                    'conversation_url': conversation_url,
+                    'create_time': raw.get('create_time') or raw.get('createTime'),
+                    'update_time': raw.get('update_time') or raw.get('updateTime'),
+                })
+            break
+
+        cursor = payload.get('cursor')
+        if cursor is not None:
+            cursor = str(cursor).strip() or None
+        return chats, cursor, found_project
+
+    async def _collect_project_chats_via_snorlax_sidebar(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        max_pages: int = 25,
+        limit: int = 20,
+        conversations_per_gizmo: int = 100,
+    ) -> list[dict[str, Any]]:
+        project_id = self._extract_project_id_from_url(project_url)
+        if not project_id:
+            return []
+
+        cursor: Optional[str] = None
+        seen_cursors: set[str] = set()
+        collected: list[dict[str, Any]] = []
+
+        for page_index in range(max_pages):
+            response = await self._fetch_snorlax_sidebar_page(
+                page,
+                cursor=cursor,
+                limit=limit,
+                conversations_per_gizmo=conversations_per_gizmo,
+            )
+            status = response.get('status')
+            if status != 200:
+                if collected:
+                    self._log(label, 'stopping project chat snorlax pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected))
+                    break
+                raise RuntimeError(f'snorlax sidebar returned unexpected status {status}')
+            payload = response.get('payload')
+            page_chats, next_cursor, found_project = self._extract_project_chats_from_snorlax_sidebar_payload(
+                payload,
+                project_id=project_id,
+                project_url=project_url,
+            )
+            collected = self._merge_project_chat_lists(collected, page_chats)
+            self._log(
+                label,
+                'collected project chats via snorlax sidebar',
+                page=page_index + 1,
+                status=status,
+                discovered_count=len(page_chats),
+                total_count=len(collected),
+                found_project=found_project,
+                cursor=cursor,
+                next_cursor=next_cursor,
+                used_authorization=response.get('used_authorization'),
+            )
+            if found_project:
+                break
+            if not next_cursor or next_cursor in seen_cursors:
+                break
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        return collected
+
 
     def _extract_project_chats_from_conversations_payload(
         self,
