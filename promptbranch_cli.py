@@ -36,7 +36,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.86"
+CLI_VERSION = "0.0.87"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1629,7 +1629,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
     test_suite.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
     test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
-    test_suite.add_argument("--step-delay-seconds", type=float, default=5.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    test_suite.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     test_suite.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_suite.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_suite.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")

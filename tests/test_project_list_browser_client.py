@@ -571,3 +571,54 @@ def test_extract_project_chats_from_conversations_payload_requires_matching_proj
             "update_time": None,
         }
     ]
+
+
+def test_is_conversation_history_url_accepts_detail_endpoint(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._is_conversation_history_url('https://chatgpt.com/backend-api/conversation/abc123') is True
+    assert client._is_conversation_history_url('https://chatgpt.com/backend-api/conversations?offset=0') is True
+    assert client._is_conversation_history_url('https://chatgpt.com/backend-api/gizmos/snorlax/sidebar') is False
+
+
+def test_wait_for_visible_locator_checks_rate_limit_modal_between_polls(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.waits: list[int] = []
+
+        async def wait_for_timeout(self, ms):
+            self.waits.append(ms)
+            return None
+
+    page = DummyPage()
+    calls: list[str] = []
+    finds = iter([None, object()])
+
+    async def fake_wait(page, *, label: str, timeout_ms: int | None = None):
+        calls.append(label)
+        return False
+
+    async def fake_find(page, selectors, *, label: str, timeout_ms: int = 1500):
+        return next(finds)
+
+    client._wait_for_rate_limit_modal_to_clear = fake_wait
+    client._find_visible_locator = fake_find
+
+    import asyncio
+
+    locator = asyncio.run(
+        client._wait_for_visible_locator(
+            page,
+            ['button:has-text("Create")'],
+            label='project-create-button',
+            total_timeout_ms=2000,
+            poll_interval_ms=25,
+            visibility_timeout_ms=10,
+        )
+    )
+
+    assert locator is not None
+    assert calls == ['project-create-button-wait', 'project-create-button-wait']
+    assert page.waits == [25]

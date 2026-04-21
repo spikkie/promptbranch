@@ -31,8 +31,8 @@ class ChatGPTBrowserConfig:
     filter_no_sandbox: bool = True
     extra_browser_args: Sequence[str] = field(default_factory=tuple)
     min_context_spacing_seconds: float = 8.0
-    conversation_history_rate_limit_cooldown_seconds: float = 120.0
-    rate_limit_modal_wait_timeout_ms: int = 120_000
+    conversation_history_rate_limit_cooldown_seconds: float = 180.0
+    rate_limit_modal_wait_timeout_ms: int = 180_000
     rate_limit_modal_poll_interval_ms: int = 1_000
     clear_singleton_locks: bool = False
 
