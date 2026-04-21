@@ -21,6 +21,7 @@ from promptbranch_browser_auth.exceptions import (
     UnsupportedOperationError,
 )
 from promptbranch_service_client import ChatGPTServiceClient
+from promptbranch_test_suite import run_test_suite_async
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -35,7 +36,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.83"
+CLI_VERSION = "0.0.84"
 COMMANDS = {
     "login-check",
     "ask",
@@ -63,6 +64,7 @@ COMMANDS = {
     "use",
     "completion",
     "version",
+    "test-suite",
 }
 GLOBAL_OPTION_HAS_VALUE = {
     "--project-url": True,
@@ -1179,6 +1181,48 @@ def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
     return ConversationStateStore(args.profile_dir)
 
 
+async def cmd_test_suite(args: argparse.Namespace) -> int:
+    payload = {
+        'project_url': args.project_url,
+        'email': args.email,
+        'password': args.password,
+        'password_file': args.password_file,
+        'profile_dir': args.profile_dir,
+        'headless': args.headless,
+        'use_playwright': args.use_playwright,
+        'browser_channel': args.browser_channel,
+        'enable_fedcm': args.enable_fedcm,
+        'keep_no_sandbox': args.keep_no_sandbox,
+        'max_retries': args.max_retries,
+        'retry_backoff_seconds': args.retry_backoff_seconds,
+        'debug': args.debug,
+        'keep_open': args.keep_open,
+        'keep_project': args.keep_project,
+        'step_delay_seconds': args.step_delay_seconds,
+        'skip': list(args.skip),
+        'only': list(args.only),
+        'strict_remove_ui': args.strict_remove_ui,
+        'project_name': args.project_name,
+        'project_name_prefix': args.project_name_prefix,
+        'run_id': args.run_id,
+        'memory_mode': args.memory_mode,
+        'link_url': args.link_url,
+        'ask_prompt': args.ask_prompt,
+        'json_out': args.json_out,
+        'project_list_debug_scroll_rounds': args.project_list_debug_scroll_rounds,
+        'project_list_debug_wait_ms': args.project_list_debug_wait_ms,
+        'project_list_debug_manual_pause': args.project_list_debug_manual_pause,
+        'service_base_url': args.service_base_url,
+        'service_token': args.service_token,
+        'service_timeout_seconds': args.service_timeout_seconds,
+        'clear_singleton_locks': args.clear_singleton_locks,
+    }
+    summary = await run_test_suite_async(**payload)
+    if args.json or True:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0 if summary.get('ok') else 1
+
+
 async def cmd_state(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     if args.json:
@@ -1581,6 +1625,26 @@ def make_parser() -> argparse.ArgumentParser:
     completion = subparsers.add_parser("completion", help="Emit shell completion script for bash, zsh, or fish.")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
 
+    test_suite = subparsers.add_parser("test-suite", help="Run the standard end-to-end smoke suite for daily verification.")
+    test_suite.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
+    test_suite.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
+    test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
+    test_suite.add_argument("--step-delay-seconds", type=float, default=5.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    test_suite.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
+    test_suite.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
+    test_suite.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
+    test_suite.add_argument("--project-name", help="Explicit project name to use. Defaults to a generated unique name.")
+    test_suite.add_argument("--project-name-prefix", default="itest-promptbranch")
+    test_suite.add_argument("--run-id", help="Optional run identifier used when generating names.")
+    test_suite.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
+    test_suite.add_argument("--link-url", default="https://example.com/")
+    test_suite.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    test_suite.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
+    test_suite.add_argument("--project-list-debug-scroll-rounds", type=int, default=12)
+    test_suite.add_argument("--project-list-debug-wait-ms", type=int, default=350)
+    test_suite.add_argument("--project-list-debug-manual-pause", action="store_true")
+    test_suite.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
+
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--file", help="Optional file to upload with the prompt.")
@@ -1656,6 +1720,8 @@ async def _async_main(args: argparse.Namespace) -> int:
     if args.command == "version":
         print(f"promptbranch {CLI_VERSION}")
         return 0
+    if args.command == "test-suite":
+        return await cmd_test_suite(args)
     if args.command == "ask":
         return await cmd_ask(backend, args)
     if args.command == "shell":

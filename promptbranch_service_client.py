@@ -68,6 +68,9 @@ class ChatGPTServiceClient:
     def healthz(self) -> dict[str, Any]:
         return self._json(self._client.get("/healthz"))
 
+    def run_test_suite(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._json(self._client.post("/v1/test-suite/run", json=payload))
+
     def login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
         return self._json(self._client.post("/v1/login-check", json={"keep_open": keep_open}))
 

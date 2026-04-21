@@ -518,7 +518,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.83"
+    assert captured.out.strip() == "promptbranch 0.0.84"
 
 
 def test_main_chat_list_json_emits_chat_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -643,3 +643,19 @@ def test_main_chat_show_json_fetches_selected_chat(monkeypatch, capsys, tmp_path
     assert exit_code == 0
     assert payload["conversation_id"] == "abc"
     assert payload["turns"][0]["text"] == "hello"
+
+
+def test_test_suite_command_dispatches_to_runner(monkeypatch, capsys) -> None:
+    async def fake_run_test_suite_async(**kwargs):
+        assert kwargs['keep_project'] is True
+        assert kwargs['only'] == ['project_list_debug']
+        return {'ok': True, 'action': 'test_suite'}
+
+    monkeypatch.setattr('promptbranch_cli.run_test_suite_async', fake_run_test_suite_async)
+
+    from promptbranch_cli import main
+
+    rc = main(['test-suite', '--keep-project', '--only', 'project_list_debug'])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload['action'] == 'test_suite'

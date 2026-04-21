@@ -212,3 +212,17 @@ def test_get_chat_posts_expected_json() -> None:
         payload = client.get_chat("https://chatgpt.com/g/demo/c/123", project_url="https://chatgpt.com/g/demo/project")
 
     assert payload["conversation_id"] == "123"
+
+
+def test_run_test_suite_posts_expected_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/test-suite/run"
+        payload = json.loads(request.read().decode("utf-8"))
+        assert payload == {"keep_project": True, "only": ["project_list_debug"]}
+        return httpx.Response(200, json={"ok": True, "steps": []})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.run_test_suite({"keep_project": True, "only": ["project_list_debug"]})
+
+    assert payload["ok"] is True
