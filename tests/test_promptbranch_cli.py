@@ -517,4 +517,4 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.80"
+    assert captured.out.strip() == "promptbranch 0.0.81"
