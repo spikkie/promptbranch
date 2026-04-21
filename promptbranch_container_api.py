@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from promptbranch_automation import ChatGPTAutomationService, ChatGPTAutomationSettings
+from promptbranch_test_suite import run_test_suite_async
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -72,6 +74,42 @@ class ChatGetRequest(BaseModel):
     project_url: Optional[str] = None
 
 
+class TestSuiteRunRequest(BaseModel):
+    project_url: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    password_file: Optional[str] = None
+    profile_dir: Optional[str] = None
+    headless: Optional[bool] = None
+    use_playwright: Optional[bool] = None
+    browser_channel: Optional[str] = None
+    enable_fedcm: Optional[bool] = None
+    keep_no_sandbox: Optional[bool] = None
+    max_retries: Optional[int] = None
+    retry_backoff_seconds: Optional[float] = None
+    debug: Optional[bool] = None
+    keep_open: Optional[bool] = None
+    keep_project: bool = False
+    step_delay_seconds: Optional[float] = None
+    skip: list[str] = Field(default_factory=list)
+    only: list[str] = Field(default_factory=list)
+    strict_remove_ui: bool = False
+    project_name: Optional[str] = None
+    project_name_prefix: Optional[str] = None
+    run_id: Optional[str] = None
+    memory_mode: Optional[str] = None
+    link_url: Optional[str] = None
+    ask_prompt: Optional[str] = None
+    json_out: Optional[str] = None
+    project_list_debug_scroll_rounds: Optional[int] = None
+    project_list_debug_wait_ms: Optional[int] = None
+    project_list_debug_manual_pause: bool = False
+    service_base_url: Optional[str] = None
+    service_token: Optional[str] = None
+    service_timeout_seconds: Optional[float] = None
+    clear_singleton_locks: Optional[bool] = None
+
+
 class ServiceInfo(BaseModel):
     ok: bool = True
     service: str
@@ -84,7 +122,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.83"
+SERVICE_VERSION = "0.0.84"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -116,6 +154,83 @@ app = FastAPI(
     description="Reusable Docker-first service for browser-driven ChatGPT automation.",
 )
 protected = APIRouter(prefix="/v1")
+
+
+def _test_suite_frontend_html() -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>promptbranch test suite</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 2rem; max-width: 1100px; }}
+    textarea {{ width: 100%; min-height: 22rem; font-family: ui-monospace, monospace; }}
+    input, button, select {{ font: inherit; padding: 0.45rem 0.6rem; margin: 0.2rem 0; }}
+    .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }}
+    .card {{ border: 1px solid #ddd; border-radius: 10px; padding: 1rem; }}
+    .muted {{ color: #666; }}
+    code {{ background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }}
+  </style>
+</head>
+<body>
+  <h1>promptbranch test suite</h1>
+  <p class="muted">Run the end-to-end smoke suite from localhost. This page works both when the service runs locally and when it runs in Docker on <code>http://localhost:8000</code>.</p>
+  <div class="grid">
+    <div class="card">
+      <h2>Run</h2>
+      <label>Bearer token (optional)<br><input id="token" type="password" placeholder="Only needed when CHATGPT_SERVICE_TOKEN is set"></label><br>
+      <label>Project URL<br><input id="project_url" type="text" value="{_DEFAULT_PROJECT_URL}"></label><br>
+      <label>Profile dir<br><input id="profile_dir" type="text" placeholder="Use server default when blank"></label><br>
+      <label>Email<br><input id="email" type="text" placeholder="Optional override"></label><br>
+      <label>Password file<br><input id="password_file" type="text" placeholder="Optional override"></label><br>
+      <label><input id="headless" type="checkbox"> Headless</label><br>
+      <label><input id="use_playwright" type="checkbox"> Use Playwright instead of Patchright</label><br>
+      <label><input id="keep_project" type="checkbox"> Keep project after run</label><br>
+      <label><input id="project_list_debug" type="checkbox"> Include project_list_debug step</label><br>
+      <button id="run">Run test suite</button>
+      <p class="muted">Recommended for daily validation: leave <code>keep project</code> off and run against your normal profile.</p>
+    </div>
+    <div class="card">
+      <h2>How to use</h2>
+      <p>Local frontend:</p>
+      <pre>promptbranch-ui</pre>
+      <p>Docker frontend:</p>
+      <pre>./run_chatgpt_service.sh
+open http://localhost:8000/ui/test-suite</pre>
+      <p>CLI daily run:</p>
+      <pre>promptbranch test-suite --json</pre>
+    </div>
+  </div>
+  <h2>Result</h2>
+  <textarea id="result" spellcheck="false" placeholder="JSON result will appear here"></textarea>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    $('run').addEventListener('click', async () => {{
+      $('result').value = 'Running test suite...';
+      const payload = {{
+        project_url: $('project_url').value || undefined,
+        profile_dir: $('profile_dir').value || undefined,
+        email: $('email').value || undefined,
+        password_file: $('password_file').value || undefined,
+        headless: $('headless').checked,
+        use_playwright: $('use_playwright').checked,
+        keep_project: $('keep_project').checked,
+        only: $('project_list_debug').checked ? ['project_list_debug'] : [],
+      }};
+      const headers = {{ 'Content-Type': 'application/json' }};
+      if ($('token').value) headers['Authorization'] = 'Bearer ' + $('token').value;
+      try {{
+        const response = await fetch('/v1/test-suite/run', {{ method: 'POST', headers, body: JSON.stringify(payload) }});
+        const text = await response.text();
+        try {{ $('result').value = JSON.stringify(JSON.parse(text), null, 2); }} catch {{ $('result').value = text; }}
+      }} catch (error) {{
+        $('result').value = String(error);
+      }}
+    }});
+  </script>
+</body>
+</html>"""
 
 
 def _service_for(project_url: Optional[str]) -> ChatGPTAutomationService:
@@ -156,6 +271,16 @@ async def require_service_token(authorization: Optional[str] = Header(default=No
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid bearer token",
         )
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/ui/test-suite")
+
+
+@app.get("/ui/test-suite", response_class=HTMLResponse, include_in_schema=False)
+async def test_suite_frontend() -> HTMLResponse:
+    return HTMLResponse(_test_suite_frontend_html())
 
 
 @app.get("/healthz", response_model=ServiceInfo)
@@ -241,6 +366,14 @@ async def get_chat(payload: ChatGetRequest) -> dict:
             conversation_url=payload.conversation_url,
             keep_open=payload.keep_open,
         )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/test-suite/run", dependencies=[Depends(require_service_token)])
+async def run_test_suite(payload: TestSuiteRunRequest) -> dict:
+    try:
+        return await run_test_suite_async(**payload.model_dump())
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 
@@ -351,3 +484,16 @@ async def remove_project_source(payload: ProjectSourceRemoveRequest) -> dict:
 
 
 app.include_router(protected)
+
+
+def main() -> int:
+    import uvicorn
+
+    host = os.getenv("PROMPTBRANCH_UI_HOST", os.getenv("CHATGPT_SERVICE_HOST", "127.0.0.1"))
+    port = int(os.getenv("PROMPTBRANCH_UI_PORT", os.getenv("CHATGPT_SERVICE_PORT", "8000")))
+    uvicorn.run("promptbranch_container_api:app", host=host, port=port, reload=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
