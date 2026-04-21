@@ -549,6 +549,24 @@ def _same_project(left: Optional[str], right: Optional[str]) -> bool:
     return (left or "") == (right or "")
 
 
+def _normalize_expected_missing_resolve_result(result: Any) -> Any:
+    if not isinstance(result, dict):
+        return result
+    match_count = result.get("match_count")
+    error = str(result.get("error") or "")
+    if match_count != 0:
+        return result
+    if not (result.get("ok") is False and error == "project_not_found"):
+        return result
+    normalized = dict(result)
+    normalized["service_ok"] = normalized.get("ok")
+    normalized["ok"] = True
+    normalized["status"] = "expected_missing"
+    normalized["expected_missing"] = True
+    normalized["message"] = "Project does not exist yet; this is expected before ensure/create."
+    return normalized
+
+
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     selection = resolve_step_selection(
         only_values=args.only,
@@ -621,15 +639,18 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["project_id"] = project_id
 
         if should_run("project_resolve_before_create"):
-            initial_resolve = await _run_step(
+            initial_resolve_raw = await _run_step(
                 steps,
                 "project_resolve_before_create",
                 base_service.resolve_project(name=project_name, keep_open=args.keep_open),
                 step_delay_seconds=args.step_delay_seconds,
             )
-            _require(initial_resolve.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve}")
+            initial_resolve = _normalize_expected_missing_resolve_result(initial_resolve_raw)
+            if steps and steps[-1].name == "project_resolve_before_create":
+                steps[-1].details = initial_resolve
+            _require(initial_resolve_raw.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve_raw}")
             _require(
-                initial_resolve.get("match_count") == 0 or bool(args.project_name),
+                initial_resolve_raw.get("match_count") == 0 or bool(args.project_name),
                 (
                     "generated project name already exists before test start; refusing to continue because the run would not be isolated. "
                     "Pass --project-name only when you intentionally want to reuse an existing project."
