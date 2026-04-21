@@ -3394,8 +3394,11 @@ class ChatGPTBrowserClient:
                 or item.get('projectId')
                 or ''
             ).strip().lower()
-            if normalized_project_id and candidate_project_id and candidate_project_id != normalized_project_id:
-                continue
+            if normalized_project_id:
+                if not candidate_project_id:
+                    continue
+                if candidate_project_id != normalized_project_id:
+                    continue
             conversation_id = str(item.get('id') or '').strip()
             if not conversation_id or conversation_id in seen_ids:
                 continue

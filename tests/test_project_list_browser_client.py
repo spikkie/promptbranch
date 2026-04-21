@@ -448,3 +448,41 @@ def test_list_projects_operation_prefers_snorlax_sidebar_enumeration(tmp_path: P
     assert result["count"] == 2
     assert [item["name"] for item in result["projects"]] == ["Alpha", "Current"]
     assert any(item["is_current"] for item in result["projects"])
+
+
+def test_extract_project_chats_from_conversations_payload_requires_matching_project_id(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    payload = {
+        "items": [
+            {
+                "id": "chat-project-1",
+                "title": "Project chat",
+                "conversation_template_id": "g-p-current",
+            },
+            {
+                "id": "chat-global-1",
+                "title": "Global chat without project id",
+            },
+            {
+                "id": "chat-other-1",
+                "title": "Other project chat",
+                "conversation_template_id": "g-p-other",
+            },
+        ]
+    }
+
+    chats = client._extract_project_chats_from_conversations_payload(
+        payload,
+        project_id="g-p-current",
+        project_url="https://chatgpt.com/g/g-p-current-demo/project",
+    )
+
+    assert chats == [
+        {
+            "id": "chat-project-1",
+            "title": "Project chat",
+            "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-project-1",
+            "create_time": None,
+            "update_time": None,
+        }
+    ]
