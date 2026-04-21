@@ -110,6 +110,11 @@ PROJECT_SOURCES_TAB_SELECTORS = [
     'button:has-text("Sources")',
     'a:has-text("Sources")',
 ]
+PROJECT_CHATS_TAB_SELECTORS = [
+    '[role="tab"]:has-text("Chats")',
+    'button:has-text("Chats")',
+    'a:has-text("Chats")',
+]
 PROJECT_SOURCES_PANEL_SELECTORS = [
     '[role="tabpanel"][data-state="active"]',
     '[role="tabpanel"]',
@@ -1320,7 +1325,10 @@ class ChatGPTBrowserClient:
         if not project_id or not project_slug:
             raise RuntimeError('A project must be selected before listing chats')
         await self._goto(page, project_url, label='chat-list-home')
-        chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+        await self._open_project_chats_tab(page)
+        dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
+        history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+        chats = self._merge_project_chat_lists(history_chats, dom_chats)
         result = {
             'ok': True,
             'action': 'list_chats',
@@ -1331,7 +1339,7 @@ class ChatGPTBrowserClient:
             'chats': chats,
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id)
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), dom_count=len(dom_chats))
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result
@@ -4385,6 +4393,183 @@ class ChatGPTBrowserClient:
             return best_card
         return None
 
+
+    async def _open_project_chats_tab(self, page: Any) -> None:
+        tab = await self._wait_for_visible_locator(
+            page,
+            PROJECT_CHATS_TAB_SELECTORS,
+            label="project-chats-tab",
+            total_timeout_ms=7_500,
+        )
+        if tab is None:
+            self._log("chat-list", "project chats tab not found; continuing with current surface", current_url=await self._safe_page_url(page))
+            return
+        try:
+            await self._click_locator_with_fallback(
+                tab,
+                label="project-chats-tab",
+                timeout_ms=5_000,
+            )
+            await page.wait_for_timeout(500)
+        except Exception as exc:
+            self._log("chat-list", "project chats tab click failed; continuing", error=repr(exc), current_url=await self._safe_page_url(page))
+
+    def _merge_project_chat_lists(self, primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        by_id: dict[str, dict[str, Any]] = {}
+        for item in list(primary or []) + list(secondary or []):
+            if not isinstance(item, dict):
+                continue
+            chat_id = str(item.get('id') or '').strip()
+            if not chat_id:
+                continue
+            existing = by_id.get(chat_id)
+            if existing is None:
+                normalized = dict(item)
+                normalized.setdefault('title', '(untitled)')
+                by_id[chat_id] = normalized
+                merged.append(normalized)
+                continue
+            for key, value in item.items():
+                if value in (None, '', [], {}):
+                    continue
+                if key not in existing or existing.get(key) in (None, '', [], {}):
+                    existing[key] = value
+        return merged
+
+    async def _collect_project_chats_from_home_dom(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        max_scroll_rounds: int = 6,
+    ) -> list[dict[str, Any]]:
+        prefix = self._project_conversation_path_prefix() or self._project_conversation_path_prefix_from_url(project_url)
+        if not prefix:
+            return []
+
+        collected: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        stagnant_rounds = 0
+        for round_index in range(max_scroll_rounds):
+            snapshot = await page.evaluate(
+                r'''
+                ({ prefix }) => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const isScrollable = el => {
+                        if (!el || !isVisible(el)) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        const overflowY = (style.overflowY || '').toLowerCase();
+                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
+                        return el.scrollHeight > el.clientHeight + 24;
+                    };
+                    const rows = [];
+                    const seen = new Set();
+                    for (const anchor of Array.from(document.querySelectorAll('main a[href*="/c/"], [role="main"] a[href*="/c/"]'))) {
+                        if (!isVisible(anchor)) continue;
+                        const href = anchor.getAttribute('href') || '';
+                        const absolute = new URL(href, window.location.origin).toString();
+                        const path = new URL(absolute).pathname;
+                        if (!path.startsWith(prefix)) continue;
+                        const row = anchor.closest('li, article, [role="listitem"], a, div');
+                        const text = normalize((row || anchor).innerText || (row || anchor).textContent || '');
+                        if (!text) continue;
+                        const lines = text.split('\n').map(normalize).filter(Boolean);
+                        const id = path.split('/c/')[1]?.split(/[/?#]/)[0] || '';
+                        if (!id || seen.has(id)) continue;
+                        seen.add(id);
+                        rows.push({
+                            id,
+                            title: lines[0] || '(untitled)',
+                            preview: lines.slice(1).join(' '),
+                            conversation_url: absolute,
+                        });
+                    }
+                    const scrollables = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
+                    return {
+                        rows,
+                        scrollables: scrollables.map((el, index) => ({ index, top: el.scrollTop, height: el.clientHeight, scrollHeight: el.scrollHeight })),
+                    };
+                }
+                ''',
+                {'prefix': prefix},
+            )
+            rows = snapshot.get('rows') if isinstance(snapshot, dict) else []
+            new_count = 0
+            if isinstance(rows, list):
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    chat_id = str(row.get('id') or '').strip()
+                    if not chat_id or chat_id in seen_ids:
+                        continue
+                    seen_ids.add(chat_id)
+                    collected.append({
+                        'id': chat_id,
+                        'title': re.sub(r'\s+', ' ', str(row.get('title') or '')).strip() or '(untitled)',
+                        'conversation_url': str(row.get('conversation_url') or ''),
+                        'preview': re.sub(r'\s+', ' ', str(row.get('preview') or '')).strip() or None,
+                        'create_time': None,
+                        'update_time': None,
+                    })
+                    new_count += 1
+            self._log(label, 'collected project chats from home DOM', round=round_index + 1, discovered_count=new_count, total_count=len(collected))
+            if new_count == 0:
+                stagnant_rounds += 1
+            else:
+                stagnant_rounds = 0
+            if stagnant_rounds >= 2:
+                break
+            scrolled = await page.evaluate(
+                r'''
+                () => {
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const isScrollable = el => {
+                        if (!el || !isVisible(el)) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        const overflowY = (style.overflowY || '').toLowerCase();
+                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
+                        return el.scrollHeight > el.clientHeight + 24;
+                    };
+                    const candidates = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
+                    let moved = false;
+                    for (const el of candidates) {
+                        const before = el.scrollTop;
+                        el.scrollTop = Math.min(el.scrollTop + Math.max(el.clientHeight * 0.9, 200), el.scrollHeight);
+                        if (el.scrollTop > before + 1) moved = true;
+                    }
+                    if (!moved) {
+                        const before = window.scrollY;
+                        window.scrollTo(0, before + Math.max(window.innerHeight * 0.9, 300));
+                        moved = window.scrollY > before + 1;
+                    }
+                    return moved;
+                }
+                '''
+            )
+            if not scrolled:
+                break
+            await page.wait_for_timeout(400)
+        return collected
+
     async def _open_project_sources_tab(self, page: Any) -> None:
         tab = await self._wait_for_visible_locator(
             page,
@@ -5704,6 +5889,14 @@ class ChatGPTBrowserClient:
         path = parsed.path.rstrip("/")
         if path.endswith("/project"):
             return path[:-len("/project")] + "/c/"
+        return None
+
+
+    def _project_conversation_path_prefix_from_url(self, project_url: str) -> Optional[str]:
+        parsed = urlparse(project_url)
+        path = parsed.path.rstrip('/')
+        if path.endswith('/project'):
+            return path[:-len('/project')] + '/c/'
         return None
 
     async def _extract_project_conversation_links(self, page: Any) -> list[str]:
