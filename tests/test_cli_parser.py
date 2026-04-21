@@ -164,7 +164,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.82" in out
+    assert "0.0.83" in out
     assert "promptbranch" in out
 
 
@@ -172,3 +172,20 @@ def test_parser_accepts_version_subcommand() -> None:
     parser = make_parser()
     args = parser.parse_args(["version"])
     assert args.command == "version"
+
+
+def test_parser_accepts_chat_command_family_and_aliases() -> None:
+    parser = make_parser()
+    assert parser.parse_args(["chat-list"]).command == "chat-list"
+    assert parser.parse_args(["chats"]).command == "chats"
+    chat_use = parser.parse_args(["chat-use", "123abc", "--json"])
+    assert chat_use.command == "chat-use"
+    assert chat_use.target == "123abc"
+    assert chat_use.json is True
+    assert parser.parse_args(["use-chat", "123abc"]).command == "use-chat"
+    assert parser.parse_args(["chat-leave"]).command == "chat-leave"
+    assert parser.parse_args(["cq"]).command == "cq"
+    assert parser.parse_args(["chat-show"]).command == "chat-show"
+    assert parser.parse_args(["show"]).command == "show"
+    assert parser.parse_args(["chat-summarize"]).command == "chat-summarize"
+    assert parser.parse_args(["summarize"]).command == "summarize"

@@ -66,6 +66,12 @@ class ProjectSourceRemoveRequest(BaseModel):
     project_url: Optional[str] = None
 
 
+class ChatGetRequest(BaseModel):
+    conversation_url: str = Field(..., min_length=1)
+    keep_open: bool = False
+    project_url: Optional[str] = None
+
+
 class ServiceInfo(BaseModel):
     ok: bool = True
     service: str
@@ -78,7 +84,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.82"
+SERVICE_VERSION = "0.0.83"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -216,6 +222,25 @@ async def ask(
 async def list_projects(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:
         return await _service_for(project_url).list_projects(keep_open=keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.get("/chats", dependencies=[Depends(require_service_token)])
+async def list_project_chats(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
+    try:
+        return await _service_for(project_url).list_project_chats(keep_open=keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/chats/get", dependencies=[Depends(require_service_token)])
+async def get_chat(payload: ChatGetRequest) -> dict:
+    try:
+        return await _service_for(payload.project_url).get_chat(
+            conversation_url=payload.conversation_url,
+            keep_open=payload.keep_open,
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 

@@ -180,3 +180,35 @@ def test_list_projects_passes_project_url_query() -> None:
 
     assert payload["count"] == 1
     assert payload["projects"][0]["name"] == "Demo"
+
+
+def test_list_project_chats_passes_project_url_query() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/chats"
+        assert request.url.params["project_url"] == "https://chatgpt.com/g/demo/project"
+        return httpx.Response(200, json={"ok": True, "count": 1, "chats": [{"id": "abc", "title": "Demo chat"}]})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.list_project_chats(project_url="https://chatgpt.com/g/demo/project")
+
+    assert payload["count"] == 1
+    assert payload["chats"][0]["title"] == "Demo chat"
+
+
+def test_get_chat_posts_expected_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/chats/get"
+        payload = json.loads(request.read().decode("utf-8"))
+        assert payload == {
+            "conversation_url": "https://chatgpt.com/g/demo/c/123",
+            "keep_open": False,
+            "project_url": "https://chatgpt.com/g/demo/project",
+        }
+        return httpx.Response(200, json={"ok": True, "conversation_id": "123", "title": "Demo chat", "turn_count": 2, "turns": []})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.get_chat("https://chatgpt.com/g/demo/c/123", project_url="https://chatgpt.com/g/demo/project")
+
+    assert payload["conversation_id"] == "123"

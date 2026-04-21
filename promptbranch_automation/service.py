@@ -129,6 +129,36 @@ class ChatGPTAutomationService:
                 ),
             )
 
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Listing ChatGPT project chats")
+        async with self._lock:
+            return await self._with_retries(
+                "list_project_chats",
+                lambda: self._build_bot().list_project_chats(
+                    keep_open=keep_open,
+                ),
+            )
+
+    async def get_chat(
+        self,
+        *,
+        conversation_url: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Fetching ChatGPT chat transcript")
+        async with self._lock:
+            return await self._with_retries(
+                "get_chat",
+                lambda: self._build_bot().get_chat(
+                    conversation_url=conversation_url,
+                    keep_open=keep_open,
+                ),
+            )
+
     async def debug_project_list(
         self,
         *,

@@ -186,3 +186,18 @@ def test_main_completion_emits_bash_script(monkeypatch, capsys, tmp_path) -> Non
 
 
 
+
+
+def test_forget_conversation_preserves_project_state(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo-my-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
+    store.remember_project(project_url, project_name="my-project")
+    store.remember(project_url, conversation_url, project_name="my-project")
+
+    store.forget_conversation(project_url)
+
+    snapshot = store.snapshot(project_url)
+    assert snapshot["resolved_project_home_url"] == project_url
+    assert snapshot["conversation_url"] is None
+    assert snapshot["project_name"] == "my-project"

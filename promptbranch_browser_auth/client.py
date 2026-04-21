@@ -645,6 +645,43 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "chat-list",
+            "starting list_project_chats",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="chat_list",
+            operation=self._list_project_chats_operation,
+            keep_open=keep_open,
+        )
+
+    async def get_chat(
+        self,
+        *,
+        conversation_url: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "chat-show",
+            "starting get_chat",
+            project_url=self.config.project_url,
+            conversation_url=conversation_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="chat_show",
+            operation=self._get_chat_operation,
+            conversation_url=conversation_url,
+            keep_open=keep_open,
+        )
+
     async def create_project(
         self,
         *,
@@ -1268,6 +1305,74 @@ class ChatGPTBrowserClient:
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Project-list debug completed. Press Enter to close the browser...")
         return summary
+
+    async def _list_project_chats_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_url = self._project_home_url_from_url(self.config.project_url)
+        project_id = self._extract_project_id_from_url(project_url)
+        project_slug = self._project_slug_from_url(project_url)
+        if not project_id or not project_slug:
+            raise RuntimeError('A project must be selected before listing chats')
+        await self._goto(page, project_url, label='chat-list-home')
+        chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+        result = {
+            'ok': True,
+            'action': 'list_chats',
+            'project_url': project_url,
+            'project_id': project_id,
+            'project_slug': project_slug,
+            'count': len(chats),
+            'chats': chats,
+            'current_url': await self._safe_page_url(page),
+        }
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
+        return result
+
+    async def _get_chat_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        conversation_url: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        conversation_id = self._conversation_id_from_url(conversation_url)
+        if not conversation_id:
+            raise RuntimeError('conversation_url must point to a project conversation')
+        await self._goto(page, conversation_url, label='chat-show-home')
+        detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+        status = detail.get('status')
+        if status != 200:
+            raise RuntimeError(f'conversation detail returned unexpected status {status}')
+        payload = detail.get('payload')
+        turns = self._extract_chat_turns_from_conversation_payload(payload)
+        project_url = self._project_home_url_from_url(conversation_url)
+        result = {
+            'ok': True,
+            'action': 'get_chat',
+            'project_url': project_url,
+            'conversation_url': self._project_conversation_url_from_id(conversation_id, project_url=project_url) or conversation_url,
+            'conversation_id': conversation_id,
+            'title': (payload.get('title') if isinstance(payload, dict) else None) or '(untitled)',
+            'create_time': payload.get('create_time') if isinstance(payload, dict) else None,
+            'update_time': payload.get('update_time') if isinstance(payload, dict) else None,
+            'turn_count': len(turns),
+            'turns': turns,
+            'current_url': await self._safe_page_url(page),
+        }
+        self._log('chat-show', 'chat detail fetched', conversation_id=conversation_id, turn_count=len(turns))
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Chat show completed. Press Enter to close the browser...')
+        return result
 
     async def _create_project_operation(
         self,
@@ -2892,6 +2997,19 @@ class ChatGPTBrowserClient:
             return match.group(1).lower()
         return None
 
+    def _conversation_id_from_url(self, url: str) -> Optional[str]:
+        path = urlparse(url).path or ''
+        parts = [part for part in path.split('/') if part]
+        if len(parts) >= 4 and parts[0] == 'g' and parts[2] == 'c':
+            return parts[3]
+        return None
+
+    def _project_conversation_url_from_id(self, conversation_id: str, *, project_url: Optional[str] = None) -> Optional[str]:
+        project_slug = self._project_slug_from_url(project_url or self.config.project_url)
+        if not project_slug or not conversation_id:
+            return None
+        return urljoin(self._chatgpt_home_url(), f'g/{project_slug}/c/{conversation_id}')
+
     def _project_identity_key_from_url(self, url: str) -> str:
         project_id = self._extract_project_id_from_url(url)
         if project_id:
@@ -3240,6 +3358,295 @@ class ChatGPTBrowserClient:
             cursor = next_cursor
 
         return collected
+
+    def _extract_project_chats_from_conversations_payload(
+        self,
+        payload: Any,
+        *,
+        project_id: str,
+        project_url: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        items: list[Any]
+        if isinstance(payload, dict):
+            raw_items = payload.get('items')
+            items = raw_items if isinstance(raw_items, list) else []
+        elif isinstance(payload, list):
+            items = payload
+        else:
+            items = []
+
+        project_slug = self._project_slug_from_url(project_url or self.config.project_url)
+        if not project_slug:
+            return []
+
+        chats: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        normalized_project_id = (project_id or '').strip().lower()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            candidate_project_id = str(
+                item.get('conversation_template_id')
+                or item.get('conversationTemplateId')
+                or item.get('gizmo_id')
+                or item.get('gizmoId')
+                or item.get('project_id')
+                or item.get('projectId')
+                or ''
+            ).strip().lower()
+            if normalized_project_id and candidate_project_id and candidate_project_id != normalized_project_id:
+                continue
+            conversation_id = str(item.get('id') or '').strip()
+            if not conversation_id or conversation_id in seen_ids:
+                continue
+            seen_ids.add(conversation_id)
+            title = re.sub(r'\s+', ' ', str(item.get('title') or '')).strip() or '(untitled)'
+            conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url)
+            if not conversation_url:
+                continue
+            chats.append({
+                'id': conversation_id,
+                'title': title,
+                'conversation_url': conversation_url,
+                'create_time': item.get('create_time') or item.get('createTime'),
+                'update_time': item.get('update_time') or item.get('updateTime'),
+            })
+        return chats
+
+    async def _fetch_conversations_page(
+        self,
+        page: Any,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        order: str = 'updated',
+    ) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            async ({ offset, limit, order }) => {
+                const base = new URL('/backend-api/conversations', window.location.origin);
+                base.searchParams.set('offset', String(offset));
+                base.searchParams.set('limit', String(limit));
+                base.searchParams.set('order', String(order));
+                base.searchParams.set('is_archived', 'false');
+                base.searchParams.set('is_starred', 'false');
+
+                let accessToken = null;
+                try {
+                    const bootstrap = document.getElementById('client-bootstrap');
+                    if (bootstrap && bootstrap.textContent) {
+                        const payload = JSON.parse(bootstrap.textContent);
+                        accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                    }
+                } catch (_err) {
+                    accessToken = null;
+                }
+
+                const headers = { accept: 'application/json' };
+                if (accessToken) {
+                    headers.authorization = `Bearer ${accessToken}`;
+                }
+
+                const response = await fetch(base.toString(), {
+                    credentials: 'include',
+                    headers,
+                });
+                const text = await response.text();
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    url: response.url || base.toString(),
+                    text,
+                    usedAuthorization: Boolean(accessToken),
+                };
+            }
+            ''',
+            {'offset': offset, 'limit': limit, 'order': order},
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError('Unexpected conversation history response shape')
+        text_body = str(result.get('text') or '')
+        parsed_payload: Any = None
+        if text_body:
+            try:
+                parsed_payload = json.loads(text_body)
+            except json.JSONDecodeError:
+                parsed_payload = None
+        return {
+            'ok': bool(result.get('ok')),
+            'status': result.get('status'),
+            'url': result.get('url'),
+            'payload': parsed_payload,
+            'text': text_body,
+            'used_authorization': bool(result.get('usedAuthorization')),
+        }
+
+    async def _collect_all_project_chats(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        limit: int = 100,
+        max_pages: int = 25,
+    ) -> list[dict[str, Any]]:
+        project_id = self._extract_project_id_from_url(project_url)
+        if not project_id:
+            raise RuntimeError('project id could not be derived from project url')
+
+        collected: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        offset = 0
+        for page_index in range(max_pages):
+            response = await self._fetch_conversations_page(page, offset=offset, limit=limit)
+            status = response.get('status')
+            if status == 429:
+                self._note_conversation_history_rate_limit(trigger='fetch', url=str(response.get('url') or ''), status=429)
+            if status != 200:
+                if collected:
+                    self._log(label, 'stopping conversation pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected))
+                    break
+                raise RuntimeError(f'conversation history returned unexpected status {status}')
+            page_chats = self._extract_project_chats_from_conversations_payload(response.get('payload'), project_id=project_id, project_url=project_url)
+            new_count = 0
+            for chat in page_chats:
+                chat_id = str(chat.get('id') or '')
+                if not chat_id or chat_id in seen_ids:
+                    continue
+                seen_ids.add(chat_id)
+                collected.append(chat)
+                new_count += 1
+            self._log(label, 'collected project chats via conversation history', page=page_index + 1, offset=offset, limit=limit, status=status, discovered_count=new_count, total_count=len(collected), used_authorization=response.get('used_authorization'))
+            raw_payload = response.get('payload')
+            raw_items = raw_payload.get('items') if isinstance(raw_payload, dict) else raw_payload if isinstance(raw_payload, list) else []
+            item_count = len(raw_items) if isinstance(raw_items, list) else 0
+            if item_count < limit:
+                break
+            offset += limit
+        return collected
+
+    async def _fetch_conversation_detail(self, page: Any, *, conversation_id: str) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            async ({ conversationId }) => {
+                const base = new URL(`/backend-api/conversation/${conversationId}`, window.location.origin);
+                let accessToken = null;
+                try {
+                    const bootstrap = document.getElementById('client-bootstrap');
+                    if (bootstrap && bootstrap.textContent) {
+                        const payload = JSON.parse(bootstrap.textContent);
+                        accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                    }
+                } catch (_err) {
+                    accessToken = null;
+                }
+                const headers = { accept: 'application/json' };
+                if (accessToken) {
+                    headers.authorization = `Bearer ${accessToken}`;
+                }
+                const response = await fetch(base.toString(), {
+                    credentials: 'include',
+                    headers,
+                });
+                const text = await response.text();
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    url: response.url || base.toString(),
+                    text,
+                    usedAuthorization: Boolean(accessToken),
+                };
+            }
+            ''',
+            {'conversationId': conversation_id},
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError('Unexpected conversation detail response shape')
+        text_body = str(result.get('text') or '')
+        parsed_payload: Any = None
+        if text_body:
+            try:
+                parsed_payload = json.loads(text_body)
+            except json.JSONDecodeError:
+                parsed_payload = None
+        return {
+            'ok': bool(result.get('ok')),
+            'status': result.get('status'),
+            'url': result.get('url'),
+            'payload': parsed_payload,
+            'text': text_body,
+            'used_authorization': bool(result.get('usedAuthorization')),
+        }
+
+    def _message_text_from_payload(self, message: Any) -> str:
+        if not isinstance(message, dict):
+            return ''
+        content = message.get('content')
+        parts: list[str] = []
+
+        def _append(value: Any) -> None:
+            if isinstance(value, str):
+                normalized = re.sub(r'\s+', ' ', value).strip()
+                if normalized:
+                    parts.append(normalized)
+            elif isinstance(value, dict):
+                for key in ('text', 'result', 'value'):
+                    maybe = value.get(key)
+                    if isinstance(maybe, str):
+                        _append(maybe)
+            elif isinstance(value, list):
+                for item in value:
+                    _append(item)
+
+        if isinstance(content, dict):
+            _append(content.get('parts'))
+            _append(content.get('text'))
+        else:
+            _append(content)
+        return '\n\n'.join(parts).strip()
+
+    def _extract_chat_turns_from_conversation_payload(self, payload: Any) -> list[dict[str, Any]]:
+        if not isinstance(payload, dict):
+            return []
+        mapping = payload.get('mapping') if isinstance(payload.get('mapping'), dict) else {}
+        current_node = payload.get('current_node') or payload.get('currentNode')
+        node_ids: list[str] = []
+        seen: set[str] = set()
+        cursor = str(current_node) if current_node is not None else ''
+        while cursor and cursor not in seen:
+            seen.add(cursor)
+            node_ids.append(cursor)
+            node = mapping.get(cursor) if isinstance(mapping, dict) else None
+            if not isinstance(node, dict):
+                break
+            parent = node.get('parent')
+            cursor = str(parent) if parent is not None else ''
+        ordered_ids = list(reversed(node_ids))
+        turns: list[dict[str, Any]] = []
+        turn_index = 0
+        for node_id in ordered_ids:
+            node = mapping.get(node_id) if isinstance(mapping, dict) else None
+            if not isinstance(node, dict):
+                continue
+            message = node.get('message')
+            if not isinstance(message, dict):
+                continue
+            author = message.get('author') if isinstance(message.get('author'), dict) else {}
+            role = str(author.get('role') or message.get('role') or '').strip().lower()
+            if role in {'', 'system', 'tool'}:
+                continue
+            text = self._message_text_from_payload(message)
+            if not text:
+                continue
+            turn_index += 1
+            turns.append({
+                'index': turn_index,
+                'id': node_id,
+                'role': role,
+                'text': text,
+                'create_time': message.get('create_time') or message.get('createTime') or node.get('create_time') or node.get('createTime'),
+            })
+        return turns
 
     async def _determine_project_discovery_mode(self, page: Any) -> str:
         has_project_entrypoint = bool(
