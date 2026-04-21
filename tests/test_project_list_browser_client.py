@@ -573,6 +573,127 @@ def test_extract_project_chats_from_conversations_payload_requires_matching_proj
     ]
 
 
+
+
+def test_extract_project_chats_from_snorlax_sidebar_payload_matches_project(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    payload = {
+        "cursor": "next-cursor",
+        "items": [
+            {
+                "gizmo": {
+                    "gizmo": {
+                        "id": "g-p-other",
+                        "display": {"name": "Other"},
+                    }
+                },
+                "conversations": {
+                    "items": [
+                        {"id": "chat-other", "title": "Other chat"},
+                    ]
+                },
+            },
+            {
+                "gizmo": {
+                    "gizmo": {
+                        "id": "g-p-current",
+                        "display": {"name": "Current"},
+                    }
+                },
+                "conversations": {
+                    "items": [
+                        {
+                            "id": "chat-1",
+                            "title": "Azure DevOps Engineer Role",
+                            "create_time": "2026-04-03T00:00:00Z",
+                            "update_time": "2026-04-03T01:00:00Z",
+                        },
+                        {
+                            "id": "chat-2",
+                            "title": "Another chat",
+                        },
+                    ]
+                },
+            },
+        ],
+    }
+
+    chats, cursor, found_project = client._extract_project_chats_from_snorlax_sidebar_payload(
+        payload,
+        project_id="g-p-current",
+        project_url="https://chatgpt.com/g/g-p-current-demo/project",
+    )
+
+    assert found_project is True
+    assert cursor == "next-cursor"
+    assert chats == [
+        {
+            "id": "chat-1",
+            "title": "Azure DevOps Engineer Role",
+            "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            "create_time": "2026-04-03T00:00:00Z",
+            "update_time": "2026-04-03T01:00:00Z",
+        },
+        {
+            "id": "chat-2",
+            "title": "Another chat",
+            "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-2",
+            "create_time": None,
+            "update_time": None,
+        },
+    ]
+
+
+def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_are_empty(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return None
+
+    async def fake_collect_snorlax(page, *, project_url, label):
+        assert project_url == "https://chatgpt.com/g/g-p-current-demo/project"
+        return [
+            {
+                "id": "chat-snorlax-1",
+                "title": "Azure DevOps Engineer Role",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-snorlax-1",
+                "create_time": None,
+                "update_time": None,
+            }
+        ]
+
+    async def fake_collect_dom(page, *, project_url, label):
+        return []
+
+    async def fake_collect_history(page, *, project_url, label):
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-current-demo/project"
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_via_snorlax_sidebar = fake_collect_snorlax
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert result["count"] == 1
+    assert result["chats"][0]["title"] == "Azure DevOps Engineer Role"
+
 def test_is_conversation_history_url_accepts_detail_endpoint(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
