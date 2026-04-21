@@ -450,6 +450,91 @@ def test_list_projects_operation_prefers_snorlax_sidebar_enumeration(tmp_path: P
     assert any(item["is_current"] for item in result["projects"])
 
 
+
+
+def test_list_project_chats_operation_falls_back_to_project_home_dom_when_history_is_empty(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return None
+
+    async def fake_collect_dom(page, *, project_url, label):
+        assert project_url == "https://chatgpt.com/g/g-p-current-demo/project"
+        return [
+            {
+                "id": "chat-dom-1",
+                "title": "Azure DevOps Engineer Role",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-dom-1",
+                "create_time": None,
+                "update_time": None,
+            }
+        ]
+
+    async def fake_collect_history(page, *, project_url, label):
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-current-demo/project"
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert result["count"] == 1
+    assert result["chats"][0]["title"] == "Azure DevOps Engineer Role"
+
+
+def test_merge_project_chat_lists_prefers_primary_and_adds_missing_secondary_fields(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    merged = client._merge_project_chat_lists(
+        [
+            {
+                "id": "chat-1",
+                "title": "Primary title",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+                "create_time": None,
+                "update_time": None,
+            }
+        ],
+        [
+            {
+                "id": "chat-1",
+                "title": "Secondary title",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+                "preview": "Secondary preview",
+                "create_time": None,
+                "update_time": None,
+            },
+            {
+                "id": "chat-2",
+                "title": "Only secondary",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-2",
+                "create_time": None,
+                "update_time": None,
+            },
+        ],
+    )
+
+    assert merged[0]["title"] == "Primary title"
+    assert merged[0]["preview"] == "Secondary preview"
+    assert merged[1]["id"] == "chat-2"
+
 def test_extract_project_chats_from_conversations_payload_requires_matching_project_id(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     payload = {
