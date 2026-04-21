@@ -368,6 +368,43 @@ def test_collect_all_projects_via_snorlax_sidebar_follows_cursor(tmp_path: Path)
     assert [item["name"] for item in projects] == ["Alpha Project", "Beta Project", "Gamma Project"]
 
 
+
+def test_collect_all_projects_via_snorlax_sidebar_keeps_successful_page_when_later_page_is_unauthorized(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    responses = iter([
+        {
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "items": [
+                    {"gizmo": {"gizmo": {"short_url": "g-p-alpha123-alpha-project", "display": {"name": "Alpha Project"}}}},
+                ],
+                "cursor": "cursor-2",
+            },
+        },
+        {
+            "status": 401,
+            "used_authorization": True,
+            "payload": {
+                "detail": {"message": "Unauthorized - Access token is missing"},
+            },
+        },
+    ])
+
+    async def fake_fetch(page, *, cursor=None, limit=20, conversations_per_gizmo=5):
+        return next(responses)
+
+    client._fetch_snorlax_sidebar_page = fake_fetch
+
+    import asyncio
+
+    projects = asyncio.run(client._collect_all_projects_via_snorlax_sidebar(page=object(), label="project-list"))
+    assert projects == [
+        {"name": "Alpha Project", "url": "https://chatgpt.com/g/g-p-alpha123-alpha-project/project"},
+    ]
+
+
 def test_list_projects_operation_prefers_snorlax_sidebar_enumeration(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 

@@ -3122,21 +3122,39 @@ class ChatGPTBrowserClient:
                 if (cursor) {
                     base.searchParams.set('cursor', cursor);
                 }
+
+                let accessToken = null;
+                try {
+                    const bootstrap = document.getElementById('client-bootstrap');
+                    if (bootstrap && bootstrap.textContent) {
+                        const payload = JSON.parse(bootstrap.textContent);
+                        accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                    }
+                } catch (_err) {
+                    accessToken = null;
+                }
+
+                const headers = { accept: 'application/json' };
+                if (accessToken) {
+                    headers.authorization = `Bearer ${accessToken}`;
+                }
+
                 const response = await fetch(base.toString(), {
                     credentials: 'include',
-                    headers: { 'accept': 'application/json' },
+                    headers,
                 });
                 const text = await response.text();
-                const headers = {};
+                const responseHeaders = {};
                 for (const [key, value] of response.headers.entries()) {
-                    headers[key] = value;
+                    responseHeaders[key] = value;
                 }
                 return {
                     ok: response.ok,
                     status: response.status,
                     url: response.url || base.toString(),
                     text,
-                    headers,
+                    headers: responseHeaders,
+                    usedAuthorization: Boolean(accessToken),
                 };
             }
             ''',
@@ -3151,7 +3169,10 @@ class ChatGPTBrowserClient:
         text_body = str(result.get('text') or '')
         parsed_payload: Any = None
         if text_body:
-            parsed_payload = json.loads(text_body)
+            try:
+                parsed_payload = json.loads(text_body)
+            except json.JSONDecodeError:
+                parsed_payload = None
         return {
             'ok': bool(result.get('ok')),
             'status': result.get('status'),
@@ -3159,6 +3180,7 @@ class ChatGPTBrowserClient:
             'headers': result.get('headers') if isinstance(result.get('headers'), dict) else {},
             'payload': parsed_payload,
             'text': text_body,
+            'used_authorization': bool(result.get('usedAuthorization')),
         }
 
     async def _collect_all_projects_via_snorlax_sidebar(
@@ -3174,6 +3196,7 @@ class ChatGPTBrowserClient:
 
         for page_index in range(max_pages):
             response = await self._fetch_snorlax_sidebar_page(page, cursor=cursor)
+            status = response.get('status')
             payload = response.get('payload')
             projects, next_cursor = self._extract_projects_from_snorlax_sidebar_payload(payload)
             collected = self._dedupe_projects([*collected, *projects])
@@ -3181,12 +3204,33 @@ class ChatGPTBrowserClient:
                 label,
                 'collected projects via snorlax sidebar',
                 page=page_index + 1,
-                status=response.get('status'),
+                status=status,
                 discovered_count=len(projects),
                 total_count=len(collected),
                 cursor=cursor,
                 next_cursor=next_cursor,
+                used_authorization=response.get('used_authorization'),
             )
+            if status != 200:
+                if collected:
+                    self._log(
+                        label,
+                        'stopping snorlax pagination after non-200 response and keeping collected projects',
+                        page=page_index + 1,
+                        status=status,
+                        retained_count=len(collected),
+                    )
+                    break
+                raise RuntimeError(f'snorlax sidebar returned unexpected status {status}')
+            if not projects and collected:
+                self._log(
+                    label,
+                    'stopping snorlax pagination after empty project page and keeping collected projects',
+                    page=page_index + 1,
+                    status=status,
+                    retained_count=len(collected),
+                )
+                break
             if not next_cursor:
                 break
             if next_cursor in seen_cursors:
