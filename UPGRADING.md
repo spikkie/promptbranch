@@ -79,7 +79,7 @@ The runtime still checks the legacy paths as a fallback to make upgrades less di
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.79.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.80.zip
 promptbranch state
 promptbranch prompt
 ```

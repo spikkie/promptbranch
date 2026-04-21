@@ -169,6 +169,10 @@ def test_determine_project_discovery_mode_prefers_more_when_sidebar_project_cont
     client = _make_client(tmp_path)
 
     async def fake_find_visible_locator(page, selectors, label=None, timeout_ms=0):
+        if label == "project-discovery-entrypoint":
+            return None
+        if label == "project-more-entrypoint":
+            return object()
         return None
 
     client._find_visible_locator = fake_find_visible_locator
@@ -177,6 +181,26 @@ def test_determine_project_discovery_mode_prefers_more_when_sidebar_project_cont
 
     mode = asyncio.run(client._determine_project_discovery_mode(page=object()))
     assert mode == "more-first"
+
+
+def test_determine_project_discovery_mode_falls_back_to_sidebar_when_more_missing(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    async def fake_find_visible_locator(page, selectors, label=None, timeout_ms=0):
+        return None
+
+    client._find_visible_locator = fake_find_visible_locator
+
+    import asyncio
+
+    mode = asyncio.run(client._determine_project_discovery_mode(page=object()))
+    assert mode == "sidebar-first"
+
+
+def test_is_snorlax_sidebar_url_matches_sidebar_endpoint(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    assert client._is_snorlax_sidebar_url("https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?limit=20") is True
+    assert client._is_snorlax_sidebar_url("https://chatgpt.com/backend-api/gizmos/snorlax/upsert") is False
 
 
 def test_debug_project_list_operation_creates_nested_artifacts(tmp_path: Path) -> None:
