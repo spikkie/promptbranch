@@ -237,7 +237,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
     parser.add_argument("--keep-open", action="store_true", help="Pass keep_open through to each browser action.")
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
-    parser.add_argument("--step-delay-seconds", type=float, default=float(os.getenv("CHATGPT_STEP_DELAY_SECONDS", "5.0")), help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure during end-to-end runs.")
+    parser.add_argument("--step-delay-seconds", type=float, default=float(os.getenv("CHATGPT_STEP_DELAY_SECONDS", "8.0")), help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure during end-to-end runs.")
     parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")

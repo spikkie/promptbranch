@@ -270,13 +270,27 @@ PROJECT_SIDEBAR_CLOSE_BUTTON_SELECTORS = [
 RATE_LIMIT_MODAL_SELECTORS = [
     '[data-testid="modal-conversation-history-rate-limit"]',
     '#modal-conversation-history-rate-limit',
+    '[role="dialog"]:has-text("Too many requests")',
+    '[role="dialog"]:has-text("temporarily limited access to your conversations")',
+    '[role="dialog"]:has-text("protect your data")',
+    'dialog[open]:has-text("Too many requests")',
+    'dialog[open]:has-text("temporarily limited access to your conversations")',
+    'div[role="alertdialog"]:has-text("Too many requests")',
+    'div:has-text("Too many requests"):has-text("protect your data")',
 ]
 RATE_LIMIT_MODAL_ACK_SELECTORS = [
     '[data-testid="modal-conversation-history-rate-limit"] button:has-text("Got it")',
     '#modal-conversation-history-rate-limit button:has-text("Got it")',
+    '[role="dialog"]:has-text("Too many requests") button:has-text("Got it")',
+    '[role="dialog"]:has-text("protect your data") button:has-text("Got it")',
+    'dialog[open]:has-text("Too many requests") button:has-text("Got it")',
+    'div[role="alertdialog"]:has-text("Too many requests") button:has-text("Got it")',
     'button:has-text("Got it")',
 ]
-CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENT = '/backend-api/conversations'
+CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS = (
+    '/backend-api/conversations',
+    '/backend-api/conversation/',
+)
 _PROFILE_LAST_CONTEXT_CLOSED_AT: dict[str, float] = {}
 PROJECT_NEW_BUTTON_SELECTORS = [
     'button:has-text("New project")',
@@ -424,7 +438,8 @@ class ChatGPTBrowserClient:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
     def _is_conversation_history_url(self, url: str) -> bool:
-        return CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENT in (url or '').lower()
+        normalized = (url or '').lower()
+        return any(fragment in normalized for fragment in CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS)
 
     def _read_rate_limit_cooldown_until(self) -> float:
         try:
@@ -505,6 +520,20 @@ class ChatGPTBrowserClient:
         except EOFError:
             self._log('debug', 'skipping keep-open wait after stdin EOF', prompt=prompt)
 
+    def _locator_page(self, locator: Any) -> Any | None:
+        page = getattr(locator, 'page', None)
+        if page is not None:
+            return page
+        try:
+            impl = getattr(locator, '_impl_obj', None)
+            frame = getattr(impl, '_frame', None)
+            page = getattr(frame, '_page', None)
+            if page is not None:
+                return page
+        except Exception:
+            return None
+        return None
+
     async def _wait_for_rate_limit_modal_to_clear(
         self,
         page: Any,
@@ -521,6 +550,7 @@ class ChatGPTBrowserClient:
             if modal is None:
                 if saw_modal:
                     self._log('rate-limit', 'rate limit modal cleared', label=label)
+                    await self._respect_rate_limit_cooldown()
                 return saw_modal
             if not saw_modal:
                 saw_modal = True
@@ -2200,11 +2230,14 @@ class ChatGPTBrowserClient:
         total_timeout_ms: int = 10_000,
         poll_interval_ms: int = 500,
         visibility_timeout_ms: int = 500,
+        handle_rate_limit: bool = True,
     ) -> Optional[Any]:
         deadline = asyncio.get_running_loop().time() + (total_timeout_ms / 1000)
         attempt = 0
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
+            if handle_rate_limit:
+                await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-wait')
             locator = await self._find_visible_locator(
                 page,
                 selectors,
@@ -4609,6 +4642,9 @@ class ChatGPTBrowserClient:
         allow_evaluate: bool = True,
         handle_rate_limit: bool = True,
     ) -> None:
+        page = self._locator_page(locator) if handle_rate_limit else None
+        if page is not None:
+            await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-before-click')
         try:
             await locator.scroll_into_view_if_needed(timeout=min(timeout_ms, 2_000))
         except Exception:
@@ -4621,6 +4657,8 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             last_error = exc
             self._log("click", "primary locator click failed", label=label, error=repr(exc))
+            if page is not None:
+                await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-primary-click-failure')
 
         if allow_force:
             try:
@@ -4629,6 +4667,8 @@ class ChatGPTBrowserClient:
             except Exception as exc:
                 last_error = exc
                 self._log("click", "force locator click failed", label=label, error=repr(exc))
+                if page is not None:
+                    await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-force-click-failure')
 
         if allow_evaluate:
             try:
@@ -4637,6 +4677,8 @@ class ChatGPTBrowserClient:
             except Exception as exc:
                 last_error = exc
                 self._log("click", "evaluate locator click failed", label=label, error=repr(exc))
+                if page is not None:
+                    await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-evaluate-click-failure')
 
         if last_error is not None:
             raise last_error
