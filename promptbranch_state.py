@@ -156,6 +156,22 @@ class ConversationStateStore:
             payload["current"] = {}
         self._write(payload if isinstance(payload, dict) else {})
 
+    def forget_conversation(self, project_url: Optional[str]) -> None:
+        payload = self._load()
+        home_url = project_home_url_from_url(project_url)
+        if not home_url and isinstance(payload, dict):
+            current = payload.get("current")
+            if isinstance(current, dict):
+                candidate = current.get("project_home_url")
+                if isinstance(candidate, str):
+                    home_url = candidate
+        if not home_url:
+            return
+        entry = self._project_entry(payload, home_url) or self._merged_entry(payload, home_url)
+        entry["conversation_url"] = None
+        self._store_entry(payload, home_url, entry)
+        self._write(payload)
+
     def clear(self) -> None:
         self._write({})
 

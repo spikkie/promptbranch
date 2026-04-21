@@ -278,6 +278,26 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.list_project_chats(
+            keep_open=keep_open,
+        )
+
+    async def get_chat(
+        self,
+        *,
+        conversation_url: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.get_chat(
+            conversation_url=conversation_url,
+            keep_open=keep_open,
+        )
+
     async def debug_project_list(
         self,
         *,

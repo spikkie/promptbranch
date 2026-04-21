@@ -4,6 +4,7 @@ import argparse
 import json
 
 from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options
+from promptbranch_state import ConversationStateStore
 
 
 def test_parser_accepts_service_options() -> None:
@@ -517,4 +518,128 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.82"
+    assert captured.out.strip() == "promptbranch 0.0.83"
+
+
+def test_main_chat_list_json_emits_chat_payload(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_chats(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "chats": [
+                    {"id": "abc", "title": "First chat", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/abc"},
+                    {"id": "def", "title": "Second chat", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/def"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    store.remember("https://chatgpt.com/g/g-p-demo-project/project", "https://chatgpt.com/g/g-p-demo-project/c/def")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "chat-list", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["count"] == 2
+    assert any(item["is_current"] for item in payload["chats"])
+
+
+def test_main_chat_use_by_index_updates_state(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_chats(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "chats": [
+                    {"id": "abc", "title": "First chat", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/abc"},
+                    {"id": "def", "title": "Second chat", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/def"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "chat-use", "2", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["conversation_id"] == "def"
+    assert store.snapshot()["conversation_id"] == "def"
+
+
+def test_main_chat_leave_clears_only_conversation(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "chat-leave", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["conversation_url"] is None
+    snapshot = store.snapshot(project_url)
+    assert snapshot["resolved_project_home_url"] == project_url
+    assert snapshot["conversation_url"] is None
+
+
+def test_main_chat_show_json_fetches_selected_chat(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            assert conversation_url == "https://chatgpt.com/g/g-p-demo-project/c/abc"
+            return {
+                "ok": True,
+                "conversation_id": "abc",
+                "conversation_url": conversation_url,
+                "title": "First chat",
+                "turn_count": 1,
+                "turns": [{"index": 1, "role": "user", "text": "hello"}],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "chat-show", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["conversation_id"] == "abc"
+    assert payload["turns"][0]["text"] == "hello"

@@ -91,3 +91,6 @@ profile/
 
 #debug info
 debug_artifacts/
+
+# chatgpt projects
+promptbranch-project-list.json

@@ -35,7 +35,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.82"
+CLI_VERSION = "0.0.83"
 COMMANDS = {
     "login-check",
     "ask",
@@ -47,6 +47,16 @@ COMMANDS = {
     "project-remove",
     "project-source-add",
     "project-source-remove",
+    "chat-list",
+    "chats",
+    "chat-use",
+    "use-chat",
+    "chat-leave",
+    "cq",
+    "chat-show",
+    "show",
+    "chat-summarize",
+    "summarize",
     "state",
     "prompt",
     "state-clear",
@@ -109,6 +119,24 @@ class DirectBackend:
         try:
             self._service.settings.project_url = effective_project_url or original_project_url
             return await self._service.list_projects(keep_open=keep_open)
+        finally:
+            self._service.settings.project_url = original_project_url
+
+    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.list_project_chats(keep_open=keep_open)
+        finally:
+            self._service.settings.project_url = original_project_url
+
+    async def get_chat(self, conversation_url: str, *, keep_open: bool = False) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = project_home_url_from_url(conversation_url) or self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.get_chat(conversation_url=conversation_url, keep_open=keep_open)
         finally:
             self._service.settings.project_url = original_project_url
 
@@ -255,6 +283,10 @@ class DirectBackend:
         if self._conversation_state is not None:
             self._conversation_state.clear()
 
+    def clear_conversation(self) -> None:
+        if self._conversation_state is not None:
+            self._conversation_state.forget_conversation(self._project_url)
+
 
 class ServiceBackend:
     def __init__(
@@ -286,6 +318,21 @@ class ServiceBackend:
             project_url=self._effective_project_home_url(),
         )
         return result
+
+    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(
+            self._client.list_project_chats,
+            keep_open=keep_open,
+            project_url=self._effective_project_home_url(),
+        )
+
+    async def get_chat(self, conversation_url: str, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(
+            self._client.get_chat,
+            conversation_url,
+            keep_open=keep_open,
+            project_url=project_home_url_from_url(conversation_url) or self._effective_project_home_url(),
+        )
 
 
     async def create_project(
@@ -416,6 +463,9 @@ class ServiceBackend:
 
     def clear_state(self) -> None:
         self._conversation_state.clear()
+
+    def clear_conversation(self) -> None:
+        self._conversation_state.forget_conversation(self._project_url)
 
 
 def _env_or(*names: str) -> Optional[str]:
@@ -601,6 +651,233 @@ def _choose_project_from_list(projects: list[dict[str, Any]], *, filter_text: Op
         print("Invalid selection. Enter a number from the list or an exact visible project name.", file=sys.stderr)
 
 
+def _selected_project_home_url(snapshot: dict[str, Any]) -> Optional[str]:
+    candidate = snapshot.get('resolved_project_home_url') if isinstance(snapshot, dict) else None
+    if isinstance(candidate, str):
+        return project_home_url_from_url(candidate)
+    return None
+
+
+def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    payload = dict(result) if isinstance(result, dict) else {"ok": False, "chats": []}
+    raw_chats = payload.get("chats") if isinstance(payload.get("chats"), list) else []
+    chats = [item for item in raw_chats if isinstance(item, dict)]
+    current_id = conversation_id_from_url(current_conversation_url)
+    normalized: list[dict[str, Any]] = []
+    for item in chats:
+        chat = dict(item)
+        conversation_url = str(chat.get('conversation_url') or '')
+        chat_id = str(chat.get('id') or conversation_id_from_url(conversation_url) or '')
+        chat['id'] = chat_id
+        chat['conversation_url'] = conversation_url
+        chat['title'] = str(chat.get('title') or '(untitled)')
+        chat['is_current'] = bool(current_id and chat_id == current_id)
+        normalized.append(chat)
+    payload['chats'] = normalized
+    payload['count'] = len(normalized)
+    payload['current_conversation_url'] = current_conversation_url
+    return normalized, payload
+
+
+def _normalize_chat_title(value: str) -> str:
+    return re.sub(r'\s+', ' ', (value or '')).strip().casefold()
+
+
+async def _resolve_chat_target(
+    backend: Any,
+    args: argparse.Namespace,
+    target: Optional[str],
+    *,
+    keep_open: bool = False,
+) -> dict[str, Any]:
+    snapshot = backend.state_snapshot()
+    current_conversation_url = snapshot.get('conversation_url') if isinstance(snapshot, dict) else None
+    if not target:
+        if isinstance(current_conversation_url, str) and current_conversation_url:
+            return {
+                'title': snapshot.get('conversation_id') or '(current chat)',
+                'conversation_url': current_conversation_url,
+                'id': conversation_id_from_url(current_conversation_url),
+                'is_current': True,
+            }
+        raise ValueError('no chat target was provided and no current chat is selected')
+
+    if _looks_like_chatgpt_url(target) and conversation_id_from_url(target):
+        return {
+            'title': target,
+            'conversation_url': target,
+            'id': conversation_id_from_url(target),
+            'is_current': bool(current_conversation_url and target == current_conversation_url),
+        }
+
+    result = await backend.list_project_chats(keep_open=keep_open)
+    chats, _ = _chat_list_payload(result, current_conversation_url=current_conversation_url if isinstance(current_conversation_url, str) else None)
+    if not chats:
+        raise ValueError('no chats were found for the current project')
+
+    if str(target).isdigit():
+        index = int(str(target))
+        if 1 <= index <= len(chats):
+            return chats[index - 1]
+        raise ValueError(f'chat index out of range: {target}')
+
+    exact_id = [item for item in chats if str(item.get('id') or '') == target]
+    if len(exact_id) == 1:
+        return exact_id[0]
+
+    prefix_id = [item for item in chats if str(item.get('id') or '').startswith(str(target))]
+    if len(prefix_id) == 1:
+        return prefix_id[0]
+    if len(prefix_id) > 1:
+        raise ValueError(f'multiple chats matched id prefix: {target}')
+
+    normalized_target = _normalize_chat_title(str(target))
+    exact_title = [item for item in chats if _normalize_chat_title(str(item.get('title') or '')) == normalized_target]
+    if len(exact_title) == 1:
+        return exact_title[0]
+    if len(exact_title) > 1:
+        raise ValueError(f'multiple chats matched exact title: {target}')
+
+    contains_title = [item for item in chats if normalized_target in _normalize_chat_title(str(item.get('title') or ''))]
+    if len(contains_title) == 1:
+        return contains_title[0]
+    if len(contains_title) > 1:
+        raise ValueError(f'multiple chats matched title fragment: {target}')
+
+    raise ValueError(f'chat not found: {target}')
+
+
+async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot()
+    project_home_url = _selected_project_home_url(snapshot)
+    if not project_home_url:
+        print('error: no current project is selected', file=sys.stderr)
+        return 2
+    result = await backend.list_project_chats(keep_open=args.keep_open)
+    chats, payload = _chat_list_payload(result, current_conversation_url=snapshot.get('conversation_url'))
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if not chats:
+        print('(no chats found)')
+        return 0
+    for idx, item in enumerate(chats, start=1):
+        marker = '*' if item.get('is_current') else ' '
+        print(f"{idx:>3}. {marker} {item.get('title') or '(untitled)'}\t{item.get('id') or ''}\t{item.get('conversation_url') or ''}")
+    return 0
+
+
+async def cmd_chat_use(backend: Any, args: argparse.Namespace) -> int:
+    store = _state_store_from_args(args)
+    try:
+        selected = await _resolve_chat_target(backend, args, args.target, keep_open=args.keep_open)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    conversation_url = str(selected.get('conversation_url') or '')
+    project_home_url = project_home_url_from_url(conversation_url)
+    if not project_home_url:
+        print('error: could not determine project for the selected chat', file=sys.stderr)
+        return 2
+    store.remember(project_home_url, conversation_url)
+    snapshot = store.snapshot(project_home_url)
+    payload = {
+        'ok': True,
+        'action': 'chat_use',
+        'project_home_url': snapshot.get('resolved_project_home_url'),
+        'conversation_url': snapshot.get('conversation_url'),
+        'conversation_id': snapshot.get('conversation_id'),
+        'chat_title': selected.get('title'),
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+async def cmd_chat_leave(backend: Any, args: argparse.Namespace) -> int:
+    snapshot_before = backend.state_snapshot()
+    backend.clear_conversation()
+    snapshot_after = backend.state_snapshot()
+    payload = {
+        'ok': True,
+        'action': 'chat_leave',
+        'project_home_url': snapshot_after.get('resolved_project_home_url') or snapshot_before.get('resolved_project_home_url'),
+        'conversation_url': snapshot_after.get('conversation_url'),
+        'conversation_id': snapshot_after.get('conversation_id'),
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _render_chat_payload(payload: dict[str, Any]) -> str:
+    lines = [
+        f"title={payload.get('title') or '(untitled)'}",
+        f"conversation_id={payload.get('conversation_id') or 'none'}",
+        f"conversation_url={payload.get('conversation_url') or 'none'}",
+        f"turn_count={payload.get('turn_count') or 0}",
+        '',
+    ]
+    turns = payload.get('turns') if isinstance(payload.get('turns'), list) else []
+    for turn in turns:
+        role = str(turn.get('role') or 'unknown')
+        index = turn.get('index')
+        lines.append(f"[{index}] {role}")
+        lines.append(str(turn.get('text') or ''))
+        lines.append('')
+    return '\n'.join(lines).rstrip() + '\n'
+
+
+async def cmd_chat_show(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        selected = await _resolve_chat_target(backend, args, args.target, keep_open=args.keep_open)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    result = await backend.get_chat(str(selected.get('conversation_url') or ''), keep_open=args.keep_open)
+    store = _state_store_from_args(args)
+    store.remember(project_home_url_from_url(str(selected.get('conversation_url') or '')), str(selected.get('conversation_url') or ''), project_name=None)
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    print(_render_chat_payload(result), end='')
+    return 0
+
+
+async def cmd_chat_summarize(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        selected = await _resolve_chat_target(backend, args, args.target, keep_open=args.keep_open)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    summary_prompt = (
+        'Summarize this chat so far as JSON with keys topic, key_points, decisions, unresolved_questions, next_steps.'
+        if args.json
+        else 'Summarize this chat so far. Include the main topic, key points, decisions, unresolved questions, and next steps. Keep it concise.'
+    )
+    response = await backend.ask(
+        prompt=summary_prompt,
+        conversation_url=str(selected.get('conversation_url') or ''),
+        expect_json=args.json,
+        keep_open=args.keep_open,
+        retries=args.retries,
+    )
+    answer, conversation_url = _split_ask_response(response)
+    payload = {
+        'ok': True,
+        'action': 'chat_summarize',
+        'conversation_url': conversation_url or selected.get('conversation_url'),
+        'conversation_id': conversation_id_from_url(conversation_url or str(selected.get('conversation_url') or '')),
+        'chat_title': selected.get('title'),
+        'answer': answer,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if isinstance(answer, (dict, list)):
+        print(json.dumps(answer, indent=2, ensure_ascii=False))
+    else:
+        print(answer)
+    return 0
+
 async def cmd_project_create(backend: CommandBackend, args: argparse.Namespace) -> int:
     result = await backend.create_project(
         name=args.name,
@@ -740,6 +1017,16 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "project-remove": ["--keep-open"],
         "project-source-add": ["--type", "--value", "--file", "--name", "--keep-open"],
         "project-source-remove": ["--exact", "--keep-open"],
+        "chat-list": ["--json", "--keep-open"],
+        "chats": ["--json", "--keep-open"],
+        "chat-use": ["--json", "--keep-open"],
+        "use-chat": ["--json", "--keep-open"],
+        "chat-leave": ["--json"],
+        "cq": ["--json"],
+        "chat-show": ["--json", "--keep-open"],
+        "show": ["--json", "--keep-open"],
+        "chat-summarize": ["--json", "--keep-open", "--retries"],
+        "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json"],
         "prompt": ["--json"],
         "state-clear": [],
@@ -1252,6 +1539,29 @@ def make_parser() -> argparse.ArgumentParser:
     source_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
     source_remove.add_argument("--keep-open", action="store_true")
 
+    chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="List chats for the current project.")
+    chat_list.add_argument("--json", action="store_true", help="Emit the full chat list payload as JSON.")
+    chat_list.add_argument("--keep-open", action="store_true")
+
+    chat_use = subparsers.add_parser("chat-use", aliases=["use-chat"], help="Select the current chat by URL, conversation id, id prefix, title, or chat-list index.")
+    chat_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from chat-list.")
+    chat_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
+    chat_use.add_argument("--keep-open", action="store_true")
+
+    chat_leave = subparsers.add_parser("chat-leave", aliases=["cq"], help="Leave the current chat while keeping the current project selected.")
+    chat_leave.add_argument("--json", action="store_true", help="Emit the resulting state as JSON.")
+
+    chat_show = subparsers.add_parser("chat-show", aliases=["show"], help="Show the transcript for the current chat or a specified chat in the current project.")
+    chat_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from chat-list.")
+    chat_show.add_argument("--json", action="store_true", help="Emit the full chat payload as JSON.")
+    chat_show.add_argument("--keep-open", action="store_true")
+
+    chat_summarize = subparsers.add_parser("chat-summarize", aliases=["summarize"], help="Ask ChatGPT to summarize the current chat or a specified chat.")
+    chat_summarize.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from chat-list.")
+    chat_summarize.add_argument("--json", action="store_true", help="Request a JSON summary response.")
+    chat_summarize.add_argument("--keep-open", action="store_true")
+    chat_summarize.add_argument("--retries", type=int)
+
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")
     state.add_argument("--json", action="store_true", help="Emit state as JSON.")
 
@@ -1323,6 +1633,16 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_project_source_add(backend, args)
     if args.command == "project-source-remove":
         return await cmd_project_source_remove(backend, args)
+    if args.command in {"chat-list", "chats"}:
+        return await cmd_chat_list(backend, args)
+    if args.command in {"chat-use", "use-chat"}:
+        return await cmd_chat_use(backend, args)
+    if args.command in {"chat-leave", "cq"}:
+        return await cmd_chat_leave(backend, args)
+    if args.command in {"chat-show", "show"}:
+        return await cmd_chat_show(backend, args)
+    if args.command in {"chat-summarize", "summarize"}:
+        return await cmd_chat_summarize(backend, args)
     if args.command == "state":
         return await cmd_state(backend, args)
     if args.command == "prompt":
