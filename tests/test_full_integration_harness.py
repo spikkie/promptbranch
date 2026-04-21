@@ -4,6 +4,7 @@ import pytest
 
 from promptbranch_full_integration_test import (
     _normalize_expected_missing_resolve_result,
+    _normalize_expected_skip_result,
     make_parser,
     resolve_step_selection,
 )
@@ -118,4 +119,27 @@ def test_normalize_expected_missing_resolve_result_marks_project_not_found_as_ex
 def test_normalize_expected_missing_resolve_result_leaves_other_results_unchanged() -> None:
     result = {"ok": True, "match_count": 1}
     normalized = _normalize_expected_missing_resolve_result(result)
+    assert normalized == result
+
+
+def test_normalize_expected_skip_result_marks_unsupported_as_expected() -> None:
+    result = {"skipped": True, "reason": "unsupported", "requested_source_kind": "link"}
+    normalized = _normalize_expected_skip_result(result)
+    assert normalized["ok"] is True
+    assert normalized["service_ok"] is None
+    assert normalized["expected_unsupported"] is True
+    assert normalized["status"] == "expected_unsupported"
+
+
+def test_normalize_expected_skip_result_marks_generic_skip_as_expected() -> None:
+    result = {"skipped": True, "reason": "precondition"}
+    normalized = _normalize_expected_skip_result(result)
+    assert normalized["ok"] is True
+    assert normalized["expected_skip"] is True
+    assert normalized["status"] == "expected_skip"
+
+
+def test_normalize_expected_skip_result_leaves_non_skip_results_unchanged() -> None:
+    result = {"ok": True, "reason": "supported"}
+    normalized = _normalize_expected_skip_result(result)
     assert normalized == result

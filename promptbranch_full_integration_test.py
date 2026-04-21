@@ -549,6 +549,24 @@ def _same_project(left: Optional[str], right: Optional[str]) -> bool:
     return (left or "") == (right or "")
 
 
+def _normalize_expected_result(
+    result: Any,
+    *,
+    status: str,
+    expected_flag: str,
+    message: str,
+) -> Any:
+    if not isinstance(result, dict):
+        return result
+    normalized = dict(result)
+    normalized["service_ok"] = normalized.get("ok")
+    normalized["ok"] = True
+    normalized["status"] = status
+    normalized[expected_flag] = True
+    normalized["message"] = message
+    return normalized
+
+
 def _normalize_expected_missing_resolve_result(result: Any) -> Any:
     if not isinstance(result, dict):
         return result
@@ -558,13 +576,33 @@ def _normalize_expected_missing_resolve_result(result: Any) -> Any:
         return result
     if not (result.get("ok") is False and error == "project_not_found"):
         return result
-    normalized = dict(result)
-    normalized["service_ok"] = normalized.get("ok")
-    normalized["ok"] = True
-    normalized["status"] = "expected_missing"
-    normalized["expected_missing"] = True
-    normalized["message"] = "Project does not exist yet; this is expected before ensure/create."
-    return normalized
+    return _normalize_expected_result(
+        result,
+        status="expected_missing",
+        expected_flag="expected_missing",
+        message="Project does not exist yet; this is expected before ensure/create.",
+    )
+
+
+def _normalize_expected_skip_result(result: Any) -> Any:
+    if not isinstance(result, dict):
+        return result
+    if result.get("skipped") is not True:
+        return result
+    reason = str(result.get("reason") or "").strip().lower()
+    if reason == "unsupported":
+        return _normalize_expected_result(
+            result,
+            status="expected_unsupported",
+            expected_flag="expected_unsupported",
+            message="Step skipped because the current ChatGPT UI/account does not support this source kind.",
+        )
+    return _normalize_expected_result(
+        result,
+        status="expected_skip",
+        expected_flag="expected_skip",
+        message="Step skipped as an expected suite precondition or capability limitation.",
+    )
 
 
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
@@ -781,12 +819,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     steps,
                     "project_source_add_link",
                     ok=True,
-                    details={
-                        "skipped": True,
-                        "reason": "unsupported",
-                        "requested_source_kind": "link",
-                        "available_source_kinds": available_source_kinds,
-                    },
+                    details=_normalize_expected_skip_result(
+                        {
+                            "skipped": True,
+                            "reason": "unsupported",
+                            "requested_source_kind": "link",
+                            "available_source_kinds": available_source_kinds,
+                        }
+                    ),
                 )
 
         if should_run("project_source_add_text"):
@@ -859,12 +899,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     steps,
                     "project_source_remove_link",
                     ok=True,
-                    details={
-                        "skipped": True,
-                        "reason": "unsupported",
-                        "requested_source_kind": "link",
-                        "available_source_kinds": available_source_kinds,
-                    },
+                    details=_normalize_expected_skip_result(
+                        {
+                            "skipped": True,
+                            "reason": "unsupported",
+                            "requested_source_kind": "link",
+                            "available_source_kinds": available_source_kinds,
+                        }
+                    ),
                 )
 
         if should_run("project_source_remove_text"):
