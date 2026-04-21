@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from promptbranch_full_integration_test import make_parser, resolve_step_selection
+from promptbranch_full_integration_test import (
+    _normalize_expected_missing_resolve_result,
+    make_parser,
+    resolve_step_selection,
+)
 
 
 def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
@@ -100,3 +104,18 @@ def test_parser_accepts_project_list_debug_options() -> None:
     assert args.project_list_debug_scroll_rounds == 9
     assert args.project_list_debug_wait_ms == 500
     assert args.project_list_debug_manual_pause is True
+
+
+def test_normalize_expected_missing_resolve_result_marks_project_not_found_as_expected() -> None:
+    result = {"ok": False, "error": "project_not_found", "match_count": 0}
+    normalized = _normalize_expected_missing_resolve_result(result)
+    assert normalized["ok"] is True
+    assert normalized["service_ok"] is False
+    assert normalized["expected_missing"] is True
+    assert normalized["status"] == "expected_missing"
+
+
+def test_normalize_expected_missing_resolve_result_leaves_other_results_unchanged() -> None:
+    result = {"ok": True, "match_count": 1}
+    normalized = _normalize_expected_missing_resolve_result(result)
+    assert normalized == result
