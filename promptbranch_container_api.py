@@ -24,6 +24,27 @@ from promptbranch_browser_auth.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+def _normalized_upload_filename(filename: Optional[str], *, default: str = "attachment.bin") -> str:
+    candidate = Path((filename or "").strip() or default).name
+    if candidate in {"", ".", ".."}:
+        return default
+    return candidate
+
+
+async def _persist_upload_to_named_temp_path(file: UploadFile, *, default_filename: str = "attachment.bin") -> tuple[Path, Path]:
+    temp_dir = Path(tempfile.mkdtemp(prefix="promptbranch-upload-"))
+    temp_path = temp_dir / _normalized_upload_filename(file.filename, default=default_filename)
+    temp_path.write_bytes(await file.read())
+    return temp_dir, temp_path
+
+
+def _cleanup_temp_upload(temp_path: Optional[Path], temp_dir: Optional[Path]) -> None:
+    if temp_path is not None:
+        temp_path.unlink(missing_ok=True)
+    if temp_dir is not None:
+        temp_dir.rmdir()
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -122,7 +143,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.90"
+SERVICE_VERSION = "0.0.91"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -317,12 +338,10 @@ async def ask(
     file: Optional[UploadFile] = File(default=None),
 ) -> AskResponse:
     temp_path: Optional[Path] = None
+    temp_dir: Optional[Path] = None
     try:
         if file is not None:
-            suffix = Path(file.filename or "attachment.bin").suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-                handle.write(await file.read())
-                temp_path = Path(handle.name)
+            temp_dir, temp_path = await _persist_upload_to_named_temp_path(file)
 
         result = await _service_for(project_url).ask_question_result(
             prompt=prompt,
@@ -339,8 +358,7 @@ async def ask(
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
     finally:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+        _cleanup_temp_upload(temp_path, temp_dir)
 
 
 @protected.get("/projects", dependencies=[Depends(require_service_token)])
@@ -444,14 +462,14 @@ async def add_project_source(
     file: Optional[UploadFile] = File(default=None),
 ) -> dict:
     temp_path: Optional[Path] = None
+    temp_dir: Optional[Path] = None
     try:
         if source_kind == "file":
             if file is None:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file is required when type=file")
-            suffix = Path(file.filename or "attachment.bin").suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-                handle.write(await file.read())
-                temp_path = Path(handle.name)
+            temp_dir, temp_path = await _persist_upload_to_named_temp_path(file)
+            if not display_name:
+                display_name = _normalized_upload_filename(file.filename)
         elif source_kind in {"text", "link"} and not value:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"value is required when type={source_kind}")
 
@@ -467,8 +485,7 @@ async def add_project_source(
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
     finally:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+        _cleanup_temp_upload(temp_path, temp_dir)
 
 
 @protected.post("/project-sources/remove", dependencies=[Depends(require_service_token)])

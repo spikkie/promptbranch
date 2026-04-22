@@ -36,7 +36,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.90"
+CLI_VERSION = "0.0.91"
 COMMANDS = {
     "login-check",
     "ask",
@@ -920,21 +920,24 @@ async def cmd_project_remove(backend: CommandBackend, args: argparse.Namespace) 
 
 
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
-    source_kind = args.type
+    source_kind = args.type or "file"
     value = args.value
     file_path = args.file
+    display_name = args.name
     if source_kind == "file" and not file_path:
         print("error: --file is required when --type=file", file=sys.stderr)
         return 2
     if source_kind in {"link", "text"} and not value:
         print(f"error: --value is required when --type={source_kind}", file=sys.stderr)
         return 2
+    if source_kind == "file" and file_path and not display_name:
+        display_name = Path(file_path).name
 
     result = await backend.add_project_source(
         source_kind=source_kind,
         value=value,
         file_path=file_path,
-        display_name=args.name,
+        display_name=display_name,
         keep_open=args.keep_open,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -1569,7 +1572,7 @@ def make_parser() -> argparse.ArgumentParser:
         "project-source-add",
         help="Add a source to the configured ChatGPT project (Sources tab).",
     )
-    source_add.add_argument("--type", choices=["link", "text", "file"], required=True)
+    source_add.add_argument("--type", choices=["link", "text", "file"], default="file")
     source_add.add_argument("--value", help="Source payload for link/text sources.")
     source_add.add_argument("--file", help="Local file path for file sources.")
     source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")

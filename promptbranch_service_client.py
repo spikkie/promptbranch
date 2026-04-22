@@ -264,6 +264,8 @@ class ChatGPTServiceClient:
             data["value"] = value
         if display_name is not None:
             data["name"] = display_name
+        elif source_kind == "file" and file_path:
+            data["name"] = Path(file_path).name
         if project_url:
             data["project_url"] = project_url
 
