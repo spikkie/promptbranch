@@ -18,9 +18,11 @@ def project_home_url_from_url(url: Optional[str]) -> Optional[str]:
     if not parsed.scheme or not parsed.netloc:
         return None
     parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) < 3 or parts[0] != "g":
+    if len(parts) < 2 or parts[0] != "g":
         return None
     slug = parts[1]
+    if len(parts) == 2:
+        return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
     if parts[2] == "project":
         return urlunparse(parsed._replace(path=f"/g/{slug}/project", query="", fragment=""))
     if parts[2] == "c" and len(parts) >= 4:
