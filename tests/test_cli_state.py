@@ -139,6 +139,34 @@ def test_main_use_by_project_name_updates_current_state(monkeypatch, capsys, tmp
     assert snapshot["project_name"] == "my-project"
 
 
+def test_main_use_by_bare_project_url_updates_current_state(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "use",
+        "https://chatgpt.com/g/g-p-demo-my-project",
+    ])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["project_home_url"] == "https://chatgpt.com/g/g-p-demo-my-project/project"
+    assert payload["project_name"] == "my-project"
+
+    store = ConversationStateStore(str(tmp_path))
+    snapshot = store.snapshot()
+    assert snapshot["resolved_project_home_url"] == "https://chatgpt.com/g/g-p-demo-my-project/project"
+    assert snapshot["project_name"] == "my-project"
+
+
 def test_main_use_by_conversation_url_sets_current_chat(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
