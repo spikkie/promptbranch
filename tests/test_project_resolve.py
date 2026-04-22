@@ -18,6 +18,12 @@ class FakePage:
     async def evaluate(self, _script: str):
         return self.evaluate_result
 
+    async def evaluate_handle(self, _script: str, _args=None):
+        class _Handle:
+            def as_element(self):
+                return None
+        return _Handle()
+
     async def wait_for_timeout(self, _ms: int) -> None:
         return None
 
@@ -451,6 +457,28 @@ def test_match_source_card_prefers_structured_identity_fields(tmp_path: Path) ->
 
 
 
+def test_match_source_card_ignores_shared_file_placeholder_metadata_for_lookup(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    sibling_card = {
+        "text": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.93.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.93.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
+    }
+
+    assert client._match_source_card(
+        [sibling_card],
+        [
+            "chatgpt_claudecode_workflow_v0.0.92.zip",
+            "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        ],
+        anchor_safe=True,
+    ) is None
+
+
+
 def test_source_lookup_candidates_include_structured_card_identity(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -550,7 +578,7 @@ def test_project_source_stable_absence_accepts_empty_sources_surface(tmp_path: P
 
 
 
-def test_project_source_stable_absence_rejects_non_empty_unmatched_surface(tmp_path: Path) -> None:
+def test_project_source_stable_absence_accepts_non_empty_unmatched_surface(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     page = FakePage()
 
@@ -589,7 +617,7 @@ def test_project_source_stable_absence_rejects_non_empty_unmatched_surface(tmp_p
         )
     )
 
-    assert result is False
+    assert result is True
 
 
 
@@ -794,6 +822,9 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
     async def fake_safe_page_url(*_args, **_kwargs):
         return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
 
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
     client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
     client._goto = fake_goto  # type: ignore[method-assign]
     client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
@@ -802,6 +833,7 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
     client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
     client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
     client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
 
     result = asyncio.run(
         client._remove_project_source_operation(
@@ -869,6 +901,9 @@ def test_remove_project_source_retries_options_click_with_force(tmp_path: Path) 
     async def fake_safe_page_url(*_args, **_kwargs):
         return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
 
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
     client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
     client._goto = fake_goto  # type: ignore[method-assign]
     client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
@@ -877,6 +912,7 @@ def test_remove_project_source_retries_options_click_with_force(tmp_path: Path) 
     client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
     client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
     client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
 
     result = asyncio.run(
         client._remove_project_source_operation(
@@ -943,6 +979,9 @@ def test_remove_project_source_retries_remove_action_when_first_click_has_no_eff
     async def fake_safe_page_url(*_args, **_kwargs):
         return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
 
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
     client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
     client._goto = fake_goto  # type: ignore[method-assign]
     client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
@@ -951,6 +990,7 @@ def test_remove_project_source_retries_remove_action_when_first_click_has_no_eff
     client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
     client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
     client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
 
     result = asyncio.run(
         client._remove_project_source_operation(
@@ -967,6 +1007,185 @@ def test_remove_project_source_retries_remove_action_when_first_click_has_no_eff
     assert remove_button.click_count == 2
     assert confirm_button.click_count == 1
     assert len(source_absence_calls) == 2
+
+
+def test_remove_project_source_aborts_when_retry_detects_collateral_removal(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    options_button = FakeClickable()
+    remove_button = FakeClickable()
+    matched_card = {
+        "identity": "candlecast-src-0.19.5.82.1.zip",
+        "title": "candlecast-src-0.19.5.82.1.zip",
+        "key": "candlecast-src-0.19.5.82.1.zip",
+        "text": "candlecast-src-0.19.5.82.1.zip File contents may not be accessible",
+    }
+    sibling_card = {
+        "identity": "candlecast-src-0.19.5.82.zip",
+        "title": "candlecast-src-0.19.5.82.zip",
+        "key": "candlecast-src-0.19.5.82.zip",
+        "text": "candlecast-src-0.19.5.82.zip File contents may not be accessible",
+    }
+    other_card = {
+        "identity": "architecture-process_0.1.16.2.zip",
+        "title": "architecture-process_0.1.16.2.zip",
+        "key": "architecture-process_0.1.16.2.zip",
+        "text": "architecture-process_0.1.16.2.zip File contents may not be accessible",
+    }
+    snapshots = iter([
+        [matched_card, sibling_card, other_card],
+        [matched_card, sibling_card, other_card],
+        [matched_card, other_card],
+    ])
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        try:
+            return next(snapshots)
+        except StopIteration:
+            return [matched_card, other_card]
+
+    async def fake_wait_for_project_source_action_button(*_args, **_kwargs):
+        return options_button, matched_card, [
+            "candlecast-src-0.19.5.82.1.zip",
+            "candlecast-src-0.19.5.82.1.zip File contents may not be accessible",
+        ]
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == "project-source-remove-action":
+            return remove_button
+        if label == "project-source-remove-confirm":
+            return None
+        raise AssertionError(f"unexpected locator label: {label}")
+
+    async def fake_wait_for_source_absence(*_args, **_kwargs):
+        raise client_module.ResponseTimeoutError("target still present")
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
+
+    with pytest.raises(client_module.ResponseTimeoutError, match="collateral_removed"):
+        asyncio.run(
+            client._remove_project_source_operation(
+                context=None,
+                page=page,
+                source_name="candlecast-src-0.19.5.82.1.zip",
+                exact=False,
+                keep_open=False,
+            )
+        )
+
+
+def test_remove_project_source_fails_when_target_removal_also_deletes_other_rows(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    options_button = FakeClickable()
+    remove_button = FakeClickable()
+    matched_card = {
+        "identity": "candlecast-src-0.19.5.82.1.zip",
+        "title": "candlecast-src-0.19.5.82.1.zip",
+        "key": "candlecast-src-0.19.5.82.1.zip",
+        "text": "candlecast-src-0.19.5.82.1.zip File contents may not be accessible",
+    }
+    sibling_card = {
+        "identity": "candlecast-src-0.19.5.82.zip",
+        "title": "candlecast-src-0.19.5.82.zip",
+        "key": "candlecast-src-0.19.5.82.zip",
+        "text": "candlecast-src-0.19.5.82.zip File contents may not be accessible",
+    }
+    other_card = {
+        "identity": "architecture-process_0.1.16.2.zip",
+        "title": "architecture-process_0.1.16.2.zip",
+        "key": "architecture-process_0.1.16.2.zip",
+        "text": "architecture-process_0.1.16.2.zip File contents may not be accessible",
+    }
+    snapshots = iter([
+        [matched_card, sibling_card, other_card],
+        [other_card],
+    ])
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        try:
+            return next(snapshots)
+        except StopIteration:
+            return [other_card]
+
+    async def fake_wait_for_project_source_action_button(*_args, **_kwargs):
+        return options_button, matched_card, [
+            "candlecast-src-0.19.5.82.1.zip",
+            "candlecast-src-0.19.5.82.1.zip File contents may not be accessible",
+        ]
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == "project-source-remove-action":
+            return remove_button
+        if label == "project-source-remove-confirm":
+            return None
+        raise AssertionError(f"unexpected locator label: {label}")
+
+    async def fake_wait_for_source_absence(*_args, **_kwargs):
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
+
+    with pytest.raises(client_module.ResponseTimeoutError, match="deleted additional rows"):
+        asyncio.run(
+            client._remove_project_source_operation(
+                context=None,
+                page=page,
+                source_name="candlecast-src-0.19.5.82.1.zip",
+                exact=False,
+                keep_open=False,
+            )
+        )
 
 
 def test_remove_project_source_succeeds_when_removal_is_immediate_without_confirm(tmp_path: Path) -> None:
@@ -1013,6 +1232,9 @@ def test_remove_project_source_succeeds_when_removal_is_immediate_without_confir
     async def fake_safe_page_url(*_args, **_kwargs):
         return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
 
+    async def fake_project_source_is_stably_absent(*_args, **_kwargs):
+        return True
+
     client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
     client._goto = fake_goto  # type: ignore[method-assign]
     client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
@@ -1021,6 +1243,7 @@ def test_remove_project_source_succeeds_when_removal_is_immediate_without_confir
     client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
     client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
     client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    client._project_source_is_stably_absent = fake_project_source_is_stably_absent  # type: ignore[method-assign]
 
     result = asyncio.run(
         client._remove_project_source_operation(
@@ -1086,6 +1309,73 @@ def test_remove_project_source_returns_idempotent_success_when_source_is_already
     assert result["removed_via_ui"] is False
     assert result["source_match"] == "pasted.txt Document"
     assert result["source_identity_used"] == "pasted.txt Document"
+
+
+def test_remove_project_source_returns_idempotent_success_when_target_absent_but_other_sources_remain(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        return [
+            {
+                "text": "architecture-process_0.1.16.2.zip File contents may not be accessible",
+                "key": "architecture-process_0.1.16.2.zip",
+                "title": "architecture-process_0.1.16.2.zip",
+                "subtitle": "File contents may not be accessible",
+                "identity": "architecture-process_0.1.16.2.zip File contents may not be accessible",
+            }
+        ]
+
+    async def fake_wait_for_project_source_action_button(*_args, **_kwargs):
+        return None, None, ["candlecast-src-0.19.5.82.1.zip"]
+
+    async def fake_find_project_source_action_button(*_args, **_kwargs):
+        return None
+
+    async def fake_find_project_source_container(*_args, **_kwargs):
+        return None
+
+    async def fake_project_sources_empty_state_visible(*_args, **_kwargs):
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._find_project_source_action_button = fake_find_project_source_action_button  # type: ignore[method-assign]
+    client._find_project_source_container = fake_find_project_source_container  # type: ignore[method-assign]
+    client._project_sources_empty_state_visible = fake_project_sources_empty_state_visible  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._remove_project_source_operation(
+            context=None,
+            page=page,
+            source_name="candlecast-src-0.19.5.82.1.zip",
+            exact=False,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["already_absent"] is True
+    assert result["removed_via_ui"] is False
+    assert result["source_match"] == "candlecast-src-0.19.5.82.1.zip"
+    assert result["source_identity_used"] == "candlecast-src-0.19.5.82.1.zip"
 
 
 def test_respect_context_spacing_waits_between_browser_context_launches(tmp_path: Path, monkeypatch) -> None:
