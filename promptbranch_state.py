@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -9,6 +10,20 @@ from urllib.parse import urlparse, urlunparse
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 STATE_FILE_NAME = ".promptbranch_state.json"
 LEGACY_STATE_FILE_NAME = ".chatgpt_cli_state.json"
+GLOBAL_PROJECT_CACHE_FILE_NAME = "project-list-cache.json"
+GLOBAL_PROJECT_CACHE_ENV = "PROMPTBRANCH_PROJECT_CACHE_PATH"
+LEGACY_GLOBAL_PROJECT_CACHE_ENV = "CHATGPT_PROJECT_CACHE_PATH"
+
+
+def global_project_cache_path(path: Optional[str] = None) -> Path:
+    if path:
+        return Path(path).expanduser()
+    env_path = os.getenv(GLOBAL_PROJECT_CACHE_ENV) or os.getenv(LEGACY_GLOBAL_PROJECT_CACHE_ENV)
+    if env_path:
+        return Path(env_path).expanduser()
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+    config_root = Path(xdg_config_home).expanduser() if xdg_config_home else Path("~/.config").expanduser()
+    return config_root / "promptbranch" / GLOBAL_PROJECT_CACHE_FILE_NAME
 
 
 def project_home_url_from_url(url: Optional[str]) -> Optional[str]:
@@ -252,3 +267,92 @@ class ConversationStateStore:
         projects[home_url] = entry
         payload["projects"] = projects
         payload["current"] = entry
+
+
+class GlobalProjectCache:
+    def __init__(self, path: Optional[str] = None) -> None:
+        self._path = global_project_cache_path(path)
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def snapshot(self) -> dict[str, Any]:
+        payload = self._load()
+        projects = payload.get("projects") if isinstance(payload, dict) else None
+        if not isinstance(projects, list):
+            projects = []
+        return {
+            "cache_file": str(self._path),
+            "updated_at": payload.get("updated_at") if isinstance(payload, dict) else None,
+            "count": len(projects),
+            "projects": projects,
+        }
+
+    def store_projects(self, projects: list[dict[str, Any]]) -> dict[str, Any]:
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in projects:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            url = str(item.get("url") or "").strip()
+            home_url = project_home_url_from_url(url) or url
+            if not home_url:
+                continue
+            cache_key = home_url
+            if cache_key in seen:
+                continue
+            seen.add(cache_key)
+            normalized.append({
+                "name": name or project_name_from_url(home_url) or "<unnamed>",
+                "url": home_url,
+                "project_home_url": home_url,
+                "project_slug": project_slug_from_url(home_url),
+                "is_current": bool(item.get("is_current")),
+            })
+        normalized.sort(key=lambda item: (not bool(item.get("is_current")), str(item.get("name") or "").lower(), str(item.get("url") or "")))
+        payload = {
+            "schema_version": 1,
+            "cache_file": str(self._path),
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "projects": normalized,
+        }
+        self._write(payload)
+        return payload
+
+    def resolve(self, target: str) -> dict[str, Any] | None:
+        projects = self.snapshot().get("projects")
+        if not isinstance(projects, list):
+            return None
+        needle = (target or "").strip()
+        if not needle:
+            return None
+        home_url = project_home_url_from_url(needle) or needle
+        url_matches = [item for item in projects if isinstance(item, dict) and home_url in {str(item.get("url") or ""), str(item.get("project_home_url") or "")}]
+        if len(url_matches) == 1:
+            return dict(url_matches[0])
+        exact = [item for item in projects if isinstance(item, dict) and str(item.get("name") or "") == needle]
+        if len(exact) == 1:
+            return dict(exact[0])
+        lowered = needle.lower()
+        exact_ci = [item for item in projects if isinstance(item, dict) and str(item.get("name") or "").lower() == lowered]
+        if len(exact_ci) == 1:
+            return dict(exact_ci[0])
+        contains = [item for item in projects if isinstance(item, dict) and lowered in str(item.get("name") or "").lower()]
+        if len(contains) == 1:
+            return dict(contains[0])
+        return None
+
+    def _load(self) -> dict[str, Any]:
+        if not self._path.exists():
+            return {}
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

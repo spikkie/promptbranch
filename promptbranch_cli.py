@@ -26,6 +26,7 @@ from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
     ConversationStateStore,
+    GlobalProjectCache,
     conversation_id_from_url,
     project_home_url_from_url,
     project_name_from_url,
@@ -36,7 +37,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.93"
+CLI_VERSION = "0.0.94"
 COMMANDS = {
     "login-check",
     "ask",
@@ -595,9 +596,44 @@ def _project_list_payload(result: Any, *, current_only: bool = False) -> tuple[l
     return projects, payload
 
 
+def _project_cache_from_args(args: argparse.Namespace) -> GlobalProjectCache:
+    return GlobalProjectCache()
+
+
+def _cache_project_list_result(args: argparse.Namespace, result: Any) -> dict[str, Any] | None:
+    raw_projects = result.get("projects") if isinstance(result, dict) and isinstance(result.get("projects"), list) else None
+    if not raw_projects:
+        return None
+    cache = _project_cache_from_args(args)
+    return cache.store_projects([item for item in raw_projects if isinstance(item, dict)])
+
+
+def _resolve_project_from_cache(args: argparse.Namespace, target: str) -> dict[str, Any] | None:
+    cache = _project_cache_from_args(args)
+    cached = cache.resolve(target)
+    if not isinstance(cached, dict):
+        return None
+    project_url = str(cached.get("project_home_url") or cached.get("url") or "")
+    if not project_url:
+        return None
+    return {
+        "ok": True,
+        "action": "project_resolve",
+        "resolved_via": "global_cache",
+        "project_url": project_url,
+        "project_name": cached.get("name") or project_name_from_url(project_url),
+        "project_slug": cached.get("project_slug"),
+        "cache_file": str(cache.path),
+    }
+
+
 async def cmd_project_list(backend: CommandBackend, args: argparse.Namespace) -> int:
     result = await backend.list_projects(keep_open=args.keep_open)
+    cache_payload = _cache_project_list_result(args, result)
     projects, payload = _project_list_payload(result, current_only=args.current)
+    if cache_payload is not None:
+        payload["cache_file"] = cache_payload.get("cache_file", str(_project_cache_from_args(args).path)) if isinstance(cache_payload, dict) else str(_project_cache_from_args(args).path)
+        payload["cache_updated_at"] = cache_payload.get("updated_at") if isinstance(cache_payload, dict) else None
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
@@ -897,6 +933,11 @@ async def cmd_project_resolve(backend: CommandBackend, args: argparse.Namespace)
         name=args.name,
         keep_open=args.keep_open,
     )
+    if not result.get("ok"):
+        cached = _resolve_project_from_cache(args, args.name)
+        if cached is not None:
+            _state_store_from_args(args).remember_project(cached.get("project_url"), project_name=cached.get("project_name"))
+            result = cached
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result.get("ok") else 1
 
@@ -1263,7 +1304,14 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
 
     if args.pick:
         result = await backend.list_projects(keep_open=args.keep_open)
+        _cache_project_list_result(args, result)
         projects, _ = _project_list_payload(result, current_only=False)
+        selected_via = "pick"
+        if not projects:
+            cache_snapshot = _project_cache_from_args(args).snapshot()
+            cached_projects = cache_snapshot.get("projects") if isinstance(cache_snapshot.get("projects"), list) else []
+            projects = [item for item in cached_projects if isinstance(item, dict)]
+            selected_via = "global_cache"
         if not projects:
             print(json.dumps({"ok": False, "action": "use", "error": "no_projects_found"}, indent=2, ensure_ascii=False))
             return 1
@@ -1281,7 +1329,7 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
         payload = {
             "ok": True,
             "action": "use",
-            "selected_via": "pick",
+            "selected_via": selected_via,
             "project_name": snapshot.get("project_name"),
             "project_slug": snapshot.get("project_slug"),
             "project_home_url": snapshot.get("resolved_project_home_url"),
@@ -1316,11 +1364,16 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
         return 0
 
     result = await backend.resolve_project(name=target, keep_open=args.keep_open)
+    if not result.get("ok"):
+        cached = _resolve_project_from_cache(args, target)
+        if cached is not None:
+            result = cached
     if result.get("ok"):
         resolved_url = result.get("project_url")
-        store.remember_project(resolved_url, project_name=project_name or target)
+        resolved_name = project_name or result.get("project_name") or target
+        store.remember_project(resolved_url, project_name=resolved_name)
         if conversation_url:
-            store.remember(resolved_url, conversation_url, project_name=project_name or target)
+            store.remember(resolved_url, conversation_url, project_name=resolved_name)
         snapshot = store.snapshot(resolved_url)
         result = {
             **result,

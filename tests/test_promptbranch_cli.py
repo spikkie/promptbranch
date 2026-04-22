@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options
 from promptbranch_state import ConversationStateStore
@@ -436,6 +437,85 @@ def test_main_project_list_current_filters_to_current(monkeypatch, capsys, tmp_p
     assert "Alpha	https://chatgpt.com/g/alpha/project" not in captured.out
 
 
+def test_main_project_list_writes_global_cache(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "projects": [
+                    {"name": "Alpha", "url": "https://chatgpt.com/g/g-p-alpha-alpha/project", "is_current": False},
+                    {"name": "Demo", "url": "https://chatgpt.com/g/g-p-demo-demo/project", "is_current": True},
+                ],
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile-a"),
+        "project-list",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Demo	https://chatgpt.com/g/g-p-demo-demo/project" in captured.out
+    cache_path = tmp_path / "xdg" / "promptbranch" / "project-list-cache.json"
+    assert cache_path.exists()
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert payload["projects"][0]["name"] == "Demo"
+    assert payload["projects"][1]["name"] == "Alpha"
+
+
+def test_main_use_can_fall_back_to_global_project_cache(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_projects(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 1,
+                "projects": [
+                    {"name": "Demo", "url": "https://chatgpt.com/g/g-p-demo-demo/project", "is_current": True},
+                ],
+            }
+
+        def resolve_project(self, name: str, **kwargs):
+            return {"ok": False, "error": "not_found", "name": name}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    profile_a = tmp_path / "profile-a"
+    profile_b = tmp_path / "profile-b"
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile_a),
+        "project-list",
+    ])
+    assert exit_code == 0
+    capsys.readouterr()
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile_b),
+        "use", "Demo",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    payload = json.loads(captured.out)
+    assert payload["resolved_via"] == "global_cache"
+    state_payload = json.loads((profile_b / ".promptbranch_state.json").read_text(encoding="utf-8"))
+    assert state_payload["current"]["project_home_url"] == "https://chatgpt.com/g/g-p-demo-demo/project"
+
+
 def test_main_use_pick_selects_project_and_updates_state(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
@@ -518,7 +598,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.93"
+    assert captured.out.strip() == "promptbranch 0.0.94"
 
 
 def test_main_chat_list_json_emits_chat_payload(monkeypatch, capsys, tmp_path) -> None:
