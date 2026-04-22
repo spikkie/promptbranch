@@ -164,7 +164,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.91" in out
+    assert "0.0.92" in out
     assert "promptbranch" in out
 
 
@@ -172,6 +172,22 @@ def test_parser_accepts_version_subcommand() -> None:
     parser = make_parser()
     args = parser.parse_args(["version"])
     assert args.command == "version"
+
+
+def test_main_help_command_prints_top_level_help(capsys) -> None:
+    exit_code = __import__("promptbranch_cli").main(["help"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "usage: promptbranch" in captured.out
+    assert "project-source-add" in captured.out
+
+
+def test_main_help_command_prints_subcommand_help(capsys) -> None:
+    exit_code = __import__("promptbranch_cli").main(["help", "project-source-add"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "usage: promptbranch project-source-add" in captured.out
+    assert "--file" in captured.out
 
 
 def test_parser_accepts_chat_command_family_and_aliases() -> None:

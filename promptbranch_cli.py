@@ -36,7 +36,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.91"
+CLI_VERSION = "0.0.92"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1682,6 +1682,20 @@ def _max_retries_was_configured(argv: list[str]) -> bool:
     return False
 
 
+def _try_handle_help_command(parser: argparse.ArgumentParser, argv: list[str]) -> Optional[int]:
+    if not argv or argv[0] != "help":
+        return None
+    help_target = argv[1:]
+    if not help_target or help_target[0] in {"-h", "--help"}:
+        parser.print_help()
+        return 0
+    try:
+        parser.parse_args([help_target[0], "--help", *help_target[1:]])
+    except SystemExit as exc:
+        return int(exc.code)
+    return 0
+
+
 async def _async_main(args: argparse.Namespace) -> int:
     backend = build_backend(args)
     if args.command == "login-check":
@@ -1741,6 +1755,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         load_dotenv(dotenv_path, override=False)
 
     parser = make_parser()
+    help_exit_code = _try_handle_help_command(parser, normalized_argv)
+    if help_exit_code is not None:
+        return help_exit_code
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
     if args.debug and not _max_retries_was_configured(normalized_argv):
