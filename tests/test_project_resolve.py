@@ -469,6 +469,29 @@ def test_source_lookup_candidates_include_structured_card_identity(tmp_path: Pat
     assert "Document · Apr 16, 2026" in candidates
 
 
+def test_source_lookup_candidates_exact_safe_excludes_shared_metadata_only_values(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    card = {
+        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+    }
+
+    candidates = client._source_lookup_candidates(
+        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        card,
+        exact_safe=True,
+    )
+
+    assert candidates == [
+        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+    ]
+
+
 def test_project_source_stable_absence_accepts_empty_sources_surface(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     page = FakePage()
@@ -560,6 +583,68 @@ class FakeClickFailsThenForceSucceeds(FakeClickable):
             self.force_click_count += 1
             return None
         raise RuntimeError("pointer intercepted")
+
+
+def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = FakePage()
+
+    captured_candidates: list[list[str]] = []
+    sentinel_button = object()
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        return [
+            {
+                "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+                "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
+                "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+                "subtitle": "File contents may not be accessible",
+                "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+            }
+        ]
+
+    async def fake_find_project_source_action_button(_page, source_names, *, exact: bool):
+        captured_candidates.append(list(source_names))
+        assert exact is True
+        return sentinel_button
+
+    async def fake_project_sources_empty_state_visible(*_args, **_kwargs):
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_action_button = fake_find_project_source_action_button  # type: ignore[method-assign]
+    client._project_sources_empty_state_visible = fake_project_sources_empty_state_visible  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    action_button, matched_card, candidates = asyncio.run(
+        client._wait_for_project_source_action_button(
+            page,
+            ["chatgpt_claudecode_workflow_v0.0.92.zip"],
+            exact=True,
+            timeout_ms=1_000,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert action_button is sentinel_button
+    assert matched_card == {
+        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+    }
+    assert captured_candidates == [[
+        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+    ]]
+    assert candidates == [
+        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+    ]
 
 
 def test_remove_project_source_retries_options_click_with_force(tmp_path: Path) -> None:
