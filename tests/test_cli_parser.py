@@ -164,7 +164,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.90" in out
+    assert "0.0.91" in out
     assert "promptbranch" in out
 
 
@@ -197,3 +197,11 @@ def test_parser_accepts_test_suite_command() -> None:
     assert args.command == 'test-suite'
     assert args.keep_project is True
     assert args.only == ['project_list_debug']
+
+
+def test_parser_defaults_project_source_add_type_to_file() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["project-source-add", "--file", "demo.zip"])
+    assert args.command == "project-source-add"
+    assert args.type == "file"
+    assert args.file == "demo.zip"

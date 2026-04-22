@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from promptbranch_container_api import app
@@ -13,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.90"
+    assert payload["version"] == "0.0.91"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.90"
+    assert response.json()["version"] == "0.0.91"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -83,3 +85,61 @@ def test_run_test_suite_endpoint_uses_helper(monkeypatch) -> None:
     response = client.post('/v1/test-suite/run', json={'keep_project': True, 'only': ['project_list_debug']})
     assert response.status_code == 200
     assert response.json()['action'] == 'test_suite'
+
+
+def test_add_project_source_file_preserves_uploaded_basename_and_defaults_display_name(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        async def add_project_source(self, *, source_kind: str, value=None, file_path=None, display_name=None, keep_open: bool = False):
+            captured["source_kind"] = source_kind
+            captured["file_path"] = file_path
+            captured["display_name"] = display_name
+            captured["keep_open"] = keep_open
+            assert file_path is not None
+            path = Path(file_path)
+            captured["basename"] = path.name
+            captured["exists_during_call"] = path.exists()
+            return {"ok": True, "file_path": file_path, "display_name": display_name}
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file"},
+        files={"file": ("architecture-process_0.1.16.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "architecture-process_0.1.16.zip"
+    assert captured["source_kind"] == "file"
+    assert captured["basename"] == "architecture-process_0.1.16.zip"
+    assert captured["display_name"] == "architecture-process_0.1.16.zip"
+    assert captured["exists_during_call"] is True
+
+
+def test_ask_file_upload_preserves_uploaded_basename(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        async def ask_question_result(self, *, prompt: str, file_path=None, conversation_url=None, expect_json: bool, keep_open: bool = False, retries=None):
+            captured["prompt"] = prompt
+            captured["file_path"] = file_path
+            assert file_path is not None
+            path = Path(file_path)
+            captured["basename"] = path.name
+            captured["exists_during_call"] = path.exists()
+            return {"answer": "ready", "conversation_url": None}
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post(
+        "/v1/ask",
+        data={"prompt": "hello"},
+        files={"file": ("architecture-process_0.1.16.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "ready"
+    assert captured["basename"] == "architecture-process_0.1.16.zip"
+    assert captured["exists_during_call"] is True

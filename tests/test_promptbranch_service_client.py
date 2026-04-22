@@ -226,3 +226,23 @@ def test_run_test_suite_posts_expected_json() -> None:
         payload = client.run_test_suite({"keep_project": True, "only": ["project_list_debug"]})
 
     assert payload["ok"] is True
+
+
+def test_add_project_source_file_defaults_name_to_file_basename(tmp_path: Path) -> None:
+    file_path = tmp_path / "architecture-process_0.1.16.zip"
+    file_path.write_bytes(b"zip-bytes")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        content_type = request.headers["Content-Type"]
+        assert content_type.startswith("multipart/form-data; boundary=")
+        body = request.read().decode("utf-8", errors="ignore")
+        assert 'name="name"' in body
+        assert "architecture-process_0.1.16.zip" in body
+        return httpx.Response(200, json={"ok": True, "action": "add"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.add_project_source(source_kind="file", file_path=str(file_path))
+
+    assert payload["action"] == "add"
