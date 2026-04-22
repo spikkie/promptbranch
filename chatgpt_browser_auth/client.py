@@ -1924,7 +1924,7 @@ class ChatGPTBrowserClient:
         await self._open_project_sources_tab(page)
 
         source_cards = await self._snapshot_project_source_cards(page)
-        matched_card = self._match_source_card(source_cards, [source_name])
+        matched_card = self._match_source_card(source_cards, [source_name], exact_safe=exact, anchor_safe=not exact)
         match_candidates = self._source_lookup_candidates(source_name, matched_card, exact_safe=exact, anchor_safe=matched_card is not None)
 
         options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
@@ -1961,8 +1961,10 @@ class ChatGPTBrowserClient:
         source_removed = False
         removal_triggered = False
         max_remove_attempts = 3
+        initial_source_cards = list(source_cards)
 
         for remove_attempt in range(1, max_remove_attempts + 1):
+            attempt_source_cards = await self._snapshot_project_source_cards(page)
             await self._click_locator_with_fallback(
                 options_button,
                 label="project-source-remove-options",
@@ -2003,6 +2005,13 @@ class ChatGPTBrowserClient:
                 removal_triggered = True
                 break
             except ResponseTimeoutError as exc:
+                current_source_cards = await self._snapshot_project_source_cards(page)
+                remove_guard = self._source_card_remove_guard(
+                    attempt_source_cards,
+                    current_source_cards,
+                    target_candidates=match_candidates,
+                    matched_card=matched_card,
+                )
                 self._log(
                     "project-source-remove",
                     "remove action did not trigger confirmation or disappearance yet",
@@ -2010,8 +2019,18 @@ class ChatGPTBrowserClient:
                     max_attempts=max_remove_attempts,
                     source_candidates=match_candidates,
                     error=str(exc),
+                    remove_guard=remove_guard,
                     current_url=await self._safe_page_url(page),
                 )
+                if remove_guard["collateral_removed"]:
+                    raise ResponseTimeoutError(
+                        "Project source remove drifted to a different row before the target disappeared "
+                        f"(target={source_name}, collateral_removed={remove_guard['collateral_removed']})"
+                    ) from exc
+                if remove_guard["target_removed"] and not remove_guard["target_present_after"]:
+                    source_removed = True
+                    removal_triggered = True
+                    break
                 if remove_attempt >= max_remove_attempts:
                     raise ResponseTimeoutError(
                         f"Project source remove action did not trigger confirmation or disappearance: {source_name}"
@@ -2038,6 +2057,23 @@ class ChatGPTBrowserClient:
 
         if removal_triggered and not source_removed:
             await self._wait_for_source_absence(page, match_candidates, exact=exact)
+
+        final_source_cards = await self._snapshot_project_source_cards(page)
+        final_remove_guard = self._source_card_remove_guard(
+            initial_source_cards,
+            final_source_cards,
+            target_candidates=match_candidates,
+            matched_card=matched_card,
+        )
+        if final_remove_guard["collateral_removed"]:
+            raise ResponseTimeoutError(
+                "Project source remove deleted additional rows "
+                f"(target={source_name}, collateral_removed={final_remove_guard['collateral_removed']})"
+            )
+        if not final_remove_guard["target_removed"] and not await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+            raise ResponseTimeoutError(
+                f"Project source remove completed without proving disappearance of target: {source_name}"
+            )
         source_identity_used = self._preferred_source_card_identity(matched_card) or source_name
         result = {
             "ok": True,
@@ -4511,6 +4547,43 @@ class ChatGPTBrowserClient:
                 candidates.append(normalized)
         return candidates
 
+    def _is_generic_source_metadata_only_value(self, value: Optional[str]) -> bool:
+        normalized = self._normalize_source_match_text(value).lower()
+        if not normalized:
+            return False
+        return normalized in {
+            "file contents may not be accessible",
+        }
+
+    def _source_card_match_candidates(
+        self,
+        card: Optional[dict[str, str]],
+        *,
+        exact_safe: bool = False,
+        anchor_safe: bool = False,
+    ) -> list[str]:
+        if exact_safe:
+            return self._source_card_exact_identity_candidates(card)
+        if anchor_safe:
+            return self._source_card_anchor_candidates(card)
+        if not isinstance(card, dict):
+            return []
+        candidates: list[str] = []
+        for value in (
+            card.get("identity"),
+            card.get("title"),
+            card.get("text"),
+            card.get("subtitle"),
+        ):
+            normalized = self._normalize_source_match_text(value)
+            if not normalized:
+                continue
+            if self._is_generic_source_metadata_only_value(normalized):
+                continue
+            if normalized not in candidates:
+                candidates.append(normalized)
+        return candidates
+
     def _source_lookup_candidates(
         self,
         requested: Optional[str],
@@ -4542,6 +4615,9 @@ class ChatGPTBrowserClient:
         self,
         cards: list[dict[str, str]],
         source_match_candidates: Optional[list[str]],
+        *,
+        exact_safe: bool = False,
+        anchor_safe: bool = False,
     ) -> Optional[dict[str, str]]:
         normalized_candidates = [
             self._normalize_source_match_text(candidate).lower()
@@ -4556,7 +4632,11 @@ class ChatGPTBrowserClient:
         for card in cards:
             card_fields = [
                 self._normalize_source_match_text(value).lower()
-                for value in self._source_card_identity_candidates(card)
+                for value in self._source_card_match_candidates(
+                    card,
+                    exact_safe=exact_safe,
+                    anchor_safe=anchor_safe,
+                )
                 if self._normalize_source_match_text(value)
             ]
             if not card_fields:
@@ -5629,7 +5709,7 @@ class ChatGPTBrowserClient:
         stable_observations = 0
         for _ in range(max(required_observations, 1)):
             source_cards = await self._snapshot_project_source_cards(page)
-            matched_card = self._match_source_card(source_cards, candidates)
+            matched_card = self._match_source_card(source_cards, candidates, exact_safe=exact, anchor_safe=not exact)
             action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
             container = None
             if action_button is None and matched_card is None:
@@ -5639,7 +5719,12 @@ class ChatGPTBrowserClient:
                         break
             empty_state_visible = await self._project_sources_empty_state_visible(page)
             cards_empty = len(source_cards) == 0
-            absent_now = action_button is None and matched_card is None and container is None and (empty_state_visible or cards_empty)
+            absent_now = (
+                action_button is None
+                and matched_card is None
+                and container is None
+                and (empty_state_visible or len(source_cards) > 0)
+            )
             self._log(
                 'project-source-remove',
                 'stable absence probe',
@@ -5690,6 +5775,80 @@ class ChatGPTBrowserClient:
             if normalized_value and normalized_value not in normalized:
                 normalized.append(normalized_value)
         return normalized
+
+    def _source_card_snapshot_keys(self, cards: Optional[list[dict[str, str]]]) -> set[str]:
+        keys: set[str] = set()
+        for card in cards or []:
+            if not isinstance(card, dict):
+                continue
+            for value in (
+                card.get("key"),
+                card.get("title"),
+                card.get("identity"),
+                card.get("text"),
+            ):
+                normalized = self._normalize_source_match_text(value).lower()
+                if normalized:
+                    keys.add(normalized)
+                    break
+        return keys
+
+    def _source_card_remove_guard(
+        self,
+        before_cards: Optional[list[dict[str, str]]],
+        after_cards: Optional[list[dict[str, str]]],
+        *,
+        target_candidates: Optional[list[str]] = None,
+        matched_card: Optional[dict[str, str]] = None,
+    ) -> dict[str, Any]:
+        before_keys = self._source_card_snapshot_keys(before_cards)
+        after_keys = self._source_card_snapshot_keys(after_cards)
+        target_aliases = {
+            self._normalize_source_match_text(value).lower()
+            for value in (
+                *(target_candidates or []),
+                *((self._source_card_identity_candidates(matched_card) if isinstance(matched_card, dict) else []) or []),
+                *(([matched_card.get("key")] if isinstance(matched_card, dict) and matched_card.get("key") else []) or []),
+            )
+            if self._normalize_source_match_text(value)
+        }
+        removed_keys = before_keys - after_keys
+        target_removed = bool(removed_keys & target_aliases)
+        target_present_after = bool(after_keys & target_aliases)
+        collateral_removed = sorted(key for key in removed_keys if key not in target_aliases)
+        return {
+            "before_count": len(before_keys),
+            "after_count": len(after_keys),
+            "removed_keys": sorted(removed_keys),
+            "target_aliases": sorted(target_aliases),
+            "target_removed": target_removed,
+            "target_present_after": target_present_after,
+            "collateral_removed": collateral_removed,
+        }
+
+    async def _find_project_source_action_button_for_card(
+        self,
+        page: Any,
+        matched_card: Optional[dict[str, str]],
+    ) -> Optional[Any]:
+        if not isinstance(matched_card, dict):
+            return None
+        container = None
+        for candidate in (
+            matched_card.get("key"),
+            matched_card.get("title"),
+            matched_card.get("identity"),
+            matched_card.get("text"),
+        ):
+            normalized = self._normalize_source_match_text(candidate)
+            if not normalized:
+                continue
+            container = await self._find_project_source_container(page, normalized, exact=True)
+            if container is not None:
+                break
+        if container is None:
+            return None
+        return await self._find_source_options_button(container)
 
     def _project_sources_url(self, project_url: Optional[str] = None) -> str:
         base_url = project_url or self._project_home_url()
@@ -5753,6 +5912,9 @@ class ChatGPTBrowserClient:
             if matched_card is not None:
                 last_matched_card = matched_card
                 candidates = self._source_lookup_candidates(candidates[0], matched_card, exact_safe=exact, anchor_safe=True)
+                scoped_action_button = await self._find_project_source_action_button_for_card(page, matched_card)
+                if scoped_action_button is not None:
+                    return scoped_action_button, last_matched_card, candidates
             action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
             if action_button is not None:
                 return action_button, last_matched_card, candidates

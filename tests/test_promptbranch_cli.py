@@ -598,7 +598,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.96"
+    assert captured.out.strip() == "promptbranch 0.0.98"
 
 
 def test_main_chat_list_json_emits_chat_payload(monkeypatch, capsys, tmp_path) -> None:
