@@ -1925,7 +1925,7 @@ class ChatGPTBrowserClient:
 
         source_cards = await self._snapshot_project_source_cards(page)
         matched_card = self._match_source_card(source_cards, [source_name])
-        match_candidates = self._source_lookup_candidates(source_name, matched_card, exact_safe=exact)
+        match_candidates = self._source_lookup_candidates(source_name, matched_card, exact_safe=exact, anchor_safe=matched_card is not None)
 
         options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
             page,
@@ -4497,19 +4497,37 @@ class ChatGPTBrowserClient:
                 candidates.append(normalized)
         return candidates
 
+    def _source_card_anchor_candidates(self, card: Optional[dict[str, str]]) -> list[str]:
+        if not isinstance(card, dict):
+            return []
+        candidates: list[str] = []
+        for value in (
+            card.get("identity"),
+            card.get("title"),
+            card.get("text"),
+        ):
+            normalized = self._normalize_source_match_text(value)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+        return candidates
+
     def _source_lookup_candidates(
         self,
         requested: Optional[str],
         matched_card: Optional[dict[str, str]] = None,
         *,
         exact_safe: bool = False,
+        anchor_safe: bool = False,
     ) -> list[str]:
         candidates: list[str] = []
-        card_candidates = (
-            self._source_card_exact_identity_candidates(matched_card)
-            if exact_safe
-            else self._source_card_identity_candidates(matched_card)
-        )
+        if anchor_safe:
+            card_candidates = self._source_card_anchor_candidates(matched_card)
+        else:
+            card_candidates = (
+                self._source_card_exact_identity_candidates(matched_card)
+                if exact_safe
+                else self._source_card_identity_candidates(matched_card)
+            )
         for value in [requested, *card_candidates]:
             normalized = self._normalize_source_match_text(value)
             if normalized and normalized not in candidates:
@@ -5734,7 +5752,7 @@ class ChatGPTBrowserClient:
             matched_card = self._match_source_card(source_cards, candidates)
             if matched_card is not None:
                 last_matched_card = matched_card
-                candidates = self._source_lookup_candidates(candidates[0], matched_card, exact_safe=exact)
+                candidates = self._source_lookup_candidates(candidates[0], matched_card, exact_safe=exact, anchor_safe=True)
             action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
             if action_button is not None:
                 return action_button, last_matched_card, candidates
