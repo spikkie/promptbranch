@@ -51,7 +51,7 @@ def test_build_backend_uses_service_client_when_base_url_is_present() -> None:
         email=None,
         password=None,
         password_file=None,
-        profile_dir="./profile",
+        profile_dir="./.pb_profile",
         headless=False,
         use_playwright=False,
         browser_channel=None,

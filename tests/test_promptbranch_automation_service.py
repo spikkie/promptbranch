@@ -33,7 +33,7 @@ def test_service_list_projects_calls_automation(monkeypatch):
         project_url="https://chatgpt.com/",
         email=None,
         password=None,
-        profile_dir="/tmp/profile",
+        profile_dir="/tmp/.pb_profile",
         headless=True,
         use_patchright=False,
     ))
@@ -89,7 +89,7 @@ def test_service_debug_project_list_calls_automation(monkeypatch):
         project_url="https://chatgpt.com/",
         email=None,
         password=None,
-        profile_dir="/tmp/profile",
+        profile_dir="/tmp/.pb_profile",
         headless=True,
         use_patchright=False,
     ))
@@ -135,7 +135,7 @@ def test_service_chat_methods_call_automation(monkeypatch):
         project_url="https://chatgpt.com/",
         email=None,
         password=None,
-        profile_dir="/tmp/profile",
+        profile_dir="/tmp/.pb_profile",
         headless=True,
         use_patchright=False,
     ))
@@ -184,7 +184,7 @@ def test_service_project_source_list_calls_automation(monkeypatch):
         project_url="https://chatgpt.com/",
         email=None,
         password=None,
-        profile_dir="/tmp/profile",
+        profile_dir="/tmp/.pb_profile",
         headless=True,
         use_patchright=False,
     ))

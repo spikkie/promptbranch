@@ -226,7 +226,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
     parser.add_argument("--password", default=os.getenv("CHATGPT_PASSWORD"))
     parser.add_argument("--password-file", default=os.getenv("CHATGPT_PASSWORD_FILE"))
-    parser.add_argument("--profile-dir", default=os.getenv("CHATGPT_PROFILE_DIR", DEFAULT_PROFILE_DIR))
+    parser.add_argument("--profile-dir", default=os.getenv("PROMPTBRANCH_PROFILE_DIR", DEFAULT_PROFILE_DIR))
     parser.add_argument("--headless", action="store_true", default=_env_flag("CHATGPT_HEADLESS", False))
     parser.add_argument("--use-playwright", action="store_true", help="Use playwright instead of patchright.")
     parser.add_argument("--browser-channel", default=os.getenv("CHATGPT_BROWSER_CHANNEL"))

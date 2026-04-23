@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--profile-dir",
-        default=os.getenv("PROMPTBRANCH_PROFILE_DIR") or os.getenv("CHATGPT_PROFILE_DIR", "/app/.pb_profile"),
+        default=os.getenv("PROMPTBRANCH_PROFILE_DIR", "/app/.pb_profile"),
         help="Persistent browser profile directory.",
     )
     parser.add_argument(

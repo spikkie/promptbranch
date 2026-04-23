@@ -33,7 +33,7 @@ def save_json(path: Path, data: Any) -> None:
 
 
 def default_profile_dir() -> str:
-    env = os.getenv("CHATGPT_PROFILE_DIR")
+    env = os.getenv("PROMPTBRANCH_PROFILE_DIR")
     if env:
         return env
     local = Path("./.pb_profile")

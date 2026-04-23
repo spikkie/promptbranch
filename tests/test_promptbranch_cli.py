@@ -53,7 +53,7 @@ def test_build_backend_uses_service_client_when_base_url_is_present() -> None:
         email=None,
         password=None,
         password_file=None,
-        profile_dir="./profile",
+        profile_dir="./.pb_profile",
         headless=False,
         use_playwright=False,
         browser_channel=None,
@@ -598,7 +598,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.103"
+    assert captured.out.strip() == "promptbranch 0.0.104"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
