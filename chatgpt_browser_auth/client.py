@@ -1835,12 +1835,6 @@ class ChatGPTBrowserClient:
             canonical_display_name = self._normalize_file_source_display_name(display_name, file_path)
 
         before_sources = await self._snapshot_project_source_cards(page)
-        save_request_watch = None
-        if normalized_kind in {"text", "file"}:
-            save_request_watch = self._install_project_source_save_request_watch(
-                context,
-                source_kind=normalized_kind,
-            )
 
         source_match_candidates: list[str] = []
         requested_match: Optional[str] = None
@@ -1848,19 +1842,38 @@ class ChatGPTBrowserClient:
         duplicate_notice: Optional[str] = None
         duplicate_detected = False
 
+        if normalized_kind == "file":
+            source_match_candidates = self._build_source_match_candidates(
+                normalized_kind,
+                value=None,
+                display_name=canonical_display_name,
+                file_path=file_path,
+            )
+            existing_source = self._match_source_card(
+                before_sources,
+                source_match_candidates,
+                exact_safe=True,
+            )
+            if existing_source is not None:
+                matched_source = existing_source
+                duplicate_detected = True
+                duplicate_notice = f"Project source already exists: {canonical_display_name or source_match_candidates[0]}"
+
+        save_request_watch = None
+        if normalized_kind in {"text", "file"} and not duplicate_detected:
+            save_request_watch = self._install_project_source_save_request_watch(
+                context,
+                source_kind=normalized_kind,
+            )
+
         try:
             if normalized_kind == "file":
                 if not file_path:
                     raise ValueError("file_path is required when source_kind='file'")
                 if not os.path.exists(file_path):
                     raise FileNotFoundError(file_path)
-                await self._add_project_file_source(page, file_path=file_path)
-                source_match_candidates = self._build_source_match_candidates(
-                    normalized_kind,
-                    value=None,
-                    display_name=canonical_display_name,
-                    file_path=file_path,
-                )
+                if not duplicate_detected:
+                    await self._add_project_file_source(page, file_path=file_path)
             else:
                 if not value:
                     raise ValueError(f"value is required when source_kind={normalized_kind!r}")
@@ -1877,13 +1890,14 @@ class ChatGPTBrowserClient:
                     file_path=None,
                 )
 
-            matched_source = await self._wait_for_source_presence(
-                page,
-                source_match_candidates=source_match_candidates,
-                before_sources=before_sources,
-                accept_single_new_card=normalized_kind == "text",
-            )
-            if normalized_kind in {"text", "file"}:
+            if not duplicate_detected:
+                matched_source = await self._wait_for_source_presence(
+                    page,
+                    source_match_candidates=source_match_candidates,
+                    before_sources=before_sources,
+                    accept_single_new_card=normalized_kind == "text",
+                )
+            if normalized_kind in {"text", "file"} and not duplicate_detected:
                 await self._wait_for_project_source_post_save_settle(
                     page,
                     source_kind=normalized_kind,
