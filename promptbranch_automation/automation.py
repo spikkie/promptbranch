@@ -287,6 +287,15 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def list_project_sources(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.list_project_sources(
+            keep_open=keep_open,
+        )
+
     async def get_chat(
         self,
         *,

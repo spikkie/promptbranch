@@ -145,3 +145,52 @@ def test_service_chat_methods_call_automation(monkeypatch):
 
     assert list_result["count"] == 2
     assert show_result["conversation_id"] == "abc"
+
+
+def test_automation_exposes_project_source_list(monkeypatch):
+    class _DummySourceClient(_DummyClient):
+        async def list_project_sources(self, *, keep_open: bool = False):
+            return {
+                "ok": True,
+                "count": 2,
+                "sources": [{"title": "notes.txt"}, {"title": "design.pdf"}],
+                "keep_open": keep_open,
+            }
+
+    dummy = _DummySourceClient()
+    monkeypatch.setattr(ChatGPTAutomation, "client", property(lambda self: dummy))
+
+    bot = ChatGPTAutomation(project_url="https://chatgpt.com/g/demo/project", email=None, password=None)
+    result = asyncio.run(bot.list_project_sources(keep_open=True))
+
+    assert result["ok"] is True
+    assert result["count"] == 2
+    assert result["sources"][0]["title"] == "notes.txt"
+    assert result["keep_open"] is True
+
+
+def test_service_project_source_list_calls_automation(monkeypatch):
+    async def fake_list_project_sources(self, *, keep_open: bool = False):
+        return {
+            "ok": True,
+            "count": 1,
+            "sources": [{"title": "architecture-process_0.1.16.zip"}],
+            "keep_open": keep_open,
+        }
+
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/",
+        email=None,
+        password=None,
+        profile_dir="/tmp/profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    result = asyncio.run(svc.list_project_sources(keep_open=False))
+
+    assert result["ok"] is True
+    assert result["count"] == 1
+    assert result["sources"][0]["title"] == "architecture-process_0.1.16.zip"
