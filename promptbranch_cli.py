@@ -27,17 +27,18 @@ from promptbranch_state import (
     STATE_FILE_NAME,
     ConversationStateStore,
     GlobalProjectCache,
+    PROFILE_DIR_NAME,
+    resolve_profile_dir,
     conversation_id_from_url,
     project_home_url_from_url,
     project_name_from_url,
 )
 
-DEFAULT_PROFILE_DIR = "./profile"
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.102"
+CLI_VERSION = "0.0.103"
 COMMANDS = {
     "login-check",
     "ask",
@@ -560,11 +561,13 @@ def _configure_logging(debug: bool) -> None:
 
 
 def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
+    resolved_profile_dir = str(resolve_profile_dir(getattr(args, "profile_dir", None)))
+    args.profile_dir = resolved_profile_dir
     settings = ChatGPTAutomationSettings(
         project_url=args.project_url,
         email=args.email,
         password=args.password,
-        profile_dir=args.profile_dir,
+        profile_dir=resolved_profile_dir,
         headless=args.headless,
         use_patchright=not args.use_playwright,
         browser_channel=args.browser_channel,
@@ -578,7 +581,9 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
 
 
 def build_backend(args: argparse.Namespace) -> CommandBackend:
-    conversation_state = ConversationStateStore(args.profile_dir)
+    resolved_profile_dir = str(resolve_profile_dir(getattr(args, "profile_dir", None)))
+    args.profile_dir = resolved_profile_dir
+    conversation_state = ConversationStateStore(resolved_profile_dir)
     if args.service_base_url:
         return ServiceBackend(
             base_url=args.service_base_url,
@@ -1593,7 +1598,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
     parser.add_argument("--password", default=os.getenv("CHATGPT_PASSWORD"))
     parser.add_argument("--password-file", default=os.getenv("CHATGPT_PASSWORD_FILE"))
-    parser.add_argument("--profile-dir", default=os.getenv("CHATGPT_PROFILE_DIR", DEFAULT_PROFILE_DIR))
+    parser.add_argument("--profile-dir", default=None, help=f"Path to browser profile. Defaults to nearest inherited {PROFILE_DIR_NAME} directory or ./{PROFILE_DIR_NAME}.")
     parser.add_argument("--headless", action="store_true", default=_env_flag("CHATGPT_HEADLESS", False))
     parser.add_argument("--use-playwright", action="store_true", help="Use playwright instead of patchright.")
     parser.add_argument("--browser-channel", default=os.getenv("CHATGPT_BROWSER_CHANNEL"))
@@ -1873,6 +1878,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return help_exit_code
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
+    args.profile_dir = str(resolve_profile_dir(args.profile_dir))
     if args.debug and not _max_retries_was_configured(normalized_argv):
         args.max_retries = 1
     _configure_logging(args.debug)

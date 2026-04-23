@@ -8,12 +8,35 @@ from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
+PROFILE_DIR_NAME = ".pb_profile"
+LEGACY_PROFILE_DIR_NAME = "profile"
+PROFILE_DIR_ENV = "PROMPTBRANCH_PROFILE_DIR"
+LEGACY_PROFILE_DIR_ENV = "CHATGPT_PROFILE_DIR"
 STATE_FILE_NAME = ".promptbranch_state.json"
 LEGACY_STATE_FILE_NAME = ".chatgpt_cli_state.json"
 GLOBAL_PROJECT_CACHE_FILE_NAME = "project-list-cache.json"
 GLOBAL_PROJECT_CACHE_ENV = "PROMPTBRANCH_PROJECT_CACHE_PATH"
 LEGACY_GLOBAL_PROJECT_CACHE_ENV = "CHATGPT_PROJECT_CACHE_PATH"
 
+
+
+
+def resolve_profile_dir(profile_dir: Optional[str] = None, *, cwd: Optional[str] = None) -> Path:
+    if profile_dir:
+        return Path(profile_dir).expanduser().resolve()
+    env_path = os.getenv(PROFILE_DIR_ENV) or os.getenv(LEGACY_PROFILE_DIR_ENV)
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    start = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+    for current in (start, *start.parents):
+        candidate = current / PROFILE_DIR_NAME
+        if candidate.is_dir():
+            return candidate
+    for current in (start, *start.parents):
+        candidate = current / LEGACY_PROFILE_DIR_NAME
+        if candidate.is_dir():
+            return candidate
+    return (start / PROFILE_DIR_NAME).resolve()
 
 def global_project_cache_path(path: Optional[str] = None) -> Path:
     if path:

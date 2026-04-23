@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from promptbranch_cli import main, make_parser
-from promptbranch_state import ConversationStateStore
+from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 
 def test_parser_accepts_state_prompt_and_state_clear() -> None:
@@ -229,3 +229,51 @@ def test_forget_conversation_preserves_project_state(tmp_path) -> None:
     assert snapshot["resolved_project_home_url"] == project_url
     assert snapshot["conversation_url"] is None
     assert snapshot["project_name"] == "my-project"
+
+
+
+def test_resolve_profile_dir_prefers_nearest_hidden_profile(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "sub" / "deeper"
+    outer = repo / ".pb_profile"
+    inner = repo / "sub" / ".pb_profile"
+    outer.mkdir(parents=True)
+    inner.mkdir(parents=True)
+    nested.mkdir(parents=True)
+
+    resolved = resolve_profile_dir(cwd=str(nested))
+
+    assert resolved == inner.resolve()
+
+
+def test_resolve_profile_dir_inherits_hidden_profile_from_parent(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "sub" / "deeper"
+    profile = repo / ".pb_profile"
+    profile.mkdir(parents=True)
+    nested.mkdir(parents=True)
+
+    resolved = resolve_profile_dir(cwd=str(nested))
+
+    assert resolved == profile.resolve()
+
+
+def test_main_uses_inherited_hidden_profile_by_default(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    worktree = repo / "pkg" / "feature"
+    profile = repo / ".pb_profile"
+    profile.mkdir(parents=True)
+    worktree.mkdir(parents=True)
+
+    monkeypatch.chdir(worktree)
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "state"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert f"state_file={str((profile / '.promptbranch_state.json').resolve())}" in captured.out

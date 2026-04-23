@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.0.102
+    image: promptbranch-service:0.0.103
     init: true
     ports:
       - "8000:8000"
@@ -25,7 +25,7 @@ services:
       CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS: ${CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS:-120.0}
       CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS: ${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}
     volumes:
-      - ./profile:/app/profile
+      - ./.pb_profile:/app/.pb_profile
       - ./debug_artifacts:/app/debug_artifacts
     secrets:
       - chatgpt_password
@@ -49,7 +49,7 @@ services:
             - .pytest_cache/
             - .venv/
             - __pycache__/
-            - profile/
+            - .pb_profile/
             - debug_artifacts/
             - uploaded_receipts*
             - '*.log'

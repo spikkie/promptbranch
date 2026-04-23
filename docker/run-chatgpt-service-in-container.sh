@@ -25,7 +25,7 @@ if [[ "$reload_setting" == "1" || "$reload_setting" == "true" || "$reload_settin
     --reload-dir
     /app
     --reload-exclude
-    '/app/profile/*'
+    '/app/.pb_profile/*'
     --reload-exclude
     '/app/debug_artifacts/*'
     --reload-exclude

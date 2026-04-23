@@ -87,6 +87,7 @@ out/
 chatgpt_claudecode_workflow*.zip
 
 #browser profile
+.pb_profile/
 profile/
 
 #debug info

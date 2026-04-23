@@ -36,7 +36,7 @@ def default_profile_dir() -> str:
     env = os.getenv("CHATGPT_PROFILE_DIR")
     if env:
         return env
-    local = Path("./profile")
+    local = Path("./.pb_profile")
     if local.exists():
         return str(local.resolve())
     return str(Path.home() / ".config" / "promptbranch" / "profile")
