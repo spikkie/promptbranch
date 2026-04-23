@@ -143,7 +143,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.100"
+SERVICE_VERSION = "0.0.101"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -476,7 +476,9 @@ async def add_project_source(
             if file is None:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file is required when type=file")
             temp_dir, temp_path = await _persist_upload_to_named_temp_path(file)
-            if not display_name:
+            if display_name:
+                display_name = _normalized_upload_filename(display_name)
+            else:
                 display_name = _normalized_upload_filename(file.filename)
         elif source_kind in {"text", "link"} and not value:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"value is required when type={source_kind}")

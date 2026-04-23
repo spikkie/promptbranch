@@ -598,7 +598,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.100"
+    assert captured.out.strip() == "promptbranch 0.0.101"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -770,3 +770,36 @@ def test_test_suite_command_dispatches_to_runner(monkeypatch, capsys) -> None:
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload['action'] == 'test_suite'
+
+
+def test_main_project_source_add_file_normalizes_name_to_basename(monkeypatch, capsys, tmp_path) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "action": "add"}
+
+    file_path = tmp_path / "candlecast-src-0.19.5.82.2.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(
+        [
+            "--service-base-url",
+            "http://localhost:8000",
+            "project-source-add",
+            "--file",
+            str(file_path),
+            "--name",
+            "/tmp/releases/candlecast-src-0.19.5.82.2.zip",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["display_name"] == "candlecast-src-0.19.5.82.2.zip"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True

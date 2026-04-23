@@ -22,6 +22,13 @@ from .exceptions import (
     UnsupportedOperationError,
 )
 
+
+class _ProjectSourceAlreadyExists(RuntimeError):
+    def __init__(self, notice: str, *, source_name: Optional[str] = None) -> None:
+        super().__init__(notice)
+        self.notice = notice
+        self.source_name = source_name
+
 LOGIN_BUTTON_SELECTOR = 'button[data-testid="login-button"]'
 LOGIN_BUTTON_SELECTORS = [
     'button[data-testid="login-button"]',
@@ -1823,6 +1830,10 @@ class ChatGPTBrowserClient:
         if normalized_kind not in {"link", "text", "file"}:
             raise ValueError(f"Unsupported source kind: {source_kind!r}")
 
+        canonical_display_name = display_name
+        if normalized_kind == "file":
+            canonical_display_name = self._normalize_file_source_display_name(display_name, file_path)
+
         before_sources = await self._snapshot_project_source_cards(page)
         save_request_watch = None
         if normalized_kind in {"text", "file"}:
@@ -1831,8 +1842,13 @@ class ChatGPTBrowserClient:
                 source_kind=normalized_kind,
             )
 
+        source_match_candidates: list[str] = []
+        requested_match: Optional[str] = None
+        matched_source: Optional[dict[str, Any]] = None
+        duplicate_notice: Optional[str] = None
+        duplicate_detected = False
+
         try:
-            source_match_candidates: list[str]
             if normalized_kind == "file":
                 if not file_path:
                     raise ValueError("file_path is required when source_kind='file'")
@@ -1842,7 +1858,7 @@ class ChatGPTBrowserClient:
                 source_match_candidates = self._build_source_match_candidates(
                     normalized_kind,
                     value=None,
-                    display_name=display_name,
+                    display_name=canonical_display_name,
                     file_path=file_path,
                 )
             else:
@@ -1871,15 +1887,29 @@ class ChatGPTBrowserClient:
                 await self._wait_for_project_source_post_save_settle(
                     page,
                     source_kind=normalized_kind,
+                    expected_source_name=canonical_display_name if normalized_kind == "file" else display_name,
                 )
                 await self._wait_for_project_source_save_request_quiet(
                     page,
                     save_request_watch,
                     source_kind=normalized_kind,
                 )
+        except _ProjectSourceAlreadyExists as exc:
+            duplicate_notice = exc.notice
+            duplicate_detected = True
+        except ResponseTimeoutError:
+            duplicate_notice = await self._find_project_source_duplicate_notice(
+                page,
+                source_name=canonical_display_name if normalized_kind == "file" else display_name,
+            )
+            if duplicate_notice:
+                duplicate_detected = True
+            else:
+                raise
         finally:
             if save_request_watch is not None:
                 self._dispose_project_source_save_request_watch(context, save_request_watch)
+
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
         persistence_candidates = self._build_persistence_source_candidates(
@@ -1902,11 +1932,17 @@ class ChatGPTBrowserClient:
             "source_match_requested": requested_match,
             "source_match_candidates": persistence_candidates,
             "persistence_verified": True,
+            "already_exists": duplicate_detected,
+            "added": not duplicate_detected,
             "current_url": await self._safe_page_url(page),
         }
-        self._log("project-source-add", "project source added", **result)
+        if duplicate_notice:
+            result["duplicate_notice"] = duplicate_notice
+        log_message = "project source already exists" if duplicate_detected else "project source added"
+        self._log("project-source-add", log_message, **result)
         if keep_open and self.config.is_headed:
-            await self._pause_for_keep_open("Source added. Press Enter to close the browser... ")
+            pause_message = "Source already exists. Press Enter to close the browser... " if duplicate_detected else "Source added. Press Enter to close the browser... "
+            await self._pause_for_keep_open(pause_message)
         return result
 
     async def _remove_project_source_operation(
@@ -4311,6 +4347,94 @@ class ChatGPTBrowserClient:
     def _normalize_source_match_text(self, value: Optional[str]) -> str:
         return re.sub(r"\s+", " ", (value or "").strip())
 
+    def _normalize_file_source_display_name(
+        self,
+        display_name: Optional[str],
+        file_path: Optional[str],
+    ) -> Optional[str]:
+        normalized_display_name = self._normalize_source_match_text(display_name)
+        if normalized_display_name:
+            return Path(normalized_display_name).name
+        normalized_file_path = self._normalize_source_match_text(file_path)
+        if normalized_file_path:
+            return Path(normalized_file_path).name
+        return None
+
+    async def _find_project_source_duplicate_notice(
+        self,
+        page: Any,
+        *,
+        source_name: Optional[str] = None,
+    ) -> Optional[str]:
+        normalized_source_name = self._normalize_file_source_display_name(source_name, None) or self._normalize_source_match_text(source_name)
+        normalized_source_name_lower = normalized_source_name.lower() if normalized_source_name else ""
+        try:
+            snippets = await page.evaluate(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const selectors = [
+                        '[role="alertdialog"]',
+                        '[role="alert"]',
+                        '[role="status"]',
+                        '[aria-live="assertive"]',
+                        '[aria-live="polite"]',
+                        'dialog[open]',
+                        '[data-testid*="toast"]',
+                    ];
+                    const seen = new Set();
+                    const texts = [];
+                    for (const selector of selectors) {
+                        for (const node of document.querySelectorAll(selector)) {
+                            if (!isVisible(node)) continue;
+                            const text = normalize(node.innerText || node.textContent || '');
+                            if (!text || seen.has(text)) continue;
+                            seen.add(text);
+                            texts.push(text);
+                        }
+                    }
+                    return texts.slice(0, 50);
+                }
+                """
+            )
+        except Exception:
+            return None
+
+        duplicate_markers = (
+            'already exists',
+            'already exist',
+            'already added',
+            'already been added',
+            'duplicate',
+        )
+        normalized_snippets = [
+            self._normalize_source_match_text(snippet)
+            for snippet in (snippets or [])
+            if self._normalize_source_match_text(snippet)
+        ]
+        for snippet in normalized_snippets:
+            lowered = snippet.lower()
+            if not any(marker in lowered for marker in duplicate_markers):
+                continue
+            if normalized_source_name_lower and normalized_source_name_lower not in lowered:
+                continue
+            return snippet
+        if normalized_source_name_lower:
+            return None
+        for snippet in normalized_snippets:
+            lowered = snippet.lower()
+            if any(marker in lowered for marker in duplicate_markers):
+                return snippet
+        return None
+
     def _build_persistence_source_candidates(
         self,
         *,
@@ -4348,7 +4472,7 @@ class ChatGPTBrowserClient:
                 candidates.append(normalized)
 
         if source_kind == "file":
-            add(display_name)
+            add(self._normalize_file_source_display_name(display_name, file_path))
             add(Path(file_path).name if file_path else None)
             return candidates
 
@@ -5629,6 +5753,7 @@ class ChatGPTBrowserClient:
         page: Any,
         *,
         source_kind: str,
+        expected_source_name: Optional[str] = None,
         timeout_ms: int = 12_000,
         poll_interval_ms: int = 400,
         required_observations: int = 3,
@@ -5656,6 +5781,10 @@ class ChatGPTBrowserClient:
             current_url = await self._safe_page_url(page)
             url_stable = bool(last_url and current_url == last_url)
             sources_surface_ready = add_button_visible and (bool(source_cards) or empty_state_visible)
+            duplicate_notice = await self._find_project_source_duplicate_notice(
+                page,
+                source_name=expected_source_name,
+            )
             settled_now = not dialog_visible and sources_surface_ready and url_stable
             last_state = {
                 "source_kind": source_kind,
@@ -5666,6 +5795,7 @@ class ChatGPTBrowserClient:
                 "sources_surface_ready": sources_surface_ready,
                 "url_stable": url_stable,
                 "current_url": current_url,
+                "duplicate_notice": duplicate_notice,
             }
             self._log(
                 "project-source-add",
@@ -5675,6 +5805,8 @@ class ChatGPTBrowserClient:
                 settled_now=settled_now,
                 **last_state,
             )
+            if duplicate_notice:
+                raise _ProjectSourceAlreadyExists(duplicate_notice, source_name=expected_source_name)
             if settled_now:
                 stable_observations += 1
                 if stable_observations >= max(required_observations, 1):

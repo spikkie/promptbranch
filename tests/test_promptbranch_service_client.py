@@ -260,3 +260,25 @@ def test_add_project_source_file_defaults_name_to_file_basename(tmp_path: Path) 
         payload = client.add_project_source(source_kind="file", file_path=str(file_path))
 
     assert payload["action"] == "add"
+
+
+def test_add_project_source_file_normalizes_display_name_to_basename(tmp_path: Path) -> None:
+    file_path = tmp_path / "candlecast-src-0.19.5.82.2.zip"
+    file_path.write_bytes(b"zip")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert "candlecast-src-0.19.5.82.2.zip" in body
+        assert "/tmp/releases/candlecast-src-0.19.5.82.2.zip" not in body
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.add_project_source(
+            source_kind="file",
+            file_path=str(file_path),
+            display_name="/tmp/releases/candlecast-src-0.19.5.82.2.zip",
+        )
+
+    assert payload["ok"] is True

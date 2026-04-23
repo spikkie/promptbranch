@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.100"
+CLI_VERSION = "0.0.101"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1019,7 +1019,9 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
     if source_kind in {"link", "text"} and not value:
         print(f"error: --value is required when --type={source_kind}", file=sys.stderr)
         return 2
-    if source_kind == "file" and file_path and not display_name:
+    if source_kind == "file" and display_name:
+        display_name = Path(display_name).name
+    elif source_kind == "file" and file_path and not display_name:
         display_name = Path(file_path).name
 
     result = await backend.add_project_source(

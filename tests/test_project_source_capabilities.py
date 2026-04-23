@@ -528,3 +528,138 @@ def test_clear_profile_singleton_locks_removes_artifacts(tmp_path: Path) -> None
     assert removed == ["SingletonLock", "SingletonSocket", "SingletonCookie"]
     for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
         assert not (profile_dir / name).exists()
+
+
+def test_build_source_match_candidates_for_file_uses_basename(browser_client: ChatGPTBrowserClient) -> None:
+    candidates = browser_client._build_source_match_candidates(
+        "file",
+        value=None,
+        display_name="/tmp/releases/candlecast-src-0.19.5.82.2.zip",
+        file_path="/var/tmp/uploads/candlecast-src-0.19.5.82.2.zip",
+    )
+
+    assert candidates == ["candlecast-src-0.19.5.82.2.zip"]
+
+
+def test_wait_for_project_source_post_save_settle_stops_on_duplicate_notice(browser_client: ChatGPTBrowserClient) -> None:
+    class _DuplicatePage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _DuplicatePage()
+
+    async def fake_find_visible_locator(*_args, **_kwargs):
+        return object()
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{"title": "candlecast-src-0.19.5.82.2.zip"}]
+
+    async def fake_empty_state(*_args, **_kwargs):
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_duplicate_notice(*_args, **_kwargs):
+        return "candlecast-src-0.19.5.82.2.zip already exists"
+
+    browser_client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._find_project_source_duplicate_notice = fake_duplicate_notice  # type: ignore[method-assign]
+
+    with pytest.raises(Exception) as exc_info:
+        asyncio.run(
+            browser_client._wait_for_project_source_post_save_settle(
+                page,
+                source_kind="file",
+                expected_source_name="candlecast-src-0.19.5.82.2.zip",
+                timeout_ms=500,
+                poll_interval_ms=10,
+                required_observations=2,
+            )
+        )
+
+    assert "already exists" in str(exc_info.value)
+
+
+def test_add_project_source_operation_returns_idempotent_success_for_duplicate_file(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{"identity": "candlecast-src-0.19.5.82.2.zip"}]
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **kwargs):
+        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip"]
+        return {
+            "identity": "candlecast-src-0.19.5.82.2.zip",
+            "title": "candlecast-src-0.19.5.82.2.zip",
+            "text": "candlecast-src-0.19.5.82.2.zip",
+        }
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        raise ResponseTimeoutError("Timed out waiting for project source post-save UI to settle")
+
+    async def fake_find_duplicate_notice(*_args, **_kwargs):
+        return "candlecast-src-0.19.5.82.2.zip already exists"
+
+    async def fake_verify_persistence(*_args, **kwargs):
+        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip"]
+        return {
+            "identity": "candlecast-src-0.19.5.82.2.zip",
+            "title": "candlecast-src-0.19.5.82.2.zip",
+            "text": "candlecast-src-0.19.5.82.2.zip",
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._find_project_source_duplicate_notice = fake_find_duplicate_notice  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": False}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = str(tmp_path / "candlecast-src-0.19.5.82.2.zip")
+    Path(file_path).write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=file_path,
+            display_name=file_path,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["already_exists"] is True
+    assert result["added"] is False
+    assert result["source_match_requested"] == "candlecast-src-0.19.5.82.2.zip"
+    assert "already exists" in result["duplicate_notice"]
