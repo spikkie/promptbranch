@@ -23,7 +23,7 @@ from promptbranch_browser_auth.exceptions import (
 )
 
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
-DEFAULT_PROFILE_DIR = "./profile"
+DEFAULT_PROFILE_DIR = "./.pb_profile"
 DEFAULT_MAX_RETRIES = 1
 
 CANONICAL_STEP_ORDER: tuple[str, ...] = (

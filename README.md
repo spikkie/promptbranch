@@ -1,4 +1,4 @@
-# promptbranch v0.0.102
+# promptbranch v0.0.103
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.102 .
+docker build -t promptbranch-service:0.0.103 .
 ```
 
 Run it:
@@ -47,10 +47,10 @@ docker run --rm -it \
   -e CHATGPT_PASSWORD_FILE="/run/secrets/chatgpt_password" \
   -e CHATGPT_PROJECT_URL="https://chatgpt.com/" \
   -e CHATGPT_SERVICE_TOKEN="change-me" \
-  -v "$PWD/profile:/app/profile" \
+  -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.102
+  promptbranch-service:0.0.103
 ```
 
 Compose option:
@@ -114,12 +114,12 @@ CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1 \
 
 For auto-reload during development, use `./run_chatgpt_service_dev.sh` instead.
 
-For local headed debugging of the project sidebar using the existing promptbranch login/profile flow (no Docker service), run:
+For local headed debugging of the project sidebar using the existing promptbranch login/.pb_profile flow (no Docker service), run:
 
 ```bash
 python ./promptbranch_full_integration_test.py \
   --config ~/.config/promptbranch/config.json \
-  --profile-dir ./profile \
+  --profile-dir ./.pb_profile \
   --only project_list_debug \
   --keep-open
 ```
@@ -229,7 +229,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.102.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.103.zip
 ```
 
 From an extracted checkout:
@@ -398,7 +398,11 @@ The added Docker service does not remove those risks. It packages the currently 
 
 ## Stateful CLI usage
 
-The CLI now keeps lightweight per-profile state in `~/.config/.../<profile>/.promptbranch_state.json` so it can behave more like `git`. If that file is missing it will fall back to the legacy `.chatgpt_cli_state.json`:
+The CLI now keeps lightweight per-profile state inside the resolved browser profile directory, typically the nearest inherited `.pb_profile/.promptbranch_state.json`, so it can behave more like `git`. If that file is missing it will fall back to the legacy `.chatgpt_cli_state.json`:
+
+- profile discovery walks upward from the current working directory and uses the nearest `.pb_profile`
+- a deeper `.pb_profile` overrides a parent one for that subtree
+- if no `.pb_profile` exists, the CLI defaults to creating one in the current working directory
 
 - `promptbranch state` shows the remembered current project and conversation
 - `promptbranch prompt` emits a compact one-line value for shell prompts or menu-bar widgets

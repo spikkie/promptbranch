@@ -24,7 +24,7 @@ RUN patchright install chrome
 # RUN playwright install-deps chromium
 RUN playwright install --with-deps chromium
 
-RUN rm -rf /app/profile
+RUN rm -rf /app/.pb_profile
 
 COPY . .
 RUN chmod +x /app/docker/run-chatgpt-service-in-container.sh
