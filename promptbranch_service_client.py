@@ -267,14 +267,15 @@ class ChatGPTServiceClient:
         keep_open: bool = False,
         project_url: Optional[str] = None,
     ) -> dict[str, Any]:
+        normalized_display_name = Path(display_name).name if display_name else None
         data = {
             "type": source_kind,
             "keep_open": str(keep_open).lower(),
         }
         if value is not None:
             data["value"] = value
-        if display_name is not None:
-            data["name"] = display_name
+        if normalized_display_name is not None:
+            data["name"] = normalized_display_name
         elif source_kind == "file" and file_path:
             data["name"] = Path(file_path).name
         if project_url:
