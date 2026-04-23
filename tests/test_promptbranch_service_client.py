@@ -111,6 +111,20 @@ def test_project_source_capabilities_passes_project_url_query() -> None:
     assert payload["available_source_kinds"] == ["file", "text"]
 
 
+def test_list_project_sources_passes_project_url_query() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        assert request.url.params["project_url"] == "https://chatgpt.com/g/demo/project"
+        return httpx.Response(200, json={"ok": True, "count": 1, "sources": [{"title": "notes.txt"}]})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.list_project_sources(project_url="https://chatgpt.com/g/demo/project")
+
+    assert payload["count"] == 1
+    assert payload["sources"][0]["title"] == "notes.txt"
+
+
 
 def test_http_error_includes_detail_from_json_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:

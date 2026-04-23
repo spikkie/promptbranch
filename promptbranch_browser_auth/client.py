@@ -697,6 +697,23 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def list_project_sources(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-source-list",
+            "starting list_project_sources",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_source_list",
+            operation=self._list_project_sources_operation,
+            keep_open=keep_open,
+        )
+
     async def get_chat(
         self,
         *,
@@ -1378,6 +1395,61 @@ class ChatGPTBrowserClient:
         self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats))
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
+        return result
+
+    async def _list_project_sources_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-source-list-home")
+        await self._open_project_sources_tab(page)
+
+        deadline = asyncio.get_running_loop().time() + 12.0
+        source_cards: list[dict[str, str]] = []
+        empty_state_visible = False
+        while asyncio.get_running_loop().time() < deadline:
+            source_cards = await self._snapshot_project_source_cards(page)
+            empty_state_visible = await self._project_sources_empty_state_visible(page)
+            if source_cards or empty_state_visible:
+                break
+            await page.wait_for_timeout(350)
+
+        sources: list[dict[str, Any]] = []
+        for index, card in enumerate(source_cards, start=1):
+            title = self._normalize_source_match_text(card.get("title"))
+            subtitle = self._normalize_source_match_text(card.get("subtitle"))
+            identity = self._normalize_source_match_text(card.get("identity"))
+            text_value = self._normalize_source_match_text(card.get("text"))
+            key = self._normalize_source_match_text(card.get("key")) or (title or identity or text_value or f"source-{index}").lower()
+            sources.append(
+                {
+                    "index": index,
+                    "name": title or identity or text_value,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "identity": identity,
+                    "key": key,
+                    "text": text_value,
+                }
+            )
+
+        result = {
+            "ok": True,
+            "action": "list",
+            "project_url": project_home_url,
+            "count": len(sources),
+            "empty_state_visible": empty_state_visible,
+            "sources": sources,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-source-list", "project source enumeration completed", **result)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open("Project source list completed. Press Enter to close the browser... ")
         return result
 
     async def _get_chat_operation(

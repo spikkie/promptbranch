@@ -598,7 +598,38 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.98"
+    assert captured.out.strip() == "promptbranch 0.0.99"
+
+
+def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            return {
+                "ok": True,
+                "count": 2,
+                "sources": [
+                    {"title": "architecture-process_0.1.16.zip", "subtitle": "File", "identity": "architecture-process_0.1.16.zip File"},
+                    {"title": "notes.txt", "subtitle": "Document", "identity": "notes.txt Document"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "project-source-list", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["count"] == 2
+    assert payload["sources"][0]["title"] == "architecture-process_0.1.16.zip"
 
 
 def test_main_chat_list_json_emits_chat_payload(monkeypatch, capsys, tmp_path) -> None:

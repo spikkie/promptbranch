@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.92"
+    assert payload["version"] == "0.0.99"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.92"
+    assert response.json()["version"] == "0.0.99"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -51,6 +51,20 @@ def test_list_project_chats_endpoint_uses_service(monkeypatch) -> None:
     response = client.get("/v1/chats")
     assert response.status_code == 200
     assert response.json()["count"] == 1
+
+
+def test_list_project_sources_endpoint_uses_service(monkeypatch) -> None:
+    class FakeService:
+        async def list_project_sources(self, *, keep_open: bool = False):
+            assert keep_open is False
+            return {"ok": True, "count": 1, "sources": [{"title": "architecture-process_0.1.16.zip"}]}
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.get("/v1/project-sources")
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["sources"][0]["title"] == "architecture-process_0.1.16.zip"
 
 
 def test_get_chat_endpoint_uses_service(monkeypatch) -> None:

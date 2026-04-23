@@ -26,6 +26,13 @@ def test_parser_accepts_project_source_remove_command() -> None:
     assert args.exact is True
 
 
+def test_parser_accepts_project_source_list_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["project-source-list", "--json"])
+    assert args.command == "project-source-list"
+    assert args.json is True
+
+
 def test_global_options_after_project_create_are_normalized() -> None:
     argv = [
         "project-create",
@@ -164,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.98" in out
+    assert "0.0.99" in out
     assert "promptbranch" in out
 
 

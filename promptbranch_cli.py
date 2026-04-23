@@ -37,7 +37,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.98"
+CLI_VERSION = "0.0.99"
 COMMANDS = {
     "login-check",
     "ask",
@@ -48,6 +48,7 @@ COMMANDS = {
     "project-ensure",
     "project-remove",
     "project-source-add",
+    "project-source-list",
     "project-source-remove",
     "chat-list",
     "chats",
@@ -131,6 +132,15 @@ class DirectBackend:
         try:
             self._service.settings.project_url = effective_project_url or original_project_url
             return await self._service.list_project_chats(keep_open=keep_open)
+        finally:
+            self._service.settings.project_url = original_project_url
+
+    async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.list_project_sources(keep_open=keep_open)
         finally:
             self._service.settings.project_url = original_project_url
 
@@ -325,6 +335,13 @@ class ServiceBackend:
     async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await self._call(
             self._client.list_project_chats,
+            keep_open=keep_open,
+            project_url=self._effective_project_home_url(),
+        )
+
+    async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await self._call(
+            self._client.list_project_sources,
             keep_open=keep_open,
             project_url=self._effective_project_home_url(),
         )
@@ -594,6 +611,15 @@ def _project_list_payload(result: Any, *, current_only: bool = False) -> tuple[l
     if current_only:
         payload["current_only"] = True
     return projects, payload
+
+
+def _project_source_list_payload(result: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    payload = dict(result) if isinstance(result, dict) else {"ok": False, "sources": []}
+    raw_sources = payload.get("sources") if isinstance(payload.get("sources"), list) else []
+    sources = [item for item in raw_sources if isinstance(item, dict)]
+    payload["sources"] = sources
+    payload["count"] = len(sources)
+    return sources, payload
 
 
 def _project_cache_from_args(args: argparse.Namespace) -> GlobalProjectCache:
@@ -960,6 +986,28 @@ async def cmd_project_remove(backend: CommandBackend, args: argparse.Namespace) 
     return 0
 
 
+async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int:
+    result = await backend.list_project_sources(keep_open=args.keep_open)
+    sources, payload = _project_source_list_payload(result)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if not sources:
+        print('(no project sources found)')
+        return 0
+    for idx, item in enumerate(sources, start=1):
+        title = str(item.get('title') or item.get('name') or item.get('identity') or '(untitled)')
+        subtitle = str(item.get('subtitle') or '')
+        identity = str(item.get('identity') or '')
+        columns = [f"{idx:>3}. {title}"]
+        if subtitle:
+            columns.append(subtitle)
+        if identity and identity != title and identity != subtitle:
+            columns.append(identity)
+        print("	".join(columns))
+    return 0
+
+
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
     source_kind = args.type or "file"
     value = args.value
@@ -1062,6 +1110,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-remove": ["--keep-open"],
         "project-source-add": ["--type", "--value", "--file", "--name", "--keep-open"],
+        "project-source-list": ["--json", "--keep-open"],
         "project-source-remove": ["--exact", "--keep-open"],
         "chat-list": ["--json", "--keep-open"],
         "chats": ["--json", "--keep-open"],
@@ -1631,6 +1680,13 @@ def make_parser() -> argparse.ArgumentParser:
     source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
     source_add.add_argument("--keep-open", action="store_true")
 
+    source_list = subparsers.add_parser(
+        "project-source-list",
+        help="List sources for the configured ChatGPT project (Sources tab).",
+    )
+    source_list.add_argument("--json", action="store_true", help="Emit the full source list payload as JSON.")
+    source_list.add_argument("--keep-open", action="store_true")
+
     source_remove = subparsers.add_parser(
         "project-source-remove",
         help="Remove a source from the configured ChatGPT project (Sources tab).",
@@ -1765,6 +1821,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_project_remove(backend, args)
     if args.command == "project-source-add":
         return await cmd_project_source_add(backend, args)
+    if args.command == "project-source-list":
+        return await cmd_project_source_list(backend, args)
     if args.command == "project-source-remove":
         return await cmd_project_source_remove(backend, args)
     if args.command in {"chat-list", "chats"}:

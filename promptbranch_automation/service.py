@@ -143,6 +143,20 @@ class ChatGPTAutomationService:
                 ),
             )
 
+    async def list_project_sources(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Listing ChatGPT project sources")
+        async with self._lock:
+            return await self._with_retries(
+                "list_project_sources",
+                lambda: self._build_bot().list_project_sources(
+                    keep_open=keep_open,
+                ),
+            )
+
     async def get_chat(
         self,
         *,
