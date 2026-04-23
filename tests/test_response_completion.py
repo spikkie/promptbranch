@@ -9,7 +9,7 @@ from promptbranch_browser_auth.config import ChatGPTBrowserConfig
 def _make_client(tmp_path: Path) -> ChatGPTBrowserClient:
     config = ChatGPTBrowserConfig(
         project_url="https://chatgpt.com/",
-        profile_dir=str(tmp_path / "profile"),
+        profile_dir=str(tmp_path / ".pb_profile"),
         debug=False,
         save_trace=False,
         save_html=False,

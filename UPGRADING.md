@@ -15,7 +15,6 @@ What changed:
 
 Migration support that remains:
 - config fallback: `~/.config/chatgpt-cli/config.json` is still read if the new config path is absent
-- state fallback: legacy `.chatgpt_cli_state.json` is still read if the new state file is absent
 
 ## Public command and package replacements
 
@@ -58,7 +57,7 @@ Migration support that remains:
 | CLI state | profile-local `.chatgpt_cli_state.json` | profile-local `.promptbranch_state.json` |
 | Browser profile dir | visible `profile/` by convention | hidden inherited `.pb_profile/` by default |
 
-The runtime still checks the legacy paths as a fallback to make upgrades less disruptive. The CLI now discovers the nearest `.pb_profile` by walking up from the current working directory, and a deeper `.pb_profile` overrides a parent one for that subtree.
+The CLI discovers the nearest `.pb_profile` by walking up from the current working directory, and a deeper `.pb_profile` overrides a parent one for that subtree.
 
 ## Docker and service naming
 
@@ -80,7 +79,7 @@ The runtime still checks the legacy paths as a fallback to make upgrades less di
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.103.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.104.zip
 promptbranch state
 promptbranch prompt
 ```

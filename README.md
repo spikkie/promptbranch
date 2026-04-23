@@ -1,4 +1,4 @@
-# promptbranch v0.0.103
+# promptbranch v0.0.104
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.103 .
+docker build -t promptbranch-service:0.0.104 .
 ```
 
 Run it:
@@ -50,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.103
+  promptbranch-service:0.0.104
 ```
 
 Compose option:
@@ -229,7 +229,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.103.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.104.zip
 ```
 
 From an extracted checkout:
@@ -364,7 +364,6 @@ Core service settings:
 - `CHATGPT_EMAIL`
 - `CHATGPT_PASSWORD`
 - `CHATGPT_PASSWORD_FILE` (inside the container this is fixed to `/run/secrets/chatgpt_password` in the compose service)
-- `CHATGPT_PROFILE_DIR`
 - `CHATGPT_CLI_CONFIG` (optional JSON config file path for CLI defaults)
 - `CHATGPT_HEADLESS`
 - `CHATGPT_USE_PATCHRIGHT`
@@ -398,7 +397,7 @@ The added Docker service does not remove those risks. It packages the currently 
 
 ## Stateful CLI usage
 
-The CLI now keeps lightweight per-profile state inside the resolved browser profile directory, typically the nearest inherited `.pb_profile/.promptbranch_state.json`, so it can behave more like `git`. If that file is missing it will fall back to the legacy `.chatgpt_cli_state.json`:
+The CLI now keeps lightweight per-profile state inside the resolved browser profile directory, typically the nearest inherited `.pb_profile/.promptbranch_state.json`, so it can behave more like `git`:
 
 - profile discovery walks upward from the current working directory and uses the nearest `.pb_profile`
 - a deeper `.pb_profile` overrides a parent one for that subtree

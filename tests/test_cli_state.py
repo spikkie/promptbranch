@@ -258,6 +258,19 @@ def test_resolve_profile_dir_inherits_hidden_profile_from_parent(tmp_path) -> No
     assert resolved == profile.resolve()
 
 
+
+
+def test_resolve_profile_dir_ignores_visible_legacy_profile_dirs(tmp_path) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "sub" / "deeper"
+    legacy = repo / "profile"
+    legacy.mkdir(parents=True)
+    nested.mkdir(parents=True)
+
+    resolved = resolve_profile_dir(cwd=str(nested))
+
+    assert resolved == (nested / ".pb_profile").resolve()
+
 def test_main_uses_inherited_hidden_profile_by_default(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:

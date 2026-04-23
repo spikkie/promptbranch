@@ -115,10 +115,10 @@ def test_global_options_after_use_are_normalized() -> None:
         "use",
         "My Project",
         "--profile-dir",
-        "./profile",
+        "./.pb_profile",
     ]
     normalized = _normalize_global_options(argv)
-    assert normalized[:2] == ["--profile-dir", "./profile"]
+    assert normalized[:2] == ["--profile-dir", "./.pb_profile"]
     assert normalized[2:] == ["use", "My Project"]
 
 
@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.103" in out
+    assert "0.0.104" in out
     assert "promptbranch" in out
 
 

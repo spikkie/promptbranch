@@ -143,7 +143,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.103"
+SERVICE_VERSION = "0.0.104"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -154,7 +154,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             project_url=project_url_override or _DEFAULT_PROJECT_URL,
             email=os.getenv("CHATGPT_EMAIL") or os.getenv("EMAIL"),
             password=os.getenv("CHATGPT_PASSWORD") or os.getenv("PASSWORD"),
-            profile_dir=os.getenv("PROMPTBRANCH_PROFILE_DIR") or os.getenv("CHATGPT_PROFILE_DIR", "/app/.pb_profile"),
+            profile_dir=os.getenv("PROMPTBRANCH_PROFILE_DIR", "/app/.pb_profile"),
             headless=_env_flag("CHATGPT_HEADLESS", False),
             use_patchright=_env_flag("CHATGPT_USE_PATCHRIGHT", True),
             browser_channel=os.getenv("CHATGPT_BROWSER_CHANNEL", "chrome"),

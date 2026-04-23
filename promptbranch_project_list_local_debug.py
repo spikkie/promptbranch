@@ -48,7 +48,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
     parser.add_argument("--password", default=os.getenv("CHATGPT_PASSWORD"))
     parser.add_argument("--password-file", default=os.getenv("CHATGPT_PASSWORD_FILE"))
-    parser.add_argument("--profile-dir", default=os.getenv("PROMPTBRANCH_PROFILE_DIR") or os.getenv("CHATGPT_PROFILE_DIR", "./.pb_profile"))
+    parser.add_argument("--profile-dir", default=os.getenv("PROMPTBRANCH_PROFILE_DIR", "./.pb_profile"))
     parser.add_argument("--headless", action="store_true", default=_env_flag("CHATGPT_HEADLESS", False))
     parser.add_argument("--use-playwright", action="store_true", default=not _env_flag("CHATGPT_USE_PATCHRIGHT", True))
     parser.add_argument("--browser-channel", default=os.getenv("CHATGPT_BROWSER_CHANNEL", "chrome"))
