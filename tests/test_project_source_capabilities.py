@@ -588,6 +588,70 @@ def test_wait_for_project_source_post_save_settle_stops_on_duplicate_notice(brow
     assert "already exists" in str(exc_info.value)
 
 
+def test_add_project_source_operation_short_circuits_existing_duplicate_file(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{
+            "identity": "candlecast-src-0.16.5.16.zip",
+            "title": "candlecast-src-0.16.5.16.zip",
+            "text": "candlecast-src-0.16.5.16.zip File contents may not be accessible",
+        }]
+
+    async def fail_add_file_source(*_args, **_kwargs) -> None:
+        raise AssertionError("duplicate file add should short-circuit before opening upload flow")
+
+    async def fake_verify_persistence(*_args, **kwargs):
+        candidates = kwargs["source_match_candidates"]
+        assert candidates[0] == "candlecast-src-0.16.5.16.zip"
+        assert "candlecast-src-0.16.5.16.zip File contents may not be accessible" in candidates
+        return {
+            "identity": "candlecast-src-0.16.5.16.zip",
+            "title": "candlecast-src-0.16.5.16.zip",
+            "text": "candlecast-src-0.16.5.16.zip File contents may not be accessible",
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fail_add_file_source  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    file_path = str(tmp_path / "candlecast-src-0.16.5.16.zip")
+    Path(file_path).write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=file_path,
+            display_name=file_path,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["already_exists"] is True
+    assert result["added"] is False
+    assert result["source_match_requested"] == "candlecast-src-0.16.5.16.zip"
+    assert "already exists" in result["duplicate_notice"].lower()
+
+
 def test_add_project_source_operation_returns_idempotent_success_for_duplicate_file(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
 

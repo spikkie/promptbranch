@@ -1,4 +1,4 @@
-# promptbranch v0.0.101
+# promptbranch v0.0.102
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.101 .
+docker build -t promptbranch-service:0.0.102 .
 ```
 
 Run it:
@@ -229,7 +229,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.101.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.102.zip
 ```
 
 From an extracted checkout:
