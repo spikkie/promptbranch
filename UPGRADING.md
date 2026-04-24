@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.104.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.105.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,3 +115,10 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.105
+
+- Added `scripts/promptbranch-aliases.sh` with common Promptbranch aliases such as `pbs` for `promptbranch state`.
+- Added `scripts/setup-promptbranch-shell.sh` to install the aliases into Bash or Zsh rc files.
+- Added `scripts/promptbranch-statusline.sh` for compact Promptbranch state output in shell prompts or tmux footer/status lines.
+- The status helper resolves the nearest inherited `.pb_profile` directory.

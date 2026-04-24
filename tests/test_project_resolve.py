@@ -461,18 +461,18 @@ def test_match_source_card_ignores_shared_file_placeholder_metadata_for_lookup(t
     client = _make_client(tmp_path)
 
     sibling_card = {
-        "text": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.93.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.93.zip",
+        "text": "fixture-source-b.zip File contents may not be accessible",
+        "key": "fixture-source-b.zip",
+        "title": "fixture-source-b.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
+        "identity": "fixture-source-b.zip File contents may not be accessible",
     }
 
     assert client._match_source_card(
         [sibling_card],
         [
-            "chatgpt_claudecode_workflow_v0.0.92.zip",
-            "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+            "fixture-source-a.zip",
+            "fixture-source-a.zip File contents may not be accessible",
         ],
         anchor_safe=True,
     ) is None
@@ -501,22 +501,22 @@ def test_source_lookup_candidates_exact_safe_excludes_shared_metadata_only_value
     client = _make_client(tmp_path)
 
     card = {
-        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "text": "fixture-source-a.zip File contents may not be accessible",
+        "key": "fixture-source-a.zip",
+        "title": "fixture-source-a.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "identity": "fixture-source-a.zip File contents may not be accessible",
     }
 
     candidates = client._source_lookup_candidates(
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "fixture-source-a.zip",
         card,
         exact_safe=True,
     )
 
     assert candidates == [
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]
 
 
@@ -524,22 +524,22 @@ def test_source_lookup_candidates_anchor_safe_excludes_shared_metadata_only_valu
     client = _make_client(tmp_path)
 
     card = {
-        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "text": "fixture-source-a.zip File contents may not be accessible",
+        "key": "fixture-source-a.zip",
+        "title": "fixture-source-a.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "identity": "fixture-source-a.zip File contents may not be accessible",
     }
 
     candidates = client._source_lookup_candidates(
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "fixture-source-a.zip",
         card,
         anchor_safe=True,
     )
 
     assert candidates == [
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]
 
 
@@ -646,11 +646,11 @@ def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(
     async def fake_snapshot_project_source_cards(*_args, **_kwargs):
         return [
             {
-                "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-                "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-                "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+                "text": "fixture-source-a.zip File contents may not be accessible",
+                "key": "fixture-source-a.zip",
+                "title": "fixture-source-a.zip",
                 "subtitle": "File contents may not be accessible",
-                "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+                "identity": "fixture-source-a.zip File contents may not be accessible",
             }
         ]
 
@@ -673,7 +673,7 @@ def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(
     action_button, matched_card, candidates = asyncio.run(
         client._wait_for_project_source_action_button(
             page,
-            ["chatgpt_claudecode_workflow_v0.0.92.zip"],
+            ["fixture-source-a.zip"],
             exact=True,
             timeout_ms=1_000,
             poll_interval_ms=1,
@@ -682,19 +682,19 @@ def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(
 
     assert action_button is sentinel_button
     assert matched_card == {
-        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "text": "fixture-source-a.zip File contents may not be accessible",
+        "key": "fixture-source-a.zip",
+        "title": "fixture-source-a.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "identity": "fixture-source-a.zip File contents may not be accessible",
     }
     assert captured_candidates == [[
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]]
     assert candidates == [
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]
 
 
@@ -708,11 +708,11 @@ def test_wait_for_project_source_action_button_non_exact_anchors_retry_candidate
     async def fake_snapshot_project_source_cards(*_args, **_kwargs):
         return [
             {
-                "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-                "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-                "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+                "text": "fixture-source-a.zip File contents may not be accessible",
+                "key": "fixture-source-a.zip",
+                "title": "fixture-source-a.zip",
                 "subtitle": "File contents may not be accessible",
-                "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+                "identity": "fixture-source-a.zip File contents may not be accessible",
             }
         ]
 
@@ -735,7 +735,7 @@ def test_wait_for_project_source_action_button_non_exact_anchors_retry_candidate
     action_button, matched_card, candidates = asyncio.run(
         client._wait_for_project_source_action_button(
             page,
-            ["chatgpt_claudecode_workflow_v0.0.92.zip"],
+            ["fixture-source-a.zip"],
             exact=False,
             timeout_ms=1_000,
             poll_interval_ms=1,
@@ -744,19 +744,19 @@ def test_wait_for_project_source_action_button_non_exact_anchors_retry_candidate
 
     assert action_button is sentinel_button
     assert matched_card == {
-        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "text": "fixture-source-a.zip File contents may not be accessible",
+        "key": "fixture-source-a.zip",
+        "title": "fixture-source-a.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "identity": "fixture-source-a.zip File contents may not be accessible",
     }
     assert captured_candidates == [[
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]]
     assert candidates == [
-        "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "fixture-source-a.zip",
+        "fixture-source-a.zip File contents may not be accessible",
     ]
     assert "File contents may not be accessible" not in candidates
 
@@ -771,11 +771,11 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
     wait_calls: list[list[str]] = []
     source_absence_attempts = 0
     matched_card = {
-        "text": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
-        "key": "chatgpt_claudecode_workflow_v0.0.92.zip",
-        "title": "chatgpt_claudecode_workflow_v0.0.92.zip",
+        "text": "fixture-source-a.zip File contents may not be accessible",
+        "key": "fixture-source-a.zip",
+        "title": "fixture-source-a.zip",
         "subtitle": "File contents may not be accessible",
-        "identity": "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+        "identity": "fixture-source-a.zip File contents may not be accessible",
     }
 
     async def fake_ensure_logged_in(*_args, **_kwargs):
@@ -791,11 +791,11 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
         return [
             matched_card,
             {
-                "text": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
-                "key": "chatgpt_claudecode_workflow_v0.0.93.zip",
-                "title": "chatgpt_claudecode_workflow_v0.0.93.zip",
+                "text": "fixture-source-b.zip File contents may not be accessible",
+                "key": "fixture-source-b.zip",
+                "title": "fixture-source-b.zip",
                 "subtitle": "File contents may not be accessible",
-                "identity": "chatgpt_claudecode_workflow_v0.0.93.zip File contents may not be accessible",
+                "identity": "fixture-source-b.zip File contents may not be accessible",
             },
         ]
 
@@ -816,7 +816,7 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
         nonlocal source_absence_attempts
         source_absence_attempts += 1
         if source_absence_attempts == 1:
-            raise client_module.ResponseTimeoutError("Timed out waiting for project source to disappear: chatgpt_claudecode_workflow_v0.0.92.zip")
+            raise client_module.ResponseTimeoutError("Timed out waiting for project source to disappear: fixture-source-a.zip")
         return None
 
     async def fake_safe_page_url(*_args, **_kwargs):
@@ -839,7 +839,7 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
         client._remove_project_source_operation(
             context=None,
             page=page,
-            source_name="chatgpt_claudecode_workflow_v0.0.92.zip",
+            source_name="fixture-source-a.zip",
             exact=False,
             keep_open=False,
         )
@@ -848,12 +848,12 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
     assert result["ok"] is True
     assert wait_calls == [
         [
-            "chatgpt_claudecode_workflow_v0.0.92.zip",
-            "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+            "fixture-source-a.zip",
+            "fixture-source-a.zip File contents may not be accessible",
         ],
         [
-            "chatgpt_claudecode_workflow_v0.0.92.zip",
-            "chatgpt_claudecode_workflow_v0.0.92.zip File contents may not be accessible",
+            "fixture-source-a.zip",
+            "fixture-source-a.zip File contents may not be accessible",
         ],
     ]
 
