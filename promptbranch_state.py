@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
+from promptbranch_shell_model import SHELL_STATE_SCHEMA_VERSION, normalize_shell_state_snapshot
+
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 PROFILE_DIR_NAME = ".pb_profile"
 PROFILE_DIR_ENV = "PROMPTBRANCH_PROFILE_DIR"
@@ -219,7 +221,13 @@ class ConversationStateStore:
             project_name = project_name_from_url(resolved_project_home_url)
         current_home = current.get("project_home_url") if isinstance(current, dict) and isinstance(current.get("project_home_url"), str) else None
         current_conversation = current.get("conversation_url") if isinstance(current, dict) and isinstance(current.get("conversation_url"), str) else None
-        return {
+        artifact_ref = entry.get("artifact_ref") if isinstance(entry.get("artifact_ref"), str) else None
+        artifact_version = entry.get("artifact_version") if isinstance(entry.get("artifact_version"), str) else None
+        source_ref = entry.get("source_ref") if isinstance(entry.get("source_ref"), str) else None
+        source_version = entry.get("source_version") if isinstance(entry.get("source_version"), str) else None
+        updated_at = entry.get("updated_at") if isinstance(entry.get("updated_at"), str) else None
+        snapshot = {
+            "schema_version": int(payload.get("schema_version") or SHELL_STATE_SCHEMA_VERSION),
             "state_file": str(self._path),
             "has_current": bool(current_home),
             "current_project_home_url": current_home,
@@ -229,7 +237,67 @@ class ConversationStateStore:
             "conversation_url": conversation_url,
             "conversation_id": conversation_id_from_url(conversation_url),
             "project_slug": project_slug_from_url(resolved_project_home_url),
+            "source_ref": source_ref,
+            "source_version": source_version,
+            "artifact_ref": artifact_ref,
+            "artifact_version": artifact_version,
+            "updated_at": updated_at,
         }
+        shell_state = normalize_shell_state_snapshot(snapshot)
+        snapshot["workspace"] = shell_state.workspace.__dict__
+        snapshot["task"] = shell_state.task.__dict__
+        snapshot["artifact"] = shell_state.artifact.__dict__
+        return snapshot
+
+    def remember_artifact(
+        self,
+        *,
+        artifact_ref: Optional[str] = None,
+        artifact_version: Optional[str] = None,
+        source_ref: Optional[str] = None,
+        source_version: Optional[str] = None,
+        project_url: Optional[str] = None,
+    ) -> None:
+        payload = self._load()
+        home_url = project_home_url_from_url(project_url)
+        if not home_url:
+            current = payload.get("current") if isinstance(payload, dict) else None
+            if isinstance(current, dict):
+                candidate = current.get("project_home_url")
+                if isinstance(candidate, str):
+                    home_url = candidate
+        if not home_url:
+            return
+        entry = self._project_entry(payload, home_url) or self._merged_entry(payload, home_url)
+        if artifact_ref is not None:
+            entry["artifact_ref"] = artifact_ref
+        if artifact_version is not None:
+            entry["artifact_version"] = artifact_version
+        if source_ref is not None:
+            entry["source_ref"] = source_ref
+        if source_version is not None:
+            entry["source_version"] = source_version
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        self._store_entry(payload, home_url, entry)
+        self._write(payload)
+
+    def forget_artifact(self, project_url: Optional[str] = None) -> None:
+        payload = self._load()
+        home_url = project_home_url_from_url(project_url)
+        if not home_url:
+            current = payload.get("current") if isinstance(payload, dict) else None
+            if isinstance(current, dict):
+                candidate = current.get("project_home_url")
+                if isinstance(candidate, str):
+                    home_url = candidate
+        if not home_url:
+            return
+        entry = self._project_entry(payload, home_url) or self._merged_entry(payload, home_url)
+        for key in ("artifact_ref", "artifact_version", "source_ref", "source_version"):
+            entry[key] = None
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        self._store_entry(payload, home_url, entry)
+        self._write(payload)
 
     def _load(self) -> dict[str, Any]:
         if not self._path.exists():
@@ -241,6 +309,7 @@ class ConversationStateStore:
         return payload if isinstance(payload, dict) else {}
 
     def _write(self, payload: dict[str, Any]) -> None:
+        payload["schema_version"] = SHELL_STATE_SCHEMA_VERSION
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -264,6 +333,10 @@ class ConversationStateStore:
             "project_home_url": home_url,
             "project_name": project_name or existing.get("project_name") or project_name_from_url(home_url),
             "conversation_url": conversation_url or existing.get("conversation_url"),
+            "artifact_ref": existing.get("artifact_ref"),
+            "artifact_version": existing.get("artifact_version"),
+            "source_ref": existing.get("source_ref"),
+            "source_version": existing.get("source_version"),
             "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
