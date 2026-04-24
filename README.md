@@ -1,4 +1,4 @@
-# promptbranch v0.0.104
+# promptbranch v0.0.105
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.104 .
+docker build -t promptbranch-service:0.0.105 .
 ```
 
 Run it:
@@ -50,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.104
+  promptbranch-service:0.0.105
 ```
 
 Compose option:
@@ -229,7 +229,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.104.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.105.zip
 ```
 
 From an extracted checkout:
@@ -452,3 +452,33 @@ Select the current project interactively from visible projects:
 promptbranch use --pick
 promptbranch use work --pick
 ```
+
+## Promptbranch shell aliases and status line
+
+This release includes optional shell helpers:
+
+```bash
+scripts/setup-promptbranch-shell.sh --bash
+# or
+scripts/setup-promptbranch-shell.sh --zsh
+```
+
+Useful aliases:
+
+| Alias | Command |
+|---|---|
+| `pbs` | `promptbranch state` |
+| `pbv` | `promptbranch version` |
+| `pba` | `promptbranch ask` |
+| `pbsl` | `promptbranch project-source-list` |
+| `pbsf` | `promptbranch project-source-add --file` |
+| `pbsr` | `promptbranch project-source-remove` |
+| `pbstatus` | compact `.pb_profile` state line |
+
+For a tmux footer/status segment:
+
+```tmux
+set -g status-right '#(/path/to/chatgpt_claudecode_workflow/scripts/promptbranch-statusline.sh --tmux) %H:%M %Y-%m-%d'
+```
+
+The status helper resolves the nearest inherited `.pb_profile` directory.
