@@ -37,6 +37,7 @@ CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "project_source_add_text",
     "project_source_add_file",
     "ask_question",
+    "task_message_flow",
     "project_source_remove_link",
     "project_source_remove_text",
     "project_source_remove_file",
@@ -76,6 +77,9 @@ STEP_ALIASES: dict[str, tuple[str, ...]] = {
         "project_source_remove_file",
     ),
     "ask": ("ask_question",),
+    "task_message_flow": ("task_message_flow",),
+    "task_messages": ("task_message_flow",),
+    "task": ("task_message_flow",),
     "project_remove": ("project_remove_cleanup",),
     "cleanup": ("project_remove_cleanup",),
 }
@@ -92,6 +96,7 @@ PROJECT_CONTEXT_REQUIRED_STEPS = {
     "project_source_capabilities",
     *SOURCE_FLOW_STEPS,
     "ask_question",
+    "task_message_flow",
     "project_remove_cleanup",
 }
 REMOVAL_STEPS = {
@@ -437,6 +442,60 @@ class DockerServiceAdapter:
                 project_url=self.project_url,
             )
 
+    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list_project_chats_sync, keep_open)
+
+    def _list_project_chats_sync(self, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.list_project_chats(keep_open=keep_open, project_url=self.project_url)
+
+    async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._get_chat_sync, conversation_url, keep_open)
+
+    def _get_chat_sync(self, conversation_url: str, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.get_chat(conversation_url=conversation_url, keep_open=keep_open, project_url=self.project_url)
+
+    async def ask_question_result(
+        self,
+        *,
+        prompt: str,
+        file_path: Optional[str] = None,
+        conversation_url: str | None = None,
+        expect_json: bool = False,
+        keep_open: bool = False,
+        retries: Optional[int] = None,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._ask_question_result_sync,
+            prompt,
+            file_path,
+            conversation_url,
+            expect_json,
+            keep_open,
+            retries,
+        )
+
+    def _ask_question_result_sync(
+        self,
+        prompt: str,
+        file_path: Optional[str],
+        conversation_url: str | None,
+        expect_json: bool,
+        keep_open: bool,
+        retries: Optional[int],
+    ) -> dict[str, Any]:
+        with self._client() as client:
+            return client.ask_result(
+                prompt,
+                file_path=file_path,
+                conversation_url=conversation_url,
+                expect_json=expect_json,
+                keep_open=keep_open,
+                retries=retries,
+                project_url=self.project_url,
+            )
+
     async def ask_question(
         self,
         *,
@@ -603,6 +662,199 @@ def _normalize_expected_skip_result(result: Any) -> Any:
         expected_flag="expected_skip",
         message="Step skipped as an expected suite precondition or capability limitation.",
     )
+
+
+def _one_line_preview(value: Any, *, max_chars: int = 96) -> str:
+    import re
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _message_text_from_any_payload(raw: dict[str, Any]) -> str:
+    direct = raw.get("text")
+    if direct is not None:
+        return str(direct)
+
+    content = raw.get("content") if isinstance(raw.get("content"), dict) else None
+    if not content:
+        return ""
+
+    parts = content.get("parts")
+    if isinstance(parts, list):
+        rendered: list[str] = []
+        for part in parts:
+            if isinstance(part, str):
+                rendered.append(part)
+            elif isinstance(part, dict):
+                if isinstance(part.get("text"), str):
+                    rendered.append(part["text"])
+                elif isinstance(part.get("content"), str):
+                    rendered.append(part["content"])
+        return "\n".join(item for item in rendered if item).strip()
+
+    if isinstance(content.get("text"), str):
+        return content["text"]
+    return ""
+
+
+def _role_from_any_payload(raw: dict[str, Any]) -> str:
+    author = raw.get("author") if isinstance(raw.get("author"), dict) else {}
+    return str(raw.get("role") or author.get("role") or "").strip().lower()
+
+
+def _turns_from_raw_conversation_mapping(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    mapping = payload.get("mapping") if isinstance(payload.get("mapping"), dict) else {}
+    current_node = payload.get("current_node") or payload.get("currentNode")
+    if not mapping or not current_node:
+        return []
+
+    node_ids: list[str] = []
+    seen: set[str] = set()
+    cursor = str(current_node)
+    while cursor and cursor not in seen:
+        seen.add(cursor)
+        node_ids.append(cursor)
+        node = mapping.get(cursor)
+        if not isinstance(node, dict):
+            break
+        parent = node.get("parent")
+        cursor = str(parent) if parent is not None else ""
+
+    turns: list[dict[str, Any]] = []
+    for node_id in reversed(node_ids):
+        node = mapping.get(node_id)
+        if not isinstance(node, dict):
+            continue
+        message = node.get("message") if isinstance(node.get("message"), dict) else None
+        if not message:
+            continue
+        role = _role_from_any_payload(message)
+        if role in {"", "system", "tool"}:
+            continue
+        text = _message_text_from_any_payload(message)
+        if not text:
+            continue
+        turns.append({
+            "index": len(turns) + 1,
+            "id": node_id,
+            "role": role,
+            "text": text,
+            "create_time": message.get("create_time") or message.get("createTime") or node.get("create_time") or node.get("createTime"),
+            "status": message.get("status") or node.get("status") or "complete",
+        })
+    return turns
+
+
+def _normalized_chat_turns(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_turns = payload.get("turns")
+    if isinstance(raw_turns, list):
+        turns: list[dict[str, Any]] = []
+        for raw in raw_turns:
+            if not isinstance(raw, dict):
+                continue
+            role = _role_from_any_payload(raw)
+            text = _message_text_from_any_payload(raw)
+            if not role or not text:
+                continue
+            turns.append({
+                "index": raw.get("index") or len(turns) + 1,
+                "id": raw.get("id"),
+                "role": role,
+                "text": text,
+                "create_time": raw.get("create_time") or raw.get("createTime"),
+                "status": raw.get("status") or "complete",
+            })
+        return turns
+
+    raw_messages = payload.get("messages")
+    if isinstance(raw_messages, list):
+        return _normalized_chat_turns({"turns": raw_messages})
+
+    return _turns_from_raw_conversation_mapping(payload)
+
+
+def _messages_from_chat_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_turns = _normalized_chat_turns(payload)
+    messages: list[dict[str, Any]] = []
+    current_message: Optional[dict[str, Any]] = None
+
+    for raw_turn in raw_turns:
+        role = str(raw_turn.get("role") or "").strip().lower()
+        text = str(raw_turn.get("text") or "")
+        if role == "user":
+            current_message = {
+                "index": len(messages) + 1,
+                "id": raw_turn.get("id"),
+                "role": "user",
+                "turn_index": raw_turn.get("index"),
+                "text": text,
+                "preview": _one_line_preview(text),
+                "create_time": raw_turn.get("create_time"),
+                "answers": [],
+                "answer_count": 0,
+                "answered": False,
+            }
+            messages.append(current_message)
+            continue
+
+        if role == "assistant" and current_message is not None:
+            answers = current_message.setdefault("answers", [])
+            answer = {
+                "index": len(answers) + 1,
+                "id": raw_turn.get("id"),
+                "role": "assistant",
+                "turn_index": raw_turn.get("index"),
+                "text": text,
+                "preview": _one_line_preview(text),
+                "create_time": raw_turn.get("create_time"),
+                "status": raw_turn.get("status") or "complete",
+            }
+            answers.append(answer)
+            current_message["answer_count"] = len(answers)
+            current_message["answered"] = bool(answers)
+
+    return messages
+
+
+def _task_messages_payload(chat_payload: dict[str, Any]) -> dict[str, Any]:
+    messages = _messages_from_chat_payload(chat_payload)
+    return {
+        "ok": bool(chat_payload.get("ok", True)),
+        "action": "task_messages_list",
+        "project_url": chat_payload.get("project_url"),
+        "conversation_url": chat_payload.get("conversation_url"),
+        "conversation_id": chat_payload.get("conversation_id"),
+        "title": chat_payload.get("title"),
+        "message_count": len(messages),
+        "messages": messages,
+    }
+
+
+def _latest_message(payload: dict[str, Any]) -> dict[str, Any]:
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    if not messages:
+        raise IntegrationAssertionError(f"task transcript contained no user messages: {payload}")
+    latest = messages[-1]
+    if not isinstance(latest, dict):
+        raise IntegrationAssertionError(f"task transcript latest message had unexpected shape: {latest!r}")
+    return latest
+
+
+def _extract_conversation_url_from_ask_result(result: Any) -> Optional[str]:
+    if not isinstance(result, dict):
+        return None
+    for key in ("conversation_url", "chat_url", "url"):
+        value = result.get(key)
+        if isinstance(value, str) and "/c/" in value:
+            return value
+    conversation_id = result.get("conversation_id") or result.get("conversationId")
+    project_url = result.get("project_url") or result.get("projectUrl")
+    if isinstance(conversation_id, str) and isinstance(project_url, str):
+        return project_url.rstrip("/").removesuffix("/project") + "/c/" + conversation_id
+    return None
 
 
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
@@ -878,6 +1130,92 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             _require(
                 "INTEGRATION_OK" in ask_text.upper(),
                 f"ask_question did not contain the expected token. response={ask_text!r}",
+            )
+
+        if should_run("task_message_flow"):
+            task_prompt = (
+                f"Promptbranch task/message live smoke {run_id}. "
+                "Reply with exactly the single token TASK_MESSAGE_OK and nothing else."
+            )
+            task_ask = await _run_step(
+                steps,
+                "task_message_flow.ask",
+                project_service.ask_question_result(
+                    prompt=task_prompt,
+                    expect_json=False,
+                    keep_open=args.keep_open,
+                    retries=0,
+                ),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+            _require(isinstance(task_ask, dict), f"task_message_flow ask did not return a structured payload: {task_ask!r}")
+            task_answer_text = str(task_ask.get("answer") or "")
+            _require(
+                "TASK_MESSAGE_OK" in task_answer_text.upper(),
+                f"task_message_flow ask answer did not contain TASK_MESSAGE_OK. response={task_answer_text!r}",
+            )
+            task_conversation_url = _extract_conversation_url_from_ask_result(task_ask)
+            _require(
+                bool(task_conversation_url),
+                f"task_message_flow ask did not return a conversation URL/id: {task_ask}",
+            )
+
+            task_list = await _run_step(
+                steps,
+                "task_message_flow.task_list",
+                project_service.list_project_chats(keep_open=args.keep_open),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+            task_entries = task_list.get("chats") or task_list.get("items") or task_list.get("conversations") or []
+            if isinstance(task_entries, list) and task_entries:
+                task_conversation_id = str(task_conversation_url).rstrip("/").split("/c/", 1)[-1].split("/", 1)[0]
+                listed_match = any(
+                    isinstance(item, dict)
+                    and (
+                        str(item.get("conversation_url") or item.get("url") or "").rstrip("/") == str(task_conversation_url).rstrip("/")
+                        or str(item.get("conversation_id") or item.get("id") or "") == task_conversation_id
+                    )
+                    for item in task_entries
+                )
+                _require(
+                    listed_match,
+                    f"task_message_flow created task was not visible in task list. conversation_url={task_conversation_url!r} task_list={task_list}",
+                )
+
+            task_chat = await _run_step(
+                steps,
+                "task_message_flow.task_get",
+                project_service.get_chat(
+                    conversation_url=str(task_conversation_url),
+                    keep_open=args.keep_open,
+                ),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+            task_messages = _task_messages_payload(task_chat)
+            latest_message = _latest_message(task_messages)
+            latest_answers = latest_message.get("answers") if isinstance(latest_message.get("answers"), list) else []
+            latest_answer_text = "\n".join(str(answer.get("text") or "") for answer in latest_answers if isinstance(answer, dict))
+            _require(
+                task_prompt in str(latest_message.get("text") or ""),
+                f"task_message_flow latest message did not contain the smoke prompt. latest_message={latest_message}",
+            )
+            _require(
+                "TASK_MESSAGE_OK" in latest_answer_text.upper(),
+                f"task_message_flow latest answer did not contain TASK_MESSAGE_OK. latest_message={latest_message}",
+            )
+            _record_step(
+                steps,
+                "task_message_flow",
+                ok=True,
+                details={
+                    "ok": True,
+                    "action": "task_message_flow",
+                    "conversation_url": task_conversation_url,
+                    "task_list_count": len(task_entries) if isinstance(task_entries, list) else None,
+                    "message_count": task_messages.get("message_count"),
+                    "latest_message_index": latest_message.get("index"),
+                    "latest_answer_count": len(latest_answers),
+                },
             )
 
         if should_run("project_source_remove_link"):

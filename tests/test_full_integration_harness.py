@@ -4,7 +4,9 @@ import pytest
 
 from promptbranch_full_integration_test import (
     _normalize_expected_missing_resolve_result,
+    _extract_conversation_url_from_ask_result,
     _normalize_expected_skip_result,
+    _task_messages_payload,
     make_parser,
     resolve_step_selection,
 )
@@ -143,3 +145,58 @@ def test_normalize_expected_skip_result_leaves_non_skip_results_unchanged() -> N
     result = {"ok": True, "reason": "supported"}
     normalized = _normalize_expected_skip_result(result)
     assert normalized == result
+
+def test_resolve_step_selection_supports_task_message_flow_aliases() -> None:
+    selection = resolve_step_selection(
+        only_values=["task_messages"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert selection.enabled_steps == (
+        "login_check",
+        "task_message_flow",
+    )
+
+
+def test_task_messages_payload_groups_mapping_payload() -> None:
+    payload = {
+        "ok": True,
+        "conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc",
+        "conversation_id": "abc",
+        "title": "Smoke task",
+        "current_node": "assistant-1",
+        "mapping": {
+            "root": {"parent": None, "message": None},
+            "user-1": {
+                "parent": "root",
+                "message": {
+                    "author": {"role": "user"},
+                    "content": {"parts": ["Promptbranch smoke question"]},
+                },
+            },
+            "assistant-1": {
+                "parent": "user-1",
+                "message": {
+                    "author": {"role": "assistant"},
+                    "content": {"parts": ["TASK_MESSAGE_OK"]},
+                },
+            },
+        },
+    }
+
+    grouped = _task_messages_payload(payload)
+
+    assert grouped["message_count"] == 1
+    assert grouped["messages"][0]["text"] == "Promptbranch smoke question"
+    assert grouped["messages"][0]["answer_count"] == 1
+    assert grouped["messages"][0]["answers"][0]["text"] == "TASK_MESSAGE_OK"
+
+
+def test_extract_conversation_url_from_ask_result_can_build_from_project_and_id() -> None:
+    result = {
+        "project_url": "https://chatgpt.com/g/g-p-demo/project",
+        "conversation_id": "abc123",
+    }
+
+    assert _extract_conversation_url_from_ask_result(result) == "https://chatgpt.com/g/g-p-demo/c/abc123"
+
