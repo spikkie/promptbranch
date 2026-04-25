@@ -38,11 +38,16 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.107"
+CLI_VERSION = "0.0.108"
 COMMANDS = {
     "login-check",
     "ask",
     "shell",
+    "ws",
+    "task",
+    "src",
+    "test",
+    "doctor",
     "project-create",
     "project-list",
     "project-resolve",
@@ -1111,6 +1116,11 @@ def _global_option_names() -> list[str]:
 def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
+        "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
+        "task": ["list", "use", "current", "leave", "show", "--json", "--keep-open"],
+        "src": ["list", "add", "rm", "remove", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json"],
+        "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip"],
+        "doctor": ["--json"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
@@ -1441,6 +1451,145 @@ async def cmd_use(backend: CommandBackend, args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+
+async def cmd_ws_current(backend: CommandBackend, args: argparse.Namespace) -> int:
+    """Show only the active workspace/project scope."""
+    snapshot = backend.state_snapshot()
+    payload = {
+        "ok": True,
+        "action": "ws_current",
+        "state_file": snapshot.get("state_file"),
+        "project_name": snapshot.get("project_name"),
+        "project_slug": snapshot.get("project_slug"),
+        "project_home_url": snapshot.get("resolved_project_home_url"),
+        "workspace": snapshot.get("workspace") if isinstance(snapshot.get("workspace"), dict) else None,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"state_file={payload.get('state_file')}")
+    print(f"workspace={payload.get('project_name') or payload.get('project_slug') or 'none'}")
+    print(f"project_home_url={payload.get('project_home_url') or 'none'}")
+    return 0
+
+
+async def cmd_task_current(backend: CommandBackend, args: argparse.Namespace) -> int:
+    """Show only the active task/chat scope."""
+    snapshot = backend.state_snapshot()
+    payload = {
+        "ok": True,
+        "action": "task_current",
+        "state_file": snapshot.get("state_file"),
+        "project_home_url": snapshot.get("resolved_project_home_url"),
+        "conversation_url": snapshot.get("conversation_url"),
+        "conversation_id": snapshot.get("conversation_id"),
+        "task": snapshot.get("task") if isinstance(snapshot.get("task"), dict) else None,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"state_file={payload.get('state_file')}")
+    print(f"project_home_url={payload.get('project_home_url') or 'none'}")
+    print(f"conversation_url={payload.get('conversation_url') or 'none'}")
+    print(f"conversation_id={payload.get('conversation_id') or 'none'}")
+    return 0
+
+
+async def cmd_ws(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.ws_command == "list":
+        return await cmd_project_list(backend, args)
+    if args.ws_command == "use":
+        return await cmd_use(backend, args)
+    if args.ws_command == "current":
+        return await cmd_ws_current(backend, args)
+    if args.ws_command == "leave":
+        return await cmd_state_clear(backend, args)
+    raise RuntimeError(f"Unknown ws command: {args.ws_command}")
+
+
+async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.task_command == "list":
+        return await cmd_chat_list(backend, args)
+    if args.task_command == "use":
+        return await cmd_chat_use(backend, args)
+    if args.task_command == "current":
+        return await cmd_task_current(backend, args)
+    if args.task_command == "leave":
+        return await cmd_chat_leave(backend, args)
+    if args.task_command == "show":
+        return await cmd_chat_show(backend, args)
+    raise RuntimeError(f"Unknown task command: {args.task_command}")
+
+
+async def cmd_src(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.src_command == "list":
+        return await cmd_project_source_list(backend, args)
+    if args.src_command == "add":
+        return await cmd_project_source_add(backend, args)
+    if args.src_command in {"rm", "remove"}:
+        return await cmd_project_source_remove(backend, args)
+    raise RuntimeError(f"Unknown src command: {args.src_command}")
+
+
+def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
+    defaults = {
+        "json": False,
+        "keep_open": False,
+        "keep_project": False,
+        "step_delay_seconds": 8.0,
+        "skip": [],
+        "only": [],
+        "strict_remove_ui": False,
+        "project_name": None,
+        "project_name_prefix": "itest-promptbranch",
+        "run_id": None,
+        "memory_mode": "default",
+        "link_url": "https://example.com/",
+        "ask_prompt": "Reply with exactly the single token INTEGRATION_OK and nothing else.",
+        "json_out": None,
+        "project_list_debug_scroll_rounds": 12,
+        "project_list_debug_wait_ms": 350,
+        "project_list_debug_manual_pause": False,
+        "clear_singleton_locks": False,
+    }
+    for name, value in defaults.items():
+        if not hasattr(args, name):
+            setattr(args, name, value)
+
+
+async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
+    del backend
+    if args.test_command == "smoke":
+        _apply_test_suite_defaults(args)
+        return await cmd_test_suite(args)
+    raise RuntimeError(f"Unknown test command: {args.test_command}")
+
+
+async def cmd_doctor(backend: CommandBackend, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot()
+    project_home_url = snapshot.get("resolved_project_home_url")
+    conversation_url = snapshot.get("conversation_url")
+    payload = {
+        "ok": True,
+        "action": "doctor",
+        "version": CLI_VERSION,
+        "checks": {
+            "workspace_selected": bool(project_home_url),
+            "task_selected": bool(conversation_url),
+            "state_file": bool(snapshot.get("state_file")),
+        },
+        "state": snapshot,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"promptbranch={CLI_VERSION}")
+    print(f"state_file={snapshot.get('state_file')}")
+    print(f"workspace_selected={str(bool(project_home_url)).lower()}")
+    print(f"task_selected={str(bool(conversation_url)).lower()}")
+    return 0
+
+
 async def cmd_completion(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     print(_render_completion(args.shell, _cli_command_name()), end="")
@@ -1625,6 +1774,94 @@ def make_parser() -> argparse.ArgumentParser:
 
     login = subparsers.add_parser("login-check", help="Open the browser and verify whether the profile is logged in.")
     login.add_argument("--keep-open", action="store_true")
+
+    ws = subparsers.add_parser("ws", help="Workspace commands for the active ChatGPT project.")
+    ws_subparsers = ws.add_subparsers(dest="ws_command", required=True)
+
+    ws_list = ws_subparsers.add_parser("list", help="List available workspaces/projects.")
+    ws_list.add_argument("--json", action="store_true", help="Emit the full project list payload as JSON.")
+    ws_list.add_argument("--current", action="store_true", help="Show only the current remembered/currently matched workspace.")
+    ws_list.add_argument("--keep-open", action="store_true")
+
+    ws_use = ws_subparsers.add_parser("use", help="Select the active workspace/project.")
+    ws_use.add_argument("target", nargs="?", help="Project name, project URL, conversation URL, or optional name filter when used with --pick.")
+    ws_use.add_argument("--pick", action="store_true", help="Interactively pick from visible ChatGPT projects instead of resolving one exact name.")
+    ws_use.add_argument("--conversation-url", help="Optional conversation URL to remember alongside the selected project.")
+    ws_use.add_argument("--project-name", help="Optional display name override when selecting by URL.")
+    ws_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
+    ws_use.add_argument("--keep-open", action="store_true")
+
+    ws_current = ws_subparsers.add_parser("current", help="Show the current workspace/project scope.")
+    ws_current.add_argument("--json", action="store_true", help="Emit workspace state as JSON.")
+
+    ws_subparsers.add_parser("leave", help="Clear the active workspace and task state.")
+
+    task = subparsers.add_parser("task", help="Task commands for the active project chat.")
+    task_subparsers = task.add_subparsers(dest="task_command", required=True)
+
+    task_list = task_subparsers.add_parser("list", help="List tasks/chats for the current workspace.")
+    task_list.add_argument("--json", action="store_true", help="Emit the full chat list payload as JSON.")
+    task_list.add_argument("--keep-open", action="store_true")
+
+    task_use = task_subparsers.add_parser("use", help="Select the active task/chat.")
+    task_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from task list.")
+    task_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
+    task_use.add_argument("--keep-open", action="store_true")
+
+    task_current = task_subparsers.add_parser("current", help="Show the current task/chat scope.")
+    task_current.add_argument("--json", action="store_true", help="Emit task state as JSON.")
+
+    task_leave = task_subparsers.add_parser("leave", help="Leave the current task while keeping the current workspace selected.")
+    task_leave.add_argument("--json", action="store_true", help="Emit the resulting state as JSON.")
+
+    task_show = task_subparsers.add_parser("show", help="Show the transcript for the current task or a specified task.")
+    task_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    task_show.add_argument("--json", action="store_true", help="Emit the full chat payload as JSON.")
+    task_show.add_argument("--keep-open", action="store_true")
+
+    src = subparsers.add_parser("src", help="Source commands for the active workspace.")
+    src_subparsers = src.add_subparsers(dest="src_command", required=True)
+
+    src_list = src_subparsers.add_parser("list", help="List sources for the current workspace.")
+    src_list.add_argument("--json", action="store_true", help="Emit the full source list payload as JSON.")
+    src_list.add_argument("--keep-open", action="store_true")
+
+    src_add = src_subparsers.add_parser("add", help="Add a source to the current workspace.")
+    src_add.add_argument("--type", choices=["link", "text", "file"], default="file")
+    src_add.add_argument("--value", help="Source payload for link/text sources.")
+    src_add.add_argument("--file", help="Local file path for file sources.")
+    src_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
+    src_add.add_argument("--keep-open", action="store_true")
+
+    src_remove = src_subparsers.add_parser("rm", aliases=["remove"], help="Remove a source from the current workspace.")
+    src_remove.add_argument("source_name", help="Visible source name or unique snippet to remove.")
+    src_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
+    src_remove.add_argument("--keep-open", action="store_true")
+
+    test = subparsers.add_parser("test", help="Reliability test commands.")
+    test_subparsers = test.add_subparsers(dest="test_command", required=True)
+    test_smoke = test_subparsers.add_parser("smoke", help="Run the standard Promptbranch smoke suite.")
+    test_smoke.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
+    test_smoke.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
+    test_smoke.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
+    test_smoke.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    test_smoke.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
+    test_smoke.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
+    test_smoke.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
+    test_smoke.add_argument("--project-name", help="Explicit project name to use. Defaults to a generated unique name.")
+    test_smoke.add_argument("--project-name-prefix", default="itest-promptbranch")
+    test_smoke.add_argument("--run-id", help="Optional run identifier used when generating names.")
+    test_smoke.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
+    test_smoke.add_argument("--link-url", default="https://example.com/")
+    test_smoke.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    test_smoke.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
+    test_smoke.add_argument("--project-list-debug-scroll-rounds", type=int, default=12)
+    test_smoke.add_argument("--project-list-debug-wait-ms", type=int, default=350)
+    test_smoke.add_argument("--project-list-debug-manual-pause", action="store_true")
+    test_smoke.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
+
+    doctor = subparsers.add_parser("doctor", help="Run cheap local health checks for the active Promptbranch state.")
+    doctor.add_argument("--json", action="store_true", help="Emit doctor checks as JSON.")
 
     project_create = subparsers.add_parser(
         "project-create",
@@ -1813,9 +2050,31 @@ def _try_handle_help_command(parser: argparse.ArgumentParser, argv: list[str]) -
 
 
 async def _async_main(args: argparse.Namespace) -> int:
+    if args.command == "version":
+        print(f"promptbranch {CLI_VERSION}")
+        return 0
+    if args.command == "completion":
+        print(_render_completion(args.shell, _cli_command_name()), end="")
+        return 0
+    if args.command == "test-suite":
+        return await cmd_test_suite(args)
+    if args.command == "test" and getattr(args, "test_command", None) == "smoke":
+        _apply_test_suite_defaults(args)
+        return await cmd_test_suite(args)
+
     backend = build_backend(args)
     if args.command == "login-check":
         return await cmd_login_check(backend, args)
+    if args.command == "ws":
+        return await cmd_ws(backend, args)
+    if args.command == "task":
+        return await cmd_task(backend, args)
+    if args.command == "src":
+        return await cmd_src(backend, args)
+    if args.command == "test":
+        return await cmd_test(backend, args)
+    if args.command == "doctor":
+        return await cmd_doctor(backend, args)
     if args.command == "project-create":
         return await cmd_project_create(backend, args)
     if args.command == "project-list":
