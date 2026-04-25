@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.109"
+CLI_VERSION = "0.0.110"
 COMMANDS = {
     "login-check",
     "ask",
@@ -907,15 +907,118 @@ def _one_line_preview(value: Any, *, max_chars: int = 96) -> str:
     return text[: max_chars - 1].rstrip() + "…"
 
 
+def _message_text_from_any_payload(raw: dict[str, Any]) -> str:
+    """Extract text from either normalized turns or raw ChatGPT message payloads."""
+    direct = raw.get("text")
+    if direct is not None:
+        return str(direct)
+
+    content = raw.get("content") if isinstance(raw.get("content"), dict) else None
+    if not content:
+        return ""
+
+    parts = content.get("parts")
+    if isinstance(parts, list):
+        rendered: list[str] = []
+        for part in parts:
+            if isinstance(part, str):
+                rendered.append(part)
+            elif isinstance(part, dict):
+                if isinstance(part.get("text"), str):
+                    rendered.append(part["text"])
+                elif isinstance(part.get("content"), str):
+                    rendered.append(part["content"])
+        return "\n".join(item for item in rendered if item).strip()
+
+    if isinstance(content.get("text"), str):
+        return content["text"]
+    return ""
+
+
+def _role_from_any_payload(raw: dict[str, Any]) -> str:
+    author = raw.get("author") if isinstance(raw.get("author"), dict) else {}
+    return str(raw.get("role") or author.get("role") or "").strip().lower()
+
+
+def _turns_from_raw_conversation_mapping(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Best-effort fallback for raw conversation payloads returned by live backends."""
+    mapping = payload.get("mapping") if isinstance(payload.get("mapping"), dict) else {}
+    current_node = payload.get("current_node") or payload.get("currentNode")
+    if not mapping or not current_node:
+        return []
+
+    node_ids: list[str] = []
+    seen: set[str] = set()
+    cursor = str(current_node)
+    while cursor and cursor not in seen:
+        seen.add(cursor)
+        node_ids.append(cursor)
+        node = mapping.get(cursor)
+        if not isinstance(node, dict):
+            break
+        parent = node.get("parent")
+        cursor = str(parent) if parent is not None else ""
+
+    turns: list[dict[str, Any]] = []
+    for node_id in reversed(node_ids):
+        node = mapping.get(node_id)
+        if not isinstance(node, dict):
+            continue
+        message = node.get("message") if isinstance(node.get("message"), dict) else None
+        if not message:
+            continue
+        role = _role_from_any_payload(message)
+        if role in {"", "system", "tool"}:
+            continue
+        text = _message_text_from_any_payload(message)
+        if not text:
+            continue
+        turns.append({
+            "index": len(turns) + 1,
+            "id": node_id,
+            "role": role,
+            "text": text,
+            "create_time": message.get("create_time") or message.get("createTime") or node.get("create_time") or node.get("createTime"),
+            "status": message.get("status") or node.get("status") or "complete",
+        })
+    return turns
+
+
+def _normalized_chat_turns(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_turns = payload.get("turns")
+    if isinstance(raw_turns, list):
+        turns: list[dict[str, Any]] = []
+        for raw in raw_turns:
+            if not isinstance(raw, dict):
+                continue
+            role = _role_from_any_payload(raw)
+            text = _message_text_from_any_payload(raw)
+            if not role or not text:
+                continue
+            turns.append({
+                "index": raw.get("index") or len(turns) + 1,
+                "id": raw.get("id"),
+                "role": role,
+                "text": text,
+                "create_time": raw.get("create_time") or raw.get("createTime"),
+                "status": raw.get("status") or "complete",
+            })
+        return turns
+
+    raw_messages = payload.get("messages")
+    if isinstance(raw_messages, list):
+        return _normalized_chat_turns({"turns": raw_messages})
+
+    return _turns_from_raw_conversation_mapping(payload)
+
+
 def _messages_from_chat_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Group a flat chat transcript into user messages with zero or more answers."""
-    raw_turns = payload.get("turns") if isinstance(payload.get("turns"), list) else []
+    """Group a transcript into user messages with zero or more answers."""
+    raw_turns = _normalized_chat_turns(payload)
     messages: list[dict[str, Any]] = []
     current_message: Optional[dict[str, Any]] = None
 
     for raw_turn in raw_turns:
-        if not isinstance(raw_turn, dict):
-            continue
         role = str(raw_turn.get("role") or "").strip().lower()
         text = str(raw_turn.get("text") or "")
         if role == "user":
@@ -971,6 +1074,11 @@ def _resolve_task_message(messages: list[dict[str, Any]], id_or_index: str) -> d
     target = str(id_or_index).strip()
     if not target:
         raise ValueError("message id or index is required")
+
+    if target.lower() in {"last", "latest"}:
+        if messages:
+            return messages[-1]
+        raise ValueError("message index out of range: last")
 
     if target.isdigit():
         index = int(target)
