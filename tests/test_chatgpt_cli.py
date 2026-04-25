@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
+    """Keep tests hermetic when a developer has Promptbranch defaults configured locally."""
+    monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
+    monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
 from chatgpt_cli import build_backend, main, make_parser, _normalize_global_options
 
