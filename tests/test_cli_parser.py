@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.108" in out
+    assert "0.0.109" in out
     assert "promptbranch" in out
 
 
@@ -228,3 +228,27 @@ def test_parser_defaults_project_source_add_type_to_file() -> None:
     assert args.command == "project-source-add"
     assert args.type == "file"
     assert args.file == "demo.zip"
+
+
+def test_phase2_parser_accepts_task_message_commands() -> None:
+    parser = make_parser()
+
+    messages_args = parser.parse_args(["task", "messages", "list", "--json"])
+    assert messages_args.command == "task"
+    assert messages_args.task_command == "messages"
+    assert messages_args.task_messages_command == "list"
+    assert messages_args.json is True
+
+    message_show_args = parser.parse_args(["task", "message", "show", "2", "--json"])
+    assert message_show_args.command == "task"
+    assert message_show_args.task_command == "message"
+    assert message_show_args.task_message_command == "show"
+    assert message_show_args.id_or_index == "2"
+    assert message_show_args.json is True
+
+    answer_args = parser.parse_args(["task", "message", "answer", "abc", "--task", "Current chat"])
+    assert answer_args.command == "task"
+    assert answer_args.task_command == "message"
+    assert answer_args.task_message_command == "answer"
+    assert answer_args.id_or_index == "abc"
+    assert answer_args.target == "Current chat"

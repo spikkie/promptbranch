@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.108"
+CLI_VERSION = "0.0.109"
 COMMANDS = {
     "login-check",
     "ask",
@@ -900,6 +900,137 @@ def _render_chat_payload(payload: dict[str, Any]) -> str:
     return '\n'.join(lines).rstrip() + '\n'
 
 
+def _one_line_preview(value: Any, *, max_chars: int = 96) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _messages_from_chat_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Group a flat chat transcript into user messages with zero or more answers."""
+    raw_turns = payload.get("turns") if isinstance(payload.get("turns"), list) else []
+    messages: list[dict[str, Any]] = []
+    current_message: Optional[dict[str, Any]] = None
+
+    for raw_turn in raw_turns:
+        if not isinstance(raw_turn, dict):
+            continue
+        role = str(raw_turn.get("role") or "").strip().lower()
+        text = str(raw_turn.get("text") or "")
+        if role == "user":
+            current_message = {
+                "index": len(messages) + 1,
+                "id": raw_turn.get("id"),
+                "role": "user",
+                "turn_index": raw_turn.get("index"),
+                "text": text,
+                "preview": _one_line_preview(text),
+                "create_time": raw_turn.get("create_time"),
+                "answers": [],
+                "answer_count": 0,
+                "answered": False,
+            }
+            messages.append(current_message)
+            continue
+
+        if role == "assistant" and current_message is not None:
+            answers = current_message.setdefault("answers", [])
+            answer = {
+                "index": len(answers) + 1,
+                "id": raw_turn.get("id"),
+                "role": "assistant",
+                "turn_index": raw_turn.get("index"),
+                "text": text,
+                "preview": _one_line_preview(text),
+                "create_time": raw_turn.get("create_time"),
+                "status": raw_turn.get("status") or "complete",
+            }
+            answers.append(answer)
+            current_message["answer_count"] = len(answers)
+            current_message["answered"] = bool(answers)
+
+    return messages
+
+
+def _task_messages_payload(chat_payload: dict[str, Any]) -> dict[str, Any]:
+    messages = _messages_from_chat_payload(chat_payload)
+    return {
+        "ok": bool(chat_payload.get("ok", True)),
+        "action": "task_messages_list",
+        "project_url": chat_payload.get("project_url"),
+        "conversation_url": chat_payload.get("conversation_url"),
+        "conversation_id": chat_payload.get("conversation_id"),
+        "title": chat_payload.get("title"),
+        "message_count": len(messages),
+        "messages": messages,
+    }
+
+
+def _resolve_task_message(messages: list[dict[str, Any]], id_or_index: str) -> dict[str, Any]:
+    target = str(id_or_index).strip()
+    if not target:
+        raise ValueError("message id or index is required")
+
+    if target.isdigit():
+        index = int(target)
+        if 1 <= index <= len(messages):
+            return messages[index - 1]
+        raise ValueError(f"message index out of range: {target}")
+
+    exact = [item for item in messages if str(item.get("id") or "") == target]
+    if len(exact) == 1:
+        return exact[0]
+
+    prefix = [item for item in messages if str(item.get("id") or "").startswith(target)]
+    if len(prefix) == 1:
+        return prefix[0]
+    if len(prefix) > 1:
+        raise ValueError(f"multiple messages matched id prefix: {target}")
+
+    raise ValueError(f"message not found: {target}")
+
+
+def _render_task_messages_list(payload: dict[str, Any]) -> str:
+    lines = [
+        f"title={payload.get('title') or '(untitled)'}",
+        f"conversation_id={payload.get('conversation_id') or 'none'}",
+        f"message_count={payload.get('message_count') or 0}",
+        "",
+    ]
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    for item in messages:
+        lines.append(
+            f"{item.get('index'):>3}. answers={item.get('answer_count') or 0}\t"
+            f"{item.get('id') or ''}\t{item.get('preview') or ''}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_task_message_show(message: dict[str, Any]) -> str:
+    lines = [
+        f"message_index={message.get('index')}",
+        f"message_id={message.get('id') or 'none'}",
+        f"answer_count={message.get('answer_count') or 0}",
+        "",
+        str(message.get("text") or ""),
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_task_message_answers(message: dict[str, Any]) -> str:
+    answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+    if not answers:
+        return "(no answer)\n"
+    lines: list[str] = []
+    for answer in answers:
+        if len(answers) > 1:
+            lines.append(f"[answer {answer.get('index')}]")
+        lines.append(str(answer.get("text") or ""))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 async def cmd_chat_show(backend: Any, args: argparse.Namespace) -> int:
     try:
         selected = await _resolve_chat_target(backend, args, args.target, keep_open=args.keep_open)
@@ -913,6 +1044,69 @@ async def cmd_chat_show(backend: Any, args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     print(_render_chat_payload(result), end='')
+    return 0
+
+
+async def _fetch_task_messages_payload(
+    backend: Any,
+    args: argparse.Namespace,
+    target: Optional[str] = None,
+) -> dict[str, Any]:
+    selected = await _resolve_chat_target(backend, args, target, keep_open=getattr(args, "keep_open", False))
+    conversation_url = str(selected.get("conversation_url") or "")
+    result = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
+    store = _state_store_from_args(args)
+    store.remember(project_home_url_from_url(conversation_url), conversation_url, project_name=None)
+    return _task_messages_payload(result)
+
+
+async def cmd_task_messages_list(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        payload = await _fetch_task_messages_payload(backend, args, getattr(args, "target", None))
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(_render_task_messages_list(payload), end="")
+    return 0
+
+
+async def cmd_task_message_show(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        payload = await _fetch_task_messages_payload(backend, args, getattr(args, "target", None))
+        message = _resolve_task_message(payload["messages"], args.id_or_index)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    result = {**payload, "action": "task_message_show", "message": message}
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    print(_render_task_message_show(message), end="")
+    return 0
+
+
+async def cmd_task_message_answer(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        payload = await _fetch_task_messages_payload(backend, args, getattr(args, "target", None))
+        message = _resolve_task_message(payload["messages"], args.id_or_index)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+    result = {
+        **payload,
+        "action": "task_message_answer",
+        "message": {key: value for key, value in message.items() if key != "answers"},
+        "answer_count": len(answers),
+        "answers": answers,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    print(_render_task_message_answers(message), end="")
     return 0
 
 
@@ -1117,7 +1311,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
-        "task": ["list", "use", "current", "leave", "show", "--json", "--keep-open"],
+        "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--task"],
         "src": ["list", "add", "rm", "remove", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip"],
         "doctor": ["--json"],
@@ -1518,6 +1712,16 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_chat_leave(backend, args)
     if args.task_command == "show":
         return await cmd_chat_show(backend, args)
+    if args.task_command == "messages":
+        if args.task_messages_command == "list":
+            return await cmd_task_messages_list(backend, args)
+        raise RuntimeError(f"Unknown task messages command: {args.task_messages_command}")
+    if args.task_command == "message":
+        if args.task_message_command == "show":
+            return await cmd_task_message_show(backend, args)
+        if args.task_message_command == "answer":
+            return await cmd_task_message_answer(backend, args)
+        raise RuntimeError(f"Unknown task message command: {args.task_message_command}")
     raise RuntimeError(f"Unknown task command: {args.task_command}")
 
 
@@ -1818,6 +2022,27 @@ def make_parser() -> argparse.ArgumentParser:
     task_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_show.add_argument("--json", action="store_true", help="Emit the full chat payload as JSON.")
     task_show.add_argument("--keep-open", action="store_true")
+
+    task_messages = task_subparsers.add_parser("messages", help="Inspect user messages in the current task.")
+    task_messages_subparsers = task_messages.add_subparsers(dest="task_messages_command", required=True)
+    task_messages_list = task_messages_subparsers.add_parser("list", help="List user messages in the current task.")
+    task_messages_list.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    task_messages_list.add_argument("--json", action="store_true", help="Emit grouped message/answer payload as JSON.")
+    task_messages_list.add_argument("--keep-open", action="store_true")
+
+    task_message = task_subparsers.add_parser("message", help="Inspect one message subresource in the current task.")
+    task_message_subparsers = task_message.add_subparsers(dest="task_message_command", required=True)
+    task_message_show = task_message_subparsers.add_parser("show", help="Show one user message by index or id.")
+    task_message_show.add_argument("id_or_index", help="Message index, exact id, or unique id prefix.")
+    task_message_show.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    task_message_show.add_argument("--json", action="store_true", help="Emit the selected message as JSON.")
+    task_message_show.add_argument("--keep-open", action="store_true")
+
+    task_message_answer = task_message_subparsers.add_parser("answer", help="Show assistant answer(s) for one user message.")
+    task_message_answer.add_argument("id_or_index", help="Message index, exact id, or unique id prefix.")
+    task_message_answer.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    task_message_answer.add_argument("--json", action="store_true", help="Emit answer payload as JSON.")
+    task_message_answer.add_argument("--keep-open", action="store_true")
 
     src = subparsers.add_parser("src", help="Source commands for the active workspace.")
     src_subparsers = src.add_subparsers(dest="src_command", required=True)
