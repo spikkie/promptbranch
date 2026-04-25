@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.108"
+    assert captured.out.strip() == "promptbranch 0.0.109"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -947,5 +947,124 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.108"
+    assert payload["version"] == "0.0.109"
     assert payload["checks"]["workspace_selected"] is True
+
+
+def test_phase2_task_messages_list_groups_flat_transcript(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            assert conversation_url == "https://chatgpt.com/g/g-p-demo-project/c/abc"
+            return {
+                "ok": True,
+                "project_url": "https://chatgpt.com/g/g-p-demo-project/project",
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Phase 2 chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "first question"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": "first answer"},
+                    {"index": 3, "id": "u2", "role": "user", "text": "second question"},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "task", "messages", "list", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "task_messages_list"
+    assert payload["message_count"] == 2
+    assert payload["messages"][0]["text"] == "first question"
+    assert payload["messages"][0]["answer_count"] == 1
+    assert payload["messages"][0]["answers"][0]["text"] == "first answer"
+    assert payload["messages"][1]["answered"] is False
+
+
+def test_phase2_task_message_show_selects_user_message(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            return {
+                "ok": True,
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Phase 2 chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "first question"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": "first answer"},
+                    {"index": 3, "id": "u2", "role": "user", "text": "second question"},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "task", "message", "show", "2", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "task_message_show"
+    assert payload["message"]["id"] == "u2"
+    assert payload["message"]["text"] == "second question"
+
+
+def test_phase2_task_message_answer_outputs_answers(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            return {
+                "ok": True,
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Phase 2 chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "first question"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": "first answer"},
+                    {"index": 3, "id": "a2", "role": "assistant", "text": "regenerated answer"},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "task", "message", "answer", "u1", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "task_message_answer"
+    assert payload["answer_count"] == 2
+    assert [answer["text"] for answer in payload["answers"]] == ["first answer", "regenerated answer"]
