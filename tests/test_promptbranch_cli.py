@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.107"
+    assert captured.out.strip() == "promptbranch 0.0.108"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -811,3 +811,141 @@ def test_main_project_source_add_file_normalizes_name_to_basename(monkeypatch, c
     assert calls["display_name"] == "candlecast-src-0.19.5.82.2.zip"
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
+
+
+def test_phase1_canonical_parser_accepts_ws_task_src_test_and_doctor() -> None:
+    parser = make_parser()
+
+    ws_args = parser.parse_args(["ws", "use", "Demo"])
+    assert ws_args.command == "ws"
+    assert ws_args.ws_command == "use"
+    assert ws_args.target == "Demo"
+
+    task_args = parser.parse_args(["task", "show", "2", "--json"])
+    assert task_args.command == "task"
+    assert task_args.task_command == "show"
+    assert task_args.target == "2"
+    assert task_args.json is True
+
+    src_args = parser.parse_args(["src", "add", "--file", "demo.zip"])
+    assert src_args.command == "src"
+    assert src_args.src_command == "add"
+    assert src_args.type == "file"
+    assert src_args.file == "demo.zip"
+
+    test_args = parser.parse_args(["test", "smoke", "--only", "project_list_debug"])
+    assert test_args.command == "test"
+    assert test_args.test_command == "smoke"
+    assert test_args.only == ["project_list_debug"]
+
+    doctor_args = parser.parse_args(["doctor", "--json"])
+    assert doctor_args.command == "doctor"
+    assert doctor_args.json is True
+
+
+def test_phase1_ws_use_delegates_to_existing_use_flow(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def resolve_project(self, name: str, **kwargs):
+            assert name == "my-project"
+            return {"ok": True, "project_url": "https://chatgpt.com/g/g-p-demo-my-project/project"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "ws", "use", "my-project", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["current_project_home_url"] == "https://chatgpt.com/g/g-p-demo-my-project/project"
+
+    snapshot = ConversationStateStore(str(tmp_path)).snapshot()
+    assert snapshot["resolved_project_home_url"] == "https://chatgpt.com/g/g-p-demo-my-project/project"
+
+
+def test_phase1_task_use_delegates_to_existing_chat_flow(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_chats(self, **kwargs):
+            return {
+                "ok": True,
+                "chats": [
+                    {"id": "abc", "title": "First", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/abc"},
+                    {"id": "def", "title": "Second", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/def"},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "task", "use", "2", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["conversation_id"] == "def"
+    assert store.snapshot(project_url)["conversation_id"] == "def"
+
+
+def test_phase1_src_list_delegates_to_existing_source_flow(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            return {
+                "ok": True,
+                "sources": [
+                    {"title": "notes.txt", "subtitle": "Document", "identity": "notes.txt Document"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "src", "list", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["count"] == 1
+    assert payload["sources"][0]["title"] == "notes.txt"
+
+
+def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "doctor", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "doctor"
+    assert payload["version"] == "0.0.108"
+    assert payload["checks"]["workspace_selected"] is True
