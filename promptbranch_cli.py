@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.110"
+CLI_VERSION = "0.0.111"
 COMMANDS = {
     "login-check",
     "ask",
@@ -774,7 +774,7 @@ async def _resolve_chat_target(
                 'id': conversation_id_from_url(current_conversation_url),
                 'is_current': True,
             }
-        raise ValueError('no chat target was provided and no current chat is selected')
+        raise ValueError('no current task is selected; run "pb task list" then "pb task use <task>", or pass "--task <task>"')
 
     if _looks_like_chatgpt_url(target) and conversation_id_from_url(target):
         return {
@@ -2108,19 +2108,19 @@ def make_parser() -> argparse.ArgumentParser:
 
     ws_subparsers.add_parser("leave", help="Clear the active workspace and task state.")
 
-    task = subparsers.add_parser("task", help="Task commands for the active project chat.")
+    task = subparsers.add_parser("task", help="Task commands for the active workspace.")
     task_subparsers = task.add_subparsers(dest="task_command", required=True)
 
-    task_list = task_subparsers.add_parser("list", help="List tasks/chats for the current workspace.")
-    task_list.add_argument("--json", action="store_true", help="Emit the full chat list payload as JSON.")
+    task_list = task_subparsers.add_parser("list", help="List tasks for the current workspace.")
+    task_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     task_list.add_argument("--keep-open", action="store_true")
 
-    task_use = task_subparsers.add_parser("use", help="Select the active task/chat.")
+    task_use = task_subparsers.add_parser("use", help="Select the active task.")
     task_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from task list.")
     task_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
     task_use.add_argument("--keep-open", action="store_true")
 
-    task_current = task_subparsers.add_parser("current", help="Show the current task/chat scope.")
+    task_current = task_subparsers.add_parser("current", help="Show the current task scope.")
     task_current.add_argument("--json", action="store_true", help="Emit task state as JSON.")
 
     task_leave = task_subparsers.add_parser("leave", help="Leave the current task while keeping the current workspace selected.")
@@ -2128,7 +2128,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     task_show = task_subparsers.add_parser("show", help="Show the transcript for the current task or a specified task.")
     task_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
-    task_show.add_argument("--json", action="store_true", help="Emit the full chat payload as JSON.")
+    task_show.add_argument("--json", action="store_true", help="Emit the full task payload as JSON.")
     task_show.add_argument("--keep-open", action="store_true")
 
     task_messages = task_subparsers.add_parser("messages", help="Inspect user messages in the current task.")
@@ -2272,24 +2272,24 @@ def make_parser() -> argparse.ArgumentParser:
     source_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
     source_remove.add_argument("--keep-open", action="store_true")
 
-    chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="List chats for the current project.")
-    chat_list.add_argument("--json", action="store_true", help="Emit the full chat list payload as JSON.")
+    chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="Legacy alias. Prefer: pb task list.")
+    chat_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     chat_list.add_argument("--keep-open", action="store_true")
 
-    chat_use = subparsers.add_parser("chat-use", aliases=["use-chat"], help="Select the current chat by URL, conversation id, id prefix, title, or chat-list index.")
+    chat_use = subparsers.add_parser("chat-use", aliases=["use-chat"], help="Legacy alias. Prefer: pb task use.")
     chat_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from chat-list.")
     chat_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
     chat_use.add_argument("--keep-open", action="store_true")
 
-    chat_leave = subparsers.add_parser("chat-leave", aliases=["cq"], help="Leave the current chat while keeping the current project selected.")
+    chat_leave = subparsers.add_parser("chat-leave", aliases=["cq"], help="Legacy alias. Prefer: pb task leave.")
     chat_leave.add_argument("--json", action="store_true", help="Emit the resulting state as JSON.")
 
-    chat_show = subparsers.add_parser("chat-show", aliases=["show"], help="Show the transcript for the current chat or a specified chat in the current project.")
+    chat_show = subparsers.add_parser("chat-show", aliases=["show"], help="Legacy alias. Prefer: pb task show.")
     chat_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from chat-list.")
-    chat_show.add_argument("--json", action="store_true", help="Emit the full chat payload as JSON.")
+    chat_show.add_argument("--json", action="store_true", help="Emit the full task payload as JSON.")
     chat_show.add_argument("--keep-open", action="store_true")
 
-    chat_summarize = subparsers.add_parser("chat-summarize", aliases=["summarize"], help="Ask ChatGPT to summarize the current chat or a specified chat.")
+    chat_summarize = subparsers.add_parser("chat-summarize", aliases=["summarize"], help="Legacy alias for task summarization.")
     chat_summarize.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from chat-list.")
     chat_summarize.add_argument("--json", action="store_true", help="Request a JSON summary response.")
     chat_summarize.add_argument("--keep-open", action="store_true")
