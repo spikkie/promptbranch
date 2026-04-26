@@ -243,6 +243,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-open", action="store_true", help="Pass keep_open through to each browser action.")
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     parser.add_argument("--step-delay-seconds", type=float, default=float(os.getenv("CHATGPT_STEP_DELAY_SECONDS", "8.0")), help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure during end-to-end runs.")
+    parser.add_argument("--post-ask-delay-seconds", type=float, default=float(os.getenv("CHATGPT_POST_ASK_DELAY_SECONDS", "20.0")), help="Additional cooldown after ask steps before reading task/conversation history. This reduces ChatGPT conversation-history rate-limit pressure without slowing every step.")
     parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -574,6 +575,26 @@ async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seco
         raise
 
 
+async def _post_ask_cooldown(steps: list[StepResult], *, seconds: float, reason: str) -> None:
+    delay = max(0.0, float(seconds or 0.0))
+    if delay <= 0:
+        return
+    started = time.perf_counter()
+    await asyncio.sleep(delay)
+    steps.append(
+        StepResult(
+            name="rate_limit_cooldown",
+            ok=True,
+            duration_seconds=round(time.perf_counter() - started, 3),
+            details={
+                "reason": reason,
+                "delay_seconds": delay,
+                "scope": "post_ask",
+            },
+        )
+    )
+
+
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
@@ -900,6 +921,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "enabled_steps": list(selection.enabled_steps),
         "steps": [],
         "cleanup_steps": [],
+        "error": None,
         "artifacts": {
             "temp_dir": str(temp_dir),
             "file_source_path": str(file_source_path),
@@ -1131,6 +1153,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 "INTEGRATION_OK" in ask_text.upper(),
                 f"ask_question did not contain the expected token. response={ask_text!r}",
             )
+            await _post_ask_cooldown(steps, seconds=args.post_ask_delay_seconds, reason="after ask_question")
 
         if should_run("task_message_flow"):
             task_prompt = (
@@ -1159,6 +1182,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 bool(task_conversation_url),
                 f"task_message_flow ask did not return a conversation URL/id: {task_ask}",
             )
+            await _post_ask_cooldown(steps, seconds=args.post_ask_delay_seconds, reason="after task_message_flow.ask")
 
             task_list = await _run_step(
                 steps,
@@ -1287,7 +1311,12 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             )
 
         summary["ok"] = True
-        return summary
+    except Exception as exc:
+        summary["ok"] = False
+        summary["error"] = {
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
     finally:
         summary["artifacts"]["link_source_match"] = link_source_match
         summary["artifacts"]["text_source_match"] = text_source_match
@@ -1322,6 +1351,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     summary["cleanup_error"] = str(exc)
 
         summary["cleanup_steps"] = [asdict(step) for step in cleanup_steps]
+
+    return summary
 
 
 
