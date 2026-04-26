@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.111"
+CLI_VERSION = "0.0.112"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1611,6 +1611,7 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'keep_open': args.keep_open,
         'keep_project': args.keep_project,
         'step_delay_seconds': args.step_delay_seconds,
+        'post_ask_delay_seconds': args.post_ask_delay_seconds,
         'skip': list(args.skip),
         'only': list(args.only),
         'strict_remove_ui': args.strict_remove_ui,
@@ -1849,6 +1850,7 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "keep_open": False,
         "keep_project": False,
         "step_delay_seconds": 8.0,
+        "post_ask_delay_seconds": 20.0,
         "skip": [],
         "only": [],
         "strict_remove_ui": False,
@@ -2178,6 +2180,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
     test_smoke.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_smoke.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    test_smoke.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
     test_smoke.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_smoke.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_smoke.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -2319,6 +2322,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
     test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_suite.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    test_suite.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
     test_suite.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_suite.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_suite.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")

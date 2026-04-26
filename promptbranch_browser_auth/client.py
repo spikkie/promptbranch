@@ -1383,12 +1383,22 @@ class ChatGPTBrowserClient:
         try:
             snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-snorlax')
         except Exception as exc:
-            self._log('chat-list', 'snorlax project chat enumeration failed; continuing with history and DOM sources', error=repr(exc), project_id=project_id)
+            self._log('chat-list', 'snorlax project chat enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             snorlax_chats = []
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
-        history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-        chats = self._merge_project_chat_lists(history_chats, snorlax_chats)
-        chats = self._merge_project_chat_lists(chats, dom_chats)
+        chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        history_chats: list[dict[str, Any]] = []
+        if not chats:
+            history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+            chats = self._merge_project_chat_lists(history_chats, chats)
+        else:
+            self._log(
+                'chat-list',
+                'skipping conversation history fallback because snorlax/dom sources already produced project chats',
+                snorlax_count=len(snorlax_chats),
+                dom_count=len(dom_chats),
+                retained_count=len(chats),
+            )
         result = {
             'ok': True,
             'action': 'list_chats',

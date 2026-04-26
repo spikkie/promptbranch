@@ -673,7 +673,7 @@ def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_
         return []
 
     async def fake_collect_history(page, *, project_url, label):
-        return []
+        raise AssertionError("conversation history fallback should not run when snorlax/dom already found chats")
 
     async def fake_safe_page_url(page):
         return "https://chatgpt.com/g/g-p-current-demo/project"

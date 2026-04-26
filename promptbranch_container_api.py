@@ -112,6 +112,7 @@ class TestSuiteRunRequest(BaseModel):
     keep_open: Optional[bool] = None
     keep_project: bool = False
     step_delay_seconds: Optional[float] = None
+    post_ask_delay_seconds: Optional[float] = None
     skip: list[str] = Field(default_factory=list)
     only: list[str] = Field(default_factory=list)
     strict_remove_ui: bool = False
@@ -143,7 +144,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.111"
+SERVICE_VERSION = "0.0.112"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 

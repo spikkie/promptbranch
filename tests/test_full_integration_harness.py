@@ -24,6 +24,8 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
             "--strict-remove-ui",
             "--step-delay-seconds",
             "0.25",
+            "--post-ask-delay-seconds",
+            "1.5",
             "--service-base-url",
             "http://localhost:8000",
             "--service-token",
@@ -37,6 +39,7 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
     assert args.keep_project is True
     assert args.strict_remove_ui is True
     assert args.step_delay_seconds == 0.25
+    assert args.post_ask_delay_seconds == 1.5
     assert args.service_base_url == "http://localhost:8000"
     assert args.service_token == "secret-token"
     assert args.service_timeout_seconds == 45.0
