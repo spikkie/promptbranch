@@ -282,9 +282,11 @@ class ChatGPTAutomation:
         self,
         *,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         return await self.client.list_project_chats(
             keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
         )
 
     async def list_project_sources(

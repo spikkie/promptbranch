@@ -7,6 +7,7 @@ from promptbranch_full_integration_test import (
     _extract_conversation_url_from_ask_result,
     _normalize_expected_skip_result,
     _task_messages_payload,
+    _wait_for_task_visible_in_list,
     make_parser,
     resolve_step_selection,
 )
@@ -26,6 +27,14 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
             "0.25",
             "--post-ask-delay-seconds",
             "1.5",
+            "--task-list-visible-timeout-seconds",
+            "2.5",
+            "--task-list-visible-poll-min-seconds",
+            "0.25",
+            "--task-list-visible-poll-max-seconds",
+            "3.5",
+            "--task-list-visible-max-attempts",
+            "3",
             "--service-base-url",
             "http://localhost:8000",
             "--service-token",
@@ -40,6 +49,10 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
     assert args.strict_remove_ui is True
     assert args.step_delay_seconds == 0.25
     assert args.post_ask_delay_seconds == 1.5
+    assert args.task_list_visible_timeout_seconds == 2.5
+    assert args.task_list_visible_poll_min_seconds == 0.25
+    assert args.task_list_visible_poll_max_seconds == 3.5
+    assert args.task_list_visible_max_attempts == 3
     assert args.service_base_url == "http://localhost:8000"
     assert args.service_token == "secret-token"
     assert args.service_timeout_seconds == 45.0
@@ -194,6 +207,68 @@ def test_task_messages_payload_groups_mapping_payload() -> None:
     assert grouped["messages"][0]["answer_count"] == 1
     assert grouped["messages"][0]["answers"][0]["text"] == "TASK_MESSAGE_OK"
 
+
+
+
+def test_wait_for_task_visible_uses_bounded_lightweight_polling(monkeypatch) -> None:
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls: list[bool] = []
+
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+            self.calls.append(include_history_fallback)
+            if len(self.calls) < 3:
+                return {
+                    "ok": True,
+                    "count": 0,
+                    "chats": [],
+                    "history_fallback_used": include_history_fallback,
+                    "source_counts": {"snorlax": 0, "dom": 0, "history": 0},
+                }
+            return {
+                "ok": True,
+                "count": 1,
+                "chats": [
+                    {
+                        "id": "abc123",
+                        "title": "Visible task",
+                        "conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc123",
+                    }
+                ],
+                "history_fallback_used": include_history_fallback,
+                "source_counts": {"snorlax": 1, "dom": 0, "history": 0},
+            }
+
+    steps = []
+    service = FakeService()
+
+    payload, entries, matched = __import__("asyncio").run(
+        _wait_for_task_visible_in_list(
+            steps,
+            service,
+            conversation_url="https://chatgpt.com/g/g-p-demo/c/abc123",
+            keep_open=False,
+            timeout_seconds=60.0,
+            poll_min_seconds=1.0,
+            poll_max_seconds=2.0,
+            max_attempts=4,
+        )
+    )
+
+    assert payload["count"] == 1
+    assert entries[0]["id"] == "abc123"
+    assert matched["title"] == "Visible task"
+    assert service.calls == [False, False, False]
+    assert sleeps == [1.0, 1.75]
+    assert steps[-1].name == "task_message_flow.task_list_visible"
+    assert steps[-1].ok is True
 
 def test_extract_conversation_url_from_ask_result_can_build_from_project_and_id() -> None:
     result = {

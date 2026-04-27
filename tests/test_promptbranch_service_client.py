@@ -200,6 +200,7 @@ def test_list_project_chats_passes_project_url_query() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/chats"
         assert request.url.params["project_url"] == "https://chatgpt.com/g/demo/project"
+        assert request.url.params["include_history_fallback"] == "true"
         return httpx.Response(200, json={"ok": True, "count": 1, "chats": [{"id": "abc", "title": "Demo chat"}]})
 
     transport = httpx.MockTransport(handler)

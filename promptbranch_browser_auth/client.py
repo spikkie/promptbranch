@@ -691,17 +691,20 @@ class ChatGPTBrowserClient:
         self,
         *,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         self._log(
             "chat-list",
             "starting list_project_chats",
             project_url=self.config.project_url,
             keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
         )
         return await self._run_with_context(
             operation_name="chat_list",
             operation=self._list_project_chats_operation,
             keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
         )
 
     async def list_project_sources(
@@ -1371,6 +1374,7 @@ class ChatGPTBrowserClient:
         context: Any,
         page: Any,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_url = self._project_home_url_from_url(self.config.project_url)
@@ -1388,9 +1392,20 @@ class ChatGPTBrowserClient:
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
         history_chats: list[dict[str, Any]] = []
-        if not chats:
+        history_fallback_used = False
+        history_fallback_skipped = False
+        if not chats and include_history_fallback:
+            history_fallback_used = True
             history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
             chats = self._merge_project_chat_lists(history_chats, chats)
+        elif not chats:
+            history_fallback_skipped = True
+            self._log(
+                'chat-list',
+                'skipping conversation history fallback because caller requested lightweight project chat enumeration',
+                snorlax_count=len(snorlax_chats),
+                dom_count=len(dom_chats),
+            )
         else:
             self._log(
                 'chat-list',
@@ -1407,9 +1422,17 @@ class ChatGPTBrowserClient:
             'project_slug': project_slug,
             'count': len(chats),
             'chats': chats,
+            'history_fallback_used': history_fallback_used,
+            'history_fallback_skipped': history_fallback_skipped,
+            'include_history_fallback': include_history_fallback,
+            'source_counts': {
+                'snorlax': len(snorlax_chats),
+                'dom': len(dom_chats),
+                'history': len(history_chats),
+            },
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats))
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), history_fallback_used=history_fallback_used)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result

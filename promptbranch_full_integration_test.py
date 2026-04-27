@@ -244,6 +244,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     parser.add_argument("--step-delay-seconds", type=float, default=float(os.getenv("CHATGPT_STEP_DELAY_SECONDS", "8.0")), help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure during end-to-end runs.")
     parser.add_argument("--post-ask-delay-seconds", type=float, default=float(os.getenv("CHATGPT_POST_ASK_DELAY_SECONDS", "20.0")), help="Additional cooldown after ask steps before reading task/conversation history. This reduces ChatGPT conversation-history rate-limit pressure without slowing every step.")
+    parser.add_argument("--task-list-visible-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_TASK_LIST_VISIBLE_TIMEOUT_SECONDS", "120.0")), help="Maximum bounded wait for a task created by ask() to become visible in project task listing.")
+    parser.add_argument("--task-list-visible-poll-min-seconds", type=float, default=float(os.getenv("CHATGPT_TASK_LIST_VISIBLE_POLL_MIN_SECONDS", "20.0")), help="Initial backoff between task-list visibility probes after ask().")
+    parser.add_argument("--task-list-visible-poll-max-seconds", type=float, default=float(os.getenv("CHATGPT_TASK_LIST_VISIBLE_POLL_MAX_SECONDS", "45.0")), help="Maximum backoff between task-list visibility probes after ask().")
+    parser.add_argument("--task-list-visible-max-attempts", type=int, default=int(os.getenv("CHATGPT_TASK_LIST_VISIBLE_MAX_ATTEMPTS", "4")), help="Maximum number of task-list visibility probes after ask(); keeps live smoke tests from hammering conversation APIs.")
     parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -443,12 +447,21 @@ class DockerServiceAdapter:
                 project_url=self.project_url,
             )
 
-    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return await asyncio.to_thread(self._list_project_chats_sync, keep_open)
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        include_history_fallback: bool = True,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list_project_chats_sync, keep_open, include_history_fallback)
 
-    def _list_project_chats_sync(self, keep_open: bool) -> dict[str, Any]:
+    def _list_project_chats_sync(self, keep_open: bool, include_history_fallback: bool) -> dict[str, Any]:
         with self._client() as client:
-            return client.list_project_chats(keep_open=keep_open, project_url=self.project_url)
+            return client.list_project_chats(
+                keep_open=keep_open,
+                project_url=self.project_url,
+                include_history_fallback=include_history_fallback,
+            )
 
     async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
         return await asyncio.to_thread(self._get_chat_sync, conversation_url, keep_open)
@@ -878,6 +891,131 @@ def _extract_conversation_url_from_ask_result(result: Any) -> Optional[str]:
     return None
 
 
+def _conversation_id_from_task_url(conversation_url: str) -> str:
+    return str(conversation_url or "").rstrip("/").split("/c/", 1)[-1].split("/", 1)[0]
+
+
+def _task_entries_from_list_payload(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    raw_entries = payload.get("chats") or payload.get("items") or payload.get("conversations") or []
+    return [item for item in raw_entries if isinstance(item, dict)] if isinstance(raw_entries, list) else []
+
+
+def _task_entry_matches_conversation(item: dict[str, Any], *, conversation_url: str, conversation_id: str) -> bool:
+    candidate_url = str(item.get("conversation_url") or item.get("url") or "").rstrip("/")
+    candidate_id = str(item.get("conversation_id") or item.get("id") or "")
+    return (
+        bool(candidate_url) and candidate_url == str(conversation_url).rstrip("/")
+    ) or (
+        bool(candidate_id) and candidate_id == conversation_id
+    )
+
+
+async def _wait_for_task_visible_in_list(
+    steps: list[StepResult],
+    service: Any,
+    *,
+    conversation_url: str,
+    keep_open: bool,
+    timeout_seconds: float,
+    poll_min_seconds: float,
+    poll_max_seconds: float,
+    max_attempts: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    conversation_id = _conversation_id_from_task_url(conversation_url)
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds or 0.0))
+    delay = max(1.0, float(poll_min_seconds or 1.0))
+    max_delay = max(delay, float(poll_max_seconds or delay))
+    attempts_allowed = max(1, int(max_attempts or 1))
+    attempts: list[dict[str, Any]] = []
+    started = time.perf_counter()
+    last_payload: dict[str, Any] = {}
+    last_entries: list[dict[str, Any]] = []
+
+    try:
+        for attempt_index in range(1, attempts_allowed + 1):
+            include_history_fallback = attempt_index == attempts_allowed
+            payload = await service.list_project_chats(
+                keep_open=keep_open,
+                include_history_fallback=include_history_fallback,
+            )
+            last_payload = payload if isinstance(payload, dict) else {}
+            entries = _task_entries_from_list_payload(last_payload)
+            last_entries = entries
+            matched = next(
+                (
+                    item
+                    for item in entries
+                    if _task_entry_matches_conversation(
+                        item,
+                        conversation_url=conversation_url,
+                        conversation_id=conversation_id,
+                    )
+                ),
+                None,
+            )
+            attempts.append(
+                {
+                    "attempt": attempt_index,
+                    "count": len(entries),
+                    "matched": matched is not None,
+                    "include_history_fallback": include_history_fallback,
+                    "history_fallback_used": last_payload.get("history_fallback_used"),
+                    "source_counts": last_payload.get("source_counts"),
+                }
+            )
+            if matched is not None:
+                steps.append(
+                    StepResult(
+                        name="task_message_flow.task_list_visible",
+                        ok=True,
+                        duration_seconds=round(time.perf_counter() - started, 3),
+                        details={
+                            "ok": True,
+                            "conversation_url": conversation_url,
+                            "conversation_id": conversation_id,
+                            "attempts": attempts,
+                            "task_list_count": len(entries),
+                            "matched_task": matched,
+                            "last_task_list": last_payload,
+                        },
+                    )
+                )
+                return last_payload, entries, matched
+
+            now = time.monotonic()
+            if attempt_index >= attempts_allowed or now >= deadline:
+                break
+            sleep_for = min(delay, max(0.0, deadline - now))
+            if sleep_for > 0:
+                await asyncio.sleep(sleep_for)
+            delay = min(max_delay, delay * 1.75)
+
+        raise IntegrationAssertionError(
+            "task_message_flow created task was not visible in task list after bounded polling. "
+            f"conversation_url={conversation_url!r} attempts={attempts} task_list={last_payload}"
+        )
+    except Exception as exc:
+        steps.append(
+            StepResult(
+                name="task_message_flow.task_list_visible",
+                ok=False,
+                duration_seconds=round(time.perf_counter() - started, 3),
+                details={
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "conversation_url": conversation_url,
+                    "conversation_id": conversation_id,
+                    "attempts": attempts,
+                    "last_task_list_count": len(last_entries),
+                    "last_task_list": last_payload,
+                },
+            )
+        )
+        raise
+
+
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     selection = resolve_step_selection(
         only_values=args.only,
@@ -1184,27 +1322,16 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             )
             await _post_ask_cooldown(steps, seconds=args.post_ask_delay_seconds, reason="after task_message_flow.ask")
 
-            task_list = await _run_step(
+            task_list, task_entries, listed_match = await _wait_for_task_visible_in_list(
                 steps,
-                "task_message_flow.task_list",
-                project_service.list_project_chats(keep_open=args.keep_open),
-                step_delay_seconds=args.step_delay_seconds,
+                project_service,
+                conversation_url=str(task_conversation_url),
+                keep_open=args.keep_open,
+                timeout_seconds=args.task_list_visible_timeout_seconds,
+                poll_min_seconds=args.task_list_visible_poll_min_seconds,
+                poll_max_seconds=args.task_list_visible_poll_max_seconds,
+                max_attempts=args.task_list_visible_max_attempts,
             )
-            task_entries = task_list.get("chats") or task_list.get("items") or task_list.get("conversations") or []
-            if isinstance(task_entries, list) and task_entries:
-                task_conversation_id = str(task_conversation_url).rstrip("/").split("/c/", 1)[-1].split("/", 1)[0]
-                listed_match = any(
-                    isinstance(item, dict)
-                    and (
-                        str(item.get("conversation_url") or item.get("url") or "").rstrip("/") == str(task_conversation_url).rstrip("/")
-                        or str(item.get("conversation_id") or item.get("id") or "") == task_conversation_id
-                    )
-                    for item in task_entries
-                )
-                _require(
-                    listed_match,
-                    f"task_message_flow created task was not visible in task list. conversation_url={task_conversation_url!r} task_list={task_list}",
-                )
 
             task_chat = await _run_step(
                 steps,

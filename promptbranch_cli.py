@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.112"
+CLI_VERSION = "0.0.113"
 COMMANDS = {
     "login-check",
     "ask",
@@ -132,12 +132,20 @@ class DirectBackend:
         finally:
             self._service.settings.project_url = original_project_url
 
-    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        include_history_fallback: bool = True,
+    ) -> dict[str, Any]:
         original_project_url = self._service.settings.project_url
         effective_project_url = self._effective_project_home_url()
         try:
             self._service.settings.project_url = effective_project_url or original_project_url
-            return await self._service.list_project_chats(keep_open=keep_open)
+            return await self._service.list_project_chats(
+                keep_open=keep_open,
+                include_history_fallback=include_history_fallback,
+            )
         finally:
             self._service.settings.project_url = original_project_url
 
@@ -338,11 +346,17 @@ class ServiceBackend:
         )
         return result
 
-    async def list_project_chats(self, *, keep_open: bool = False) -> dict[str, Any]:
+    async def list_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        include_history_fallback: bool = True,
+    ) -> dict[str, Any]:
         return await self._call(
             self._client.list_project_chats,
             keep_open=keep_open,
             project_url=self._effective_project_home_url(),
+            include_history_fallback=include_history_fallback,
         )
 
     async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
@@ -1562,6 +1576,8 @@ def _render_completion_fish(command_name: str) -> str:
         "--max-retries", "--retry-backoff-seconds", "--dotenv", "--config", "--service-base-url",
         "--service-token", "--service-timeout-seconds", "--type", "--value", "--file", "--name",
         "--conversation-url", "--project-name", "--retries", "--icon", "--color", "--memory-mode",
+        "--post-ask-delay-seconds", "--step-delay-seconds", "--task-list-visible-timeout-seconds",
+        "--task-list-visible-poll-min-seconds", "--task-list-visible-poll-max-seconds", "--task-list-visible-max-attempts",
     }
     lines = [f"complete -c {command_name} -f"]
     for opt in _global_option_names():
@@ -1612,6 +1628,10 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'keep_project': args.keep_project,
         'step_delay_seconds': args.step_delay_seconds,
         'post_ask_delay_seconds': args.post_ask_delay_seconds,
+        'task_list_visible_timeout_seconds': args.task_list_visible_timeout_seconds,
+        'task_list_visible_poll_min_seconds': args.task_list_visible_poll_min_seconds,
+        'task_list_visible_poll_max_seconds': args.task_list_visible_poll_max_seconds,
+        'task_list_visible_max_attempts': args.task_list_visible_max_attempts,
         'skip': list(args.skip),
         'only': list(args.only),
         'strict_remove_ui': args.strict_remove_ui,
@@ -1851,6 +1871,10 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "keep_project": False,
         "step_delay_seconds": 8.0,
         "post_ask_delay_seconds": 20.0,
+        "task_list_visible_timeout_seconds": 120.0,
+        "task_list_visible_poll_min_seconds": 20.0,
+        "task_list_visible_poll_max_seconds": 45.0,
+        "task_list_visible_max_attempts": 4,
         "skip": [],
         "only": [],
         "strict_remove_ui": False,
@@ -2181,6 +2205,10 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_smoke.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     test_smoke.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    test_smoke.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
+    test_smoke.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
+    test_smoke.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
+    test_smoke.add_argument("--task-list-visible-max-attempts", type=int, default=4, help="Maximum number of task-list visibility probes after ask().")
     test_smoke.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_smoke.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_smoke.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -2323,6 +2351,10 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_suite.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     test_suite.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    test_suite.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
+    test_suite.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
+    test_suite.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
+    test_suite.add_argument("--task-list-visible-max-attempts", type=int, default=4, help="Maximum number of task-list visibility probes after ask().")
     test_suite.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_suite.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_suite.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
