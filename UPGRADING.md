@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.117.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.118.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,14 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.118
+
+- Added Phase 3 artifact lifecycle primitives: `pb artifact current`, `pb artifact list`, `pb artifact release`, and `pb artifact verify`.
+- Added `pb src sync <path>` to create a repo snapshot ZIP and optionally upload it as a source for the current workspace.
+- Local artifact registry is stored under `.pb_profile/promptbranch_artifacts.json`; generated ZIPs default to `.pb_profile/artifacts/`.
+- Repo snapshot naming uses `VERSION` when it contains a valid version-like value, otherwise falls back to the current Git short SHA.
+- ZIP verification checks for corrupt entries, unsafe paths, and unwanted wrapper-folder layout.
 
 ## v0.0.117
 

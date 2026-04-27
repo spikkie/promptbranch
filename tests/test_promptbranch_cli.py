@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.117"
+    assert captured.out.strip() == "promptbranch 0.0.118"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -947,7 +947,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.117"
+    assert payload["version"] == "0.0.118"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1169,3 +1169,95 @@ def test_chat_list_payload_includes_current_task_from_state_when_backend_empty()
     assert chats[0]["id"] == "chat-current-1"
     assert chats[0]["is_current"] is True
     assert chats[0]["source"] == "current_state"
+
+
+def test_phase3_parser_accepts_src_sync_and_artifact_commands() -> None:
+    parser = make_parser()
+
+    sync_args = parser.parse_args(["src", "sync", ".", "--no-upload", "--json"])
+    assert sync_args.command == "src"
+    assert sync_args.src_command == "sync"
+    assert sync_args.path == "."
+    assert sync_args.no_upload is True
+
+    current_args = parser.parse_args(["artifact", "current", "--json"])
+    assert current_args.command == "artifact"
+    assert current_args.artifact_command == "current"
+
+    release_args = parser.parse_args(["artifact", "release", ".", "--filename", "demo.zip", "--json"])
+    assert release_args.command == "artifact"
+    assert release_args.artifact_command == "release"
+    assert release_args.filename == "demo.zip"
+
+    verify_args = parser.parse_args(["artifact", "verify", "demo.zip", "--json"])
+    assert verify_args.command == "artifact"
+    assert verify_args.artifact_command == "verify"
+    assert verify_args.path == "demo.zip"
+
+
+def test_phase3_src_sync_no_upload_packages_and_records_artifact(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile"),
+        "src", "sync", str(repo), "--no-upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "packaged"
+    assert payload["artifact"]["filename"] == "repo_v1.0.0.zip"
+    assert Path(payload["artifact"]["path"]).is_file()
+
+
+def test_phase3_artifact_release_current_and_verify(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "README.md").write_text("# demo\n", encoding="utf-8")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+    profile = tmp_path / "profile"
+
+    release_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "artifact", "release", str(repo), "--json",
+    ])
+    release_payload = json.loads(capsys.readouterr().out)
+    assert release_code == 0
+    assert release_payload["ok"] is True
+    artifact_path = release_payload["artifact"]["path"]
+
+    current_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "artifact", "current", "--json",
+    ])
+    current_payload = json.loads(capsys.readouterr().out)
+    assert current_code == 0
+    assert current_payload["registry_current"]["path"] == artifact_path
+
+    verify_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "artifact", "verify", artifact_path, "--json",
+    ])
+    verify_payload = json.loads(capsys.readouterr().out)
+    assert verify_code == 0
+    assert verify_payload["ok"] is True
+    assert verify_payload["wrapper_folder"] is None

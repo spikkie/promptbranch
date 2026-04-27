@@ -13,6 +13,7 @@ from typing import Any, Optional, Protocol
 from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
+from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -38,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.117"
+CLI_VERSION = "0.0.118"
 COMMANDS = {
     "login-check",
     "ask",
@@ -46,6 +47,7 @@ COMMANDS = {
     "ws",
     "task",
     "src",
+    "artifact",
     "test",
     "doctor",
     "project-create",
@@ -1442,7 +1444,8 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--task"],
-        "src": ["list", "add", "rm", "remove", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json"],
+        "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip"],
         "doctor": ["--json"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -1862,11 +1865,223 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
     raise RuntimeError(f"Unknown task command: {args.task_command}")
 
 
+def _artifact_registry_from_args(args: argparse.Namespace) -> ArtifactRegistry:
+    return ArtifactRegistry(resolve_profile_dir(getattr(args, "profile_dir", None)))
+
+
+def _artifact_output_dir(args: argparse.Namespace, registry: ArtifactRegistry) -> Path:
+    output_dir = getattr(args, "output_dir", None)
+    return Path(output_dir).expanduser() if output_dir else registry.artifact_dir
+
+
+def _artifact_state_project_url(backend: Any) -> Optional[str]:
+    snapshot = backend.state_snapshot()
+    candidate = snapshot.get("resolved_project_home_url") if isinstance(snapshot, dict) else None
+    return candidate if isinstance(candidate, str) else None
+
+
+async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
+    """Package a repo snapshot and optionally upload it as a project source."""
+    registry = _artifact_registry_from_args(args)
+    repo_path = Path(args.path).expanduser().resolve()
+    try:
+        record, included = create_repo_snapshot(
+            repo_path,
+            output_dir=_artifact_output_dir(args, registry),
+            filename=getattr(args, "filename", None),
+            kind="source_snapshot",
+        )
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "action": "src_sync", "error": str(exc)}, indent=2, ensure_ascii=False))
+        return 2
+
+    project_url = _artifact_state_project_url(backend)
+    upload_result: dict[str, Any] | None = None
+    uploaded = False
+    if not getattr(args, "no_upload", False):
+        if not project_url:
+            payload = {
+                "ok": False,
+                "action": "src_sync",
+                "status": "no_workspace_selected",
+                "artifact": record.to_dict(),
+                "included_count": len(included),
+                "error": "no current workspace is selected; run `pb ws use <project>` or pass --no-upload",
+            }
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 2
+        upload_result = await backend.add_project_source(
+            source_kind="file",
+            file_path=record.path,
+            display_name=record.filename,
+            keep_open=args.keep_open,
+        )
+        uploaded = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
+
+    artifact_payload = registry.add(record)
+    store = _state_store_from_args(args)
+    if project_url:
+        if uploaded:
+            store.remember_artifact(
+                project_url=project_url,
+                artifact_ref=record.filename,
+                artifact_version=record.version,
+                source_ref=record.filename,
+                source_version=record.version,
+            )
+        else:
+            store.remember_artifact(
+                project_url=project_url,
+                artifact_ref=record.filename,
+                artifact_version=record.version,
+            )
+    payload = {
+        "ok": bool(getattr(args, "no_upload", False) or uploaded),
+        "action": "src_sync",
+        "status": "uploaded" if uploaded else ("packaged" if getattr(args, "no_upload", False) else "upload_failed"),
+        "artifact": artifact_payload,
+        "included_count": len(included),
+        "upload_result": upload_result,
+        "project_url": project_url,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"artifact={record.path}")
+        print(f"file_count={record.file_count}")
+        print(f"sha256={record.sha256}")
+        print(f"status={payload['status']}")
+    return 0 if payload["ok"] else 1
+
+
+async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
+    registry = _artifact_registry_from_args(args)
+    snapshot = backend.state_snapshot()
+    payload = {
+        "ok": True,
+        "action": "artifact_current",
+        "state": {
+            "artifact_ref": snapshot.get("artifact_ref"),
+            "artifact_version": snapshot.get("artifact_version"),
+            "source_ref": snapshot.get("source_ref"),
+            "source_version": snapshot.get("source_version"),
+            "project_home_url": snapshot.get("resolved_project_home_url"),
+        },
+        "registry_current": registry.current(),
+        "registry_file": str(registry.path),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        state = payload["state"]
+        print(f"artifact_ref={state.get('artifact_ref') or 'none'}")
+        print(f"artifact_version={state.get('artifact_version') or 'none'}")
+        current = payload.get("registry_current") or {}
+        print(f"registry_current={current.get('filename') or 'none'}")
+    return 0
+
+
+async def cmd_artifact_list(backend: Any, args: argparse.Namespace) -> int:
+    registry = _artifact_registry_from_args(args)
+    artifacts = registry.list()
+    payload = {
+        "ok": True,
+        "action": "artifact_list",
+        "count": len(artifacts),
+        "artifacts": artifacts,
+        "registry_file": str(registry.path),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        if not artifacts:
+            print("(no artifacts found)")
+        for idx, item in enumerate(artifacts, start=1):
+            print(f"{idx:>3}. {item.get('filename')}\t{item.get('version') or ''}\t{item.get('path')}")
+    return 0
+
+
+async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
+    registry = _artifact_registry_from_args(args)
+    repo_path = Path(args.path).expanduser().resolve()
+    try:
+        record, included = create_repo_snapshot(
+            repo_path,
+            output_dir=_artifact_output_dir(args, registry),
+            filename=getattr(args, "filename", None),
+            kind="release",
+        )
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "action": "artifact_release", "error": str(exc)}, indent=2, ensure_ascii=False))
+        return 2
+    artifact_payload = registry.add(record)
+    project_url = _artifact_state_project_url(backend)
+    if project_url:
+        _state_store_from_args(args).remember_artifact(
+            project_url=project_url,
+            artifact_ref=record.filename,
+            artifact_version=record.version,
+        )
+    verify = verify_zip_artifact(record.path)
+    payload = {
+        "ok": bool(verify.get("ok")),
+        "action": "artifact_release",
+        "artifact": artifact_payload,
+        "included_count": len(included),
+        "verify": verify,
+        "project_url": project_url,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"artifact={record.path}")
+        print(f"file_count={record.file_count}")
+        print(f"sha256={record.sha256}")
+        print(f"verified={payload['ok']}")
+    return 0 if payload["ok"] else 1
+
+
+async def cmd_artifact_verify(backend: Any, args: argparse.Namespace) -> int:
+    registry = _artifact_registry_from_args(args)
+    target = getattr(args, "path", None)
+    if not target:
+        current = registry.current()
+        target = current.get("path") if isinstance(current, dict) else None
+    if not target:
+        payload = {"ok": False, "action": "artifact_verify", "error": "no artifact path provided and no registry artifact exists"}
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+    verify = verify_zip_artifact(target)
+    payload = {"action": "artifact_verify", **verify}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"ok={payload.get('ok')}")
+        print(f"path={payload.get('path')}")
+        print(f"entry_count={payload.get('entry_count')}")
+        print(f"wrapper_folder={payload.get('wrapper_folder') or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
+async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
+    if args.artifact_command == "current":
+        return await cmd_artifact_current(backend, args)
+    if args.artifact_command == "list":
+        return await cmd_artifact_list(backend, args)
+    if args.artifact_command == "release":
+        return await cmd_artifact_release(backend, args)
+    if args.artifact_command == "verify":
+        return await cmd_artifact_verify(backend, args)
+    raise RuntimeError(f"Unknown artifact command: {args.artifact_command}")
+
+
 async def cmd_src(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.src_command == "list":
         return await cmd_project_source_list(backend, args)
     if args.src_command == "add":
         return await cmd_project_source_add(backend, args)
+    if args.src_command == "sync":
+        return await cmd_src_sync(backend, args)
     if args.src_command in {"rm", "remove"}:
         return await cmd_project_source_remove(backend, args)
     raise RuntimeError(f"Unknown src command: {args.src_command}")
@@ -2205,6 +2420,33 @@ def make_parser() -> argparse.ArgumentParser:
     src_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
     src_remove.add_argument("--keep-open", action="store_true")
 
+    src_sync = src_subparsers.add_parser("sync", help="Package a repo snapshot and upload it as a source for the current workspace.")
+    src_sync.add_argument("path", nargs="?", default=".", help="Repo path to package. Defaults to the current directory.")
+    src_sync.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
+    src_sync.add_argument("--filename", help="Override the generated artifact filename.")
+    src_sync.add_argument("--no-upload", action="store_true", help="Only package and register the artifact locally; do not upload as a project source.")
+    src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
+    src_sync.add_argument("--keep-open", action="store_true")
+
+    artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
+    artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
+
+    artifact_current = artifact_subparsers.add_parser("current", help="Show the current artifact/source state.")
+    artifact_current.add_argument("--json", action="store_true")
+
+    artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
+    artifact_list.add_argument("--json", action="store_true")
+
+    artifact_release = artifact_subparsers.add_parser("release", help="Create a local release ZIP from a repo path.")
+    artifact_release.add_argument("path", nargs="?", default=".", help="Repo path to package. Defaults to the current directory.")
+    artifact_release.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
+    artifact_release.add_argument("--filename", help="Override the generated artifact filename.")
+    artifact_release.add_argument("--json", action="store_true")
+
+    artifact_verify = artifact_subparsers.add_parser("verify", help="Verify ZIP layout and integrity.")
+    artifact_verify.add_argument("path", nargs="?", help="ZIP path. Defaults to the latest registered artifact.")
+    artifact_verify.add_argument("--json", action="store_true")
+
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)
     test_smoke = test_subparsers.add_parser("smoke", help="Run the standard Promptbranch smoke suite.")
@@ -2448,6 +2690,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_task(backend, args)
     if args.command == "src":
         return await cmd_src(backend, args)
+    if args.command == "artifact":
+        return await cmd_artifact(backend, args)
     if args.command == "test":
         return await cmd_test(backend, args)
     if args.command == "doctor":
