@@ -3159,6 +3159,23 @@ class ChatGPTBrowserClient:
             return project_id
         return self._project_home_url_from_url(url)
 
+    def _project_ids_refer_to_same_project(self, candidate: Any, project_id: str) -> bool:
+        """Return True when a raw backend gizmo/template id refers to project_id.
+
+        ChatGPT surfaces are not consistent here: some return the bare project id
+        (``g-p-abc``), while others return the route slug
+        (``g-p-abc-my-project``).  Treat the slug form as the same project so
+        project-scoped chat enumeration does not silently drop valid task rows.
+        """
+        normalized_project_id = str(project_id or '').strip().lower()
+        normalized_candidate = str(candidate or '').strip().lower()
+        if not normalized_project_id or not normalized_candidate:
+            return False
+        return (
+            normalized_candidate == normalized_project_id
+            or normalized_candidate.startswith(f'{normalized_project_id}-')
+        )
+
     def _project_urls_refer_to_same_project(self, left: str, right: str) -> bool:
         return self._project_identity_key_from_url(left) == self._project_identity_key_from_url(right)
 
@@ -3530,7 +3547,7 @@ class ChatGPTBrowserClient:
             if not isinstance(gizmo, dict):
                 continue
             candidate_project_id = str(gizmo.get('id') or gizmo.get('gizmo_id') or gizmo.get('gizmoId') or '').strip().lower()
-            if normalized_project_id and candidate_project_id != normalized_project_id:
+            if normalized_project_id and not self._project_ids_refer_to_same_project(candidate_project_id, normalized_project_id):
                 continue
             found_project = True
             conversations = item.get('conversations') if isinstance(item.get('conversations'), dict) else {}
@@ -3657,7 +3674,7 @@ class ChatGPTBrowserClient:
             if normalized_project_id:
                 if not candidate_project_id:
                     continue
-                if candidate_project_id != normalized_project_id:
+                if not self._project_ids_refer_to_same_project(candidate_project_id, normalized_project_id):
                     continue
             conversation_id = str(item.get('id') or '').strip()
             if not conversation_id or conversation_id in seen_ids:
