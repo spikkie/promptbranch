@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.112.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.113.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,14 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.113
+
+- `pb test-suite` now treats task-list visibility as required in `task_message_flow`; a green run can no longer hide `task_list_count: 0`.
+- Added bounded, low-rate polling for a newly-created task to appear in `pb task list` after `ask`.
+- Added task-list visibility controls: `--task-list-visible-timeout-seconds`, `--task-list-visible-poll-min-seconds`, `--task-list-visible-poll-max-seconds`, and `--task-list-visible-max-attempts`.
+- Added lightweight task-list probes that avoid the expensive conversation-history fallback until the final visibility attempt.
+- `GET /v1/chats` and the service client now support `include_history_fallback`.
 
 ## v0.0.112
 

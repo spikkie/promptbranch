@@ -160,8 +160,12 @@ class ChatGPTServiceClient:
         *,
         keep_open: bool = False,
         project_url: Optional[str] = None,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"keep_open": keep_open}
+        params: dict[str, Any] = {
+            "keep_open": keep_open,
+            "include_history_fallback": include_history_fallback,
+        }
         if project_url:
             params["project_url"] = project_url
         return self._json(self._client.get("/v1/chats", params=params))

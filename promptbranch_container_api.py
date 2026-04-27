@@ -144,7 +144,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.112"
+SERVICE_VERSION = "0.0.113"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -371,9 +371,16 @@ async def list_projects(keep_open: bool = False, project_url: Optional[str] = No
 
 
 @protected.get("/chats", dependencies=[Depends(require_service_token)])
-async def list_project_chats(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
+async def list_project_chats(
+    keep_open: bool = False,
+    project_url: Optional[str] = None,
+    include_history_fallback: bool = True,
+) -> dict:
     try:
-        return await _service_for(project_url).list_project_chats(keep_open=keep_open)
+        return await _service_for(project_url).list_project_chats(
+            keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 

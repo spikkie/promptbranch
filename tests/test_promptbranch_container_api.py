@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.111"
+    assert payload["version"] == "0.0.113"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.111"
+    assert response.json()["version"] == "0.0.113"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -42,8 +42,9 @@ def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
 
 def test_list_project_chats_endpoint_uses_service(monkeypatch) -> None:
     class FakeService:
-        async def list_project_chats(self, *, keep_open: bool = False):
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
             assert keep_open is False
+            assert include_history_fallback is True
             return {"ok": True, "count": 1, "chats": [{"id": "abc", "title": "Demo chat"}]}
 
     monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())

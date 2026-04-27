@@ -133,6 +133,7 @@ class ChatGPTAutomationService:
         self,
         *,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         logger.info("Listing ChatGPT project chats")
         async with self._lock:
@@ -140,6 +141,7 @@ class ChatGPTAutomationService:
                 "list_project_chats",
                 lambda: self._build_bot().list_project_chats(
                     keep_open=keep_open,
+                    include_history_fallback=include_history_fallback,
                 ),
             )
 

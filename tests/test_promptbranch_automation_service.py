@@ -104,8 +104,8 @@ def test_service_debug_project_list_calls_automation(monkeypatch):
 
 def test_automation_exposes_chat_methods(monkeypatch):
     class _DummyChatClient(_DummyClient):
-        async def list_project_chats(self, *, keep_open: bool = False):
-            return {"ok": True, "count": 1, "chats": [{"id": "abc", "title": "Demo chat"}], "keep_open": keep_open}
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+            return {"ok": True, "count": 1, "chats": [{"id": "abc", "title": "Demo chat"}], "keep_open": keep_open, "include_history_fallback": include_history_fallback}
 
         async def get_chat(self, *, conversation_url: str, keep_open: bool = False):
             return {"ok": True, "conversation_id": "abc", "conversation_url": conversation_url, "keep_open": keep_open}
@@ -122,8 +122,8 @@ def test_automation_exposes_chat_methods(monkeypatch):
 
 
 def test_service_chat_methods_call_automation(monkeypatch):
-    async def fake_list_project_chats(self, *, keep_open: bool = False):
-        return {"ok": True, "count": 2, "chats": [{"id": "a"}, {"id": "b"}], "keep_open": keep_open}
+    async def fake_list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+        return {"ok": True, "count": 2, "chats": [{"id": "a"}, {"id": "b"}], "keep_open": keep_open, "include_history_fallback": include_history_fallback}
 
     async def fake_get_chat(self, *, conversation_url: str, keep_open: bool = False):
         return {"ok": True, "conversation_id": "abc", "conversation_url": conversation_url, "keep_open": keep_open}
