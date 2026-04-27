@@ -248,6 +248,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-list-visible-poll-min-seconds", type=float, default=float(os.getenv("CHATGPT_TASK_LIST_VISIBLE_POLL_MIN_SECONDS", "20.0")), help="Initial backoff between task-list visibility probes after ask().")
     parser.add_argument("--task-list-visible-poll-max-seconds", type=float, default=float(os.getenv("CHATGPT_TASK_LIST_VISIBLE_POLL_MAX_SECONDS", "45.0")), help="Maximum backoff between task-list visibility probes after ask().")
     parser.add_argument("--task-list-visible-max-attempts", type=int, default=int(os.getenv("CHATGPT_TASK_LIST_VISIBLE_MAX_ATTEMPTS", "4")), help="Maximum number of task-list visibility probes after ask(); keeps live smoke tests from hammering conversation APIs.")
+    parser.add_argument("--allow-recent-state-task-fallback", action="store_true", help="Allow task_message_flow to pass when the created task is visible only through local recent_state fallback. Default requires indexed task visibility.")
     parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -912,6 +913,16 @@ def _task_entry_matches_conversation(item: dict[str, Any], *, conversation_url: 
     )
 
 
+def _task_entry_is_indexed(item: dict[str, Any]) -> bool:
+    return str(item.get("source") or "").strip().lower() in {"snorlax", "dom", "history", "current_page", ""}
+
+
+def _task_list_visibility_status_for_match(matched: dict[str, Any] | None) -> str:
+    if matched is None:
+        return "missing"
+    return "indexed" if _task_entry_is_indexed(matched) else "recent_state_only"
+
+
 async def _wait_for_task_visible_in_list(
     steps: list[StepResult],
     service: Any,
@@ -922,6 +933,7 @@ async def _wait_for_task_visible_in_list(
     poll_min_seconds: float,
     poll_max_seconds: float,
     max_attempts: int,
+    allow_recent_state_fallback: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     conversation_id = _conversation_id_from_task_url(conversation_url)
     deadline = time.monotonic() + max(0.0, float(timeout_seconds or 0.0))
@@ -955,31 +967,40 @@ async def _wait_for_task_visible_in_list(
                 ),
                 None,
             )
+            visibility_status = _task_list_visibility_status_for_match(matched)
             attempts.append(
                 {
                     "attempt": attempt_index,
                     "count": len(entries),
                     "matched": matched is not None,
+                    "matched_source": matched.get("source") if isinstance(matched, dict) else None,
+                    "visibility_status": visibility_status,
                     "include_history_fallback": include_history_fallback,
                     "history_fallback_used": last_payload.get("history_fallback_used"),
                     "source_counts": last_payload.get("source_counts"),
                 }
             )
-            if matched is not None:
+            if matched is not None and (visibility_status == "indexed" or allow_recent_state_fallback):
+                details = {
+                    "ok": True,
+                    "conversation_url": conversation_url,
+                    "conversation_id": conversation_id,
+                    "attempts": attempts,
+                    "visibility_status": visibility_status,
+                    "allow_recent_state_fallback": allow_recent_state_fallback,
+                    "task_list_count": len(entries),
+                    "matched_task": matched,
+                    "last_task_list": last_payload,
+                }
+                if visibility_status != "indexed":
+                    details["degraded"] = True
+                    details["warning"] = "task matched only via recent_state fallback, not indexed task sources"
                 steps.append(
                     StepResult(
                         name="task_message_flow.task_list_visible",
                         ok=True,
                         duration_seconds=round(time.perf_counter() - started, 3),
-                        details={
-                            "ok": True,
-                            "conversation_url": conversation_url,
-                            "conversation_id": conversation_id,
-                            "attempts": attempts,
-                            "task_list_count": len(entries),
-                            "matched_task": matched,
-                            "last_task_list": last_payload,
-                        },
+                        details=details,
                     )
                 )
                 return last_payload, entries, matched
@@ -993,7 +1014,7 @@ async def _wait_for_task_visible_in_list(
             delay = min(max_delay, delay * 1.75)
 
         raise IntegrationAssertionError(
-            "task_message_flow created task was not visible in task list after bounded polling. "
+            "task_message_flow created task was not visible in indexed task list after bounded polling. recent_state is a degraded fallback and does not count unless explicitly allowed. "
             f"conversation_url={conversation_url!r} attempts={attempts} task_list={last_payload}"
         )
     except Exception as exc:
@@ -1010,6 +1031,7 @@ async def _wait_for_task_visible_in_list(
                     "attempts": attempts,
                     "last_task_list_count": len(last_entries),
                     "last_task_list": last_payload,
+                    "allow_recent_state_fallback": allow_recent_state_fallback,
                 },
             )
         )
@@ -1331,6 +1353,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 poll_min_seconds=args.task_list_visible_poll_min_seconds,
                 poll_max_seconds=args.task_list_visible_poll_max_seconds,
                 max_attempts=args.task_list_visible_max_attempts,
+                allow_recent_state_fallback=getattr(args, "allow_recent_state_task_fallback", False),
             )
 
             task_chat = await _run_step(

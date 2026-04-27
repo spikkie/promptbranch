@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.118"
+CLI_VERSION = "0.0.119"
 COMMANDS = {
     "login-check",
     "ask",
@@ -774,8 +774,34 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
     payload['chats'] = normalized
     payload['count'] = len(normalized)
     payload['current_conversation_url'] = current_conversation_url
+    source_counts = dict(payload.get('source_counts') or {}) if isinstance(payload.get('source_counts'), dict) else {}
+    visibility_status, indexed_count, recent_count = _task_list_visibility_status(source_counts, normalized)
+    payload['source_counts'] = source_counts
+    payload['visibility_status'] = payload.get('visibility_status') or visibility_status
+    payload['indexed_task_count'] = payload.get('indexed_task_count', indexed_count)
+    payload['recent_state_count'] = payload.get('recent_state_count', recent_count)
     return normalized, payload
 
+
+
+def _task_list_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> tuple[str, int, int]:
+    indexed_sources = {"snorlax", "dom", "history", "current_page"}
+    indexed_count = 0
+    for source in indexed_sources:
+        try:
+            indexed_count += int(source_counts.get(source) or 0)
+        except (TypeError, ValueError):
+            continue
+    recent_count = 0
+    try:
+        recent_count = int(source_counts.get("recent_state") or 0)
+    except (TypeError, ValueError):
+        recent_count = 0
+    if indexed_count > 0:
+        return "indexed", indexed_count, recent_count
+    if recent_count > 0 or any(str(item.get("source") or "") == "recent_state" for item in chats):
+        return "recent_state_only", indexed_count, recent_count
+    return "missing", indexed_count, recent_count
 
 def _normalize_chat_title(value: str) -> str:
     return re.sub(r'\s+', ' ', (value or '')).strip().casefold()
@@ -1446,7 +1472,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
-        "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip"],
+        "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
@@ -1474,6 +1500,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
+        "test-suite": ["--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
 
 
@@ -1643,6 +1670,7 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'task_list_visible_poll_min_seconds': args.task_list_visible_poll_min_seconds,
         'task_list_visible_poll_max_seconds': args.task_list_visible_poll_max_seconds,
         'task_list_visible_max_attempts': args.task_list_visible_max_attempts,
+        'allow_recent_state_task_fallback': getattr(args, 'allow_recent_state_task_fallback', False),
         'skip': list(args.skip),
         'only': list(args.only),
         'strict_remove_ui': args.strict_remove_ui,
@@ -2098,6 +2126,7 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "task_list_visible_poll_min_seconds": 20.0,
         "task_list_visible_poll_max_seconds": 45.0,
         "task_list_visible_max_attempts": 4,
+        "allow_recent_state_task_fallback": False,
         "skip": [],
         "only": [],
         "strict_remove_ui": False,
@@ -2459,6 +2488,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
     test_smoke.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
     test_smoke.add_argument("--task-list-visible-max-attempts", type=int, default=4, help="Maximum number of task-list visibility probes after ask().")
+    test_smoke.add_argument("--allow-recent-state-task-fallback", action="store_true", help="Allow task_message_flow to pass when a new task is visible only from local recent_state fallback. Default is strict indexed visibility.")
     test_smoke.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_smoke.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_smoke.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
@@ -2605,6 +2635,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
     test_suite.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
     test_suite.add_argument("--task-list-visible-max-attempts", type=int, default=4, help="Maximum number of task-list visibility probes after ask().")
+    test_suite.add_argument("--allow-recent-state-task-fallback", action="store_true", help="Allow task_message_flow to pass when a new task is visible only from local recent_state fallback. Default is strict indexed visibility.")
     test_suite.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
     test_suite.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
     test_suite.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")

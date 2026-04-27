@@ -8,6 +8,7 @@ from promptbranch_full_integration_test import (
     _normalize_expected_skip_result,
     _task_messages_payload,
     _wait_for_task_visible_in_list,
+    IntegrationAssertionError,
     make_parser,
     resolve_step_selection,
 )
@@ -35,6 +36,7 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
             "3.5",
             "--task-list-visible-max-attempts",
             "3",
+            "--allow-recent-state-task-fallback",
             "--service-base-url",
             "http://localhost:8000",
             "--service-token",
@@ -53,6 +55,7 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
     assert args.task_list_visible_poll_min_seconds == 0.25
     assert args.task_list_visible_poll_max_seconds == 3.5
     assert args.task_list_visible_max_attempts == 3
+    assert args.allow_recent_state_task_fallback is True
     assert args.service_base_url == "http://localhost:8000"
     assert args.service_token == "secret-token"
     assert args.service_timeout_seconds == 45.0
@@ -269,6 +272,99 @@ def test_wait_for_task_visible_uses_bounded_lightweight_polling(monkeypatch) -> 
     assert sleeps == [1.0, 1.75]
     assert steps[-1].name == "task_message_flow.task_list_visible"
     assert steps[-1].ok is True
+
+
+
+def test_wait_for_task_visible_rejects_recent_state_only_by_default(monkeypatch) -> None:
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+            return {
+                "ok": True,
+                "count": 1,
+                "chats": [
+                    {
+                        "id": "abc123",
+                        "title": "Recent task",
+                        "conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc123",
+                        "source": "recent_state",
+                    }
+                ],
+                "visibility_status": "recent_state_only",
+                "source_counts": {"snorlax": 0, "dom": 0, "current_page": 0, "history": 0, "recent_state": 1},
+            }
+
+    steps = []
+    import asyncio
+    import pytest
+
+    with pytest.raises(IntegrationAssertionError):
+        asyncio.run(
+            _wait_for_task_visible_in_list(
+                steps,
+                FakeService(),
+                conversation_url="https://chatgpt.com/g/g-p-demo/c/abc123",
+                keep_open=False,
+                timeout_seconds=1.0,
+                poll_min_seconds=1.0,
+                poll_max_seconds=1.0,
+                max_attempts=1,
+            )
+        )
+
+    assert steps[-1].name == "task_message_flow.task_list_visible"
+    assert steps[-1].ok is False
+    assert steps[-1].details["attempts"][0]["visibility_status"] == "recent_state_only"
+
+
+def test_wait_for_task_visible_allows_recent_state_only_when_opted_in(monkeypatch) -> None:
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+            return {
+                "ok": True,
+                "count": 1,
+                "chats": [
+                    {
+                        "id": "abc123",
+                        "title": "Recent task",
+                        "conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc123",
+                        "source": "recent_state",
+                    }
+                ],
+                "visibility_status": "recent_state_only",
+                "source_counts": {"snorlax": 0, "dom": 0, "current_page": 0, "history": 0, "recent_state": 1},
+            }
+
+    steps = []
+    import asyncio
+
+    payload, entries, matched = asyncio.run(
+        _wait_for_task_visible_in_list(
+            steps,
+            FakeService(),
+            conversation_url="https://chatgpt.com/g/g-p-demo/c/abc123",
+            keep_open=False,
+            timeout_seconds=1.0,
+            poll_min_seconds=1.0,
+            poll_max_seconds=1.0,
+            max_attempts=1,
+            allow_recent_state_fallback=True,
+        )
+    )
+
+    assert matched["source"] == "recent_state"
+    assert steps[-1].ok is True
+    assert steps[-1].details["visibility_status"] == "recent_state_only"
+    assert steps[-1].details["degraded"] is True
 
 def test_extract_conversation_url_from_ask_result_can_build_from_project_and_id() -> None:
     result = {

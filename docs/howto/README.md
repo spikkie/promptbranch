@@ -16,6 +16,7 @@ These manuals break the project into focused tasks instead of one long README.
 10. [Configure environment variables and config files](10-config-and-environment.md)
 11. [Upgrade from old `chatgpt_*` names](11-upgrade-from-chatgpt-names.md)
 12. [Troubleshoot common failures](12-troubleshooting.md)
+13. [Sync source snapshots and manage artifacts](13-source-sync-and-artifacts.md)
 
 ## Reading order
 

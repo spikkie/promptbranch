@@ -47,3 +47,27 @@ Once a project is remembered, project-scoped commands can omit `--project-url`.
 promptbranch project-ensure "My Project"
 promptbranch ask "hello"
 ```
+
+## Canonical workspace/task commands
+
+Prefer the canonical shell grammar for new scripts:
+
+```bash
+promptbranch ws current
+promptbranch ws use "My Project"
+promptbranch task list --json
+promptbranch task use 1
+promptbranch task current
+```
+
+Legacy `chat-*` commands still exist as aliases, but `task` is the public workflow term.
+
+## Task-list visibility status
+
+`promptbranch task list --json` includes `visibility_status`:
+
+- `indexed`: task data came from indexed task sources such as snorlax/sidebar, DOM, history, or current page
+- `recent_state_only`: task data came only from local recent-state recovery after `ask`
+- `missing`: no task was visible
+
+Treat `recent_state_only` as degraded. It keeps the workflow usable, but it is not proof that ChatGPT indexed the task.
