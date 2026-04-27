@@ -7490,7 +7490,7 @@ class ChatGPTBrowserClient:
 
     async def _project_link_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         links = await page.evaluate(
-            """
+            r"""
             () => {
               const anchors = Array.from(document.querySelectorAll('a[href*="/g/g-p-"][href$="/project"]'));
               return anchors.map((a, idx) => {
@@ -7522,7 +7522,7 @@ class ChatGPTBrowserClient:
 
     async def _dialog_like_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const sels = ['[role="dialog"]', '[role="menu"]', '[role="listbox"]', '[data-radix-popper-content-wrapper]', '[data-radix-menu-content]'];
               const out = [];
@@ -7551,7 +7551,7 @@ class ChatGPTBrowserClient:
 
     async def _scrollable_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const nodes = Array.from(document.querySelectorAll('*'));
               const out = [];
@@ -7593,7 +7593,7 @@ class ChatGPTBrowserClient:
 
     async def _more_candidate_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const matches = [];
               const nodes = Array.from(document.querySelectorAll('[data-sidebar-item="true"], button, [role="button"], a, div, span, summary, [tabindex]'));
