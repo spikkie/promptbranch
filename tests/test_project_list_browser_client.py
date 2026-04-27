@@ -545,6 +545,11 @@ def test_extract_project_chats_from_conversations_payload_requires_matching_proj
                 "conversation_template_id": "g-p-current",
             },
             {
+                "id": "chat-project-slug",
+                "title": "Project chat slug id",
+                "conversation_template_id": "g-p-current-demo",
+            },
+            {
                 "id": "chat-global-1",
                 "title": "Global chat without project id",
             },
@@ -567,6 +572,13 @@ def test_extract_project_chats_from_conversations_payload_requires_matching_proj
             "id": "chat-project-1",
             "title": "Project chat",
             "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-project-1",
+            "create_time": None,
+            "update_time": None,
+        },
+        {
+            "id": "chat-project-slug",
+            "title": "Project chat slug id",
+            "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-project-slug",
             "create_time": None,
             "update_time": None,
         }
@@ -596,7 +608,7 @@ def test_extract_project_chats_from_snorlax_sidebar_payload_matches_project(tmp_
             {
                 "gizmo": {
                     "gizmo": {
-                        "id": "g-p-current",
+                        "id": "g-p-current-demo",
                         "display": {"name": "Current"},
                     }
                 },
