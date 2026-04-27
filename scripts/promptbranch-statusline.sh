@@ -59,10 +59,59 @@ json_get_string() {
   local key="$1"
   local file="$2"
   [ -f "$file" ] || return 0
-  # Sufficient for promptbranch's simple state JSON string fields.
-  sed -nE 's/^[[:space:]]*"'"$key"'"[[:space:]]*:[[:space:]]*"(.*)"[[:space:]]*,?[[:space:]]*$/\1/p' "$file" | head -n 1 | sed 's/\\"/"/g'
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -S -c '
+import json
+import sys
+from urllib.parse import urlparse
+key = sys.argv[1]
+path = sys.argv[2]
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+except Exception:
+    sys.exit(0)
+if not isinstance(payload, dict):
+    sys.exit(0)
+def mapping(value):
+    return value if isinstance(value, dict) else {}
+def first_string(*values):
+    for value in values:
+        if isinstance(value, str) and value:
+            return value
+    return ""
+def conversation_id_from_url(value):
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        parts = [part for part in urlparse(value).path.split("/") if part]
+    except Exception:
+        return ""
+    if len(parts) >= 4 and parts[0] == "g" and parts[2] == "c":
+        return parts[3]
+    if len(parts) >= 2 and parts[0] == "c":
+        return parts[1]
+    return ""
+current = mapping(payload.get("current"))
+workspace = mapping(payload.get("workspace"))
+task = mapping(payload.get("task"))
+if key == "project_name":
+    value = first_string(payload.get("project_name"), current.get("project_name"), workspace.get("project_name"), workspace.get("name"), workspace.get("display_name"))
+elif key == "project_url":
+    value = first_string(payload.get("project_url"), payload.get("project_home_url"), payload.get("current_project_home_url"), current.get("project_url"), current.get("project_home_url"), workspace.get("project_url"), workspace.get("project_home_url"))
+elif key == "conversation_url":
+    value = first_string(payload.get("conversation_url"), payload.get("current_conversation_url"), current.get("conversation_url"), task.get("conversation_url"))
+elif key == "conversation_id":
+    value = first_string(payload.get("conversation_id"), current.get("conversation_id"), task.get("conversation_id"), conversation_id_from_url(first_string(payload.get("conversation_url"), payload.get("current_conversation_url"), current.get("conversation_url"), task.get("conversation_url"))))
+else:
+    value = first_string(payload.get(key), current.get(key), workspace.get(key), task.get(key))
+print(value, end="")
+' "$key" "$file"
+  else
+    # Fallback for pretty-printed legacy state files.
+    sed -nE 's/^[[:space:]]*"'"$key"'"[[:space:]]*:[[:space:]]*"(.*)"[[:space:]]*,?[[:space:]]*$/\1/p' "$file" | head -n 1 | sed 's/\\"/"/g'
+  fi
 }
-
 compact_tail() {
   local value="${1:-}"
   [ -z "$value" ] && { printf '%s' '-'; return; }
