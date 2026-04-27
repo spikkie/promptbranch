@@ -194,3 +194,79 @@ def test_service_project_source_list_calls_automation(monkeypatch):
     assert result["ok"] is True
     assert result["count"] == 1
     assert result["sources"][0]["title"] == "architecture-process_0.1.16.zip"
+
+
+def test_service_remembers_recent_task_from_ask_for_task_list(monkeypatch):
+    async def fake_ask_question_result(self, **kwargs):
+        return {
+            "answer": "TASK_MESSAGE_OK",
+            "conversation_url": "https://chatgpt.com/g/g-p-demo-itest/c/chat-recent-1",
+        }
+
+    async def fake_list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+        return {
+            "ok": True,
+            "project_url": "https://chatgpt.com/g/g-p-demo/project",
+            "count": 0,
+            "chats": [],
+            "source_counts": {"snorlax": 0, "dom": 0, "current_page": 0, "history": 0},
+            "include_history_fallback": include_history_fallback,
+        }
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_chats", fake_list_project_chats)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        email=None,
+        password=None,
+        profile_dir="/tmp/.pb_profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    ask_result = asyncio.run(svc.ask_question_result(prompt="hello", retries=0))
+    list_result = asyncio.run(svc.list_project_chats(keep_open=False, include_history_fallback=False))
+
+    assert ask_result["conversation_url"].endswith("/c/chat-recent-1")
+    assert list_result["count"] == 1
+    assert list_result["chats"][0]["id"] == "chat-recent-1"
+    assert list_result["chats"][0]["source"] == "recent_state"
+    assert list_result["source_counts"]["recent_state"] == 1
+    assert list_result["recent_state_fallback_used"] is True
+
+
+def test_service_does_not_duplicate_recent_task_when_backend_lists_it(monkeypatch):
+    async def fake_ask_question_result(self, **kwargs):
+        return {
+            "answer": "TASK_MESSAGE_OK",
+            "conversation_url": "https://chatgpt.com/g/g-p-demo/c/chat-visible-1",
+        }
+
+    async def fake_list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True):
+        return {
+            "ok": True,
+            "project_url": "https://chatgpt.com/g/g-p-demo/project",
+            "count": 1,
+            "chats": [{"id": "chat-visible-1", "title": "Backend listed", "conversation_url": "https://chatgpt.com/g/g-p-demo/c/chat-visible-1"}],
+            "source_counts": {"snorlax": 1, "dom": 0, "current_page": 0, "history": 0},
+        }
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_chats", fake_list_project_chats)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        email=None,
+        password=None,
+        profile_dir="/tmp/.pb_profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    asyncio.run(svc.ask_question_result(prompt="hello", retries=0))
+    list_result = asyncio.run(svc.list_project_chats(keep_open=False))
+
+    assert list_result["count"] == 1
+    assert list_result["chats"][0]["title"] == "Backend listed"
+    assert list_result["source_counts"]["recent_state"] == 0

@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.116.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.117.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,13 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.117
+
+- `pb task list` and live `task_message_flow` now include a bounded `recent_state` fallback for tasks just created by `ask` when ChatGPT's sidebar/history indexes lag or omit the new conversation.
+- `promptbranch_automation.service.ChatGPTAutomationService` remembers recently-created task conversation URLs per project and merges them into chat-list results without duplicating backend-listed rows.
+- `promptbranch_container_api` now caches per-project service instances so service-mode `/v1/ask` followed by `/v1/chats` can preserve recent task state for the same project.
+- Task-list source counts may now include `source_counts.recent_state`.
 
 ## v0.0.116
 

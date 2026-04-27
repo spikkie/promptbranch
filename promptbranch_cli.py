@@ -38,7 +38,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.116"
+CLI_VERSION = "0.0.117"
 COMMANDS = {
     "login-check",
     "ask",
@@ -761,6 +761,14 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
         chat['title'] = str(chat.get('title') or '(untitled)')
         chat['is_current'] = bool(current_id and chat_id == current_id)
         normalized.append(chat)
+    if current_id and not any(str(item.get('id') or '') == current_id for item in normalized):
+        normalized.append({
+            'id': current_id,
+            'title': '(current task)',
+            'conversation_url': current_conversation_url,
+            'is_current': True,
+            'source': 'current_state',
+        })
     payload['chats'] = normalized
     payload['count'] = len(normalized)
     payload['current_conversation_url'] = current_conversation_url

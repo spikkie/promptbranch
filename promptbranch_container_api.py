@@ -144,7 +144,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.116"
+SERVICE_VERSION = "0.0.117"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -170,6 +170,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
 
 
 service = _build_service()
+_project_services: dict[str, ChatGPTAutomationService] = {}
 app = FastAPI(
     title="ChatGPT Docker Service",
     version=SERVICE_VERSION,
@@ -258,7 +259,11 @@ open http://localhost:8000/ui/test-suite</pre>
 def _service_for(project_url: Optional[str]) -> ChatGPTAutomationService:
     if not project_url or project_url == service.settings.project_url:
         return service
-    return _build_service(project_url_override=project_url)
+    cached = _project_services.get(project_url)
+    if cached is None:
+        cached = _build_service(project_url_override=project_url)
+        _project_services[project_url] = cached
+    return cached
 
 
 def _raise_http_error(exc: Exception) -> None:

@@ -12,7 +12,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload
 from promptbranch_state import ConversationStateStore
 
 
@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.116"
+    assert captured.out.strip() == "promptbranch 0.0.117"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -947,7 +947,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.116"
+    assert payload["version"] == "0.0.117"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1157,3 +1157,15 @@ def test_phase2_task_message_answer_accepts_latest_alias(monkeypatch, capsys, tm
     assert exit_code == 0
     assert payload["message"]["id"] == "u2"
     assert payload["answers"][0]["text"] == "second answer"
+
+
+def test_chat_list_payload_includes_current_task_from_state_when_backend_empty() -> None:
+    chats, payload = _chat_list_payload(
+        {"ok": True, "count": 0, "chats": []},
+        current_conversation_url="https://chatgpt.com/g/g-p-demo/c/chat-current-1",
+    )
+
+    assert payload["count"] == 1
+    assert chats[0]["id"] == "chat-current-1"
+    assert chats[0]["is_current"] is True
+    assert chats[0]["source"] == "current_state"
