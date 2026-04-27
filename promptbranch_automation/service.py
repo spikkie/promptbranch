@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -58,6 +60,74 @@ class ChatGPTAutomationService:
     def __init__(self, settings: ChatGPTAutomationSettings):
         self.settings = settings
         self._lock = asyncio.Lock()
+        self._recent_project_chats: dict[str, dict[str, Any]] = {}
+
+    @staticmethod
+    def _extract_project_id(url: Optional[str]) -> Optional[str]:
+        if not url:
+            return None
+        match = re.search(r"/g/(g-p-[a-z0-9]+)", str(url), re.IGNORECASE)
+        return match.group(1).lower() if match else None
+
+    @staticmethod
+    def _conversation_id_from_url(url: Optional[str]) -> Optional[str]:
+        if not url:
+            return None
+        text = str(url).rstrip("/")
+        if "/c/" not in text:
+            return None
+        return text.split("/c/", 1)[-1].split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+
+    def _remember_recent_project_chat(self, conversation_url: Optional[str]) -> None:
+        conversation_id = self._conversation_id_from_url(conversation_url)
+        project_id = self._extract_project_id(conversation_url) or self._extract_project_id(self.settings.project_url)
+        settings_project_id = self._extract_project_id(self.settings.project_url)
+        if not conversation_url or not conversation_id or not project_id:
+            return
+        if settings_project_id and project_id != settings_project_id:
+            return
+        self._recent_project_chats[conversation_id] = {
+            "id": conversation_id,
+            "title": "(recent task)",
+            "conversation_url": conversation_url,
+            "source": "recent_state",
+            "project_id": project_id,
+            "seen_at": time.time(),
+        }
+
+    def _augment_chat_list_with_recent_state(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return payload
+        project_id = self._extract_project_id(str(payload.get("project_url") or self.settings.project_url))
+        raw_chats = payload.get("chats") if isinstance(payload.get("chats"), list) else []
+        chats = [dict(item) for item in raw_chats if isinstance(item, dict)]
+        known_ids = {str(item.get("id") or self._conversation_id_from_url(item.get("conversation_url")) or "") for item in chats}
+        known_urls = {str(item.get("conversation_url") or "").rstrip("/") for item in chats}
+        added = 0
+        for item in self._recent_project_chats.values():
+            if project_id and item.get("project_id") and item.get("project_id") != project_id:
+                continue
+            conversation_id = str(item.get("id") or "")
+            conversation_url = str(item.get("conversation_url") or "").rstrip("/")
+            if (conversation_id and conversation_id in known_ids) or (conversation_url and conversation_url in known_urls):
+                continue
+            chats.append(dict(item))
+            if conversation_id:
+                known_ids.add(conversation_id)
+            if conversation_url:
+                known_urls.add(conversation_url)
+            added += 1
+        source_counts = dict(payload.get("source_counts") or {}) if isinstance(payload.get("source_counts"), dict) else {}
+        source_counts["recent_state"] = source_counts.get("recent_state", 0) + added
+        if not added:
+            payload["source_counts"] = source_counts
+            return payload
+        augmented = dict(payload)
+        augmented["chats"] = chats
+        augmented["count"] = len(chats)
+        augmented["recent_state_fallback_used"] = True
+        augmented["source_counts"] = source_counts
+        return augmented
 
     def _build_bot(self) -> ChatGPTAutomation:
         logger.debug(
@@ -137,13 +207,14 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         logger.info("Listing ChatGPT project chats")
         async with self._lock:
-            return await self._with_retries(
+            payload = await self._with_retries(
                 "list_project_chats",
                 lambda: self._build_bot().list_project_chats(
                     keep_open=keep_open,
                     include_history_fallback=include_history_fallback,
                 ),
             )
+            return self._augment_chat_list_with_recent_state(payload)
 
     async def list_project_sources(
         self,
@@ -267,12 +338,14 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         logger.info("Removing ChatGPT project")
         async with self._lock:
-            return await self._with_retries(
+            result = await self._with_retries(
                 "remove_project",
                 lambda: self._build_bot().remove_project(
                     keep_open=keep_open,
                 ),
             )
+            self._recent_project_chats.clear()
+            return result
 
     async def add_project_source(
         self,
@@ -361,13 +434,16 @@ class ChatGPTAutomationService:
                             "file_path": file_path,
                         },
                     )
-                    return await self._build_bot().ask_question_result(
+                    result = await self._build_bot().ask_question_result(
                         prompt=prompt,
                         file_path=file_path,
                         conversation_url=conversation_url,
                         expect_json=expect_json,
                         keep_open=keep_open,
                     )
+                    if isinstance(result, dict):
+                        self._remember_recent_project_chat(result.get("conversation_url"))
+                    return result
                 except (ResponseTimeoutError, BotChallengeError) as exc:
                     last_error = exc
                     logger.warning(
