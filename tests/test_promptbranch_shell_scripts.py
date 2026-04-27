@@ -38,6 +38,9 @@ def test_promptbranch_aliases_contains_expected_shortcuts():
     alias_file = Path(__file__).resolve().parents[1] / "scripts" / "promptbranch-aliases.sh"
     text = alias_file.read_text(encoding="utf-8")
     assert "alias pbs='promptbranch state'" in text
-    assert "alias pbsl='promptbranch project-source-list'" in text
-    assert "alias pbsf='promptbranch project-source-add --file'" in text
-    assert "alias pbsr='promptbranch project-source-remove'" in text
+    assert "alias pbtl='promptbranch task list'" in text
+    assert "alias pbsl='promptbranch src list'" in text
+    assert "alias pbsf='promptbranch src add --type file --file'" in text
+    assert "alias pbsr='promptbranch src rm'" in text
+    assert "alias pbss='promptbranch src sync'" in text
+    assert "alias pbac='promptbranch artifact current'" in text

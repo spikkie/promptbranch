@@ -95,6 +95,36 @@ class ChatGPTAutomationService:
             "seen_at": time.time(),
         }
 
+    @staticmethod
+    def _chat_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> str:
+        """Classify task-list visibility without treating local memory as indexing."""
+        indexed_sources = {"snorlax", "dom", "history", "current_page"}
+        indexed_count = 0
+        for source in indexed_sources:
+            try:
+                indexed_count += int(source_counts.get(source) or 0)
+            except (TypeError, ValueError):
+                continue
+        if indexed_count > 0:
+            return "indexed"
+        try:
+            recent_count = int(source_counts.get("recent_state") or 0)
+        except (TypeError, ValueError):
+            recent_count = 0
+        if recent_count > 0 or any(str(item.get("source") or "") == "recent_state" for item in chats):
+            return "recent_state_only"
+        return "missing"
+
+    @staticmethod
+    def _indexed_task_count(source_counts: dict[str, Any]) -> int:
+        total = 0
+        for source in ("snorlax", "dom", "history", "current_page"):
+            try:
+                total += int(source_counts.get(source) or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
     def _augment_chat_list_with_recent_state(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             return payload
@@ -119,14 +149,17 @@ class ChatGPTAutomationService:
             added += 1
         source_counts = dict(payload.get("source_counts") or {}) if isinstance(payload.get("source_counts"), dict) else {}
         source_counts["recent_state"] = source_counts.get("recent_state", 0) + added
-        if not added:
-            payload["source_counts"] = source_counts
-            return payload
         augmented = dict(payload)
         augmented["chats"] = chats
         augmented["count"] = len(chats)
-        augmented["recent_state_fallback_used"] = True
+        augmented["recent_state_fallback_used"] = bool(added)
         augmented["source_counts"] = source_counts
+        augmented["visibility_status"] = self._chat_visibility_status(source_counts, chats)
+        augmented["indexed_task_count"] = self._indexed_task_count(source_counts)
+        try:
+            augmented["recent_state_count"] = int(source_counts.get("recent_state") or 0)
+        except (TypeError, ValueError):
+            augmented["recent_state_count"] = 0
         return augmented
 
     def _build_bot(self) -> ChatGPTAutomation:

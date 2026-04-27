@@ -40,3 +40,20 @@ promptbranch --project-url https://chatgpt.com/g/.../project   project-source-re
 ```bash
 promptbranch --project-url https://chatgpt.com/g/.../project project-remove
 ```
+
+## Sync the current repo as a source snapshot
+
+Create a local snapshot only:
+
+```bash
+promptbranch src sync . --no-upload --json
+```
+
+Create a snapshot and upload it to the current workspace as a project source:
+
+```bash
+promptbranch ws use "Demo Project"
+promptbranch src sync . --json
+```
+
+Use `promptbranch artifact current`, `promptbranch artifact list`, and `promptbranch artifact verify` to inspect generated ZIPs.

@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.118" in out
+    assert "0.0.119" in out
     assert "promptbranch" in out
 
 
@@ -252,3 +252,25 @@ def test_phase2_parser_accepts_task_message_commands() -> None:
     assert answer_args.task_message_command == "answer"
     assert answer_args.id_or_index == "abc"
     assert answer_args.target == "Current chat"
+
+
+def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
+    parser = make_parser()
+    src_sync = parser.parse_args(["src", "sync", ".", "--no-upload", "--json"])
+    assert src_sync.command == "src"
+    assert src_sync.src_command == "sync"
+    assert src_sync.no_upload is True
+    assert src_sync.json is True
+
+    artifact_verify = parser.parse_args(["artifact", "verify", "release.zip", "--json"])
+    assert artifact_verify.command == "artifact"
+    assert artifact_verify.artifact_command == "verify"
+    assert artifact_verify.path == "release.zip"
+    assert artifact_verify.json is True
+
+
+def test_parser_accepts_strict_task_visibility_escape_hatch() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["test-suite", "--allow-recent-state-task-fallback"])
+    assert args.command == "test-suite"
+    assert args.allow_recent_state_task_fallback is True

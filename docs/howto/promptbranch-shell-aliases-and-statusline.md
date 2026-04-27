@@ -16,20 +16,33 @@ Recommended shortcuts:
 | `pbv` | `promptbranch version` |
 | `pbs` | `promptbranch state` |
 | `pbc` | `promptbranch state-clear` |
-| `pbpl` | `promptbranch project-list` |
-| `pbpu` | `promptbranch use` |
-| `pbcl` | `promptbranch chat-list` |
-| `pbcu` | `promptbranch chat-use` |
-| `pbcshow` | `promptbranch chat-show` |
+| `pbwl` | `promptbranch ws list` |
+| `pbwu` | `promptbranch ws use` |
+| `pbwc` | `promptbranch ws current` |
+| `pbtl` | `promptbranch task list` |
+| `pbtu` | `promptbranch task use` |
+| `pbtc` | `promptbranch task current` |
+| `pbtshow` | `promptbranch task show` |
+| `pbtmsgs` | `promptbranch task messages list` |
 | `pba` | `promptbranch ask` |
-| `pbsl` | `promptbranch project-source-list` |
-| `pbsa` | `promptbranch project-source-add` |
-| `pbsf` | `promptbranch project-source-add --file` |
-| `pbst` | `promptbranch project-source-add --text` |
-| `pbsk` | `promptbranch project-source-add --link` |
-| `pbsr` | `promptbranch project-source-remove` |
+| `pbsl` | `promptbranch src list` |
+| `pbsa` | `promptbranch src add` |
+| `pbsf` | `promptbranch src add --type file --file` |
+| `pbst` | `promptbranch src add --type text --value` |
+| `pbsk` | `promptbranch src add --type link --value` |
+| `pbsr` | `promptbranch src rm` |
+| `pbss` | `promptbranch src sync` |
+| `pbssn` | `promptbranch src sync . --no-upload` |
+| `pbac` | `promptbranch artifact current` |
+| `pbal` | `promptbranch artifact list` |
+| `pbar` | `promptbranch artifact release` |
+| `pbav` | `promptbranch artifact verify` |
+| `pbd` | `promptbranch doctor` |
 | `pbt` | `promptbranch test-suite` |
 | `pbstatus` | compact Promptbranch state line |
+
+Legacy `pbcl`, `pbcu`, `pbcleave`, `pbcshow`, and `pbcsum` remain available for old chat-oriented workflows, but new scripts should use `task` aliases.
+
 
 ## Setup script
 

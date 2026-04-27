@@ -234,6 +234,8 @@ def test_service_remembers_recent_task_from_ask_for_task_list(monkeypatch):
     assert list_result["chats"][0]["source"] == "recent_state"
     assert list_result["source_counts"]["recent_state"] == 1
     assert list_result["recent_state_fallback_used"] is True
+    assert list_result["visibility_status"] == "recent_state_only"
+    assert list_result["indexed_task_count"] == 0
 
 
 def test_service_does_not_duplicate_recent_task_when_backend_lists_it(monkeypatch):
@@ -270,3 +272,5 @@ def test_service_does_not_duplicate_recent_task_when_backend_lists_it(monkeypatc
     assert list_result["count"] == 1
     assert list_result["chats"][0]["title"] == "Backend listed"
     assert list_result["source_counts"]["recent_state"] == 0
+    assert list_result["visibility_status"] == "indexed"
+    assert list_result["indexed_task_count"] == 1

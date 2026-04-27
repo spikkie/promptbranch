@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.118.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.119.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,13 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.119
+
+- Tightened `task_message_flow.task_list_visible`: local `recent_state` recovery no longer counts as indexed task-list visibility by default.
+- `pb task list --json` now reports `visibility_status`, `indexed_task_count`, and `recent_state_count` so degraded recent-state-only results are explicit.
+- Added `--allow-recent-state-task-fallback` to `pb test smoke` and `pb test-suite` for temporary degraded-mode smoke runs.
+- Updated Phase 3 help/docs/howtos and shell aliases for `pb src sync` and `pb artifact ...`.
 
 ## v0.0.118
 
