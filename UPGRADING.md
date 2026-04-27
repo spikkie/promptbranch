@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.119.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.120.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,12 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.120
+
+- Fixed `scripts/promptbranch-statusline.sh` so compact one-line `.promptbranch_state.json` files are parsed correctly.
+- Preserved legacy flat state keys such as `project_name`, `project_url`, `conversation_url`, and `conversation_id` while also supporting normalized workspace/task state sections.
+- Kept the strict task-index visibility semantics introduced in v0.0.119.
 
 ## v0.0.119
 
