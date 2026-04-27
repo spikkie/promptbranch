@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.114.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.115.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,13 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.115
+
+- `pb task list` now includes the currently-open project conversation as a verified current-page fallback when ChatGPT's sidebar/history task indexes lag after `ask`.
+- `task_message_flow.task_list_visible` can pass from the direct current conversation instead of failing solely because backend task indexes are eventually consistent.
+- Task-list results now report `source_counts.current_page` so live-suite logs show when this fallback was used.
+- No command grammar expansion in this release.
 
 ## v0.0.114
 
