@@ -1348,6 +1348,48 @@ class ChatGPTBrowserClient:
             await self._pause_for_keep_open("Project-list debug completed. Press Enter to close the browser...")
         return summary
 
+    async def _current_project_conversation_chat_entry(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+    ) -> list[dict[str, Any]]:
+        """Return the currently-open project conversation as a task-list entry."""
+        current_url = await self._safe_page_url(page)
+        conversation_id = self._conversation_id_from_url(current_url)
+        if not conversation_id:
+            return []
+        target_project_id = self._extract_project_id_from_url(project_url)
+        current_project_id = self._extract_project_id_from_url(current_url)
+        if target_project_id and current_project_id and not self._project_ids_refer_to_same_project(current_project_id, target_project_id):
+            return []
+        if target_project_id and not current_project_id:
+            return []
+        conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url) or current_url
+        title = '(current task)'
+        create_time: Any = None
+        update_time: Any = None
+        try:
+            detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+            if detail.get('status') == 200 and isinstance(detail.get('payload'), dict):
+                payload = detail['payload']
+                raw_title = re.sub(r'\s+', ' ', str(payload.get('title') or '')).strip()
+                if raw_title:
+                    title = raw_title
+                create_time = payload.get('create_time') or payload.get('createTime')
+                update_time = payload.get('update_time') or payload.get('updateTime')
+        except Exception as exc:
+            self._log(label, 'current project conversation detail lookup failed; using URL-derived task entry', error=repr(exc), conversation_id=conversation_id)
+        return [{
+            'id': conversation_id,
+            'title': title,
+            'conversation_url': conversation_url,
+            'create_time': create_time,
+            'update_time': update_time,
+            'source': 'current_page',
+        }]
+
     async def _list_project_chats_operation(
         self,
         *,
@@ -1361,6 +1403,7 @@ class ChatGPTBrowserClient:
         project_slug = self._project_slug_from_url(project_url)
         if not project_id or not project_slug:
             raise RuntimeError('A project must be selected before listing chats')
+        current_page_chats = await self._current_project_conversation_chat_entry(page, project_url=project_url, label='chat-list-current')
         await self._goto(page, project_url, label='chat-list-home')
         await self._open_project_chats_tab(page)
         try:
@@ -1370,6 +1413,9 @@ class ChatGPTBrowserClient:
             snorlax_chats = []
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        if not chats and current_page_chats:
+            chats = self._merge_project_chat_lists(current_page_chats, chats)
+            self._log('chat-list', 'using current project conversation as task-list fallback', current_page_count=len(current_page_chats), project_id=project_id)
         history_chats: list[dict[str, Any]] = []
         if not chats:
             history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
@@ -1390,9 +1436,15 @@ class ChatGPTBrowserClient:
             'project_slug': project_slug,
             'count': len(chats),
             'chats': chats,
+            'source_counts': {
+                'snorlax': len(snorlax_chats),
+                'dom': len(dom_chats),
+                'current_page': len(current_page_chats),
+                'history': len(history_chats),
+            },
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats))
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats))
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result

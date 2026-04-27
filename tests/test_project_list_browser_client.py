@@ -706,6 +706,69 @@ def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_
     assert result["count"] == 1
     assert result["chats"][0]["title"] == "Azure DevOps Engineer Role"
 
+def test_list_project_chats_operation_uses_current_project_conversation_when_indexes_lag(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return None
+
+    async def fake_collect_snorlax(page, *, project_url, label):
+        return []
+
+    async def fake_collect_dom(page, *, project_url, label):
+        return []
+
+    async def fake_collect_history(page, *, project_url, label):
+        raise AssertionError("history fallback should not run when the current project conversation is known")
+
+    urls = iter([
+        "https://chatgpt.com/g/g-p-current-demo/c/chat-current-1",
+        "https://chatgpt.com/g/g-p-current-demo/project",
+    ])
+
+    async def fake_safe_page_url(page):
+        return next(urls)
+
+    async def fake_fetch_detail(page, *, conversation_id):
+        assert conversation_id == "chat-current-1"
+        return {
+            "status": 200,
+            "payload": {
+                "title": "Freshly created task",
+                "create_time": "2026-04-27T12:00:00Z",
+                "update_time": "2026-04-27T12:01:00Z",
+            },
+        }
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_via_snorlax_sidebar = fake_collect_snorlax
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client._fetch_conversation_detail = fake_fetch_detail
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert result["count"] == 1
+    assert result["chats"][0]["id"] == "chat-current-1"
+    assert result["chats"][0]["title"] == "Freshly created task"
+    assert result["chats"][0]["source"] == "current_page"
+    assert result["source_counts"]["current_page"] == 1
+    assert result["history_fallback_used"] is False
+
+
 def test_is_conversation_history_url_accepts_detail_endpoint(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
