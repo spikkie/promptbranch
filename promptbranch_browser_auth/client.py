@@ -5076,7 +5076,7 @@ class ChatGPTBrowserClient:
         *,
         project_url: str,
         label: str,
-        max_scroll_rounds: int = 20,
+        max_scroll_rounds: int = 80,
     ) -> list[dict[str, Any]]:
         prefix = self._project_conversation_path_prefix() or self._project_conversation_path_prefix_from_url(project_url)
         if not prefix:
@@ -5087,54 +5087,35 @@ class ChatGPTBrowserClient:
         stagnant_rounds = 0
         for round_index in range(max_scroll_rounds):
             snapshot = await page.evaluate(
-                r'''
+                r"""
                 ({ prefix }) => {
                     const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
                     const isVisible = el => {
                         if (!el) return false;
                         const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
                         const rect = el.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0;
-                    };
-                    const isScrollable = el => {
-                        if (!el || !isVisible(el)) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        const overflowY = (style.overflowY || '').toLowerCase();
-                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
-                        return el.scrollHeight > el.clientHeight + 24;
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
                     };
                     const rows = [];
                     const seen = new Set();
-                    for (const anchor of Array.from(document.querySelectorAll('main a[href*="/c/"], [role="main"] a[href*="/c/"]'))) {
+                    for (const anchor of Array.from(document.querySelectorAll('a[href*="/c/"]'))) {
+                        const url = safeUrl(anchor.getAttribute('href') || '');
+                        if (!url || !url.pathname.startsWith(prefix)) continue;
                         if (!isVisible(anchor)) continue;
-                        const href = anchor.getAttribute('href') || '';
-                        const absolute = new URL(href, window.location.origin).toString();
-                        const path = new URL(absolute).pathname;
-                        if (!path.startsWith(prefix)) continue;
-                        const row = anchor.closest('li, article, [role="listitem"], a, div');
+                        const row = anchor.closest('li, article, [role="listitem"], [data-testid], a, div');
                         const text = normalize((row || anchor).innerText || (row || anchor).textContent || '');
                         if (!text) continue;
                         const lines = text.split('\n').map(normalize).filter(Boolean);
-                        const id = path.split('/c/')[1]?.split(/[/?#]/)[0] || '';
+                        const id = url.pathname.split('/c/')[1]?.split(/[/?#]/)[0] || '';
                         if (!id || seen.has(id)) continue;
                         seen.add(id);
-                        rows.push({
-                            id,
-                            title: lines[0] || '(untitled)',
-                            preview: lines.slice(1).join(' '),
-                            conversation_url: absolute,
-                        });
+                        rows.push({ id, title: lines[0] || '(untitled)', preview: lines.slice(1).join(' '), conversation_url: url.toString() });
                     }
-                    const scrollables = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
-                    return {
-                        rows,
-                        scrollables: scrollables.map((el, index) => ({ index, top: el.scrollTop, height: el.clientHeight, scrollHeight: el.scrollHeight })),
-                    };
+                    return { rows };
                 }
-                ''',
+                """,
                 {'prefix': prefix},
             )
             rows = snapshot.get('rows') if isinstance(snapshot, dict) else []
@@ -5162,71 +5143,93 @@ class ChatGPTBrowserClient:
             else:
                 stagnant_rounds = 0
             scrolled = await page.evaluate(
-                r'''
-                () => {
-                    const isVisible = el => {
-                        if (!el) return false;
+                r"""
+                ({ prefix }) => {
+                    const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                    const isVisibleish = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
                         const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
                         const rect = el.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0;
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= -200 && rect.top <= window.innerHeight + 200;
                     };
-                    const isScrollable = el => {
-                        if (!el || !isVisible(el)) return false;
+                    const projectAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                        const url = safeUrl(anchor.getAttribute('href') || '');
+                        return url && url.pathname.startsWith(prefix);
+                    });
+                    const candidates = new Set([document.scrollingElement, document.documentElement, document.body]);
+                    for (const anchor of projectAnchors) {
+                        let el = anchor;
+                        for (let depth = 0; el && depth < 16; depth += 1) {
+                            candidates.add(el);
+                            el = el.parentElement;
+                        }
+                    }
+                    for (const el of Array.from(document.querySelectorAll('main, [role="main"], main *, [role="main"] *, [data-radix-scroll-area-viewport], [data-virtuoso-scroller], [data-testid*="scroll"], [class*="scroll"], [class*="overflow"]'))) {
+                        candidates.add(el);
+                    }
+                    const scored = [];
+                    for (const el of Array.from(candidates)) {
+                        if (!el || !el.getBoundingClientRect) continue;
+                        const scrollHeight = el.scrollHeight || 0;
+                        const clientHeight = el.clientHeight || 0;
+                        if (scrollHeight <= clientHeight + 24) continue;
+                        const isDocument = el === document.scrollingElement || el === document.documentElement || el === document.body;
+                        if (!isDocument && !isVisibleish(el)) continue;
+                        const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
+                        const rect = el.getBoundingClientRect();
                         const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        const overflowY = (style.overflowY || '').toLowerCase();
-                        const canOverflow = ['auto', 'scroll', 'overlay'].includes(overflowY)
-                            || el === document.scrollingElement
-                            || el === document.documentElement
-                            || el === document.body;
-                        return canOverflow && el.scrollHeight > el.clientHeight + 24;
-                    };
-                    const candidates = Array.from(new Set([
-                        document.scrollingElement,
-                        document.documentElement,
-                        document.body,
-                        ...Array.from(document.querySelectorAll('main, [role="main"], main *, [data-radix-scroll-area-viewport]'))
-                    ])).filter(isScrollable);
+                        const overflowY = (style?.overflowY || '').toLowerCase();
+                        const score = (containsProjectAnchor ? 10000 : 0) + (isDocument ? 1000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 750 : 0) + Math.min(scrollHeight - clientHeight, 2500) + Math.min(rect.width || 0, 1000);
+                        scored.push({ el, score, containsProjectAnchor, isDocument });
+                    }
+                    scored.sort((a, b) => b.score - a.score);
                     let moved = false;
                     const moves = [];
-                    for (const el of candidates) {
+                    const scrollOne = (el, reason) => {
                         const before = el.scrollTop || 0;
-                        const step = Math.max((el.clientHeight || window.innerHeight || 300) * 0.85, 240);
-                        try {
-                            el.scrollBy({ top: step, behavior: 'instant' });
-                        } catch (_err) {
-                            el.scrollTop = Math.min(before + step, el.scrollHeight);
-                        }
+                        const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                        const step = Math.max((el.clientHeight || window.innerHeight || 600) * 0.88, 420);
+                        const target = Math.min(before + step, maxTop);
+                        if (target <= before + 1) return;
+                        try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
                         const after = el.scrollTop || 0;
-                        if (after > before + 1) {
-                            moved = true;
-                            moves.push({ tag: el.tagName, before, after, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight });
-                        }
+                        if (after > before + 1) { moved = true; moves.push({ tag: el.tagName || 'DOCUMENT', reason, before, after, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }); }
+                    };
+                    for (const item of scored.slice(0, 12)) {
+                        scrollOne(item.el, item.containsProjectAnchor ? 'contains_project_anchor' : 'candidate');
                     }
-                    try {
-                        window.dispatchEvent(new WheelEvent('wheel', { deltaY: Math.max(window.innerHeight * 0.9, 500), bubbles: true, cancelable: true }));
-                    } catch (_err) {}
-                    try {
-                        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true }));
-                    } catch (_err) {}
-                    if (!moved) {
-                        const before = window.scrollY;
-                        window.scrollTo(0, before + Math.max(window.innerHeight * 0.9, 500));
-                        moved = window.scrollY > before + 1;
+                    const visibleProjectAnchors = projectAnchors.filter(isVisibleish);
+                    if (visibleProjectAnchors.length) {
+                        try { visibleProjectAnchors[visibleProjectAnchors.length - 1].scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'instant' }); } catch (_err) {}
+                        try { visibleProjectAnchors[visibleProjectAnchors.length - 1].dispatchEvent(new WheelEvent('wheel', { deltaY: Math.max(window.innerHeight * 0.95, 700), bubbles: true, cancelable: true })); } catch (_err) {}
                     }
-                    return { moved, moves };
+                    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true })); } catch (_err) {}
+                    const beforeWindow = window.scrollY || document.documentElement.scrollTop || 0;
+                    try { window.scrollBy({ top: Math.max(window.innerHeight * 0.95, 700), behavior: 'instant' }); } catch (_err) { window.scrollTo(0, beforeWindow + Math.max(window.innerHeight * 0.95, 700)); }
+                    const afterWindow = window.scrollY || document.documentElement.scrollTop || 0;
+                    if (afterWindow > beforeWindow + 1) { moved = true; moves.push({ tag: 'WINDOW', reason: 'window', before: beforeWindow, after: afterWindow, scrollHeight: document.documentElement.scrollHeight, clientHeight: window.innerHeight }); }
+                    return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length };
                 }
-                '''
+                """,
+                {'prefix': prefix},
             )
             did_scroll = bool(scrolled.get('moved')) if isinstance(scrolled, dict) else bool(scrolled)
+            try:
+                viewport = getattr(page, 'viewport_size', None) or {}
+                width = int(viewport.get('width') or 1280)
+                height = int(viewport.get('height') or 900)
+                await page.mouse.move(width * 0.62, height * 0.70)
+                await page.mouse.wheel(0, max(int(height * 0.95), 700))
+                await page.keyboard.press('PageDown')
+            except Exception as exc:
+                self._log(label, 'native project chat scroll events failed; continuing with JS scroll result', round=round_index + 1, error=repr(exc))
             self._log(label, 'advanced project chats DOM scroll', round=round_index + 1, moved=did_scroll, details=scrolled if isinstance(scrolled, dict) else None)
-            if stagnant_rounds >= 3 and not did_scroll:
+            if stagnant_rounds >= 8 and not did_scroll:
                 break
-            if not did_scroll and new_count == 0:
+            if stagnant_rounds >= 12:
                 break
-            await page.wait_for_timeout(750)
+            await page.wait_for_timeout(1_100)
         return collected
 
     async def _open_project_sources_tab(self, page: Any) -> None:
