@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.122.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.123.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -115,6 +115,12 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.123
+
+- Hardened `pb task list` project-page DOM enumeration for ChatGPT's virtualized project Chats list.
+- The DOM collector now uses deeper scroll rounds, project-anchor ancestor scroll detection, `scrollIntoView`, native mouse wheel, and PageDown events before returning.
+- This targets the remaining bug where `pb task list` stopped at the first visible task batch while additional project tasks existed below the scroll fold.
 
 ## v0.0.122
 
