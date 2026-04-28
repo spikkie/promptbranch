@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.120"
+CLI_VERSION = "0.0.121"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2389,7 +2389,7 @@ def make_parser() -> argparse.ArgumentParser:
     task = subparsers.add_parser("task", help="Task commands for the active workspace.")
     task_subparsers = task.add_subparsers(dest="task_command", required=True)
 
-    task_list = task_subparsers.add_parser("list", help="List tasks for the current workspace.")
+    task_list = task_subparsers.add_parser("list", help="List indexed tasks for the current workspace, including rows below the initial project chat viewport.")
     task_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     task_list.add_argument("--keep-open", action="store_true")
 
@@ -2583,7 +2583,7 @@ def make_parser() -> argparse.ArgumentParser:
     source_remove.add_argument("--exact", action="store_true", help="Require an exact visible text match.")
     source_remove.add_argument("--keep-open", action="store_true")
 
-    chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="Legacy alias. Prefer: pb task list.")
+    chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="Legacy alias. Prefer: pb task list; uses the same deeper task enumeration.")
     chat_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     chat_list.add_argument("--keep-open", action="store_true")
 

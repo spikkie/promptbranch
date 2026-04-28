@@ -656,6 +656,67 @@ def test_extract_project_chats_from_snorlax_sidebar_payload_matches_project(tmp_
     ]
 
 
+def test_collect_project_chats_via_snorlax_sidebar_follows_cursor_after_target_project(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+    calls: list[str | None] = []
+
+    async def fake_fetch(page, *, cursor=None, limit=20, conversations_per_gizmo=100):
+        calls.append(cursor)
+        if cursor is None:
+            return {
+                "status": 200,
+                "used_authorization": True,
+                "payload": {
+                    "cursor": "cursor-2",
+                    "items": [
+                        {
+                            "gizmo": {"gizmo": {"id": "g-p-current-demo"}},
+                            "conversations": {
+                                "items": [
+                                    {"id": "chat-1", "title": "First visible task"},
+                                ]
+                            },
+                        }
+                    ],
+                },
+            }
+        if cursor == "cursor-2":
+            return {
+                "status": 200,
+                "used_authorization": True,
+                "payload": {
+                    "cursor": None,
+                    "items": [
+                        {
+                            "gizmo": {"gizmo": {"id": "g-p-current-demo"}},
+                            "conversations": {
+                                "items": [
+                                    {"id": "chat-2", "title": "Task below scroll fold"},
+                                ]
+                            },
+                        }
+                    ],
+                },
+            }
+        raise AssertionError(f"unexpected cursor: {cursor}")
+
+    client._fetch_snorlax_sidebar_page = fake_fetch
+
+    import asyncio
+
+    chats = asyncio.run(
+        client._collect_project_chats_via_snorlax_sidebar(
+            page,
+            project_url="https://chatgpt.com/g/g-p-current-demo/project",
+            label="test-snorlax",
+        )
+    )
+
+    assert calls == [None, "cursor-2"]
+    assert [chat["id"] for chat in chats] == ["chat-1", "chat-2"]
+
+
 def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_are_empty(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     page = object()
