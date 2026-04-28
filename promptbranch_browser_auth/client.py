@@ -3783,7 +3783,14 @@ class ChatGPTBrowserClient:
                 next_cursor=next_cursor,
                 used_authorization=response.get('used_authorization'),
             )
-            if found_project:
+            # Do not stop merely because the target project was found. Some
+            # ChatGPT project chat lists expose only the initially visible
+            # conversation batch plus a cursor for additional sidebar data.
+            # Continue while a fresh cursor exists so `pb task list` does not
+            # cap out at the first visible page.
+            if found_project and not next_cursor:
+                break
+            if collected and not found_project:
                 break
             if not next_cursor or next_cursor in seen_cursors:
                 break
@@ -5042,7 +5049,7 @@ class ChatGPTBrowserClient:
         *,
         project_url: str,
         label: str,
-        max_scroll_rounds: int = 6,
+        max_scroll_rounds: int = 20,
     ) -> list[dict[str, Any]]:
         prefix = self._project_conversation_path_prefix() or self._project_conversation_path_prefix_from_url(project_url)
         if not prefix:
@@ -5127,8 +5134,6 @@ class ChatGPTBrowserClient:
                 stagnant_rounds += 1
             else:
                 stagnant_rounds = 0
-            if stagnant_rounds >= 2:
-                break
             scrolled = await page.evaluate(
                 r'''
                 () => {
@@ -5145,28 +5150,56 @@ class ChatGPTBrowserClient:
                         const style = window.getComputedStyle(el);
                         if (!style) return false;
                         const overflowY = (style.overflowY || '').toLowerCase();
-                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
-                        return el.scrollHeight > el.clientHeight + 24;
+                        const canOverflow = ['auto', 'scroll', 'overlay'].includes(overflowY)
+                            || el === document.scrollingElement
+                            || el === document.documentElement
+                            || el === document.body;
+                        return canOverflow && el.scrollHeight > el.clientHeight + 24;
                     };
-                    const candidates = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
+                    const candidates = Array.from(new Set([
+                        document.scrollingElement,
+                        document.documentElement,
+                        document.body,
+                        ...Array.from(document.querySelectorAll('main, [role="main"], main *, [data-radix-scroll-area-viewport]'))
+                    ])).filter(isScrollable);
                     let moved = false;
+                    const moves = [];
                     for (const el of candidates) {
-                        const before = el.scrollTop;
-                        el.scrollTop = Math.min(el.scrollTop + Math.max(el.clientHeight * 0.9, 200), el.scrollHeight);
-                        if (el.scrollTop > before + 1) moved = true;
+                        const before = el.scrollTop || 0;
+                        const step = Math.max((el.clientHeight || window.innerHeight || 300) * 0.85, 240);
+                        try {
+                            el.scrollBy({ top: step, behavior: 'instant' });
+                        } catch (_err) {
+                            el.scrollTop = Math.min(before + step, el.scrollHeight);
+                        }
+                        const after = el.scrollTop || 0;
+                        if (after > before + 1) {
+                            moved = true;
+                            moves.push({ tag: el.tagName, before, after, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight });
+                        }
                     }
+                    try {
+                        window.dispatchEvent(new WheelEvent('wheel', { deltaY: Math.max(window.innerHeight * 0.9, 500), bubbles: true, cancelable: true }));
+                    } catch (_err) {}
+                    try {
+                        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true }));
+                    } catch (_err) {}
                     if (!moved) {
                         const before = window.scrollY;
-                        window.scrollTo(0, before + Math.max(window.innerHeight * 0.9, 300));
+                        window.scrollTo(0, before + Math.max(window.innerHeight * 0.9, 500));
                         moved = window.scrollY > before + 1;
                     }
-                    return moved;
+                    return { moved, moves };
                 }
                 '''
             )
-            if not scrolled:
+            did_scroll = bool(scrolled.get('moved')) if isinstance(scrolled, dict) else bool(scrolled)
+            self._log(label, 'advanced project chats DOM scroll', round=round_index + 1, moved=did_scroll, details=scrolled if isinstance(scrolled, dict) else None)
+            if stagnant_rounds >= 3 and not did_scroll:
                 break
-            await page.wait_for_timeout(400)
+            if not did_scroll and new_count == 0:
+                break
+            await page.wait_for_timeout(750)
         return collected
 
     async def _open_project_sources_tab(self, page: Any) -> None:

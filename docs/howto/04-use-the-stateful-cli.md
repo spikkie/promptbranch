@@ -71,3 +71,5 @@ Legacy `chat-*` commands still exist as aliases, but `task` is the public workfl
 - `missing`: no task was visible
 
 Treat `recent_state_only` as degraded. It keeps the workflow usable, but it is not proof that ChatGPT indexed the task.
+
+`promptbranch task list` now performs deeper project-chat enumeration. It follows snorlax/sidebar cursors when available and scrolls the project Chats surface before falling back, so tasks below the initially visible list should appear without manually opening the browser and scrolling first.
