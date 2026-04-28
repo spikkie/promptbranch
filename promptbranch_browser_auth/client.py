@@ -1435,13 +1435,17 @@ class ChatGPTBrowserClient:
             raise RuntimeError('A project must be selected before listing chats')
         current_page_chats = await self._current_project_conversation_chat_entry(page, project_url=project_url, label='chat-list-current')
         await self._goto(page, project_url, label='chat-list-home')
-        await self._open_project_chats_tab(page)
+        chats_tab_active = await self._open_project_chats_tab(page)
         try:
             snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-snorlax')
         except Exception as exc:
             self._log('chat-list', 'snorlax project chat enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             snorlax_chats = []
-        dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
+        if chats_tab_active is False:
+            self._log('chat-list', 'skipping project chat DOM collection because Chats tab is not active', current_url=await self._safe_page_url(page))
+            dom_chats = []
+        else:
+            dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
         index_sources_found = bool(chats)
         if not chats and current_page_chats:
@@ -1512,6 +1516,7 @@ class ChatGPTBrowserClient:
             'history_fallback_skipped': history_fallback_skipped,
             'history_supplement_used': history_supplement_used,
             'include_history_fallback': include_history_fallback,
+            'chats_tab_active': chats_tab_active,
             'source_counts': {
                 'snorlax': len(snorlax_chats),
                 'dom': len(dom_chats),
@@ -5027,25 +5032,86 @@ class ChatGPTBrowserClient:
         return None
 
 
-    async def _open_project_chats_tab(self, page: Any) -> None:
+    async def _open_project_chats_tab(self, page: Any) -> bool:
+        """Open the project Chats tab and report whether it looked active."""
         tab = await self._wait_for_visible_locator(
             page,
             PROJECT_CHATS_TAB_SELECTORS,
             label="project-chats-tab",
             total_timeout_ms=7_500,
         )
-        if tab is None:
-            self._log("chat-list", "project chats tab not found; continuing with current surface", current_url=await self._safe_page_url(page))
-            return
-        try:
-            await self._click_locator_with_fallback(
-                tab,
-                label="project-chats-tab",
-                timeout_ms=5_000,
-            )
-            await page.wait_for_timeout(500)
-        except Exception as exc:
-            self._log("chat-list", "project chats tab click failed; continuing", error=repr(exc), current_url=await self._safe_page_url(page))
+        if tab is not None:
+            try:
+                await self._click_locator_with_fallback(
+                    tab,
+                    label="project-chats-tab",
+                    timeout_ms=5_000,
+                )
+                await page.wait_for_timeout(750)
+            except Exception as exc:
+                self._log("chat-list", "project chats tab locator click failed; trying JS fallback", error=repr(exc), current_url=await self._safe_page_url(page))
+
+        clicked = await page.evaluate(
+            r'''
+            () => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const elements = Array.from(main.querySelectorAll('button, a, [role="tab"], [role="button"], [tabindex]'));
+                const candidates = elements.filter(el => {
+                    if (!isVisible(el)) return false;
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    return text === 'chats' || text.startsWith('chats ');
+                });
+                const candidate = candidates[0];
+                if (!candidate) return { clicked: false, reason: 'not_found' };
+                candidate.click();
+                return { clicked: true, text: candidate.innerText || candidate.textContent || candidate.getAttribute('aria-label') || '' };
+            }
+            '''
+        )
+        if isinstance(clicked, dict) and clicked.get('clicked'):
+            await page.wait_for_timeout(750)
+
+        active = await page.evaluate(
+            r'''
+            () => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const tabs = Array.from(main.querySelectorAll('button, a, [role="tab"], [role="button"], [aria-selected], [data-state]'));
+                for (const el of tabs) {
+                    if (!isVisible(el)) continue;
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    if (text !== 'chats' && !text.startsWith('chats ')) continue;
+                    const ariaSelected = (el.getAttribute('aria-selected') || '').toLowerCase();
+                    const dataState = (el.getAttribute('data-state') || '').toLowerCase();
+                    const ariaCurrent = (el.getAttribute('aria-current') || '').toLowerCase();
+                    const cls = (el.className || '').toString().toLowerCase();
+                    if (ariaSelected === 'true' || dataState === 'active' || ariaCurrent === 'page' || cls.includes('selected') || cls.includes('active')) {
+                        return { active: true, text, reason: 'selected_marker' };
+                    }
+                    return { active: true, text, reason: 'visible_chats_tab' };
+                }
+                return { active: false, reason: 'not_found' };
+            }
+            '''
+        )
+        ok = bool(active.get('active')) if isinstance(active, dict) else False
+        self._log("chat-list", "project chats tab activation check", active=ok, clicked=clicked if isinstance(clicked, dict) else None, details=active if isinstance(active, dict) else None, current_url=await self._safe_page_url(page))
+        return ok
 
     def _merge_project_chat_lists(self, primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
@@ -5098,22 +5164,23 @@ class ChatGPTBrowserClient:
                         const rect = el.getBoundingClientRect();
                         return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
                     };
+                    const main = document.querySelector('main, [role="main"]');
+                    const root = main || document.body;
                     const rows = [];
                     const seen = new Set();
-                    for (const anchor of Array.from(document.querySelectorAll('a[href*="/c/"]'))) {
+                    for (const anchor of Array.from(root.querySelectorAll('a[href*="/c/"]'))) {
                         const url = safeUrl(anchor.getAttribute('href') || '');
                         if (!url || !url.pathname.startsWith(prefix)) continue;
-                        if (!isVisible(anchor)) continue;
                         const row = anchor.closest('li, article, [role="listitem"], [data-testid], a, div');
-                        const text = normalize((row || anchor).innerText || (row || anchor).textContent || '');
+                        const text = normalize((row || anchor).innerText || (row || anchor).textContent || anchor.getAttribute('aria-label') || '');
                         if (!text) continue;
                         const lines = text.split('\n').map(normalize).filter(Boolean);
                         const id = url.pathname.split('/c/')[1]?.split(/[/?#]/)[0] || '';
                         if (!id || seen.has(id)) continue;
                         seen.add(id);
-                        rows.push({ id, title: lines[0] || '(untitled)', preview: lines.slice(1).join(' '), conversation_url: url.toString() });
+                        rows.push({ id, title: lines[0] || '(untitled)', preview: lines.slice(1).join(' '), conversation_url: url.toString(), visible: isVisible(anchor) });
                     }
-                    return { rows };
+                    return { rows, root_tag: root.tagName || null };
                 }
                 """,
                 {'prefix': prefix},
@@ -5153,11 +5220,12 @@ class ChatGPTBrowserClient:
                         const rect = el.getBoundingClientRect();
                         return rect.width > 0 && rect.height > 0 && rect.bottom >= -200 && rect.top <= window.innerHeight + 200;
                     };
-                    const projectAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                    const main = document.querySelector('main, [role="main"]') || document.body;
+                    const projectAnchors = Array.from(main.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
                         const url = safeUrl(anchor.getAttribute('href') || '');
                         return url && url.pathname.startsWith(prefix);
                     });
-                    const candidates = new Set([document.scrollingElement, document.documentElement, document.body]);
+                    const candidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
                     for (const anchor of projectAnchors) {
                         let el = anchor;
                         for (let depth = 0; el && depth < 16; depth += 1) {
@@ -5165,8 +5233,11 @@ class ChatGPTBrowserClient:
                             el = el.parentElement;
                         }
                     }
-                    for (const el of Array.from(document.querySelectorAll('main, [role="main"], main *, [role="main"] *, [data-radix-scroll-area-viewport], [data-virtuoso-scroller], [data-testid*="scroll"], [class*="scroll"], [class*="overflow"]'))) {
-                        candidates.add(el);
+                    for (const el of Array.from(main.querySelectorAll('*'))) {
+                        const attr = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
+                        if (attr.includes('scroll') || attr.includes('overflow') || attr.includes('virtuoso') || attr.includes('list') || attr.includes('tabpanel')) {
+                            candidates.add(el);
+                        }
                     }
                     const scored = [];
                     for (const el of Array.from(candidates)) {

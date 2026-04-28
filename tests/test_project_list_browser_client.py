@@ -889,3 +889,47 @@ def test_wait_for_visible_locator_checks_rate_limit_modal_between_polls(tmp_path
     assert locator is not None
     assert calls == ['project-create-button-wait', 'project-create-button-wait']
     assert page.waits == [25]
+
+
+def test_list_project_chats_operation_does_not_count_sidebar_dom_when_chats_tab_inactive(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return False
+
+    async def fake_collect_snorlax(page, *, project_url, label):
+        return []
+
+    async def fake_collect_dom(page, *, project_url, label):  # pragma: no cover - must not be called
+        raise AssertionError("DOM collection should be skipped when Chats tab is inactive")
+
+    async def fake_collect_history(page, *, project_url, label):
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-current-demo/project?tab=sources"
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_via_snorlax_sidebar = fake_collect_snorlax
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert result["ok"] is True
+    assert result["count"] == 0
+    assert result["source_counts"]["dom"] == 0
+    assert result["chats_tab_active"] is False
