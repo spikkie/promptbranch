@@ -717,7 +717,7 @@ def test_collect_project_chats_via_snorlax_sidebar_follows_cursor_after_target_p
     assert [chat["id"] for chat in chats] == ["chat-1", "chat-2"]
 
 
-def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_are_empty(tmp_path: Path) -> None:
+def test_list_project_chats_operation_supplements_snorlax_with_history(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     page = object()
 
@@ -746,7 +746,15 @@ def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_
         return []
 
     async def fake_collect_history(page, *, project_url, label):
-        raise AssertionError("conversation history fallback should not run when snorlax/dom already found chats")
+        return [
+            {
+                "id": "chat-history-2",
+                "title": "Below scroll fold",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-history-2",
+                "create_time": None,
+                "update_time": None,
+            }
+        ]
 
     async def fake_safe_page_url(page):
         return "https://chatgpt.com/g/g-p-current-demo/project"
@@ -764,8 +772,10 @@ def test_list_project_chats_operation_uses_snorlax_sidebar_when_history_and_dom_
 
     result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
 
-    assert result["count"] == 1
-    assert result["chats"][0]["title"] == "Azure DevOps Engineer Role"
+    assert result["count"] == 2
+    assert [chat["id"] for chat in result["chats"]] == ["chat-snorlax-1", "chat-history-2"]
+    assert result["source_counts"]["history"] == 1
+    assert result["history_supplement_used"] is True
 
 def test_list_project_chats_operation_uses_current_project_conversation_when_indexes_lag(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
@@ -787,7 +797,7 @@ def test_list_project_chats_operation_uses_current_project_conversation_when_ind
         return []
 
     async def fake_collect_history(page, *, project_url, label):
-        raise AssertionError("history fallback should not run when the current project conversation is known")
+        return []
 
     urls = iter([
         "https://chatgpt.com/g/g-p-current-demo/c/chat-current-1",
@@ -827,7 +837,7 @@ def test_list_project_chats_operation_uses_current_project_conversation_when_ind
     assert result["chats"][0]["title"] == "Freshly created task"
     assert result["chats"][0]["source"] == "current_page"
     assert result["source_counts"]["current_page"] == 1
-    assert result["history_fallback_used"] is False
+    assert result["history_fallback_used"] is True
 
 
 def test_is_conversation_history_url_accepts_detail_endpoint(tmp_path: Path) -> None:

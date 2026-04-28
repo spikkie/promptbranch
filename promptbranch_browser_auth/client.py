@@ -1443,6 +1443,7 @@ class ChatGPTBrowserClient:
             snorlax_chats = []
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        index_sources_found = bool(chats)
         if not chats and current_page_chats:
             chats = self._merge_project_chat_lists(current_page_chats, chats)
             self._log(
@@ -1454,24 +1455,49 @@ class ChatGPTBrowserClient:
         history_chats: list[dict[str, Any]] = []
         history_fallback_used = False
         history_fallback_skipped = False
-        if not chats and include_history_fallback:
-            history_fallback_used = True
-            history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-            chats = self._merge_project_chat_lists(history_chats, chats)
-        elif not chats:
+        history_supplement_used = False
+        if include_history_fallback:
+            # Project chat DOM/snorlax sources may expose only the initially
+            # materialized batch. Always supplement indexed results with the
+            # backend conversation-history scan when the caller requested the
+            # complete task list. This avoids silently capping `pb task list`
+            # at the first scroll page.
+            if index_sources_found:
+                history_supplement_used = True
+                self._log(
+                    'chat-list',
+                    'supplementing indexed project chats with conversation history because DOM/snorlax may be partial',
+                    snorlax_count=len(snorlax_chats),
+                    dom_count=len(dom_chats),
+                    retained_count=len(chats),
+                )
+            else:
+                history_fallback_used = True
+            try:
+                history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+            except Exception as exc:
+                if chats:
+                    self._log(
+                        'chat-list',
+                        'conversation history supplement failed; keeping indexed project chats',
+                        error=repr(exc),
+                        retained_count=len(chats),
+                    )
+                    history_chats = []
+                else:
+                    raise
+            if history_chats:
+                # Keep DOM/snorlax/current-page ordering first because it
+                # matches the visible project UI, then append deeper history-only tasks.
+                chats = self._merge_project_chat_lists(chats, history_chats)
+        else:
             history_fallback_skipped = True
             self._log(
                 'chat-list',
-                'skipping conversation history fallback because caller requested lightweight project chat enumeration',
+                'skipping conversation history because caller requested lightweight project chat enumeration',
                 snorlax_count=len(snorlax_chats),
                 dom_count=len(dom_chats),
-            )
-        else:
-            self._log(
-                'chat-list',
-                'skipping conversation history fallback because snorlax/dom sources already produced project chats',
-                snorlax_count=len(snorlax_chats),
-                dom_count=len(dom_chats),
+                current_page_count=len(current_page_chats),
                 retained_count=len(chats),
             )
         result = {
@@ -1484,6 +1510,7 @@ class ChatGPTBrowserClient:
             'chats': chats,
             'history_fallback_used': history_fallback_used,
             'history_fallback_skipped': history_fallback_skipped,
+            'history_supplement_used': history_supplement_used,
             'include_history_fallback': include_history_fallback,
             'source_counts': {
                 'snorlax': len(snorlax_chats),
@@ -1493,7 +1520,7 @@ class ChatGPTBrowserClient:
             },
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used)
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used, history_supplement_used=history_supplement_used)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result

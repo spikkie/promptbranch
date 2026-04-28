@@ -1413,21 +1413,36 @@ class ChatGPTBrowserClient:
             snorlax_chats = []
         dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
         chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        index_sources_found = bool(chats)
         if not chats and current_page_chats:
             chats = self._merge_project_chat_lists(current_page_chats, chats)
             self._log('chat-list', 'using current project conversation as task-list fallback', current_page_count=len(current_page_chats), project_id=project_id)
         history_chats: list[dict[str, Any]] = []
-        if not chats:
-            history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-            chats = self._merge_project_chat_lists(history_chats, chats)
-        else:
+        history_supplement_used = False
+        if index_sources_found:
+            history_supplement_used = True
             self._log(
                 'chat-list',
-                'skipping conversation history fallback because snorlax/dom sources already produced project chats',
+                'supplementing indexed project chats with conversation history because DOM/snorlax may be partial',
                 snorlax_count=len(snorlax_chats),
                 dom_count=len(dom_chats),
                 retained_count=len(chats),
             )
+        try:
+            history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+        except Exception as exc:
+            if chats:
+                self._log(
+                    'chat-list',
+                    'conversation history supplement failed; keeping indexed project chats',
+                    error=repr(exc),
+                    retained_count=len(chats),
+                )
+                history_chats = []
+            else:
+                raise
+        if history_chats:
+            chats = self._merge_project_chat_lists(chats, history_chats)
         result = {
             'ok': True,
             'action': 'list_chats',
@@ -1436,6 +1451,7 @@ class ChatGPTBrowserClient:
             'project_slug': project_slug,
             'count': len(chats),
             'chats': chats,
+            'history_supplement_used': history_supplement_used,
             'source_counts': {
                 'snorlax': len(snorlax_chats),
                 'dom': len(dom_chats),
@@ -1444,7 +1460,7 @@ class ChatGPTBrowserClient:
             },
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats))
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_supplement_used=history_supplement_used)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result
@@ -7386,7 +7402,7 @@ class ChatGPTBrowserClient:
 
     async def _project_link_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         links = await page.evaluate(
-            """
+            r"""
             () => {
               const anchors = Array.from(document.querySelectorAll('a[href*="/g/g-p-"][href$="/project"]'));
               return anchors.map((a, idx) => {
@@ -7418,7 +7434,7 @@ class ChatGPTBrowserClient:
 
     async def _dialog_like_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const sels = ['[role="dialog"]', '[role="menu"]', '[role="listbox"]', '[data-radix-popper-content-wrapper]', '[data-radix-menu-content]'];
               const out = [];
@@ -7447,7 +7463,7 @@ class ChatGPTBrowserClient:
 
     async def _scrollable_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const nodes = Array.from(document.querySelectorAll('*'));
               const out = [];
@@ -7489,7 +7505,7 @@ class ChatGPTBrowserClient:
 
     async def _more_candidate_debug_snapshot(self, page: Any) -> list[dict[str, Any]]:
         return await page.evaluate(
-            """
+            r"""
             () => {
               const matches = [];
               const nodes = Array.from(document.querySelectorAll('[data-sidebar-item="true"], button, [role="button"], a, div, span, summary, [tabindex]'));
