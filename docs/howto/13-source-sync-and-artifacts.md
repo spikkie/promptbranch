@@ -46,7 +46,7 @@ Release ZIPs use the repo `VERSION` file when it contains a version-like value. 
 ## Verify a ZIP
 
 ```bash
-promptbranch artifact verify .pb_profile/artifacts/chatgpt_claudecode_workflow_v0.0.126.zip --json
+promptbranch artifact verify .pb_profile/artifacts/chatgpt_claudecode_workflow_v0.0.127.zip --json
 ```
 
 Without a path, `artifact verify` checks the latest registered artifact.

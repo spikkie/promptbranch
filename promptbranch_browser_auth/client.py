@@ -1697,12 +1697,20 @@ class ChatGPTBrowserClient:
         if manual_pause and self.config.is_headed:
             await self._pause_for_keep_open('Inspect project after Chats tab activation. Press Enter to continue...')
 
+        def _debug_anchor_ids(payload: Any) -> list[str]:
+            if not isinstance(payload, dict):
+                return []
+            return [str(row.get('id') or '').strip() for row in payload.get('project_anchors', []) if isinstance(row, dict) and str(row.get('id') or '').strip()]
+
+        observed_dom_ids: set[str] = set(_debug_anchor_ids(before_tab)) | set(_debug_anchor_ids(after_tab))
         scroll_rounds_payload: list[dict[str, Any]] = []
         for round_index in range(max(1, scroll_rounds)):
             before = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
             move = await self._project_chat_debug_scroll_step(page, prefix=prefix)
             await page.wait_for_timeout(max(0, wait_ms))
             after = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            observed_dom_ids.update(_debug_anchor_ids(before))
+            observed_dom_ids.update(_debug_anchor_ids(after))
             payload = {
                 'round': round_index + 1,
                 'before_project_anchor_count': before.get('project_anchor_count'),
@@ -1749,7 +1757,9 @@ class ChatGPTBrowserClient:
                 history_error = repr(exc)
                 self._log('chat-list-debug', 'history diagnostic enumeration failed', error=history_error)
 
-        dom_ids = [str(row.get('id') or '') for row in final_dom.get('project_anchors', []) if isinstance(row, dict)]
+        observed_dom_ids.update(_debug_anchor_ids(final_dom))
+        final_dom_ids = [str(row.get('id') or '') for row in final_dom.get('project_anchors', []) if isinstance(row, dict)]
+        dom_ids = sorted(item for item in observed_dom_ids if item)
         snorlax_ids = [str(chat.get('id') or '') for chat in snorlax_chats if isinstance(chat, dict)]
         history_ids = [str(chat.get('id') or '') for chat in history_chats if isinstance(chat, dict)]
         all_ids = sorted({item for item in [*dom_ids, *snorlax_ids, *history_ids] if item})
@@ -1772,6 +1782,7 @@ class ChatGPTBrowserClient:
                 'after_tab_project_anchors': after_tab.get('project_anchor_count'),
                 'final_dom_project_anchors': final_dom.get('project_anchor_count'),
                 'final_dom_visible_project_anchors': final_dom.get('visible_project_anchor_count'),
+                'observed_dom_unique_ids': len(dom_ids),
                 'snorlax': len(snorlax_chats),
                 'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
                 'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
@@ -1780,6 +1791,7 @@ class ChatGPTBrowserClient:
                 'observed_responses': len(observed_responses),
             },
             'dom_project_anchor_ids': dom_ids,
+            'final_dom_project_anchor_ids': final_dom_ids,
             'snorlax_ids': snorlax_ids,
             'history_ids': history_ids,
             'combined_unique_ids': all_ids,
@@ -5673,89 +5685,100 @@ class ChatGPTBrowserClient:
                 r"""
                 ({ prefix }) => {
                     const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
                     const isVisibleish = el => {
                         if (!el || !el.getBoundingClientRect) return false;
                         const style = window.getComputedStyle(el);
                         if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
                         const rect = el.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0 && rect.bottom >= -200 && rect.top <= window.innerHeight + 200;
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= -240 && rect.top <= window.innerHeight + 240;
+                    };
+                    const isScrollable = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const scrollHeight = el.scrollHeight || 0;
+                        const clientHeight = el.clientHeight || 0;
+                        return scrollHeight > clientHeight + 16;
                     };
                     const main = document.querySelector('main, [role="main"]') || document.body;
                     const projectAnchors = Array.from(main.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
-                        const url = safeUrl(anchor.getAttribute('href') || '');
+                        const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
                         return url && url.pathname.startsWith(prefix);
                     });
-                    const candidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
+                    const marked = Array.from(main.querySelectorAll('[data-promptbranch-project-chat-scroller="1"]'));
+                    const candidates = new Set();
+                    for (const el of marked) {
+                        if (isScrollable(el)) candidates.add(el);
+                    }
                     for (const anchor of projectAnchors) {
                         let el = anchor;
-                        for (let depth = 0; el && depth < 16; depth += 1) {
-                            candidates.add(el);
+                        for (let depth = 0; el && depth < 18; depth += 1) {
+                            if (main.contains(el) && isScrollable(el)) candidates.add(el);
+                            if (el === main) break;
                             el = el.parentElement;
                         }
                     }
                     for (const el of Array.from(main.querySelectorAll('*'))) {
-                        const attr = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
-                        if (attr.includes('scroll') || attr.includes('overflow') || attr.includes('virtuoso') || attr.includes('list') || attr.includes('tabpanel')) {
+                        const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+                        if ((attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) && isScrollable(el)) {
                             candidates.add(el);
                         }
                     }
                     const scored = [];
                     for (const el of Array.from(candidates)) {
-                        if (!el || !el.getBoundingClientRect) continue;
+                        if (!el || !el.getBoundingClientRect || !main.contains(el)) continue;
                         const scrollHeight = el.scrollHeight || 0;
                         const clientHeight = el.clientHeight || 0;
-                        if (scrollHeight <= clientHeight + 24) continue;
-                        const isDocument = el === document.scrollingElement || el === document.documentElement || el === document.body;
-                        if (!isDocument && !isVisibleish(el)) continue;
+                        const remaining = Math.max(scrollHeight - clientHeight - (el.scrollTop || 0), 0);
+                        if (remaining <= 1 && projectAnchors.length === 0) continue;
+                        if (!isVisibleish(el) && el.getAttribute('data-promptbranch-project-chat-scroller') !== '1') continue;
                         const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
                         const rect = el.getBoundingClientRect();
                         const style = window.getComputedStyle(el);
                         const overflowY = (style?.overflowY || '').toLowerCase();
-                        const score = (containsProjectAnchor ? 10000 : 0) + (isDocument ? 1000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 750 : 0) + Math.min(scrollHeight - clientHeight, 2500) + Math.min(rect.width || 0, 1000);
-                        scored.push({ el, score, containsProjectAnchor, isDocument });
+                        const markedScore = el.getAttribute('data-promptbranch-project-chat-scroller') === '1' ? 50000 : 0;
+                        const score = markedScore + (containsProjectAnchor ? 25000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 2500 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1600);
+                        scored.push({ el, score, containsProjectAnchor, remaining, marked: markedScore > 0 });
                     }
                     scored.sort((a, b) => b.score - a.score);
-                    let moved = false;
                     const moves = [];
-                    const scrollOne = (el, reason) => {
-                        const before = el.scrollTop || 0;
-                        const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
-                        const step = Math.max((el.clientHeight || window.innerHeight || 600) * 0.88, 420);
-                        const target = Math.min(before + step, maxTop);
-                        if (target <= before + 1) return;
-                        try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
-                        const after = el.scrollTop || 0;
-                        if (after > before + 1) { moved = true; moves.push({ tag: el.tagName || 'DOCUMENT', reason, before, after, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }); }
-                    };
-                    for (const item of scored.slice(0, 12)) {
-                        scrollOne(item.el, item.containsProjectAnchor ? 'contains_project_anchor' : 'candidate');
+                    let moved = false;
+                    const item = scored[0] || null;
+                    if (!item) {
+                        return { moved: false, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'no_project_scroller' };
                     }
-                    const visibleProjectAnchors = projectAnchors.filter(isVisibleish);
-                    if (visibleProjectAnchors.length) {
-                        try { visibleProjectAnchors[visibleProjectAnchors.length - 1].scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'instant' }); } catch (_err) {}
-                        try { visibleProjectAnchors[visibleProjectAnchors.length - 1].dispatchEvent(new WheelEvent('wheel', { deltaY: Math.max(window.innerHeight * 0.95, 700), bubbles: true, cancelable: true })); } catch (_err) {}
+                    const el = item.el;
+                    try { el.setAttribute('data-promptbranch-project-chat-scroller', '1'); } catch (_err) {}
+                    const before = Math.round(el.scrollTop || 0);
+                    const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                    const remaining = Math.max(maxTop - before, 0);
+                    const step = Math.min(Math.max((el.clientHeight || window.innerHeight || 700) * 0.28, 80), 260, remaining);
+                    const target = Math.min(before + step, maxTop);
+                    try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
+                    const after = Math.round(el.scrollTop || 0);
+                    if (after > before + 1) {
+                        moved = true;
+                        moves.push({
+                            tag: el.tagName || 'DOCUMENT',
+                            role: el.getAttribute ? el.getAttribute('role') : null,
+                            testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                            className: (el.className || '').toString().slice(0, 180),
+                            reason: item.containsProjectAnchor ? 'focused_project_scroller_contains_anchor' : (item.marked ? 'focused_project_scroller_marked' : 'focused_project_scroller_candidate'),
+                            before,
+                            after,
+                            step: Math.round(step),
+                            remaining_before: Math.round(remaining),
+                            scrollHeight: Math.round(el.scrollHeight || 0),
+                            clientHeight: Math.round(el.clientHeight || 0),
+                            textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 220),
+                        });
                     }
-                    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true })); } catch (_err) {}
-                    const beforeWindow = window.scrollY || document.documentElement.scrollTop || 0;
-                    try { window.scrollBy({ top: Math.max(window.innerHeight * 0.95, 700), behavior: 'instant' }); } catch (_err) { window.scrollTo(0, beforeWindow + Math.max(window.innerHeight * 0.95, 700)); }
-                    const afterWindow = window.scrollY || document.documentElement.scrollTop || 0;
-                    if (afterWindow > beforeWindow + 1) { moved = true; moves.push({ tag: 'WINDOW', reason: 'window', before: beforeWindow, after: afterWindow, scrollHeight: document.documentElement.scrollHeight, clientHeight: window.innerHeight }); }
-                    return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length };
+                    return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'focused_project_scroller' };
                 }
                 """,
                 {'prefix': prefix},
             )
             did_scroll = bool(scrolled.get('moved')) if isinstance(scrolled, dict) else bool(scrolled)
-            try:
-                viewport = getattr(page, 'viewport_size', None) or {}
-                width = int(viewport.get('width') or 1280)
-                height = int(viewport.get('height') or 900)
-                await page.mouse.move(width * 0.62, height * 0.70)
-                await page.mouse.wheel(0, max(int(height * 0.95), 700))
-                await page.keyboard.press('PageDown')
-            except Exception as exc:
-                self._log(label, 'native project chat scroll events failed; continuing with JS scroll result', round=round_index + 1, error=repr(exc))
-            self._log(label, 'advanced project chats DOM scroll', round=round_index + 1, moved=did_scroll, details=scrolled if isinstance(scrolled, dict) else None)
+            self._log(label, 'advanced focused project chats DOM scroll', round=round_index + 1, moved=did_scroll, details=scrolled if isinstance(scrolled, dict) else None)
             if stagnant_rounds >= 8 and not did_scroll:
                 break
             if stagnant_rounds >= 12:
@@ -5912,90 +5935,88 @@ class ChatGPTBrowserClient:
             ({ prefix }) => {
                 const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
                 const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const isVisibleish = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= -240 && rect.top <= window.innerHeight + 240;
+                };
+                const isScrollable = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    return (el.scrollHeight || 0) > (el.clientHeight || 0) + 16;
+                };
                 const main = document.querySelector('main, [role="main"]') || document.body;
-                const projectAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                const projectAnchors = Array.from(main.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
                     const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
                     return url && url.pathname.startsWith(prefix);
                 });
-                const candidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
+                const candidates = new Set();
+                for (const el of Array.from(main.querySelectorAll('[data-promptbranch-project-chat-scroller="1"]'))) {
+                    if (isScrollable(el)) candidates.add(el);
+                }
                 for (const anchor of projectAnchors) {
                     let el = anchor;
                     for (let depth = 0; el && depth < 18; depth += 1) {
-                        candidates.add(el);
+                        if (main.contains(el) && isScrollable(el)) candidates.add(el);
+                        if (el === main) break;
                         el = el.parentElement;
                     }
                 }
-                for (const el of Array.from(document.querySelectorAll('*'))) {
-                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
-                    if (attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) candidates.add(el);
+                for (const el of Array.from(main.querySelectorAll('*'))) {
+                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+                    if ((attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) && isScrollable(el)) candidates.add(el);
                 }
                 const scored = [];
                 for (const el of Array.from(candidates)) {
-                    if (!el || !el.getBoundingClientRect) continue;
-                    const scrollHeight = el.scrollHeight || 0;
-                    const clientHeight = el.clientHeight || 0;
-                    const remaining = Math.max(scrollHeight - clientHeight - (el.scrollTop || 0), 0);
-                    if (scrollHeight <= clientHeight + 24 || remaining <= 1) continue;
+                    if (!el || !el.getBoundingClientRect || !main.contains(el)) continue;
+                    const remaining = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0) - (el.scrollTop || 0), 0);
+                    if (remaining <= 1 && projectAnchors.length === 0) continue;
+                    if (!isVisibleish(el) && el.getAttribute('data-promptbranch-project-chat-scroller') !== '1') continue;
                     const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
                     const rect = el.getBoundingClientRect();
                     const style = window.getComputedStyle(el);
                     const overflowY = (style?.overflowY || '').toLowerCase();
-                    const score = (containsProjectAnchor ? 10000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 1000 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1500);
-                    scored.push({ el, score, containsProjectAnchor, remaining });
+                    const marked = el.getAttribute('data-promptbranch-project-chat-scroller') === '1';
+                    const score = (marked ? 50000 : 0) + (containsProjectAnchor ? 25000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 2500 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1600);
+                    scored.push({ el, score, containsProjectAnchor, remaining, marked });
                 }
                 scored.sort((a, b) => b.score - a.score);
                 const moves = [];
                 let moved = false;
-                const scrollOne = (el, reason) => {
-                    const before = Math.round(el.scrollTop || 0);
-                    const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
-                    const step = Math.max((el.clientHeight || window.innerHeight || 700) * 0.92, 650);
-                    const target = Math.min(before + step, maxTop);
-                    try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
-                    const after = Math.round(el.scrollTop || 0);
-                    if (after > before + 1) {
-                        moved = true;
-                        moves.push({
-                            tag: el.tagName || 'DOCUMENT',
-                            role: el.getAttribute ? el.getAttribute('role') : null,
-                            testid: el.getAttribute ? el.getAttribute('data-testid') : null,
-                            className: (el.className || '').toString().slice(0, 180),
-                            reason,
-                            before,
-                            after,
-                            scrollHeight: Math.round(el.scrollHeight || 0),
-                            clientHeight: Math.round(el.clientHeight || 0),
-                            textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 180),
-                        });
-                    }
-                };
-                for (const item of scored.slice(0, 10)) scrollOne(item.el, item.containsProjectAnchor ? 'contains_project_anchor' : 'scroll_candidate');
-                if (projectAnchors.length) {
-                    try { projectAnchors[projectAnchors.length - 1].scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'instant' }); } catch (_err) {}
-                }
-                const beforeWindow = Math.round(window.scrollY || document.documentElement.scrollTop || 0);
-                try { window.scrollBy({ top: Math.max(window.innerHeight * 0.95, 750), behavior: 'instant' }); } catch (_err) { window.scrollTo(0, beforeWindow + Math.max(window.innerHeight * 0.95, 750)); }
-                const afterWindow = Math.round(window.scrollY || document.documentElement.scrollTop || 0);
-                if (afterWindow > beforeWindow + 1) {
+                const item = scored[0] || null;
+                if (!item) return { moved: false, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'no_project_scroller' };
+                const el = item.el;
+                try { el.setAttribute('data-promptbranch-project-chat-scroller', '1'); } catch (_err) {}
+                const before = Math.round(el.scrollTop || 0);
+                const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                const remaining = Math.max(maxTop - before, 0);
+                const step = Math.min(Math.max((el.clientHeight || window.innerHeight || 700) * 0.28, 80), 260, remaining);
+                const target = Math.min(before + step, maxTop);
+                try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
+                const after = Math.round(el.scrollTop || 0);
+                if (after > before + 1) {
                     moved = true;
-                    moves.push({ tag: 'WINDOW', reason: 'window', before: beforeWindow, after: afterWindow, scrollHeight: Math.round(document.documentElement.scrollHeight || 0), clientHeight: Math.round(window.innerHeight || 0) });
+                    moves.push({
+                        tag: el.tagName || 'DOCUMENT',
+                        role: el.getAttribute ? el.getAttribute('role') : null,
+                        testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                        className: (el.className || '').toString().slice(0, 180),
+                        reason: item.containsProjectAnchor ? 'focused_project_scroller_contains_anchor' : (item.marked ? 'focused_project_scroller_marked' : 'focused_project_scroller_candidate'),
+                        before,
+                        after,
+                        step: Math.round(step),
+                        remaining_before: Math.round(remaining),
+                        scrollHeight: Math.round(el.scrollHeight || 0),
+                        clientHeight: Math.round(el.clientHeight || 0),
+                        textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 220),
+                    });
                 }
-                try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true })); } catch (_err) {}
-                return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length };
+                return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'focused_project_scroller' };
             }
             ''',
             {'prefix': prefix},
         )
-        try:
-            viewport = getattr(page, 'viewport_size', None) or {}
-            width = int(viewport.get('width') or 1280)
-            height = int(viewport.get('height') or 900)
-            await page.mouse.move(width * 0.64, height * 0.70)
-            await page.mouse.wheel(0, max(int(height * 0.95), 750))
-            await page.keyboard.press('PageDown')
-        except Exception as exc:
-            if isinstance(result, dict):
-                result.setdefault('native_event_error', repr(exc))
         return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
 
     async def _open_project_sources_tab(self, page: Any) -> None:
