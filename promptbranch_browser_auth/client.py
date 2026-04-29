@@ -1476,12 +1476,17 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log('chat-list', 'snorlax project chat enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             snorlax_chats = []
+        try:
+            project_endpoint_chats = await self._collect_project_chats_via_project_conversations_endpoint(page, project_url=project_url, label='chat-list-project-endpoint')
+        except Exception as exc:
+            self._log('chat-list', 'project conversations endpoint enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
+            project_endpoint_chats = []
         if chats_tab_active is False:
             self._log('chat-list', 'skipping project chat DOM collection because Chats tab is not active', current_url=await self._safe_page_url(page))
             dom_chats = []
         else:
             dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
-        chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        chats = self._merge_project_chat_lists(snorlax_chats, project_endpoint_chats, dom_chats)
         index_sources_found = bool(chats)
         if not chats and current_page_chats:
             chats = self._merge_project_chat_lists(current_page_chats, chats)
@@ -1495,46 +1500,65 @@ class ChatGPTBrowserClient:
         history_fallback_used = False
         history_fallback_skipped = False
         history_supplement_used = False
+        history_supplement_skipped_reason: Optional[str] = None
         if include_history_fallback:
-            # Project chat DOM/snorlax sources may expose only the initially
-            # materialized batch. Always supplement indexed results with the
-            # backend conversation-history scan when the caller requested the
-            # complete task list. This avoids silently capping `pb task list`
-            # at the first scroll page.
-            if index_sources_found:
-                history_supplement_used = True
+            # Prefer the project-specific backend endpoint when it returns data.
+            # The older global conversation-history supplement is expensive,
+            # probes many conversation detail URLs, and can trigger 429s while
+            # still adding zero project tasks. Keep it only as a fallback when
+            # no project-endpoint rows were available.
+            if project_endpoint_chats:
+                history_fallback_skipped = True
+                history_supplement_skipped_reason = 'project_endpoint_available'
                 self._log(
                     'chat-list',
-                    'supplementing indexed project chats with conversation history because DOM/snorlax may be partial',
+                    'skipping global conversation history because project endpoint returned task rows',
+                    project_endpoint_count=len(project_endpoint_chats),
                     snorlax_count=len(snorlax_chats),
                     dom_count=len(dom_chats),
                     retained_count=len(chats),
                 )
             else:
-                history_fallback_used = True
-            try:
-                history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-            except Exception as exc:
-                if chats:
+                # Project chat DOM/snorlax sources may expose only the initially
+                # materialized batch. Supplement indexed results with the
+                # backend conversation-history scan only when the project-specific
+                # endpoint was unavailable or empty.
+                if index_sources_found:
+                    history_supplement_used = True
                     self._log(
                         'chat-list',
-                        'conversation history supplement failed; keeping indexed project chats',
-                        error=repr(exc),
+                        'supplementing indexed project chats with conversation history because project endpoint was unavailable or empty',
+                        snorlax_count=len(snorlax_chats),
+                        project_endpoint_count=len(project_endpoint_chats),
+                        dom_count=len(dom_chats),
                         retained_count=len(chats),
                     )
-                    history_chats = []
                 else:
-                    raise
-            if history_chats:
-                # Keep DOM/snorlax/current-page ordering first because it
-                # matches the visible project UI, then append deeper history-only tasks.
-                chats = self._merge_project_chat_lists(chats, history_chats)
+                    history_fallback_used = True
+                try:
+                    history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+                except Exception as exc:
+                    if chats:
+                        self._log(
+                            'chat-list',
+                            'conversation history supplement failed; keeping indexed project chats',
+                            error=repr(exc),
+                            retained_count=len(chats),
+                        )
+                        history_chats = []
+                    else:
+                        raise
+                if history_chats:
+                    # Keep DOM/snorlax/current-page ordering first because it
+                    # matches the visible project UI, then append deeper history-only tasks.
+                    chats = self._merge_project_chat_lists(chats, history_chats)
         else:
             history_fallback_skipped = True
             self._log(
                 'chat-list',
                 'skipping conversation history because caller requested lightweight project chat enumeration',
                 snorlax_count=len(snorlax_chats),
+                project_endpoint_count=len(project_endpoint_chats),
                 dom_count=len(dom_chats),
                 current_page_count=len(current_page_chats),
                 retained_count=len(chats),
@@ -1550,10 +1574,12 @@ class ChatGPTBrowserClient:
             'history_fallback_used': history_fallback_used,
             'history_fallback_skipped': history_fallback_skipped,
             'history_supplement_used': history_supplement_used,
+            'history_supplement_skipped_reason': history_supplement_skipped_reason,
             'include_history_fallback': include_history_fallback,
             'chats_tab_active': chats_tab_active,
             'source_counts': {
                 'snorlax': len(snorlax_chats),
+                'project_endpoint': len(project_endpoint_chats),
                 'dom': len(dom_chats),
                 'current_page': len(current_page_chats),
                 'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
@@ -1561,7 +1587,7 @@ class ChatGPTBrowserClient:
             },
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used, history_supplement_used=history_supplement_used)
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), project_endpoint_count=len(project_endpoint_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used, history_supplement_used=history_supplement_used)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result
@@ -4127,6 +4153,179 @@ class ChatGPTBrowserClient:
             cursor = next_cursor
         return collected
 
+    def _pagination_cursor_from_payload(self, payload: Any) -> Optional[str]:
+        if not isinstance(payload, dict):
+            return None
+        for key in ('cursor', 'next_cursor', 'nextCursor', 'next_page_cursor', 'nextPageCursor'):
+            value = payload.get(key)
+            if value is not None:
+                cursor = str(value).strip()
+                if cursor:
+                    return cursor
+        page_info = payload.get('page_info') or payload.get('pageInfo')
+        if isinstance(page_info, dict):
+            for key in ('end_cursor', 'endCursor', 'next_cursor', 'nextCursor'):
+                value = page_info.get(key)
+                if value is not None:
+                    cursor = str(value).strip()
+                    if cursor:
+                        return cursor
+        conversations = payload.get('conversations')
+        if isinstance(conversations, dict):
+            nested = self._pagination_cursor_from_payload(conversations)
+            if nested:
+                return nested
+        return None
+
+    def _extract_project_chats_from_project_conversations_payload(
+        self,
+        payload: Any,
+        *,
+        project_url: str,
+    ) -> tuple[list[dict[str, Any]], Optional[str]]:
+        items = self._conversation_history_items_from_payload(payload)
+        chats: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for item in items:
+            chat = self._conversation_history_item_to_chat(
+                item,
+                project_url=project_url,
+                source='project_endpoint',
+            )
+            if not chat:
+                continue
+            chat_id = str(chat.get('id') or '').strip()
+            if not chat_id or chat_id in seen_ids:
+                continue
+            seen_ids.add(chat_id)
+            chats.append(chat)
+        return chats, self._pagination_cursor_from_payload(payload)
+
+    async def _fetch_project_conversations_page(
+        self,
+        page: Any,
+        *,
+        project_id: str,
+        cursor: Optional[str] = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        try:
+            limit = max(1, min(int(limit), 100))
+        except Exception:
+            limit = 100
+        result = await page.evaluate(
+            r'''
+            async ({ projectId, cursor, limit }) => {
+                const base = new URL(`/backend-api/gizmos/${projectId}/conversations`, window.location.origin);
+                base.searchParams.set('limit', String(limit));
+                if (cursor) {
+                    base.searchParams.set('cursor', cursor);
+                }
+
+                let accessToken = null;
+                try {
+                    const bootstrap = document.getElementById('client-bootstrap');
+                    if (bootstrap && bootstrap.textContent) {
+                        const payload = JSON.parse(bootstrap.textContent);
+                        accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                    }
+                } catch (_err) {
+                    accessToken = null;
+                }
+
+                const headers = { accept: 'application/json' };
+                if (accessToken) {
+                    headers.authorization = `Bearer ${accessToken}`;
+                }
+                const response = await fetch(base.toString(), {
+                    credentials: 'include',
+                    headers,
+                });
+                const text = await response.text();
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    url: response.url || base.toString(),
+                    text,
+                    usedAuthorization: Boolean(accessToken),
+                };
+            }
+            ''',
+            {'projectId': project_id, 'cursor': cursor, 'limit': limit},
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError('Unexpected project conversations response shape')
+        text_body = str(result.get('text') or '')
+        parsed_payload: Any = None
+        if text_body:
+            try:
+                parsed_payload = json.loads(text_body)
+            except json.JSONDecodeError:
+                parsed_payload = None
+        return {
+            'ok': bool(result.get('ok')),
+            'status': result.get('status'),
+            'url': result.get('url'),
+            'payload': parsed_payload,
+            'text': text_body,
+            'used_authorization': bool(result.get('usedAuthorization')),
+        }
+
+    async def _collect_project_chats_via_project_conversations_endpoint(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        max_pages: int = 10,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        project_id = self._extract_project_id_from_url(project_url)
+        if not project_id:
+            return []
+
+        cursor: Optional[str] = '0'
+        seen_cursors: set[str] = set()
+        collected: list[dict[str, Any]] = []
+        for page_index in range(max_pages):
+            response = await self._fetch_project_conversations_page(
+                page,
+                project_id=project_id,
+                cursor=cursor,
+                limit=limit,
+            )
+            status = response.get('status')
+            if status in (404, 405):
+                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                break
+            if status != 200:
+                if collected:
+                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'))
+                    break
+                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                break
+            page_chats, next_cursor = self._extract_project_chats_from_project_conversations_payload(
+                response.get('payload'),
+                project_url=project_url,
+            )
+            collected = self._merge_project_chat_lists(collected, page_chats)
+            self._log(
+                label,
+                'collected project chats via project conversations endpoint',
+                page=page_index + 1,
+                status=status,
+                discovered_count=len(page_chats),
+                total_count=len(collected),
+                cursor=cursor,
+                next_cursor=next_cursor,
+                used_authorization=response.get('used_authorization'),
+            )
+            if not next_cursor or next_cursor in seen_cursors:
+                break
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        return collected
+
 
     def _extract_project_chats_from_conversations_payload(
         self,
@@ -4193,6 +4392,10 @@ class ChatGPTBrowserClient:
             raw_items = payload.get('conversations')
             if isinstance(raw_items, list):
                 return [item for item in raw_items if isinstance(item, dict)]
+            if isinstance(raw_items, dict):
+                nested_items = raw_items.get('items')
+                if isinstance(nested_items, list):
+                    return [item for item in nested_items if isinstance(item, dict)]
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
         return []
@@ -5597,10 +5800,13 @@ class ChatGPTBrowserClient:
         self._log("chat-list", "project chats tab activation check", active=ok, clicked=clicked if isinstance(clicked, dict) else None, details=active if isinstance(active, dict) else None, current_url=await self._safe_page_url(page))
         return ok
 
-    def _merge_project_chat_lists(self, primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _merge_project_chat_lists(self, *sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
         by_id: dict[str, dict[str, Any]] = {}
-        for item in list(primary or []) + list(secondary or []):
+        items: list[dict[str, Any]] = []
+        for source in sources:
+            items.extend(list(source or []))
+        for item in items:
             if not isinstance(item, dict):
                 continue
             chat_id = str(item.get('id') or '').strip()
