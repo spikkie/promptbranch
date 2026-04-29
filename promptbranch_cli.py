@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.128"
+CLI_VERSION = "0.0.129"
 COMMANDS = {
     "login-check",
     "ask",
@@ -826,33 +826,69 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
     payload['count'] = len(normalized)
     payload['current_conversation_url'] = current_conversation_url
     source_counts = dict(payload.get('source_counts') or {}) if isinstance(payload.get('source_counts'), dict) else {}
-    visibility_status, indexed_count, recent_count = _task_list_visibility_status(source_counts, normalized)
+    visibility_status, indexed_count, recent_count, indexed_observation_count = _task_list_visibility_status(source_counts, normalized)
     payload['source_counts'] = source_counts
     payload['visibility_status'] = payload.get('visibility_status') or visibility_status
-    payload['indexed_task_count'] = payload.get('indexed_task_count', indexed_count)
+    payload['indexed_task_count'] = indexed_count
+    payload['indexed_observation_count'] = payload.get('indexed_observation_count', indexed_observation_count)
     payload['recent_state_count'] = payload.get('recent_state_count', recent_count)
     return normalized, payload
 
 
 
-def _task_list_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> tuple[str, int, int]:
-    indexed_sources = {"snorlax", "dom", "history", "history_detail", "current_page"}
-    indexed_count = 0
-    for source in indexed_sources:
+_INDEXED_TASK_SOURCES = {"snorlax", "dom", "history", "history_detail", "current_page"}
+_LOCAL_TASK_SOURCES = {"recent_state", "current_state"}
+
+
+def _indexed_observation_count(source_counts: dict[str, Any]) -> int:
+    total = 0
+    for source in _INDEXED_TASK_SOURCES:
         try:
-            indexed_count += int(source_counts.get(source) or 0)
+            total += int(source_counts.get(source) or 0)
         except (TypeError, ValueError):
             continue
+    return total
+
+
+def _unique_indexed_task_count(chats: list[dict[str, Any]]) -> int:
+    """Count unique task entries backed by indexed/backend observations.
+
+    `source_counts` counts observations per source. When the same task appears
+    in both snorlax and DOM, summing those source counts overstates the number
+    of indexed tasks. The public `indexed_task_count` diagnostic is therefore
+    derived from the merged task list, excluding local-only fallback rows.
+    """
+    indexed_ids: set[str] = set()
+    anonymous_indexed_rows = 0
+    for item in chats:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        if source in _LOCAL_TASK_SOURCES:
+            continue
+        if source and source not in _INDEXED_TASK_SOURCES:
+            continue
+        task_id = str(item.get("id") or conversation_id_from_url(item.get("conversation_url")) or "").strip()
+        if task_id:
+            indexed_ids.add(task_id)
+        else:
+            anonymous_indexed_rows += 1
+    return len(indexed_ids) + anonymous_indexed_rows
+
+
+def _task_list_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> tuple[str, int, int, int]:
+    indexed_count = _unique_indexed_task_count(chats)
+    indexed_observations = _indexed_observation_count(source_counts)
     recent_count = 0
     try:
         recent_count = int(source_counts.get("recent_state") or 0)
     except (TypeError, ValueError):
         recent_count = 0
     if indexed_count > 0:
-        return "indexed", indexed_count, recent_count
+        return "indexed", indexed_count, recent_count, indexed_observations
     if recent_count > 0 or any(str(item.get("source") or "") == "recent_state" for item in chats):
-        return "recent_state_only", indexed_count, recent_count
-    return "missing", indexed_count, recent_count
+        return "recent_state_only", indexed_count, recent_count, indexed_observations
+    return "missing", indexed_count, recent_count, indexed_observations
 
 def _normalize_chat_title(value: str) -> str:
     return re.sub(r'\s+', ' ', (value or '')).strip().casefold()

@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.129
+
+- Fixed the misleading `indexed_task_count` diagnostic so it reports unique indexed tasks after source merging instead of summing duplicate snorlax/DOM/history observations.
+- Added `indexed_observation_count` for the old raw source-observation total when duplicate-source diagnostics are useful.
+- Preserved `visibility_status=indexed` when at least one unique backend/DOM/history task is present, while keeping recent-state-only rows out of the indexed task count.
+
 ## v0.0.128
 
 - Fixed project task enumeration using ChatGPT `snorlax/sidebar` by respecting the current `conversations_per_gizmo <= 20` backend limit.

@@ -274,3 +274,30 @@ def test_service_does_not_duplicate_recent_task_when_backend_lists_it(monkeypatc
     assert list_result["source_counts"]["recent_state"] == 0
     assert list_result["visibility_status"] == "indexed"
     assert list_result["indexed_task_count"] == 1
+
+
+def test_service_indexed_task_count_reports_unique_tasks_not_observation_sum() -> None:
+    payload = {
+        "ok": True,
+        "project_url": "https://chatgpt.com/g/g-p-demo/project",
+        "chats": [
+            {"id": f"task-{idx}", "title": f"Task {idx}", "conversation_url": f"https://chatgpt.com/g/g-p-demo/c/task-{idx}"}
+            for idx in range(20)
+        ],
+        "source_counts": {"snorlax": 20, "dom": 10, "current_page": 0, "history": 0, "history_detail": 0},
+    }
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        email=None,
+        password=None,
+        profile_dir="/tmp/.pb_profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    result = svc._augment_chat_list_with_recent_state(payload)
+
+    assert result["count"] == 20
+    assert result["visibility_status"] == "indexed"
+    assert result["indexed_task_count"] == 20
+    assert result["indexed_observation_count"] == 30
