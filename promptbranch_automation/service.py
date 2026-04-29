@@ -95,17 +95,43 @@ class ChatGPTAutomationService:
             "seen_at": time.time(),
         }
 
-    @staticmethod
-    def _chat_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> str:
-        """Classify task-list visibility without treating local memory as indexing."""
-        indexed_sources = {"snorlax", "dom", "history", "current_page"}
-        indexed_count = 0
-        for source in indexed_sources:
+    _INDEXED_TASK_SOURCES = {"snorlax", "dom", "history", "history_detail", "current_page"}
+    _LOCAL_TASK_SOURCES = {"recent_state", "current_state"}
+
+    @classmethod
+    def _indexed_observation_count(cls, source_counts: dict[str, Any]) -> int:
+        total = 0
+        for source in cls._INDEXED_TASK_SOURCES:
             try:
-                indexed_count += int(source_counts.get(source) or 0)
+                total += int(source_counts.get(source) or 0)
             except (TypeError, ValueError):
                 continue
-        if indexed_count > 0:
+        return total
+
+    @classmethod
+    def _indexed_task_count(cls, chats: list[dict[str, Any]]) -> int:
+        """Count unique indexed tasks, not duplicate observations per source."""
+        indexed_ids: set[str] = set()
+        anonymous_indexed_rows = 0
+        for item in chats:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip()
+            if source in cls._LOCAL_TASK_SOURCES:
+                continue
+            if source and source not in cls._INDEXED_TASK_SOURCES:
+                continue
+            task_id = str(item.get("id") or cls._conversation_id_from_url(item.get("conversation_url")) or "").strip()
+            if task_id:
+                indexed_ids.add(task_id)
+            else:
+                anonymous_indexed_rows += 1
+        return len(indexed_ids) + anonymous_indexed_rows
+
+    @classmethod
+    def _chat_visibility_status(cls, source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> str:
+        """Classify task-list visibility without treating local memory as indexing."""
+        if cls._indexed_task_count(chats) > 0:
             return "indexed"
         try:
             recent_count = int(source_counts.get("recent_state") or 0)
@@ -114,16 +140,6 @@ class ChatGPTAutomationService:
         if recent_count > 0 or any(str(item.get("source") or "") == "recent_state" for item in chats):
             return "recent_state_only"
         return "missing"
-
-    @staticmethod
-    def _indexed_task_count(source_counts: dict[str, Any]) -> int:
-        total = 0
-        for source in ("snorlax", "dom", "history", "current_page"):
-            try:
-                total += int(source_counts.get(source) or 0)
-            except (TypeError, ValueError):
-                continue
-        return total
 
     def _augment_chat_list_with_recent_state(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
@@ -155,7 +171,8 @@ class ChatGPTAutomationService:
         augmented["recent_state_fallback_used"] = bool(added)
         augmented["source_counts"] = source_counts
         augmented["visibility_status"] = self._chat_visibility_status(source_counts, chats)
-        augmented["indexed_task_count"] = self._indexed_task_count(source_counts)
+        augmented["indexed_task_count"] = self._indexed_task_count(chats)
+        augmented["indexed_observation_count"] = self._indexed_observation_count(source_counts)
         try:
             augmented["recent_state_count"] = int(source_counts.get("recent_state") or 0)
         except (TypeError, ValueError):
