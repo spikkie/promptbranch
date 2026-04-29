@@ -116,6 +116,13 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.128
+
+- Fixed project task enumeration using ChatGPT `snorlax/sidebar` by respecting the current `conversations_per_gizmo <= 20` backend limit.
+- `pb task list` should no longer force snorlax into HTTP 422 before falling back to DOM/history.
+- Kept DOM/history/detail fallbacks, but backend project-scoped snorlax data is again the preferred task-list source.
+
+
 ## v0.0.127
 
 - Added `pb debug chats` / `pb debug task-list` to produce machine-readable diagnostics for project task enumeration undercounts.
