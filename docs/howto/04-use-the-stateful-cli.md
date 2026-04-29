@@ -72,6 +72,6 @@ Legacy `chat-*` commands still exist as aliases, but `task` is the public workfl
 
 Treat `recent_state_only` as degraded. It keeps the workflow usable, but it is not proof that ChatGPT indexed the task.
 
-`promptbranch task list` performs complete project-chat enumeration by combining indexed sources. It follows snorlax/sidebar cursors when available, scrolls the project Chats surface, and supplements visible DOM/snorlax results with conversation-history enumeration so tasks below the initially visible list are not silently omitted.
+`promptbranch task list` performs complete project-chat enumeration by combining indexed sources. It follows snorlax/sidebar cursors when available, scrolls the project Chats surface, and supplements visible DOM/snorlax results with conversation-history enumeration so tasks below the initially visible list are not silently omitted. If ChatGPT omits project ids from the conversation-history list payload, Promptbranch probes conversation detail payloads and reports recovered rows under `source_counts.history_detail`.
 
-Plain `promptbranch task list` also prints a compact footer with `count`, `visibility`, and `sources`. Use `--json` when scripts need the full payload.
+Plain `promptbranch task list` also prints a compact footer with `count`, `visibility`, and `sources`. Use `--json` when scripts need the full payload or need to distinguish `history` from `history_detail`.

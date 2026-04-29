@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.124"
+CLI_VERSION = "0.0.125"
 COMMANDS = {
     "login-check",
     "ask",
@@ -785,7 +785,7 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
 
 
 def _task_list_visibility_status(source_counts: dict[str, Any], chats: list[dict[str, Any]]) -> tuple[str, int, int]:
-    indexed_sources = {"snorlax", "dom", "history", "current_page"}
+    indexed_sources = {"snorlax", "dom", "history", "history_detail", "current_page"}
     indexed_count = 0
     for source in indexed_sources:
         try:
@@ -890,7 +890,7 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
         print(f"{idx:>3}. {marker} {item.get('title') or '(untitled)'}\t{item.get('id') or ''}\t{item.get('conversation_url') or ''}")
     source_counts = payload.get('source_counts') if isinstance(payload.get('source_counts'), dict) else {}
     if source_counts:
-        source_summary = ', '.join(f"{name}={source_counts.get(name) or 0}" for name in ('snorlax', 'dom', 'history', 'current_page', 'recent_state') if name in source_counts)
+        source_summary = ', '.join(f"{name}={source_counts.get(name) or 0}" for name in ('snorlax', 'dom', 'history', 'history_detail', 'current_page', 'recent_state') if name in source_counts)
         visibility = payload.get('visibility_status') or 'unknown'
         print(f"# count={payload.get('count', len(chats))} visibility={visibility} sources: {source_summary}")
         if payload.get('history_supplement_used'):
