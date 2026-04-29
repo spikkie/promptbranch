@@ -3863,6 +3863,18 @@ class ChatGPTBrowserClient:
         limit: int = 20,
         conversations_per_gizmo: int = 5,
     ) -> dict[str, Any]:
+        # ChatGPT currently rejects conversations_per_gizmo > 20 with HTTP 422.
+        # Keep this bounded so project task enumeration can use snorlax/sidebar as
+        # the preferred backend source instead of falling back to brittle DOM or
+        # expensive conversation-detail probing.
+        try:
+            conversations_per_gizmo = max(1, min(int(conversations_per_gizmo), 20))
+        except Exception:
+            conversations_per_gizmo = 20
+        try:
+            limit = max(1, min(int(limit), 100))
+        except Exception:
+            limit = 20
         result = await page.evaluate(
             r'''
             async ({ cursor, limit, conversationsPerGizmo }) => {
@@ -4058,7 +4070,7 @@ class ChatGPTBrowserClient:
         label: str,
         max_pages: int = 25,
         limit: int = 20,
-        conversations_per_gizmo: int = 100,
+        conversations_per_gizmo: int = 20,
     ) -> list[dict[str, Any]]:
         project_id = self._extract_project_id_from_url(project_url)
         if not project_id:

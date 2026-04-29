@@ -661,7 +661,8 @@ def test_collect_project_chats_via_snorlax_sidebar_follows_cursor_after_target_p
     page = object()
     calls: list[str | None] = []
 
-    async def fake_fetch(page, *, cursor=None, limit=20, conversations_per_gizmo=100):
+    async def fake_fetch(page, *, cursor=None, limit=20, conversations_per_gizmo=20):
+        assert conversations_per_gizmo == 20
         calls.append(cursor)
         if cursor is None:
             return {
@@ -1038,3 +1039,33 @@ def test_list_project_chats_operation_reports_history_detail_source_count(tmp_pa
     assert result["count"] == 1
     assert result["source_counts"]["history"] == 0
     assert result["source_counts"]["history_detail"] == 1
+
+
+def test_fetch_snorlax_sidebar_page_clamps_conversations_per_gizmo(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class FakePage:
+        async def evaluate(self, _script, args):
+            assert args["conversationsPerGizmo"] == 20
+            assert args["limit"] == 100
+            return {
+                "ok": True,
+                "status": 200,
+                "url": "https://chatgpt.com/backend-api/gizmos/snorlax/sidebar",
+                "text": "{}",
+                "headers": {"content-type": "application/json"},
+                "usedAuthorization": True,
+            }
+
+    import asyncio
+
+    result = asyncio.run(
+        client._fetch_snorlax_sidebar_page(
+            FakePage(),
+            conversations_per_gizmo=100,
+            limit=500,
+        )
+    )
+
+    assert result["status"] == 200
+    assert result["payload"] == {}
