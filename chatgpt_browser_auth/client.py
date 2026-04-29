@@ -3715,6 +3715,179 @@ class ChatGPTBrowserClient:
             cursor = next_cursor
         return collected
 
+    def _pagination_cursor_from_payload(self, payload: Any) -> Optional[str]:
+        if not isinstance(payload, dict):
+            return None
+        for key in ('cursor', 'next_cursor', 'nextCursor', 'next_page_cursor', 'nextPageCursor'):
+            value = payload.get(key)
+            if value is not None:
+                cursor = str(value).strip()
+                if cursor:
+                    return cursor
+        page_info = payload.get('page_info') or payload.get('pageInfo')
+        if isinstance(page_info, dict):
+            for key in ('end_cursor', 'endCursor', 'next_cursor', 'nextCursor'):
+                value = page_info.get(key)
+                if value is not None:
+                    cursor = str(value).strip()
+                    if cursor:
+                        return cursor
+        conversations = payload.get('conversations')
+        if isinstance(conversations, dict):
+            nested = self._pagination_cursor_from_payload(conversations)
+            if nested:
+                return nested
+        return None
+
+    def _extract_project_chats_from_project_conversations_payload(
+        self,
+        payload: Any,
+        *,
+        project_url: str,
+    ) -> tuple[list[dict[str, Any]], Optional[str]]:
+        items = self._conversation_history_items_from_payload(payload)
+        chats: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for item in items:
+            chat = self._conversation_history_item_to_chat(
+                item,
+                project_url=project_url,
+                source='project_endpoint',
+            )
+            if not chat:
+                continue
+            chat_id = str(chat.get('id') or '').strip()
+            if not chat_id or chat_id in seen_ids:
+                continue
+            seen_ids.add(chat_id)
+            chats.append(chat)
+        return chats, self._pagination_cursor_from_payload(payload)
+
+    async def _fetch_project_conversations_page(
+        self,
+        page: Any,
+        *,
+        project_id: str,
+        cursor: Optional[str] = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        try:
+            limit = max(1, min(int(limit), 100))
+        except Exception:
+            limit = 100
+        result = await page.evaluate(
+            r'''
+            async ({ projectId, cursor, limit }) => {
+                const base = new URL(`/backend-api/gizmos/${projectId}/conversations`, window.location.origin);
+                base.searchParams.set('limit', String(limit));
+                if (cursor) {
+                    base.searchParams.set('cursor', cursor);
+                }
+
+                let accessToken = null;
+                try {
+                    const bootstrap = document.getElementById('client-bootstrap');
+                    if (bootstrap && bootstrap.textContent) {
+                        const payload = JSON.parse(bootstrap.textContent);
+                        accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                    }
+                } catch (_err) {
+                    accessToken = null;
+                }
+
+                const headers = { accept: 'application/json' };
+                if (accessToken) {
+                    headers.authorization = `Bearer ${accessToken}`;
+                }
+                const response = await fetch(base.toString(), {
+                    credentials: 'include',
+                    headers,
+                });
+                const text = await response.text();
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    url: response.url || base.toString(),
+                    text,
+                    usedAuthorization: Boolean(accessToken),
+                };
+            }
+            ''',
+            {'projectId': project_id, 'cursor': cursor, 'limit': limit},
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError('Unexpected project conversations response shape')
+        text_body = str(result.get('text') or '')
+        parsed_payload: Any = None
+        if text_body:
+            try:
+                parsed_payload = json.loads(text_body)
+            except json.JSONDecodeError:
+                parsed_payload = None
+        return {
+            'ok': bool(result.get('ok')),
+            'status': result.get('status'),
+            'url': result.get('url'),
+            'payload': parsed_payload,
+            'text': text_body,
+            'used_authorization': bool(result.get('usedAuthorization')),
+        }
+
+    async def _collect_project_chats_via_project_conversations_endpoint(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        max_pages: int = 10,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        project_id = self._extract_project_id_from_url(project_url)
+        if not project_id:
+            return []
+
+        cursor: Optional[str] = '0'
+        seen_cursors: set[str] = set()
+        collected: list[dict[str, Any]] = []
+        for page_index in range(max_pages):
+            response = await self._fetch_project_conversations_page(
+                page,
+                project_id=project_id,
+                cursor=cursor,
+                limit=limit,
+            )
+            status = response.get('status')
+            if status in (404, 405):
+                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                break
+            if status != 200:
+                if collected:
+                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'))
+                    break
+                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                break
+            page_chats, next_cursor = self._extract_project_chats_from_project_conversations_payload(
+                response.get('payload'),
+                project_url=project_url,
+            )
+            collected = self._merge_project_chat_lists(collected, page_chats)
+            self._log(
+                label,
+                'collected project chats via project conversations endpoint',
+                page=page_index + 1,
+                status=status,
+                discovered_count=len(page_chats),
+                total_count=len(collected),
+                cursor=cursor,
+                next_cursor=next_cursor,
+                used_authorization=response.get('used_authorization'),
+            )
+            if not next_cursor or next_cursor in seen_cursors:
+                break
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        return collected
+
 
     def _extract_project_chats_from_conversations_payload(
         self,
@@ -4937,10 +5110,13 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log("chat-list", "project chats tab click failed; continuing", error=repr(exc), current_url=await self._safe_page_url(page))
 
-    def _merge_project_chat_lists(self, primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _merge_project_chat_lists(self, *sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
         by_id: dict[str, dict[str, Any]] = {}
-        for item in list(primary or []) + list(secondary or []):
+        items: list[dict[str, Any]] = []
+        for source in sources:
+            items.extend(list(source or []))
+        for item in items:
             if not isinstance(item, dict):
                 continue
             chat_id = str(item.get('id') or '').strip()

@@ -116,6 +116,13 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.130
+
+- Added a project-specific task enumeration backend probe (`/backend-api/gizmos/<project>/conversations`) before DOM/history fallbacks, with `source_counts.project_endpoint` diagnostics.
+- Skipped the global conversation-history supplement when the project-specific endpoint returns task rows, avoiding known 429-prone detail probing in the normal task-list path.
+- Made `pb task use <index>` resolve against a lightweight indexed task list first, avoiding the expensive conversation-history supplement when the selected task is already indexed.
+- Added tests for project-endpoint pagination and lightweight `task use` resolution.
+
 ## v0.0.129
 
 - Fixed the misleading `indexed_task_count` diagnostic so it reports unique indexed tasks after source merging instead of summing duplicate snorlax/DOM/history observations.

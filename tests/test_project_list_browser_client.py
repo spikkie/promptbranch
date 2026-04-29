@@ -717,6 +717,53 @@ def test_collect_project_chats_via_snorlax_sidebar_follows_cursor_after_target_p
     assert calls == [None, "cursor-2"]
     assert [chat["id"] for chat in chats] == ["chat-1", "chat-2"]
 
+def test_collect_project_chats_via_project_conversations_endpoint_uses_project_endpoint_pagination(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+    calls: list[str | None] = []
+
+    async def fake_fetch(page, *, project_id, cursor=None, limit=100):
+        assert project_id == "g-p-current"
+        calls.append(cursor)
+        if cursor == "0":
+            return {
+                "status": 200,
+                "used_authorization": True,
+                "payload": {
+                    "items": [
+                        {"id": "chat-1", "title": "Task 1"},
+                    ],
+                    "cursor": "next-page",
+                },
+            }
+        if cursor == "next-page":
+            return {
+                "status": 200,
+                "used_authorization": True,
+                "payload": {
+                    "items": [
+                        {"id": "chat-21", "title": "Task 21"},
+                    ],
+                },
+            }
+        raise AssertionError(f"unexpected cursor: {cursor}")
+
+    client._fetch_project_conversations_page = fake_fetch
+
+    import asyncio
+
+    chats = asyncio.run(
+        client._collect_project_chats_via_project_conversations_endpoint(
+            page,
+            project_url="https://chatgpt.com/g/g-p-current-demo/project",
+            label="test-project-endpoint",
+        )
+    )
+
+    assert calls == ["0", "next-page"]
+    assert [chat["id"] for chat in chats] == ["chat-1", "chat-21"]
+    assert all(chat["source"] == "project_endpoint" for chat in chats)
+
 
 def test_list_project_chats_operation_supplements_snorlax_with_history(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
@@ -777,6 +824,79 @@ def test_list_project_chats_operation_supplements_snorlax_with_history(tmp_path:
     assert [chat["id"] for chat in result["chats"]] == ["chat-snorlax-1", "chat-history-2"]
     assert result["source_counts"]["history"] == 1
     assert result["history_supplement_used"] is True
+
+
+def test_list_project_chats_operation_skips_global_history_when_project_endpoint_returns_rows(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+    history_called = False
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return True
+
+    async def fake_collect_snorlax(page, *, project_url, label):
+        return [
+            {
+                "id": "chat-snorlax-1",
+                "title": "Visible task",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-snorlax-1",
+            }
+        ]
+
+    async def fake_collect_project_endpoint(page, *, project_url, label):
+        return [
+            {
+                "id": "chat-snorlax-1",
+                "title": "Visible task",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-snorlax-1",
+                "source": "project_endpoint",
+            },
+            {
+                "id": "chat-21",
+                "title": "Task 21",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-21",
+                "source": "project_endpoint",
+            },
+        ]
+
+    async def fake_collect_dom(page, *, project_url, label):
+        return []
+
+    async def fake_collect_history(page, *, project_url, label):
+        nonlocal history_called
+        history_called = True
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-current-demo/project"
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_via_snorlax_sidebar = fake_collect_snorlax
+    client._collect_project_chats_via_project_conversations_endpoint = fake_collect_project_endpoint
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert history_called is False
+    assert result["count"] == 2
+    assert [chat["id"] for chat in result["chats"]] == ["chat-snorlax-1", "chat-21"]
+    assert result["source_counts"]["project_endpoint"] == 2
+    assert result["history_supplement_used"] is False
+    assert result["history_fallback_skipped"] is True
+    assert result["history_supplement_skipped_reason"] == "project_endpoint_available"
 
 def test_list_project_chats_operation_uses_current_project_conversation_when_indexes_lag(tmp_path: Path) -> None:
     client = _make_client(tmp_path)

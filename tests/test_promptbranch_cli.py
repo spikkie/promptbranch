@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.129"
+    assert captured.out.strip() == "promptbranch 0.0.130"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -701,6 +701,41 @@ def test_main_chat_use_by_index_updates_state(monkeypatch, capsys, tmp_path) -> 
     assert exit_code == 0
     assert payload["conversation_id"] == "def"
     assert store.snapshot()["conversation_id"] == "def"
+
+def test_main_chat_use_by_index_prefers_lightweight_task_list(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[bool] = []
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_chats(self, **kwargs):
+            calls.append(bool(kwargs.get("include_history_fallback")))
+            return {
+                "ok": True,
+                "count": 4,
+                "chats": [
+                    {"id": "a", "title": "One", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/a"},
+                    {"id": "b", "title": "Two", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/b"},
+                    {"id": "c", "title": "Three", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/c"},
+                    {"id": "d", "title": "Four", "conversation_url": "https://chatgpt.com/g/g-p-demo-project/c/d"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "chat-use", "4", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["conversation_id"] == "d"
+    assert calls == [False]
 
 
 def test_main_chat_leave_clears_only_conversation(monkeypatch, capsys, tmp_path) -> None:
@@ -947,7 +982,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.129"
+    assert payload["version"] == "0.0.130"
     assert payload["checks"]["workspace_selected"] is True
 
 

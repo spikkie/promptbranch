@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.129"
+CLI_VERSION = "0.0.130"
 COMMANDS = {
     "login-check",
     "ask",
@@ -836,7 +836,7 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
 
 
 
-_INDEXED_TASK_SOURCES = {"snorlax", "dom", "history", "history_detail", "current_page"}
+_INDEXED_TASK_SOURCES = {"snorlax", "project_endpoint", "dom", "history", "history_detail", "current_page"}
 _LOCAL_TASK_SOURCES = {"recent_state", "current_state"}
 
 
@@ -894,35 +894,11 @@ def _normalize_chat_title(value: str) -> str:
     return re.sub(r'\s+', ' ', (value or '')).strip().casefold()
 
 
-async def _resolve_chat_target(
-    backend: Any,
-    args: argparse.Namespace,
-    target: Optional[str],
-    *,
-    keep_open: bool = False,
-) -> dict[str, Any]:
-    snapshot = backend.state_snapshot()
-    current_conversation_url = snapshot.get('conversation_url') if isinstance(snapshot, dict) else None
-    if not target:
-        if isinstance(current_conversation_url, str) and current_conversation_url:
-            return {
-                'title': snapshot.get('conversation_id') or '(current chat)',
-                'conversation_url': current_conversation_url,
-                'id': conversation_id_from_url(current_conversation_url),
-                'is_current': True,
-            }
-        raise ValueError('no current task is selected; run "pb task list" then "pb task use <task>", or pass "--task <task>"')
+def _looks_like_conversation_id(value: str) -> bool:
+    return bool(re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', str(value or '').strip(), re.IGNORECASE))
 
-    if _looks_like_chatgpt_url(target) and conversation_id_from_url(target):
-        return {
-            'title': target,
-            'conversation_url': target,
-            'id': conversation_id_from_url(target),
-            'is_current': bool(current_conversation_url and target == current_conversation_url),
-        }
 
-    result = await backend.list_project_chats(keep_open=keep_open)
-    chats, _ = _chat_list_payload(result, current_conversation_url=current_conversation_url if isinstance(current_conversation_url, str) else None)
+def _select_chat_from_list(chats: list[dict[str, Any]], target: str) -> dict[str, Any]:
     if not chats:
         raise ValueError('no chats were found for the current project')
 
@@ -958,6 +934,78 @@ async def _resolve_chat_target(
     raise ValueError(f'chat not found: {target}')
 
 
+async def _resolve_chat_target(
+    backend: Any,
+    args: argparse.Namespace,
+    target: Optional[str],
+    *,
+    keep_open: bool = False,
+) -> dict[str, Any]:
+    snapshot = backend.state_snapshot()
+    current_conversation_url = snapshot.get('conversation_url') if isinstance(snapshot, dict) else None
+    if not target:
+        if isinstance(current_conversation_url, str) and current_conversation_url:
+            return {
+                'title': snapshot.get('conversation_id') or '(current chat)',
+                'conversation_url': current_conversation_url,
+                'id': conversation_id_from_url(current_conversation_url),
+                'is_current': True,
+            }
+        raise ValueError('no current task is selected; run "pb task list" then "pb task use <task>", or pass "--task <task>"')
+
+    if _looks_like_chatgpt_url(target) and conversation_id_from_url(target):
+        return {
+            'title': target,
+            'conversation_url': target,
+            'id': conversation_id_from_url(target),
+            'is_current': bool(current_conversation_url and target == current_conversation_url),
+        }
+
+    if _looks_like_conversation_id(str(target)):
+        project_home_url = _selected_project_home_url(snapshot) if isinstance(snapshot, dict) else None
+        if project_home_url:
+            conversation_url = (project_home_url[:-len('/project')] if project_home_url.endswith('/project') else project_home_url.rstrip('/')) + f'/c/{target}'
+            return {
+                'title': target,
+                'conversation_url': conversation_url,
+                'id': str(target),
+                'is_current': bool(current_conversation_url and conversation_id_from_url(current_conversation_url) == str(target)),
+            }
+
+    async def load_chats(*, include_history_fallback: bool) -> list[dict[str, Any]]:
+        result = await backend.list_project_chats(
+            keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
+        )
+        chats, _ = _chat_list_payload(
+            result,
+            current_conversation_url=current_conversation_url if isinstance(current_conversation_url, str) else None,
+        )
+        return chats
+
+    # Most `pb task use <n>` calls refer to an entry already present in the
+    # indexed snorlax/DOM list. Resolve against that lightweight list first so
+    # selection does not repeat the expensive global conversation-history scan.
+    lightweight_chats = await load_chats(include_history_fallback=False)
+    try:
+        return _select_chat_from_list(lightweight_chats, str(target))
+    except ValueError as light_error:
+        if str(target).isdigit():
+            # Numeric indexes beyond the lightweight list may require the deep
+            # task list. Fall through to full enumeration only for that case.
+            pass
+        elif lightweight_chats and (
+            str(light_error).startswith('multiple chats matched')
+            or str(light_error).startswith('chat not found')
+        ):
+            pass
+        elif lightweight_chats:
+            raise
+
+    full_chats = await load_chats(include_history_fallback=True)
+    return _select_chat_from_list(full_chats, str(target))
+
+
 async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     project_home_url = _selected_project_home_url(snapshot)
@@ -977,7 +1025,7 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
         print(f"{idx:>3}. {marker} {item.get('title') or '(untitled)'}\t{item.get('id') or ''}\t{item.get('conversation_url') or ''}")
     source_counts = payload.get('source_counts') if isinstance(payload.get('source_counts'), dict) else {}
     if source_counts:
-        source_summary = ', '.join(f"{name}={source_counts.get(name) or 0}" for name in ('snorlax', 'dom', 'history', 'history_detail', 'current_page', 'recent_state') if name in source_counts)
+        source_summary = ', '.join(f"{name}={source_counts.get(name) or 0}" for name in ('snorlax', 'project_endpoint', 'dom', 'history', 'history_detail', 'current_page', 'recent_state') if name in source_counts)
         visibility = payload.get('visibility_status') or 'unknown'
         print(f"# count={payload.get('count', len(chats))} visibility={visibility} sources: {source_summary}")
         if payload.get('history_supplement_used'):
