@@ -79,7 +79,7 @@ The CLI discovers the nearest `.pb_profile` by walking up from the current worki
 ```bash
 pip uninstall -y chatgpt-claudecode-workflow || true
 pipx uninstall chatgpt-claudecode-workflow || true
-pipx install ./chatgpt_claudecode_workflow_v0.0.126.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.127.zip
 promptbranch state
 promptbranch prompt
 ```
@@ -116,7 +116,7 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
-## v0.0.126
+## v0.0.127
 
 - Added `pb debug chats` / `pb debug task-list` to produce machine-readable diagnostics for project task enumeration undercounts.
 - The debug run writes a timestamped artifact directory containing DOM snapshots, screenshots, HTML, scroll-container diagnostics, project-chat anchor ids, snorlax/sidebar observations, conversation-history/detail observations, and `summary.json`.

@@ -4954,7 +4954,7 @@ class ChatGPTBrowserClient:
         *,
         project_url: str,
         label: str,
-        max_scroll_rounds: int = 6,
+        max_scroll_rounds: int = 80,
     ) -> list[dict[str, Any]]:
         prefix = self._project_conversation_path_prefix() or self._project_conversation_path_prefix_from_url(project_url)
         if not prefix:
@@ -4965,54 +4965,36 @@ class ChatGPTBrowserClient:
         stagnant_rounds = 0
         for round_index in range(max_scroll_rounds):
             snapshot = await page.evaluate(
-                r'''
+                r"""
                 ({ prefix }) => {
                     const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
                     const isVisible = el => {
                         if (!el) return false;
                         const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
                         const rect = el.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0;
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
                     };
-                    const isScrollable = el => {
-                        if (!el || !isVisible(el)) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        const overflowY = (style.overflowY || '').toLowerCase();
-                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
-                        return el.scrollHeight > el.clientHeight + 24;
-                    };
+                    const main = document.querySelector('main, [role="main"]');
+                    const root = main || document.body;
                     const rows = [];
                     const seen = new Set();
-                    for (const anchor of Array.from(document.querySelectorAll('main a[href*="/c/"], [role="main"] a[href*="/c/"]'))) {
-                        if (!isVisible(anchor)) continue;
-                        const href = anchor.getAttribute('href') || '';
-                        const absolute = new URL(href, window.location.origin).toString();
-                        const path = new URL(absolute).pathname;
-                        if (!path.startsWith(prefix)) continue;
-                        const row = anchor.closest('li, article, [role="listitem"], a, div');
-                        const text = normalize((row || anchor).innerText || (row || anchor).textContent || '');
+                    for (const anchor of Array.from(root.querySelectorAll('a[href*="/c/"]'))) {
+                        const url = safeUrl(anchor.getAttribute('href') || '');
+                        if (!url || !url.pathname.startsWith(prefix)) continue;
+                        const row = anchor.closest('li, article, [role="listitem"], [data-testid], a, div');
+                        const text = normalize((row || anchor).innerText || (row || anchor).textContent || anchor.getAttribute('aria-label') || '');
                         if (!text) continue;
                         const lines = text.split('\n').map(normalize).filter(Boolean);
-                        const id = path.split('/c/')[1]?.split(/[/?#]/)[0] || '';
+                        const id = url.pathname.split('/c/')[1]?.split(/[/?#]/)[0] || '';
                         if (!id || seen.has(id)) continue;
                         seen.add(id);
-                        rows.push({
-                            id,
-                            title: lines[0] || '(untitled)',
-                            preview: lines.slice(1).join(' '),
-                            conversation_url: absolute,
-                        });
+                        rows.push({ id, title: lines[0] || '(untitled)', preview: lines.slice(1).join(' '), conversation_url: url.toString(), visible: isVisible(anchor) });
                     }
-                    const scrollables = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
-                    return {
-                        rows,
-                        scrollables: scrollables.map((el, index) => ({ index, top: el.scrollTop, height: el.clientHeight, scrollHeight: el.scrollHeight })),
-                    };
+                    return { rows, root_tag: root.tagName || null };
                 }
-                ''',
+                """,
                 {'prefix': prefix},
             )
             rows = snapshot.get('rows') if isinstance(snapshot, dict) else []
@@ -5039,46 +5021,109 @@ class ChatGPTBrowserClient:
                 stagnant_rounds += 1
             else:
                 stagnant_rounds = 0
-            if stagnant_rounds >= 2:
-                break
             scrolled = await page.evaluate(
-                r'''
-                () => {
-                    const isVisible = el => {
-                        if (!el) return false;
+                r"""
+                ({ prefix }) => {
+                    const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisibleish = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
                         const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        if (style.display === 'none' || style.visibility === 'hidden') return false;
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
                         const rect = el.getBoundingClientRect();
-                        return rect.width > 0 && rect.height > 0;
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= -240 && rect.top <= window.innerHeight + 240;
                     };
                     const isScrollable = el => {
-                        if (!el || !isVisible(el)) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        const overflowY = (style.overflowY || '').toLowerCase();
-                        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
-                        return el.scrollHeight > el.clientHeight + 24;
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const scrollHeight = el.scrollHeight || 0;
+                        const clientHeight = el.clientHeight || 0;
+                        return scrollHeight > clientHeight + 16;
                     };
-                    const candidates = Array.from(document.querySelectorAll('main, [role="main"], main *')).filter(isScrollable);
+                    const main = document.querySelector('main, [role="main"]') || document.body;
+                    const projectAnchors = Array.from(main.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                        const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                        return url && url.pathname.startsWith(prefix);
+                    });
+                    const marked = Array.from(main.querySelectorAll('[data-promptbranch-project-chat-scroller="1"]'));
+                    const candidates = new Set();
+                    for (const el of marked) {
+                        if (isScrollable(el)) candidates.add(el);
+                    }
+                    for (const anchor of projectAnchors) {
+                        let el = anchor;
+                        for (let depth = 0; el && depth < 18; depth += 1) {
+                            if (main.contains(el) && isScrollable(el)) candidates.add(el);
+                            if (el === main) break;
+                            el = el.parentElement;
+                        }
+                    }
+                    for (const el of Array.from(main.querySelectorAll('*'))) {
+                        const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+                        if ((attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) && isScrollable(el)) {
+                            candidates.add(el);
+                        }
+                    }
+                    const scored = [];
+                    for (const el of Array.from(candidates)) {
+                        if (!el || !el.getBoundingClientRect || !main.contains(el)) continue;
+                        const scrollHeight = el.scrollHeight || 0;
+                        const clientHeight = el.clientHeight || 0;
+                        const remaining = Math.max(scrollHeight - clientHeight - (el.scrollTop || 0), 0);
+                        if (remaining <= 1 && projectAnchors.length === 0) continue;
+                        if (!isVisibleish(el) && el.getAttribute('data-promptbranch-project-chat-scroller') !== '1') continue;
+                        const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        const overflowY = (style?.overflowY || '').toLowerCase();
+                        const markedScore = el.getAttribute('data-promptbranch-project-chat-scroller') === '1' ? 50000 : 0;
+                        const score = markedScore + (containsProjectAnchor ? 25000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 2500 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1600);
+                        scored.push({ el, score, containsProjectAnchor, remaining, marked: markedScore > 0 });
+                    }
+                    scored.sort((a, b) => b.score - a.score);
+                    const moves = [];
                     let moved = false;
-                    for (const el of candidates) {
-                        const before = el.scrollTop;
-                        el.scrollTop = Math.min(el.scrollTop + Math.max(el.clientHeight * 0.9, 200), el.scrollHeight);
-                        if (el.scrollTop > before + 1) moved = true;
+                    const item = scored[0] || null;
+                    if (!item) {
+                        return { moved: false, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'no_project_scroller' };
                     }
-                    if (!moved) {
-                        const before = window.scrollY;
-                        window.scrollTo(0, before + Math.max(window.innerHeight * 0.9, 300));
-                        moved = window.scrollY > before + 1;
+                    const el = item.el;
+                    try { el.setAttribute('data-promptbranch-project-chat-scroller', '1'); } catch (_err) {}
+                    const before = Math.round(el.scrollTop || 0);
+                    const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                    const remaining = Math.max(maxTop - before, 0);
+                    const step = Math.min(Math.max((el.clientHeight || window.innerHeight || 700) * 0.28, 80), 260, remaining);
+                    const target = Math.min(before + step, maxTop);
+                    try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
+                    const after = Math.round(el.scrollTop || 0);
+                    if (after > before + 1) {
+                        moved = true;
+                        moves.push({
+                            tag: el.tagName || 'DOCUMENT',
+                            role: el.getAttribute ? el.getAttribute('role') : null,
+                            testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                            className: (el.className || '').toString().slice(0, 180),
+                            reason: item.containsProjectAnchor ? 'focused_project_scroller_contains_anchor' : (item.marked ? 'focused_project_scroller_marked' : 'focused_project_scroller_candidate'),
+                            before,
+                            after,
+                            step: Math.round(step),
+                            remaining_before: Math.round(remaining),
+                            scrollHeight: Math.round(el.scrollHeight || 0),
+                            clientHeight: Math.round(el.clientHeight || 0),
+                            textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 220),
+                        });
                     }
-                    return moved;
+                    return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'focused_project_scroller' };
                 }
-                '''
+                """,
+                {'prefix': prefix},
             )
-            if not scrolled:
+            did_scroll = bool(scrolled.get('moved')) if isinstance(scrolled, dict) else bool(scrolled)
+            self._log(label, 'advanced focused project chats DOM scroll', round=round_index + 1, moved=did_scroll, details=scrolled if isinstance(scrolled, dict) else None)
+            if stagnant_rounds >= 8 and not did_scroll:
                 break
-            await page.wait_for_timeout(400)
+            if stagnant_rounds >= 12:
+                break
+            await page.wait_for_timeout(1_100)
         return collected
 
     async def _open_project_sources_tab(self, page: Any) -> None:
