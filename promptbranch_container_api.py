@@ -390,6 +390,31 @@ async def list_project_chats(
         _raise_http_error(exc)
 
 
+@protected.get("/chats/debug", dependencies=[Depends(require_service_token)])
+async def debug_project_chats(
+    keep_open: bool = False,
+    project_url: Optional[str] = None,
+    scroll_rounds: int = 20,
+    wait_ms: int = 600,
+    include_history: bool = True,
+    history_max_pages: int = 5,
+    history_max_detail_probes: int = 80,
+    manual_pause: bool = False,
+) -> dict:
+    try:
+        return await _service_for(project_url).debug_project_chats(
+            keep_open=keep_open,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
+        )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
 @protected.get("/project-sources", dependencies=[Depends(require_service_token)])
 async def list_project_sources(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:

@@ -75,3 +75,26 @@ Treat `recent_state_only` as degraded. It keeps the workflow usable, but it is n
 `promptbranch task list` performs complete project-chat enumeration by combining indexed sources. It follows snorlax/sidebar cursors when available, scrolls the project Chats surface, and supplements visible DOM/snorlax results with conversation-history enumeration so tasks below the initially visible list are not silently omitted. If ChatGPT omits project ids from the conversation-history list payload, Promptbranch probes conversation detail payloads and reports recovered rows under `source_counts.history_detail`.
 
 Plain `promptbranch task list` also prints a compact footer with `count`, `visibility`, and `sources`. Use `--json` when scripts need the full payload or need to distinguish `history` from `history_detail`.
+
+## Debug task-list undercounts
+
+When `promptbranch task list` stops at the first visible project-chat batch, collect diagnostics before changing enumeration logic again:
+
+```bash
+promptbranch debug chats --json \
+  2>&1 | tee pb_debug_chats.json.log
+
+promptbranch debug chats --json --scroll-rounds 30 --wait-ms 800 \
+  2>&1 | tee pb_debug_chats_deep.json.log
+```
+
+The command writes an artifact directory containing:
+
+- `summary.json`
+- DOM snapshots before/after Chats tab activation
+- per-round scroll diagnostics
+- final screenshot and HTML
+- snorlax/sidebar and conversation-history/detail observations
+
+Use `--no-history` to focus on the visible Chats tab and scroll containers without exercising backend history/detail probes.
+

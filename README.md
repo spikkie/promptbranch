@@ -1,4 +1,4 @@
-# promptbranch v0.0.125
+# promptbranch v0.0.126
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.125 .
+docker build -t promptbranch-service:0.0.126 .
 ```
 
 Run it:
@@ -50,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.125
+  promptbranch-service:0.0.126
 ```
 
 Compose option:
@@ -128,6 +128,15 @@ Optional debug tuning flags:
 - `--project-list-debug-scroll-rounds <n>`
 - `--project-list-debug-wait-ms <ms>`
 - `--project-list-debug-manual-pause`
+
+For project task-list undercount debugging, run the canonical debug command. It writes a timestamped artifact directory with DOM snapshots, screenshots, scroll-container diagnostics, and backend observations:
+
+```bash
+promptbranch debug chats --json
+promptbranch debug task-list --json --scroll-rounds 30 --wait-ms 800
+```
+
+Use `--no-history` to avoid backend history/detail probes while inspecting only the project Chats tab DOM.
 
 Then run the existing integration harness against Docker instead of the in-process Python stack:
 
@@ -229,7 +238,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.125.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.126.zip
 ```
 
 From an extracted checkout:

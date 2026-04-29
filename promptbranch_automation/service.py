@@ -299,6 +299,32 @@ class ChatGPTAutomationService:
                 ),
             )
 
+    async def debug_project_chats(
+        self,
+        *,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Debugging ChatGPT project task list locally")
+        async with self._lock:
+            return await self._with_retries(
+                "debug_project_chats",
+                lambda: self._build_bot().debug_project_chats(
+                    scroll_rounds=scroll_rounds,
+                    wait_ms=wait_ms,
+                    include_history=include_history,
+                    history_max_pages=history_max_pages,
+                    history_max_detail_probes=history_max_detail_probes,
+                    manual_pause=manual_pause,
+                    keep_open=keep_open,
+                ),
+            )
+
     async def create_project(
         self,
         *,

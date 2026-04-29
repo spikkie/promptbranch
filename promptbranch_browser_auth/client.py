@@ -707,6 +707,41 @@ class ChatGPTBrowserClient:
             include_history_fallback=include_history_fallback,
         )
 
+    async def debug_project_chats(
+        self,
+        *,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "chat-list-debug",
+            "starting debug_project_chats",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
+        )
+        return await self._run_with_context(
+            operation_name="chat_list_debug",
+            operation=self._debug_project_chats_operation,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
+            keep_open=keep_open,
+        )
+
     async def list_project_sources(
         self,
         *,
@@ -1530,6 +1565,243 @@ class ChatGPTBrowserClient:
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
         return result
+
+    async def _debug_project_chats_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_url = self._project_home_url_from_url(self.config.project_url)
+        project_id = self._extract_project_id_from_url(project_url)
+        project_slug = self._project_slug_from_url(project_url)
+        prefix = self._project_conversation_path_prefix_from_url(project_url) or self._project_conversation_path_prefix()
+        if not project_id or not project_slug or not prefix:
+            raise RuntimeError('A project must be selected before debugging task list enumeration')
+
+        artifact_dir = self._artifact_dir / f"chat_list_debug_{self._timestamp_for_filename()}"
+        await self._ensure_dir(artifact_dir)
+
+        observed_requests: list[dict[str, Any]] = []
+        observed_responses: list[dict[str, Any]] = []
+        response_tasks: list[asyncio.Task[Any]] = []
+        loop = asyncio.get_running_loop()
+
+        def is_interesting_url(url: str) -> bool:
+            normalized = str(url or '')
+            return (
+                self._is_snorlax_sidebar_url(normalized)
+                or self._is_conversation_history_url(normalized)
+                or '/backend-api/conversation/' in normalized
+                or '/backend-api/gizmos/snorlax/sidebar' in normalized
+            )
+
+        def observe_request(req: Any) -> None:
+            try:
+                url = getattr(req, 'url', '') or ''
+                if not is_interesting_url(url):
+                    return
+                observed_requests.append({
+                    'method': getattr(req, 'method', None),
+                    'url': url,
+                    'resource_type': getattr(req, 'resource_type', None),
+                })
+            except Exception as exc:
+                self._log('chat-list-debug', 'failed to inspect debug request', error=repr(exc))
+
+        async def capture_response(resp: Any) -> None:
+            url = getattr(resp, 'url', '') or ''
+            if not is_interesting_url(url):
+                return
+            try:
+                headers = await resp.all_headers()
+            except Exception:
+                headers = {}
+            text = ''
+            json_summary: Any = None
+            try:
+                text = await resp.text()
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict):
+                        raw_items = parsed.get('items')
+                        raw_conversations = parsed.get('conversations')
+                        json_summary = {
+                            'type': 'dict',
+                            'keys': sorted(str(key) for key in parsed.keys())[:50],
+                            'items_count': len(raw_items) if isinstance(raw_items, list) else None,
+                            'conversations_count': len(raw_conversations) if isinstance(raw_conversations, list) else None,
+                            'cursor': parsed.get('cursor'),
+                        }
+                    elif isinstance(parsed, list):
+                        json_summary = {'type': 'list', 'count': len(parsed)}
+                except Exception:
+                    json_summary = None
+            except Exception as exc:
+                text = f'<failed to read body: {exc}>'
+            observed_responses.append({
+                'status': getattr(resp, 'status', None),
+                'url': url,
+                'content_type': headers.get('content-type') if isinstance(headers, dict) else None,
+                'json_summary': json_summary,
+                'body_preview': text[:4000],
+            })
+
+        def observe_response(resp: Any) -> None:
+            try:
+                url = getattr(resp, 'url', '') or ''
+                if not is_interesting_url(url):
+                    return
+                response_tasks.append(loop.create_task(capture_response(resp)))
+            except Exception as exc:
+                self._log('chat-list-debug', 'failed to schedule debug response capture', error=repr(exc))
+
+        if hasattr(context, 'on'):
+            context.on('request', observe_request)
+            context.on('response', observe_response)
+
+        async def capture(label: str, *, full: bool = False) -> dict[str, Any]:
+            safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", label).strip("-")[:80] or "item"
+            json_path = artifact_dir / f"{safe}.json"
+            screenshot_path = artifact_dir / f"{safe}.png"
+            html_path = artifact_dir / f"{safe}.html"
+            payload = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            payload['label'] = label
+            await self._write_json(json_path, payload)
+            if full:
+                try:
+                    await page.screenshot(path=str(screenshot_path), full_page=True)
+                except Exception as exc:
+                    payload['screenshot_error'] = repr(exc)
+                try:
+                    await self._write_text(html_path, await page.content())
+                except Exception as exc:
+                    payload['html_error'] = repr(exc)
+            return payload
+
+        await self._goto(page, project_url, label='chat-list-debug-home')
+        before_tab = await capture('01-before-open-chats-tab', full=True)
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open('Inspect project before Chats tab activation. Press Enter to continue...')
+
+        chats_tab_active = await self._open_project_chats_tab(page)
+        after_tab = await capture('02-after-open-chats-tab', full=True)
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open('Inspect project after Chats tab activation. Press Enter to continue...')
+
+        scroll_rounds_payload: list[dict[str, Any]] = []
+        for round_index in range(max(1, scroll_rounds)):
+            before = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            move = await self._project_chat_debug_scroll_step(page, prefix=prefix)
+            await page.wait_for_timeout(max(0, wait_ms))
+            after = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            payload = {
+                'round': round_index + 1,
+                'before_project_anchor_count': before.get('project_anchor_count'),
+                'before_visible_project_anchor_count': before.get('visible_project_anchor_count'),
+                'after_project_anchor_count': after.get('project_anchor_count'),
+                'after_visible_project_anchor_count': after.get('visible_project_anchor_count'),
+                'moved': bool(move.get('moved')) if isinstance(move, dict) else bool(move),
+                'move': move,
+                'before_project_anchor_ids': [row.get('id') for row in before.get('project_anchors', []) if isinstance(row, dict)],
+                'after_project_anchor_ids': [row.get('id') for row in after.get('project_anchors', []) if isinstance(row, dict)],
+                'top_scrollables': after.get('scrollables', [])[:8],
+            }
+            scroll_rounds_payload.append(payload)
+            await self._write_json(artifact_dir / f"round-{round_index + 1:02d}.json", payload)
+            if not payload['moved'] and payload['after_project_anchor_count'] == payload['before_project_anchor_count']:
+                # Keep a few stagnant rounds in case the virtualized list is slow,
+                # but do not loop forever on a fixed DOM.
+                recent = scroll_rounds_payload[-4:]
+                if len(recent) >= 4 and all(not item.get('moved') for item in recent):
+                    break
+
+        final_dom = await capture('99-final-dom', full=True)
+
+        snorlax_chats: list[dict[str, Any]] = []
+        snorlax_error: Optional[str] = None
+        try:
+            snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-debug-snorlax')
+        except Exception as exc:
+            snorlax_error = repr(exc)
+            self._log('chat-list-debug', 'snorlax diagnostic enumeration failed', error=snorlax_error)
+
+        history_chats: list[dict[str, Any]] = []
+        history_error: Optional[str] = None
+        if include_history:
+            try:
+                history_chats = await self._collect_all_project_chats(
+                    page,
+                    project_url=project_url,
+                    label='chat-list-debug-history',
+                    max_pages=history_max_pages,
+                    max_detail_probes=history_max_detail_probes,
+                )
+            except Exception as exc:
+                history_error = repr(exc)
+                self._log('chat-list-debug', 'history diagnostic enumeration failed', error=history_error)
+
+        dom_ids = [str(row.get('id') or '') for row in final_dom.get('project_anchors', []) if isinstance(row, dict)]
+        snorlax_ids = [str(chat.get('id') or '') for chat in snorlax_chats if isinstance(chat, dict)]
+        history_ids = [str(chat.get('id') or '') for chat in history_chats if isinstance(chat, dict)]
+        all_ids = sorted({item for item in [*dom_ids, *snorlax_ids, *history_ids] if item})
+
+        if response_tasks:
+            await asyncio.gather(*response_tasks, return_exceptions=True)
+
+        summary = {
+            'ok': True,
+            'action': 'debug_chats',
+            'artifact_dir': str(artifact_dir),
+            'project_url': project_url,
+            'project_id': project_id,
+            'project_slug': project_slug,
+            'prefix': prefix,
+            'chats_tab_active': chats_tab_active,
+            'current_url': await self._safe_page_url(page),
+            'counts': {
+                'before_tab_project_anchors': before_tab.get('project_anchor_count'),
+                'after_tab_project_anchors': after_tab.get('project_anchor_count'),
+                'final_dom_project_anchors': final_dom.get('project_anchor_count'),
+                'final_dom_visible_project_anchors': final_dom.get('visible_project_anchor_count'),
+                'snorlax': len(snorlax_chats),
+                'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
+                'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
+                'combined_unique_ids': len(all_ids),
+                'observed_requests': len(observed_requests),
+                'observed_responses': len(observed_responses),
+            },
+            'dom_project_anchor_ids': dom_ids,
+            'snorlax_ids': snorlax_ids,
+            'history_ids': history_ids,
+            'combined_unique_ids': all_ids,
+            'scroll_rounds': scroll_rounds_payload,
+            'final_scrollables': final_dom.get('scrollables', [])[:20],
+            'final_project_anchors': final_dom.get('project_anchors', []),
+            'snorlax_error': snorlax_error,
+            'history_error': history_error,
+            'include_history': include_history,
+            'history_max_pages': history_max_pages,
+            'history_max_detail_probes': history_max_detail_probes,
+            'network': {
+                'requests': observed_requests,
+                'responses': observed_responses,
+            },
+        }
+        await self._write_json(artifact_dir / 'network.json', summary['network'])
+        await self._write_json(artifact_dir / 'summary.json', summary)
+        self._log('chat-list-debug', 'debug_project_chats completed', artifact_dir=str(artifact_dir), counts=summary['counts'])
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Chat-list debug completed. Press Enter to close the browser...')
+        return summary
 
     async def _list_project_sources_operation(
         self,
@@ -5490,6 +5762,241 @@ class ChatGPTBrowserClient:
                 break
             await page.wait_for_timeout(1_100)
         return collected
+
+    async def _project_chat_dom_debug_snapshot(self, page: Any, *, prefix: str) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            ({ prefix }) => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                const rectFor = el => {
+                    if (!el || !el.getBoundingClientRect) return null;
+                    const rect = el.getBoundingClientRect();
+                    return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), top: Math.round(rect.top), bottom: Math.round(rect.bottom) };
+                };
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const summarizeElement = el => {
+                    if (!el) return null;
+                    const style = el.getBoundingClientRect ? window.getComputedStyle(el) : null;
+                    return {
+                        tag: el.tagName || 'DOCUMENT',
+                        id: el.id || null,
+                        role: el.getAttribute ? el.getAttribute('role') : null,
+                        testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                        ariaLabel: el.getAttribute ? el.getAttribute('aria-label') : null,
+                        className: (el.className || '').toString().slice(0, 240),
+                        rect: rectFor(el),
+                        scrollTop: Math.round(el.scrollTop || 0),
+                        scrollHeight: Math.round(el.scrollHeight || 0),
+                        clientHeight: Math.round(el.clientHeight || 0),
+                        overflowY: style ? style.overflowY : null,
+                        textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 240),
+                    };
+                };
+                const scrollParentOf = el => {
+                    let node = el;
+                    for (let depth = 0; node && depth < 18; depth += 1) {
+                        if (!node.getBoundingClientRect) break;
+                        const style = window.getComputedStyle(node);
+                        const overflowY = (style?.overflowY || '').toLowerCase();
+                        if ((node.scrollHeight || 0) > (node.clientHeight || 0) + 24 || ['auto', 'scroll', 'overlay'].includes(overflowY)) {
+                            return summarizeElement(node);
+                        }
+                        node = node.parentElement;
+                    }
+                    return summarizeElement(document.scrollingElement || document.documentElement || document.body);
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const allChatAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]'));
+                const projectAnchors = [];
+                const nonProjectAnchors = [];
+                for (const anchor of allChatAnchors) {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    if (!url) continue;
+                    const isProject = url.pathname.startsWith(prefix);
+                    const row = anchor.closest('li, article, [role="listitem"], [data-testid], a, div') || anchor;
+                    const text = normalize((row.innerText || row.textContent || anchor.getAttribute('aria-label') || ''));
+                    const lines = text.split('\n').map(normalize).filter(Boolean);
+                    const item = {
+                        id: url.pathname.split('/c/')[1]?.split(/[/?#]/)[0] || '',
+                        href: url.toString(),
+                        title: lines[0] || '(untitled)',
+                        preview: lines.slice(1).join(' ').slice(0, 400),
+                        visible: isVisible(anchor),
+                        inMain: main.contains(anchor),
+                        anchor: summarizeElement(anchor),
+                        row: summarizeElement(row),
+                        scrollParent: scrollParentOf(anchor),
+                    };
+                    if (isProject) projectAnchors.push(item);
+                    else nonProjectAnchors.push(item);
+                }
+                const tabCandidates = Array.from((main || document).querySelectorAll('button, a, [role="tab"], [role="button"], [aria-selected], [data-state]')).map(el => {
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    return {
+                        text,
+                        visible: isVisible(el),
+                        ariaSelected: el.getAttribute('aria-selected'),
+                        dataState: el.getAttribute('data-state'),
+                        ariaCurrent: el.getAttribute('aria-current'),
+                        element: summarizeElement(el),
+                    };
+                }).filter(item => item.text.toLowerCase().includes('chat') || item.text.toLowerCase().includes('source')).slice(0, 30);
+                const scrollableCandidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
+                for (const anchor of allChatAnchors) {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    if (!url || !url.pathname.startsWith(prefix)) continue;
+                    let el = anchor;
+                    for (let depth = 0; el && depth < 18; depth += 1) {
+                        scrollableCandidates.add(el);
+                        el = el.parentElement;
+                    }
+                }
+                for (const el of Array.from(document.querySelectorAll('*'))) {
+                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
+                    if (attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) {
+                        scrollableCandidates.add(el);
+                    }
+                }
+                const scrollables = [];
+                for (const el of Array.from(scrollableCandidates)) {
+                    if (!el || !el.getBoundingClientRect) continue;
+                    const scrollHeight = el.scrollHeight || 0;
+                    const clientHeight = el.clientHeight || 0;
+                    if (scrollHeight <= clientHeight + 24) continue;
+                    const containsProjectAnchor = Array.from(el.querySelectorAll ? el.querySelectorAll('a[href*="/c/"]') : []).some(candidate => {
+                        const url = safeUrl(candidate.getAttribute('href') || candidate.href || '');
+                        return url && url.pathname.startsWith(prefix);
+                    });
+                    const summary = summarizeElement(el);
+                    summary.containsProjectAnchor = containsProjectAnchor;
+                    summary.visible = isVisible(el) || el === document.scrollingElement || el === document.documentElement || el === document.body;
+                    summary.remainingScroll = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0) - (el.scrollTop || 0), 0);
+                    scrollables.push(summary);
+                }
+                scrollables.sort((a, b) => (Number(b.containsProjectAnchor) - Number(a.containsProjectAnchor)) || ((b.remainingScroll || 0) - (a.remainingScroll || 0)) || ((b.scrollHeight || 0) - (a.scrollHeight || 0)));
+                const visibleProjectAnchorCount = projectAnchors.filter(item => item.visible).length;
+                return {
+                    url: window.location.href,
+                    title: document.title,
+                    prefix,
+                    viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: Math.round(window.scrollY || 0) },
+                    main: summarizeElement(main),
+                    body: summarizeElement(document.body),
+                    documentElement: summarizeElement(document.documentElement),
+                    chats_tab_candidates: tabCandidates,
+                    chats_tab_active_guess: tabCandidates.some(item => item.visible && item.text.toLowerCase().startsWith('chats')),
+                    all_chat_anchor_count: allChatAnchors.length,
+                    project_anchor_count: projectAnchors.length,
+                    visible_project_anchor_count: visibleProjectAnchorCount,
+                    non_project_chat_anchor_count: nonProjectAnchors.length,
+                    project_anchors: projectAnchors,
+                    non_project_anchors: nonProjectAnchors.slice(0, 25),
+                    scrollables: scrollables.slice(0, 40),
+                };
+            }
+            ''',
+            {'prefix': prefix},
+        )
+        return result if isinstance(result, dict) else {'error': 'unexpected project chat DOM debug snapshot shape'}
+
+    async def _project_chat_debug_scroll_step(self, page: Any, *, prefix: str) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            ({ prefix }) => {
+                const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const projectAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    return url && url.pathname.startsWith(prefix);
+                });
+                const candidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
+                for (const anchor of projectAnchors) {
+                    let el = anchor;
+                    for (let depth = 0; el && depth < 18; depth += 1) {
+                        candidates.add(el);
+                        el = el.parentElement;
+                    }
+                }
+                for (const el of Array.from(document.querySelectorAll('*'))) {
+                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
+                    if (attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) candidates.add(el);
+                }
+                const scored = [];
+                for (const el of Array.from(candidates)) {
+                    if (!el || !el.getBoundingClientRect) continue;
+                    const scrollHeight = el.scrollHeight || 0;
+                    const clientHeight = el.clientHeight || 0;
+                    const remaining = Math.max(scrollHeight - clientHeight - (el.scrollTop || 0), 0);
+                    if (scrollHeight <= clientHeight + 24 || remaining <= 1) continue;
+                    const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const overflowY = (style?.overflowY || '').toLowerCase();
+                    const score = (containsProjectAnchor ? 10000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 1000 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1500);
+                    scored.push({ el, score, containsProjectAnchor, remaining });
+                }
+                scored.sort((a, b) => b.score - a.score);
+                const moves = [];
+                let moved = false;
+                const scrollOne = (el, reason) => {
+                    const before = Math.round(el.scrollTop || 0);
+                    const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                    const step = Math.max((el.clientHeight || window.innerHeight || 700) * 0.92, 650);
+                    const target = Math.min(before + step, maxTop);
+                    try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
+                    const after = Math.round(el.scrollTop || 0);
+                    if (after > before + 1) {
+                        moved = true;
+                        moves.push({
+                            tag: el.tagName || 'DOCUMENT',
+                            role: el.getAttribute ? el.getAttribute('role') : null,
+                            testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                            className: (el.className || '').toString().slice(0, 180),
+                            reason,
+                            before,
+                            after,
+                            scrollHeight: Math.round(el.scrollHeight || 0),
+                            clientHeight: Math.round(el.clientHeight || 0),
+                            textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 180),
+                        });
+                    }
+                };
+                for (const item of scored.slice(0, 10)) scrollOne(item.el, item.containsProjectAnchor ? 'contains_project_anchor' : 'scroll_candidate');
+                if (projectAnchors.length) {
+                    try { projectAnchors[projectAnchors.length - 1].scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'instant' }); } catch (_err) {}
+                }
+                const beforeWindow = Math.round(window.scrollY || document.documentElement.scrollTop || 0);
+                try { window.scrollBy({ top: Math.max(window.innerHeight * 0.95, 750), behavior: 'instant' }); } catch (_err) { window.scrollTo(0, beforeWindow + Math.max(window.innerHeight * 0.95, 750)); }
+                const afterWindow = Math.round(window.scrollY || document.documentElement.scrollTop || 0);
+                if (afterWindow > beforeWindow + 1) {
+                    moved = true;
+                    moves.push({ tag: 'WINDOW', reason: 'window', before: beforeWindow, after: afterWindow, scrollHeight: Math.round(document.documentElement.scrollHeight || 0), clientHeight: Math.round(window.innerHeight || 0) });
+                }
+                try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true })); } catch (_err) {}
+                return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length };
+            }
+            ''',
+            {'prefix': prefix},
+        )
+        try:
+            viewport = getattr(page, 'viewport_size', None) or {}
+            width = int(viewport.get('width') or 1280)
+            height = int(viewport.get('height') or 900)
+            await page.mouse.move(width * 0.64, height * 0.70)
+            await page.mouse.wheel(0, max(int(height * 0.95), 750))
+            await page.keyboard.press('PageDown')
+        except Exception as exc:
+            if isinstance(result, dict):
+                result.setdefault('native_event_error', repr(exc))
+        return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
 
     async def _open_project_sources_tab(self, page: Any) -> None:
         tab = await self._wait_for_visible_locator(

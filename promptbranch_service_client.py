@@ -170,6 +170,31 @@ class ChatGPTServiceClient:
             params["project_url"] = project_url
         return self._json(self._client.get("/v1/chats", params=params))
 
+    def debug_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "keep_open": keep_open,
+            "scroll_rounds": scroll_rounds,
+            "wait_ms": wait_ms,
+            "include_history": include_history,
+            "history_max_pages": history_max_pages,
+            "history_max_detail_probes": history_max_detail_probes,
+            "manual_pause": manual_pause,
+        }
+        if project_url:
+            params["project_url"] = project_url
+        return self._json(self._client.get("/v1/chats/debug", params=params))
+
     def list_project_sources(
         self,
         *,
