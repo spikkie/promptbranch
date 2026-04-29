@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.125"
+CLI_VERSION = "0.0.126"
 COMMANDS = {
     "login-check",
     "ask",
@@ -50,6 +50,7 @@ COMMANDS = {
     "artifact",
     "test",
     "doctor",
+    "debug",
     "project-create",
     "project-list",
     "project-resolve",
@@ -147,6 +148,33 @@ class DirectBackend:
             return await self._service.list_project_chats(
                 keep_open=keep_open,
                 include_history_fallback=include_history_fallback,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
+
+    async def debug_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+    ) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.debug_project_chats(
+                keep_open=keep_open,
+                scroll_rounds=scroll_rounds,
+                wait_ms=wait_ms,
+                include_history=include_history,
+                history_max_pages=history_max_pages,
+                history_max_detail_probes=history_max_detail_probes,
+                manual_pause=manual_pause,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -359,6 +387,29 @@ class ServiceBackend:
             keep_open=keep_open,
             project_url=self._effective_project_home_url(),
             include_history_fallback=include_history_fallback,
+        )
+
+    async def debug_project_chats(
+        self,
+        *,
+        keep_open: bool = False,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.debug_project_chats,
+            keep_open=keep_open,
+            project_url=self._effective_project_home_url(),
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
         )
 
     async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
@@ -1481,6 +1532,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
+        "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
@@ -2187,6 +2239,38 @@ async def cmd_doctor(backend: CommandBackend, args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.debug_command in {"chats", "task-list", "tasks"}:
+        result = await backend.debug_project_chats(
+            keep_open=args.keep_open,
+            scroll_rounds=args.scroll_rounds,
+            wait_ms=args.wait_ms,
+            include_history=not args.no_history,
+            history_max_pages=args.history_max_pages,
+            history_max_detail_probes=args.history_max_detail_probes,
+            manual_pause=args.manual_pause,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
+        counts = result.get("counts") if isinstance(result.get("counts"), dict) else {}
+        print(f"artifact_dir={result.get('artifact_dir')}")
+        print(f"project_url={result.get('project_url')}")
+        print(f"chats_tab_active={str(bool(result.get('chats_tab_active'))).lower()}")
+        print(
+            "counts="
+            f"dom={counts.get('final_dom_project_anchors')}, "
+            f"visible_dom={counts.get('final_dom_visible_project_anchors')}, "
+            f"snorlax={counts.get('snorlax')}, "
+            f"history={counts.get('history')}, "
+            f"history_detail={counts.get('history_detail')}, "
+            f"combined={counts.get('combined_unique_ids')}"
+        )
+        print(f"summary={result.get('artifact_dir')}/summary.json")
+        return 0
+    raise RuntimeError(f"Unknown debug command: {args.debug_command}")
+
+
 async def cmd_completion(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     print(_render_completion(args.shell, _cli_command_name()), end="")
@@ -2514,6 +2598,18 @@ def make_parser() -> argparse.ArgumentParser:
     doctor = subparsers.add_parser("doctor", help="Run cheap local health checks for the active Promptbranch state.")
     doctor.add_argument("--json", action="store_true", help="Emit doctor checks as JSON.")
 
+    debug = subparsers.add_parser("debug", help="Emit diagnostic artifacts for brittle ChatGPT surfaces.")
+    debug_subparsers = debug.add_subparsers(dest="debug_command", required=True)
+    debug_chats = debug_subparsers.add_parser("chats", aliases=["task-list", "tasks"], help="Debug project task/chat enumeration and write DOM/network artifacts.")
+    debug_chats.add_argument("--json", action="store_true", help="Emit the debug summary as JSON.")
+    debug_chats.add_argument("--scroll-rounds", type=int, default=20, help="Maximum project Chats-tab scroll diagnostic rounds.")
+    debug_chats.add_argument("--wait-ms", type=int, default=600, help="Wait after each scroll attempt in milliseconds.")
+    debug_chats.add_argument("--no-history", action="store_true", help="Skip backend conversation-history/detail probing and only collect DOM/snorlax diagnostics.")
+    debug_chats.add_argument("--history-max-pages", type=int, default=5, help="Maximum /backend-api/conversations pages to inspect during debug.")
+    debug_chats.add_argument("--history-max-detail-probes", type=int, default=80, help="Maximum conversation detail probes for history classification during debug.")
+    debug_chats.add_argument("--manual-pause", action="store_true", help="Pause between key browser states in headed mode for manual inspection.")
+    debug_chats.add_argument("--keep-open", action="store_true", help="Keep the browser open after debug collection.")
+
     project_create = subparsers.add_parser(
         "project-create",
         help="Create a new ChatGPT project and return its URL.",
@@ -2734,6 +2830,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test(backend, args)
     if args.command == "doctor":
         return await cmd_doctor(backend, args)
+    if args.command == "debug":
+        return await cmd_debug(backend, args)
     if args.command == "project-create":
         return await cmd_project_create(backend, args)
     if args.command == "project-list":
