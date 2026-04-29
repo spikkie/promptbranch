@@ -1521,7 +1521,8 @@ class ChatGPTBrowserClient:
                 'snorlax': len(snorlax_chats),
                 'dom': len(dom_chats),
                 'current_page': len(current_page_chats),
-                'history': len(history_chats),
+                'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
+                'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
             },
             'current_url': await self._safe_page_url(page),
         }
@@ -3888,6 +3889,134 @@ class ChatGPTBrowserClient:
             })
         return chats
 
+    def _conversation_history_items_from_payload(self, payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, dict):
+            raw_items = payload.get('items')
+            if isinstance(raw_items, list):
+                return [item for item in raw_items if isinstance(item, dict)]
+            raw_items = payload.get('conversations')
+            if isinstance(raw_items, list):
+                return [item for item in raw_items if isinstance(item, dict)]
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
+
+    def _conversation_history_item_to_chat(
+        self,
+        item: dict[str, Any],
+        *,
+        project_url: str,
+        source: str = 'history',
+        detail_payload: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        conversation_id = str(item.get('id') or '').strip()
+        if not conversation_id:
+            return None
+        detail_payload = detail_payload if isinstance(detail_payload, dict) else {}
+        title = re.sub(r'\s+', ' ', str(detail_payload.get('title') or item.get('title') or '')).strip() or '(untitled)'
+        conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url)
+        if not conversation_url:
+            return None
+        return {
+            'id': conversation_id,
+            'title': title,
+            'conversation_url': conversation_url,
+            'create_time': detail_payload.get('create_time') or detail_payload.get('createTime') or item.get('create_time') or item.get('createTime'),
+            'update_time': detail_payload.get('update_time') or detail_payload.get('updateTime') or item.get('update_time') or item.get('updateTime'),
+            'source': source,
+        }
+
+    def _payload_references_project(
+        self,
+        payload: Any,
+        *,
+        project_id: str,
+        project_slug: Optional[str] = None,
+        project_url: Optional[str] = None,
+        max_depth: int = 8,
+    ) -> bool:
+        normalized_project_id = (project_id or '').strip().lower()
+        normalized_project_slug = (project_slug or '').strip().lower()
+        normalized_project_url = (project_url or '').strip().lower()
+        if not normalized_project_id and not normalized_project_slug and not normalized_project_url:
+            return False
+
+        def string_matches(value: str) -> bool:
+            candidate = value.strip().lower()
+            if not candidate:
+                return False
+            if normalized_project_id and self._project_ids_refer_to_same_project(candidate, normalized_project_id):
+                return True
+            if normalized_project_slug and self._project_ids_refer_to_same_project(candidate, normalized_project_slug):
+                return True
+            if normalized_project_slug and normalized_project_slug in candidate:
+                return True
+            if normalized_project_id and f'/g/{normalized_project_id}' in candidate:
+                return True
+            if normalized_project_url and normalized_project_url in candidate:
+                return True
+            return False
+
+        def visit(value: Any, depth: int = 0) -> bool:
+            if depth > max_depth:
+                return False
+            if isinstance(value, str):
+                return string_matches(value)
+            if isinstance(value, dict):
+                for key in (
+                    'conversation_template_id', 'conversationTemplateId',
+                    'gizmo_id', 'gizmoId', 'project_id', 'projectId',
+                    'conversation_template', 'conversationTemplate',
+                    'gizmo', 'project', 'short_url', 'shortUrl', 'slug', 'url',
+                ):
+                    if key in value and visit(value.get(key), depth + 1):
+                        return True
+                for key, item in value.items():
+                    if str(key).lower() in {'content', 'parts', 'text'} and depth > 3:
+                        if isinstance(item, str) and string_matches(item):
+                            return True
+                        continue
+                    if visit(item, depth + 1):
+                        return True
+                return False
+            if isinstance(value, list):
+                for item in value[:200]:
+                    if visit(item, depth + 1):
+                        return True
+            return False
+
+        return visit(payload)
+
+    async def _history_item_matches_project_via_detail(
+        self,
+        page: Any,
+        *,
+        item: dict[str, Any],
+        project_url: str,
+        project_id: str,
+    ) -> Optional[dict[str, Any]]:
+        conversation_id = str(item.get('id') or '').strip()
+        if not conversation_id:
+            return None
+        detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+        if detail.get('status') != 200 or not isinstance(detail.get('payload'), dict):
+            return None
+        payload = detail['payload']
+        project_slug = self._project_slug_from_url(project_url)
+        if not self._payload_references_project(
+            payload,
+            project_id=project_id,
+            project_slug=project_slug,
+            project_url=project_url,
+        ):
+            return None
+        return self._conversation_history_item_to_chat(
+            item,
+            project_url=project_url,
+            source='history_detail',
+            detail_payload=payload,
+        )
+
     async def _fetch_conversations_page(
         self,
         page: Any,
@@ -3964,6 +4093,8 @@ class ChatGPTBrowserClient:
         label: str,
         limit: int = 100,
         max_pages: int = 25,
+        max_detail_probes: int = 160,
+        detail_probe_delay_ms: int = 120,
     ) -> list[dict[str, Any]]:
         project_id = self._extract_project_id_from_url(project_url)
         if not project_id:
@@ -3971,6 +4102,7 @@ class ChatGPTBrowserClient:
 
         collected: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        detail_probe_count = 0
         offset = 0
         for page_index in range(max_pages):
             response = await self._fetch_conversations_page(page, offset=offset, limit=limit)
@@ -3982,19 +4114,75 @@ class ChatGPTBrowserClient:
                     self._log(label, 'stopping conversation pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected))
                     break
                 raise RuntimeError(f'conversation history returned unexpected status {status}')
-            page_chats = self._extract_project_chats_from_conversations_payload(response.get('payload'), project_id=project_id, project_url=project_url)
+
+            raw_payload = response.get('payload')
+            raw_items = self._conversation_history_items_from_payload(raw_payload)
+            direct_chats = self._extract_project_chats_from_conversations_payload(raw_payload, project_id=project_id, project_url=project_url)
+
             new_count = 0
-            for chat in page_chats:
+            direct_ids: set[str] = set()
+            for chat in direct_chats:
                 chat_id = str(chat.get('id') or '')
                 if not chat_id or chat_id in seen_ids:
                     continue
+                direct_ids.add(chat_id)
                 seen_ids.add(chat_id)
+                chat.setdefault('source', 'history')
                 collected.append(chat)
                 new_count += 1
-            self._log(label, 'collected project chats via conversation history', page=page_index + 1, offset=offset, limit=limit, status=status, discovered_count=new_count, total_count=len(collected), used_authorization=response.get('used_authorization'))
-            raw_payload = response.get('payload')
-            raw_items = raw_payload.get('items') if isinstance(raw_payload, dict) else raw_payload if isinstance(raw_payload, list) else []
-            item_count = len(raw_items) if isinstance(raw_items, list) else 0
+
+            detail_new_count = 0
+            # Some ChatGPT /backend-api/conversations payloads no longer carry
+            # project/gizmo ids in the list view.  In that case, a project can
+            # have tasks visible in the UI while the history source reports 0.
+            # Probe conversation details for unmatched history rows and classify
+            # by the richer detail payload before giving up.
+            if detail_probe_count < max_detail_probes:
+                for item in raw_items:
+                    conversation_id = str(item.get('id') or '').strip()
+                    if not conversation_id or conversation_id in seen_ids or conversation_id in direct_ids:
+                        continue
+                    if detail_probe_count >= max_detail_probes:
+                        break
+                    detail_probe_count += 1
+                    try:
+                        chat = await self._history_item_matches_project_via_detail(
+                            page,
+                            item=item,
+                            project_url=project_url,
+                            project_id=project_id,
+                        )
+                    except Exception as exc:
+                        self._log(label, 'conversation detail probe failed during project chat classification', conversation_id=conversation_id, error=repr(exc))
+                        chat = None
+                    if chat is None:
+                        if detail_probe_delay_ms > 0:
+                            await page.wait_for_timeout(detail_probe_delay_ms)
+                        continue
+                    chat_id = str(chat.get('id') or '')
+                    if not chat_id or chat_id in seen_ids:
+                        continue
+                    seen_ids.add(chat_id)
+                    collected.append(chat)
+                    detail_new_count += 1
+                    if detail_probe_delay_ms > 0:
+                        await page.wait_for_timeout(detail_probe_delay_ms)
+
+            item_count = len(raw_items)
+            self._log(
+                label,
+                'collected project chats via conversation history',
+                page=page_index + 1,
+                offset=offset,
+                limit=limit,
+                status=status,
+                discovered_count=new_count,
+                detail_discovered_count=detail_new_count,
+                detail_probe_count=detail_probe_count,
+                total_count=len(collected),
+                raw_item_count=item_count,
+                used_authorization=response.get('used_authorization'),
+            )
             if item_count < limit:
                 break
             offset += limit
