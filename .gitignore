@@ -36,6 +36,7 @@ docs/_build/
 
 # Docker
 *.log
+*.logs
 *.env.*
 
 

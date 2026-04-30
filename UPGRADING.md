@@ -116,6 +116,14 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.131
+
+- Fixed the v0.0.130 project-conversations probe by removing the synthetic first-page `cursor=0`, which live logs showed returned HTTP 422.
+- Made lightweight task enumeration skip persisted conversation-history cooldown waits; `pb task use <index>` should no longer wait behind 429 cooldowns from a previous deep history scan.
+- Made lightweight task enumeration skip DOM scrolling when backend indexed rows already exist, reducing `pb task use <index>` latency.
+- Changed `pb task list` / `pb chat-list` to avoid the expensive global conversation-history supplement by default; use `--deep-history` only for explicit diagnostics.
+- Added non-200 body previews for the project-conversations endpoint so the next live run exposes the exact backend validation error if the endpoint still rejects requests.
+
 ## v0.0.130
 
 - Added a project-specific task enumeration backend probe (`/backend-api/gizmos/<project>/conversations`) before DOM/history fallbacks, with `source_counts.project_endpoint` diagnostics.
