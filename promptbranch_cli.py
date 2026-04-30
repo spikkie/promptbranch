@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.131"
+CLI_VERSION = "0.0.132"
 COMMANDS = {
     "login-check",
     "ask",
@@ -336,6 +336,15 @@ class DirectBackend:
             return {}
         return self._conversation_state.snapshot(self._project_url)
 
+    def remember_task_list(self, project_url: Optional[str], chats: list[dict[str, Any]]) -> None:
+        if self._conversation_state is not None:
+            self._conversation_state.remember_task_list(project_url, chats)
+
+    def task_list_cache(self, project_url: Optional[str], *, max_age_seconds: float = 900.0) -> list[dict[str, Any]]:
+        if self._conversation_state is None:
+            return []
+        return self._conversation_state.task_list_cache(project_url, max_age_seconds=max_age_seconds)
+
     def clear_state(self) -> None:
         if self._conversation_state is not None:
             self._conversation_state.clear()
@@ -553,6 +562,12 @@ class ServiceBackend:
 
     def state_snapshot(self) -> dict[str, Any]:
         return self._conversation_state.snapshot(self._project_url)
+
+    def remember_task_list(self, project_url: Optional[str], chats: list[dict[str, Any]]) -> None:
+        self._conversation_state.remember_task_list(project_url, chats)
+
+    def task_list_cache(self, project_url: Optional[str], *, max_age_seconds: float = 900.0) -> list[dict[str, Any]]:
+        return self._conversation_state.task_list_cache(project_url, max_age_seconds=max_age_seconds)
 
     def clear_state(self) -> None:
         self._conversation_state.clear()
@@ -972,6 +987,25 @@ async def _resolve_chat_target(
                 'is_current': bool(current_conversation_url and conversation_id_from_url(current_conversation_url) == str(target)),
             }
 
+    if str(target).isdigit():
+        project_home_url = _selected_project_home_url(snapshot) if isinstance(snapshot, dict) else None
+        cache_loader = getattr(backend, 'task_list_cache', None)
+        if callable(cache_loader):
+            try:
+                cached_chats = cache_loader(project_home_url, max_age_seconds=900.0)
+            except TypeError:
+                cached_chats = cache_loader(project_home_url)
+            except Exception:
+                cached_chats = []
+            if cached_chats:
+                try:
+                    selected = _select_chat_from_list(cached_chats, str(target))
+                    selected['_selected_from_task_list_cache'] = True
+                    return selected
+                except ValueError:
+                    # A stale/short cache must not block live resolution.
+                    pass
+
     async def load_chats(*, include_history_fallback: bool) -> list[dict[str, Any]]:
         result = await backend.list_project_chats(
             keep_open=keep_open,
@@ -1017,6 +1051,12 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
         include_history_fallback=bool(getattr(args, 'deep_history', False)),
     )
     chats, payload = _chat_list_payload(result, current_conversation_url=snapshot.get('conversation_url'))
+    cache_writer = getattr(backend, 'remember_task_list', None)
+    if callable(cache_writer):
+        try:
+            cache_writer(project_home_url, chats)
+        except Exception:
+            pass
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
@@ -1057,6 +1097,7 @@ async def cmd_chat_use(backend: Any, args: argparse.Namespace) -> int:
         'conversation_url': snapshot.get('conversation_url'),
         'conversation_id': snapshot.get('conversation_id'),
         'chat_title': selected.get('title'),
+        'selected_from_task_list_cache': bool(selected.get('_selected_from_task_list_cache')),
     }
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0

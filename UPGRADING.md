@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.132
+
+- Added a fresh per-project task-list cache in `.pb_profile` after `pb task list`, so a follow-up `pb task use <index>` can resolve from the just-shown list without opening a browser/service request again.
+- Hardened project-conversation payload extraction for nested backend shapes such as `data.gizmo.conversations.edges[].node`, which may allow the project-specific endpoint to expose tasks beyond the 20-row `snorlax` cap when ChatGPT returns a wrapped payload.
+- Preserved the cached task list across normal state updates such as `pb task use`.
+
 ## v0.0.131
 
 - Fixed the v0.0.130 project-conversations probe by removing the synthetic first-page `cursor=0`, which live logs showed returned HTTP 422.

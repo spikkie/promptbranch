@@ -290,3 +290,28 @@ def test_main_uses_inherited_hidden_profile_by_default(monkeypatch, capsys, tmp_
     captured = capsys.readouterr()
     assert exit_code == 0
     assert f"state_file={str((profile / '.promptbranch_state.json').resolve())}" in captured.out
+
+
+def test_task_list_cache_round_trips_and_preserves_through_remember(tmp_path: Path) -> None:
+    store = ConversationStateStore(str(tmp_path / ".pb_profile"))
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc12345-1234-1234-1234-123456789abc"
+
+    store.remember_project(project_url, project_name="Demo")
+    store.remember_task_list(project_url, [
+        {
+            "id": "abc12345-1234-1234-1234-123456789abc",
+            "title": "Cached task",
+            "conversation_url": conversation_url,
+            "source": "snorlax",
+        }
+    ])
+
+    cached = store.task_list_cache(project_url, max_age_seconds=900)
+    assert len(cached) == 1
+    assert cached[0]["title"] == "Cached task"
+
+    store.remember(project_url, conversation_url, project_name="Demo")
+    cached_after_remember = store.task_list_cache(project_url, max_age_seconds=900)
+    assert len(cached_after_remember) == 1
+    assert cached_after_remember[0]["conversation_url"] == conversation_url
