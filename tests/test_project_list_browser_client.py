@@ -1189,3 +1189,31 @@ def test_fetch_snorlax_sidebar_page_clamps_conversations_per_gizmo(tmp_path: Pat
 
     assert result["status"] == 200
     assert result["payload"] == {}
+
+
+def test_conversation_history_items_from_payload_handles_nested_edges(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    payload = {
+        "data": {
+            "gizmo": {
+                "conversations": {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": "68b74149-22a0-832f-98f2-8787319c2eb7",
+                                "title": "Nested project task",
+                                "create_time": "2025-09-02T10:00:00Z",
+                            },
+                            "cursor": "cursor-1",
+                        }
+                    ]
+                }
+            }
+        }
+    }
+
+    items = client._conversation_history_items_from_payload(payload)
+    assert len(items) == 1
+    assert items[0]["id"] == "68b74149-22a0-832f-98f2-8787319c2eb7"
+    assert items[0]["title"] == "Nested project task"

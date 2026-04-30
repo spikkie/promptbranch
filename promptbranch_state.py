@@ -299,6 +299,61 @@ class ConversationStateStore:
         self._store_entry(payload, home_url, entry)
         self._write(payload)
 
+    def remember_task_list(self, project_url: Optional[str], chats: list[dict[str, Any]], *, max_items: int = 250) -> None:
+        home_url = project_home_url_from_url(project_url)
+        if not home_url:
+            return
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in chats[:max_items]:
+            if not isinstance(item, dict):
+                continue
+            conversation_url = str(item.get("conversation_url") or "").strip()
+            conversation_id = str(item.get("id") or conversation_id_from_url(conversation_url) or "").strip()
+            if not conversation_url or not conversation_id or conversation_id in seen:
+                continue
+            seen.add(conversation_id)
+            normalized.append({
+                "id": conversation_id,
+                "title": str(item.get("title") or "").strip() or "(untitled)",
+                "conversation_url": conversation_url,
+                "create_time": item.get("create_time"),
+                "update_time": item.get("update_time"),
+                "source": item.get("source"),
+            })
+        payload = self._load()
+        entry = self._project_entry(payload, home_url) or self._merged_entry(payload, home_url)
+        entry["task_list_cache"] = {
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "count": len(normalized),
+            "tasks": normalized,
+        }
+        self._store_entry(payload, home_url, entry)
+        self._write(payload)
+
+    def task_list_cache(self, project_url: Optional[str], *, max_age_seconds: float = 900.0) -> list[dict[str, Any]]:
+        home_url = project_home_url_from_url(project_url)
+        if not home_url:
+            return []
+        payload = self._load()
+        entry = self._project_entry(payload, home_url)
+        cache = entry.get("task_list_cache") if isinstance(entry, dict) else None
+        if not isinstance(cache, dict):
+            return []
+        updated_at = cache.get("updated_at")
+        if isinstance(updated_at, str) and max_age_seconds >= 0:
+            try:
+                stamp = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - stamp).total_seconds()
+                if age > max_age_seconds:
+                    return []
+            except Exception:
+                return []
+        tasks = cache.get("tasks")
+        if not isinstance(tasks, list):
+            return []
+        return [dict(item) for item in tasks if isinstance(item, dict)]
+
     def _load(self) -> dict[str, Any]:
         if not self._path.exists():
             return {}
@@ -337,6 +392,7 @@ class ConversationStateStore:
             "artifact_version": existing.get("artifact_version"),
             "source_ref": existing.get("source_ref"),
             "source_version": existing.get("source_version"),
+            "task_list_cache": existing.get("task_list_cache") if isinstance(existing.get("task_list_cache"), dict) else None,
             "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 

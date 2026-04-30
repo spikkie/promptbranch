@@ -4171,6 +4171,22 @@ class ChatGPTBrowserClient:
             cursor = next_cursor
         return collected
 
+    def _payload_shape_summary(self, payload: Any, *, max_depth: int = 3) -> Any:
+        """Return a compact, log-safe summary of a backend payload shape."""
+        def visit(value: Any, depth: int = 0) -> Any:
+            if depth >= max_depth:
+                if isinstance(value, dict):
+                    return {"type": "dict", "keys": list(value.keys())[:12]}
+                if isinstance(value, list):
+                    return {"type": "list", "len": len(value)}
+                return type(value).__name__
+            if isinstance(value, dict):
+                return {str(key): visit(item, depth + 1) for key, item in list(value.items())[:12]}
+            if isinstance(value, list):
+                return {"type": "list", "len": len(value), "sample": [visit(item, depth + 1) for item in value[:2]]}
+            return type(value).__name__
+        return visit(payload)
+
     def _pagination_cursor_from_payload(self, payload: Any) -> Optional[str]:
         if not isinstance(payload, dict):
             return None
@@ -4339,6 +4355,7 @@ class ChatGPTBrowserClient:
                 cursor=cursor,
                 next_cursor=next_cursor,
                 used_authorization=response.get('used_authorization'),
+                payload_shape=self._payload_shape_summary(response.get('payload')) if len(page_chats) == 0 else None,
             )
             if not next_cursor or next_cursor in seen_cursors:
                 break
@@ -4404,21 +4421,67 @@ class ChatGPTBrowserClient:
             })
         return chats
 
+    def _looks_like_conversation_history_item(self, item: Any) -> bool:
+        if not isinstance(item, dict):
+            return False
+        conversation_id = str(item.get('id') or item.get('conversation_id') or item.get('conversationId') or '').strip()
+        if not conversation_id:
+            return False
+        # Avoid treating project/gizmo/source rows as conversations merely
+        # because they contain an id. Conversation rows almost always carry at
+        # least one of these fields in ChatGPT backend payloads.
+        for key in (
+            'title', 'create_time', 'createTime', 'update_time', 'updateTime',
+            'mapping', 'current_node', 'currentNode', 'conversation_id', 'conversationId',
+            'conversation_template_id', 'conversationTemplateId', 'gizmo_id', 'gizmoId',
+            'project_id', 'projectId',
+        ):
+            if key in item:
+                return True
+        return bool(re.match(r'^[0-9a-f]{8,}(?:-[0-9a-f]{4,}){3,}$', conversation_id, re.I))
+
     def _conversation_history_items_from_payload(self, payload: Any) -> list[dict[str, Any]]:
-        if isinstance(payload, dict):
-            raw_items = payload.get('items')
-            if isinstance(raw_items, list):
-                return [item for item in raw_items if isinstance(item, dict)]
-            raw_items = payload.get('conversations')
-            if isinstance(raw_items, list):
-                return [item for item in raw_items if isinstance(item, dict)]
-            if isinstance(raw_items, dict):
-                nested_items = raw_items.get('items')
-                if isinstance(nested_items, list):
-                    return [item for item in nested_items if isinstance(item, dict)]
-        if isinstance(payload, list):
-            return [item for item in payload if isinstance(item, dict)]
-        return []
+        """Extract conversation rows from known and nested ChatGPT payload shapes."""
+        found: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        def add(item: Any) -> None:
+            if not self._looks_like_conversation_history_item(item):
+                return
+            assert isinstance(item, dict)
+            conversation_id = str(item.get('id') or item.get('conversation_id') or item.get('conversationId') or '').strip()
+            if not conversation_id or conversation_id in seen_ids:
+                return
+            normalized = dict(item)
+            normalized.setdefault('id', conversation_id)
+            seen_ids.add(conversation_id)
+            found.append(normalized)
+
+        def visit(value: Any, depth: int = 0) -> None:
+            if depth > 8 or len(found) >= 500:
+                return
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, dict) and set(entry.keys()) <= {'node', 'cursor'} and isinstance(entry.get('node'), dict):
+                        add(entry.get('node'))
+                        visit(entry.get('node'), depth + 1)
+                    else:
+                        add(entry)
+                        if isinstance(entry, (dict, list)):
+                            visit(entry, depth + 1)
+                return
+            if not isinstance(value, dict):
+                return
+            add(value)
+            for key in (
+                'items', 'conversations', 'conversation_nodes', 'conversationNodes',
+                'nodes', 'edges', 'data', 'result', 'results', 'gizmo', 'project',
+            ):
+                if key in value:
+                    visit(value.get(key), depth + 1)
+
+        visit(payload)
+        return found
 
     def _conversation_history_item_to_chat(
         self,
