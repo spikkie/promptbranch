@@ -705,6 +705,9 @@ class ChatGPTBrowserClient:
             operation=self._list_project_chats_operation,
             keep_open=keep_open,
             include_history_fallback=include_history_fallback,
+            # Lightweight task enumeration must not inherit a cooldown created
+            # by a previous global conversation-history detail scan.
+            respect_history_rate_limit_cooldown=include_history_fallback,
         )
 
     async def debug_project_chats(
@@ -979,9 +982,13 @@ class ChatGPTBrowserClient:
         return removed
 
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
+        respect_history_rate_limit_cooldown = bool(kwargs.pop('respect_history_rate_limit_cooldown', True))
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
         self._clear_profile_singleton_locks()
-        await self._respect_rate_limit_cooldown()
+        if respect_history_rate_limit_cooldown:
+            await self._respect_rate_limit_cooldown()
+        else:
+            self._log('rate-limit', 'skipping persisted conversation history cooldown for non-history operation', operation=operation_name)
         await self._respect_context_spacing()
         playwright_module = await self._start_driver()
         async with playwright_module as p:
@@ -1481,7 +1488,18 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log('chat-list', 'project conversations endpoint enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             project_endpoint_chats = []
-        if chats_tab_active is False:
+        if include_history_fallback is False and (snorlax_chats or project_endpoint_chats):
+            # Fast path for `pb task use <index>`: snorlax/project-endpoint
+            # rows are enough to resolve visible indexes, while DOM scrolling
+            # adds seconds and has not exposed deeper rows in live traces.
+            dom_chats = []
+            self._log(
+                'chat-list',
+                'skipping project chat DOM collection because caller requested lightweight project chat enumeration',
+                snorlax_count=len(snorlax_chats),
+                project_endpoint_count=len(project_endpoint_chats),
+            )
+        elif chats_tab_active is False:
             self._log('chat-list', 'skipping project chat DOM collection because Chats tab is not active', current_url=await self._safe_page_url(page))
             dom_chats = []
         else:
@@ -4284,7 +4302,9 @@ class ChatGPTBrowserClient:
         if not project_id:
             return []
 
-        cursor: Optional[str] = '0'
+        # Do not send a synthetic cursor on the first request. Live
+        # v0.0.130 logs showed `cursor=0` returns HTTP 422.
+        cursor: Optional[str] = None
         seen_cursors: set[str] = set()
         collected: list[dict[str, Any]] = []
         for page_index in range(max_pages):
@@ -4296,13 +4316,13 @@ class ChatGPTBrowserClient:
             )
             status = response.get('status')
             if status in (404, 405):
-                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
                 break
             if status != 200:
                 if collected:
-                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'))
+                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
                     break
-                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
                 break
             page_chats, next_cursor = self._extract_project_chats_from_project_conversations_payload(
                 response.get('payload'),

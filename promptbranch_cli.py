@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.130"
+CLI_VERSION = "0.0.131"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1012,7 +1012,10 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
     if not project_home_url:
         print('error: no current project is selected', file=sys.stderr)
         return 2
-    result = await backend.list_project_chats(keep_open=args.keep_open)
+    result = await backend.list_project_chats(
+        keep_open=args.keep_open,
+        include_history_fallback=bool(getattr(args, 'deep_history', False)),
+    )
     chats, payload = _chat_list_payload(result, current_conversation_url=snapshot.get('conversation_url'))
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -1611,7 +1614,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
-        "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--task"],
+        "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
@@ -1625,8 +1628,8 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "project-source-add": ["--type", "--value", "--file", "--name", "--keep-open"],
         "project-source-list": ["--json", "--keep-open"],
         "project-source-remove": ["--exact", "--keep-open"],
-        "chat-list": ["--json", "--keep-open"],
-        "chats": ["--json", "--keep-open"],
+        "chat-list": ["--json", "--keep-open", "--deep-history"],
+        "chats": ["--json", "--keep-open", "--deep-history"],
         "chat-use": ["--json", "--keep-open"],
         "use-chat": ["--json", "--keep-open"],
         "chat-leave": ["--json"],
@@ -2567,6 +2570,7 @@ def make_parser() -> argparse.ArgumentParser:
     task_list = task_subparsers.add_parser("list", help="List indexed tasks for the current workspace, including rows below the initial project chat viewport.")
     task_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     task_list.add_argument("--keep-open", action="store_true")
+    task_list.add_argument("--deep-history", action="store_true", help="Also scan global conversation history. Slow and may trigger ChatGPT 429s; normally unnecessary when project backend/indexed sources work.")
 
     task_use = task_subparsers.add_parser("use", help="Select the active task.")
     task_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from task list.")
@@ -2773,6 +2777,7 @@ def make_parser() -> argparse.ArgumentParser:
     chat_list = subparsers.add_parser("chat-list", aliases=["chats"], help="Legacy alias. Prefer: pb task list; uses the same deeper task enumeration.")
     chat_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     chat_list.add_argument("--keep-open", action="store_true")
+    chat_list.add_argument("--deep-history", action="store_true", help="Also scan global conversation history. Slow and may trigger ChatGPT 429s; normally unnecessary when project backend/indexed sources work.")
 
     chat_use = subparsers.add_parser("chat-use", aliases=["use-chat"], help="Legacy alias. Prefer: pb task use.")
     chat_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from chat-list.")

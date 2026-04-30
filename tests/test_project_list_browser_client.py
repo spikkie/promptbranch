@@ -725,7 +725,7 @@ def test_collect_project_chats_via_project_conversations_endpoint_uses_project_e
     async def fake_fetch(page, *, project_id, cursor=None, limit=100):
         assert project_id == "g-p-current"
         calls.append(cursor)
-        if cursor == "0":
+        if cursor is None:
             return {
                 "status": 200,
                 "used_authorization": True,
@@ -760,7 +760,7 @@ def test_collect_project_chats_via_project_conversations_endpoint_uses_project_e
         )
     )
 
-    assert calls == ["0", "next-page"]
+    assert calls == [None, "next-page"]
     assert [chat["id"] for chat in chats] == ["chat-1", "chat-21"]
     assert all(chat["source"] == "project_endpoint" for chat in chats)
 
