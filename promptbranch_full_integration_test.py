@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import time
+from io import StringIO
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -14,6 +15,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_service_client import ChatGPTServiceClient
+from promptbranch_mcp import handle_mcp_jsonrpc_message, mcp_host_config, mcp_tool_manifest, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -27,6 +29,7 @@ DEFAULT_PROFILE_DIR = "./.pb_profile"
 DEFAULT_MAX_RETRIES = 1
 
 CANONICAL_STEP_ORDER: tuple[str, ...] = (
+    "mcp_smoke",
     "login_check",
     "project_resolve_before_create",
     "project_ensure_create_or_reuse",
@@ -50,6 +53,8 @@ FULL_STEP_ORDER: tuple[str, ...] = CANONICAL_STEP_ORDER + OPTIONAL_STEP_ORDER
 
 STEP_ALIASES: dict[str, tuple[str, ...]] = {
     "all": CANONICAL_STEP_ORDER,
+    "mcp": ("mcp_smoke",),
+    "mcp_smoke": ("mcp_smoke",),
     "project_list": ("project_list_debug",),
     "project_list_debug": ("project_list_debug",),
     "login": ("login_check",),
@@ -103,6 +108,9 @@ REMOVAL_STEPS = {
     "project_source_remove_link",
     "project_source_remove_text",
     "project_source_remove_file",
+}
+LOCAL_ONLY_STEPS = {
+    "mcp_smoke",
 }
 ALLOWED_STEP_TOKENS = set(FULL_STEP_ORDER) | set(STEP_ALIASES)
 
@@ -201,7 +209,7 @@ def resolve_step_selection(
     if keep_project:
         enabled.discard("project_remove_cleanup")
 
-    if enabled - {"project_remove_cleanup"}:
+    if enabled - {"project_remove_cleanup", *LOCAL_ONLY_STEPS}:
         enabled.add("login_check")
 
     if enabled & SOURCE_FLOW_STEPS:
@@ -611,6 +619,51 @@ async def _post_ask_cooldown(steps: list[StepResult], *, seconds: float, reason:
             },
         )
     )
+
+
+def _run_mcp_smoke(*, repo_path: Path, profile_dir: Optional[str]) -> dict[str, Any]:
+    manifest = mcp_tool_manifest()
+    tool_names = [tool.get("name") for tool in manifest.get("tools", []) if isinstance(tool, dict)]
+    init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    host_config = mcp_host_config(repo_path=repo_path, profile_dir=profile_dir)
+
+    stdin = StringIO('{"jsonrpc":"2.0","id":3,"method":"tools/list"}\n')
+    stdout = StringIO()
+    rc = serve_mcp_stdio(
+        repo_path=repo_path,
+        profile_dir=profile_dir,
+        input_stream=stdin,
+        output_stream=stdout,
+    )
+    stdio_lines = [line for line in stdout.getvalue().splitlines() if line.strip()]
+    stdio_payload = json.loads(stdio_lines[0]) if stdio_lines else {}
+
+    ok = (
+        manifest.get("ok") is True
+        and bool(tool_names)
+        and init is not None
+        and init.get("result", {}).get("serverInfo", {}).get("name") == "promptbranch"
+        and listed is not None
+        and "tools" in listed.get("result", {})
+        and host_config.get("ok") is True
+        and "mcpServers" in host_config.get("config", {})
+        and rc == 0
+        and "tools" in stdio_payload.get("result", {})
+    )
+    if not ok:
+        raise IntegrationAssertionError(
+            f"mcp_smoke failed: manifest={manifest!r} init={init!r} listed={listed!r} host_config={host_config!r} stdio={stdio_payload!r}"
+        )
+    return {
+        "ok": True,
+        "action": "mcp_smoke",
+        "manifest_tool_count": manifest.get("tool_count"),
+        "tools": tool_names,
+        "server_info": init.get("result", {}).get("serverInfo") if isinstance(init, dict) else None,
+        "host_config": host_config.get("config"),
+        "stdio_tool_count": len(stdio_payload.get("result", {}).get("tools", [])) if isinstance(stdio_payload.get("result"), dict) else None,
+    }
 
 
 
@@ -1100,6 +1153,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     remove_results: list[dict[str, Any]] = []
 
     try:
+        if should_run("mcp_smoke"):
+            await _run_step(
+                steps,
+                "mcp_smoke",
+                asyncio.to_thread(_run_mcp_smoke, repo_path=Path.cwd(), profile_dir=args.profile_dir),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+
         if should_run("login_check"):
             login = await _run_step(
                 steps,

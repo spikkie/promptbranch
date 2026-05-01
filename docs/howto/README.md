@@ -17,6 +17,7 @@ These manuals break the project into focused tasks instead of one long README.
 11. [Upgrade from old `chatgpt_*` names](11-upgrade-from-chatgpt-names.md)
 12. [Troubleshoot common failures](12-troubleshooting.md)
 13. [Sync source snapshots and manage artifacts](13-source-sync-and-artifacts.md)
+14. [Use the read-only MCP local agent surface](14-use-mcp-local-agent.md)
 
 ## Reading order
 
