@@ -1483,9 +1483,14 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log('chat-list', 'snorlax project chat enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             snorlax_chats = []
+        project_endpoint_diagnostics: list[dict[str, Any]] = []
+        self._last_project_conversations_endpoint_diagnostics = project_endpoint_diagnostics
         try:
             project_endpoint_chats = await self._collect_project_chats_via_project_conversations_endpoint(page, project_url=project_url, label='chat-list-project-endpoint')
+            project_endpoint_diagnostics = list(getattr(self, '_last_project_conversations_endpoint_diagnostics', []) or [])
         except Exception as exc:
+            project_endpoint_diagnostics = list(getattr(self, '_last_project_conversations_endpoint_diagnostics', []) or [])
+            project_endpoint_diagnostics.append({'error': repr(exc), 'project_id': project_id})
             self._log('chat-list', 'project conversations endpoint enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             project_endpoint_chats = []
         if include_history_fallback is False and (snorlax_chats or project_endpoint_chats):
@@ -1603,6 +1608,7 @@ class ChatGPTBrowserClient:
                 'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
                 'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
             },
+            'project_endpoint_diagnostics': project_endpoint_diagnostics,
             'current_url': await self._safe_page_url(page),
         }
         self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), project_endpoint_count=len(project_endpoint_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used, history_supplement_used=history_supplement_used)
@@ -4080,6 +4086,14 @@ class ChatGPTBrowserClient:
                 continue
             found_project = True
             conversations = item.get('conversations') if isinstance(item.get('conversations'), dict) else {}
+            # ChatGPT's snorlax/sidebar payload can expose two independent
+            # cursors: a root cursor for more gizmos/projects and a nested
+            # conversations cursor for more chats within the matched project.
+            # For project task enumeration, the nested conversations cursor is
+            # the one that can reveal tasks beyond the first 20 rows. Using the
+            # root cursor here paginates away from the selected project and keeps
+            # `pb task list` capped at the first visible project batch.
+            conversation_cursor = self._pagination_cursor_from_payload(conversations)
             raw_items = conversations.get('items') if isinstance(conversations.get('items'), list) else []
             for raw in raw_items:
                 if not isinstance(raw, dict):
@@ -4101,7 +4115,7 @@ class ChatGPTBrowserClient:
                 })
             break
 
-        cursor = payload.get('cursor')
+        cursor = conversation_cursor if found_project and conversation_cursor else payload.get('cursor')
         if cursor is not None:
             cursor = str(cursor).strip() or None
         return chats, cursor, found_project
@@ -4323,6 +4337,8 @@ class ChatGPTBrowserClient:
         cursor: Optional[str] = None
         seen_cursors: set[str] = set()
         collected: list[dict[str, Any]] = []
+        diagnostics: list[dict[str, Any]] = []
+        self._last_project_conversations_endpoint_diagnostics = diagnostics
         for page_index in range(max_pages):
             response = await self._fetch_project_conversations_page(
                 page,
@@ -4331,20 +4347,40 @@ class ChatGPTBrowserClient:
                 limit=limit,
             )
             status = response.get('status')
+            page_diag: dict[str, Any] = {
+                'page': page_index + 1,
+                'status': status,
+                'url': response.get('url'),
+                'cursor': cursor,
+                'used_authorization': response.get('used_authorization'),
+            }
             if status in (404, 405):
-                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
+                page_diag['body_preview'] = str(response.get('text') or '')[:300]
+                diagnostics.append(page_diag)
+                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=page_diag['body_preview'])
                 break
             if status != 200:
+                page_diag['body_preview'] = str(response.get('text') or '')[:300]
+                page_diag['retained_count'] = len(collected)
+                diagnostics.append(page_diag)
                 if collected:
-                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
+                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'), body_preview=page_diag['body_preview'])
                     break
-                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=str(response.get('text') or '')[:300])
+                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=page_diag['body_preview'])
                 break
             page_chats, next_cursor = self._extract_project_chats_from_project_conversations_payload(
                 response.get('payload'),
                 project_url=project_url,
             )
             collected = self._merge_project_chat_lists(collected, page_chats)
+            page_diag.update({
+                'discovered_count': len(page_chats),
+                'total_count': len(collected),
+                'next_cursor': next_cursor,
+            })
+            if len(page_chats) == 0:
+                page_diag['payload_shape'] = self._payload_shape_summary(response.get('payload'))
+            diagnostics.append(page_diag)
             self._log(
                 label,
                 'collected project chats via project conversations endpoint',
@@ -4355,7 +4391,7 @@ class ChatGPTBrowserClient:
                 cursor=cursor,
                 next_cursor=next_cursor,
                 used_authorization=response.get('used_authorization'),
-                payload_shape=self._payload_shape_summary(response.get('payload')) if len(page_chats) == 0 else None,
+                payload_shape=page_diag.get('payload_shape'),
             )
             if not next_cursor or next_cursor in seen_cursors:
                 break

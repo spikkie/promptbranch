@@ -3631,6 +3631,14 @@ class ChatGPTBrowserClient:
                 continue
             found_project = True
             conversations = item.get('conversations') if isinstance(item.get('conversations'), dict) else {}
+            # ChatGPT's snorlax/sidebar payload can expose two independent
+            # cursors: a root cursor for more gizmos/projects and a nested
+            # conversations cursor for more chats within the matched project.
+            # For project task enumeration, the nested conversations cursor is
+            # the one that can reveal tasks beyond the first 20 rows. Using the
+            # root cursor here paginates away from the selected project and keeps
+            # `pb task list` capped at the first visible project batch.
+            conversation_cursor = self._pagination_cursor_from_payload(conversations)
             raw_items = conversations.get('items') if isinstance(conversations.get('items'), list) else []
             for raw in raw_items:
                 if not isinstance(raw, dict):
@@ -3652,7 +3660,7 @@ class ChatGPTBrowserClient:
                 })
             break
 
-        cursor = payload.get('cursor')
+        cursor = conversation_cursor if found_project and conversation_cursor else payload.get('cursor')
         if cursor is not None:
             cursor = str(cursor).strip() or None
         return chats, cursor, found_project

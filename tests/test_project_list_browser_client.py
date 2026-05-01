@@ -1217,3 +1217,63 @@ def test_conversation_history_items_from_payload_handles_nested_edges(tmp_path: 
     assert len(items) == 1
     assert items[0]["id"] == "68b74149-22a0-832f-98f2-8787319c2eb7"
     assert items[0]["title"] == "Nested project task"
+
+
+def test_extract_project_chats_prefers_nested_conversation_cursor(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    payload = {
+        "cursor": "root-project-cursor",
+        "items": [
+            {
+                "gizmo": {"gizmo": {"id": "g-p-current-demo"}},
+                "conversations": {
+                    "items": [
+                        {"id": "chat-1", "title": "Task 1"},
+                    ],
+                    "cursor": "nested-conversation-cursor",
+                },
+            }
+        ],
+    }
+
+    chats, cursor, found_project = client._extract_project_chats_from_snorlax_sidebar_payload(
+        payload,
+        project_id="g-p-current",
+        project_url="https://chatgpt.com/g/g-p-current-demo/project",
+    )
+
+    assert found_project is True
+    assert [chat["id"] for chat in chats] == ["chat-1"]
+    assert cursor == "nested-conversation-cursor"
+
+
+def test_collect_project_endpoint_exposes_diagnostics_when_empty(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    page = object()
+
+    async def fake_fetch(page, *, project_id, cursor=None, limit=100):
+        return {
+            "status": 200,
+            "url": "https://chatgpt.com/backend-api/gizmos/g-p-current/conversations?limit=100",
+            "used_authorization": True,
+            "payload": {"data": {"unexpected": []}},
+            "text": '{"data":{"unexpected":[]}}',
+        }
+
+    client._fetch_project_conversations_page = fake_fetch
+
+    import asyncio
+
+    chats = asyncio.run(
+        client._collect_project_chats_via_project_conversations_endpoint(
+            page,
+            project_url="https://chatgpt.com/g/g-p-current-demo/project",
+            label="test-project-endpoint",
+        )
+    )
+
+    assert chats == []
+    diagnostics = getattr(client, "_last_project_conversations_endpoint_diagnostics")
+    assert diagnostics[0]["status"] == 200
+    assert diagnostics[0]["discovered_count"] == 0
+    assert "payload_shape" in diagnostics[0]
