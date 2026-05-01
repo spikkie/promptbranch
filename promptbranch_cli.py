@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.135"
+CLI_VERSION = "0.0.136"
 COMMANDS = {
     "login-check",
     "ask",
@@ -843,10 +843,10 @@ def _chat_list_payload(result: Any, *, current_conversation_url: Optional[str] =
     source_counts = dict(payload.get('source_counts') or {}) if isinstance(payload.get('source_counts'), dict) else {}
     visibility_status, indexed_count, recent_count, indexed_observation_count = _task_list_visibility_status(source_counts, normalized)
     payload['source_counts'] = source_counts
-    payload['visibility_status'] = payload.get('visibility_status') or visibility_status
+    payload['visibility_status'] = visibility_status
     payload['indexed_task_count'] = indexed_count
-    payload['indexed_observation_count'] = payload.get('indexed_observation_count', indexed_observation_count)
-    payload['recent_state_count'] = payload.get('recent_state_count', recent_count)
+    payload['indexed_observation_count'] = indexed_observation_count
+    payload['recent_state_count'] = recent_count
     return normalized, payload
 
 
