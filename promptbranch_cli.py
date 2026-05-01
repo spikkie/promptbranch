@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
+from promptbranch_mcp import agent_doctor, inspect_local_context, mcp_tool_manifest, plan_agent_request
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -39,7 +40,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.137"
+CLI_VERSION = "0.0.138"
 COMMANDS = {
     "login-check",
     "ask",
@@ -48,6 +49,8 @@ COMMANDS = {
     "task",
     "src",
     "artifact",
+    "agent",
+    "mcp",
     "test",
     "doctor",
     "debug",
@@ -1670,6 +1673,8 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
+        "agent": ["inspect", "doctor", "plan", "--json", "--path", "--max-files"],
+        "mcp": ["manifest", "--json", "--include-controlled-writes"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
@@ -2411,6 +2416,75 @@ async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
     raise RuntimeError(f"Unknown debug command: {args.debug_command}")
 
 
+
+async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot()
+    if args.agent_command == "inspect":
+        payload = inspect_local_context(
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            max_files=args.max_files,
+            state_snapshot=snapshot,
+        )
+    elif args.agent_command == "doctor":
+        payload = agent_doctor(
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            state_snapshot=snapshot,
+        )
+    elif args.agent_command == "plan":
+        payload = plan_agent_request(args.request, repo_path=args.path)
+    else:
+        raise RuntimeError(f"Unknown agent command: {args.agent_command}")
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0 if payload.get("ok") else 1
+
+    if args.agent_command == "inspect":
+        repo = payload.get("repo") if isinstance(payload.get("repo"), dict) else {}
+        state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+        print(f"repo={repo.get('path')}")
+        print(f"version={repo.get('version') or 'none'}")
+        print(f"files={repo.get('file_count')}")
+        print(f"workspace={state.get('project_name') or state.get('resolved_project_home_url') or 'none'}")
+        print(f"task={state.get('conversation_id') or 'none'}")
+        return 0
+
+    if args.agent_command == "doctor":
+        checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+        for name, value in checks.items():
+            print(f"{name}={str(bool(value)).lower()}")
+        return 0 if payload.get("ok") else 1
+
+    plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
+    print(f"intent={plan.get('intent')}")
+    print(f"risk={plan.get('risk')}")
+    print(f"auto_allowed={str(bool(plan.get('auto_allowed'))).lower()}")
+    commands = plan.get("suggested_commands") if isinstance(plan.get("suggested_commands"), list) else []
+    for command in commands:
+        if isinstance(command, list):
+            print("command=" + " ".join(str(part) for part in command))
+    return 0 if payload.get("ok") else 1
+
+
+async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
+    del backend
+    if args.mcp_command == "manifest":
+        payload = mcp_tool_manifest(include_controlled_writes=args.include_controlled_writes)
+    else:
+        raise RuntimeError(f"Unknown mcp command: {args.mcp_command}")
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    print(f"mode={payload.get('mode')}")
+    print(f"tool_count={payload.get('tool_count')}")
+    for tool in payload.get("tools", []):
+        if isinstance(tool, dict):
+            print(f"{tool.get('name')}\t{tool.get('risk')}\tread_only={str(bool(tool.get('read_only'))).lower()}")
+    return 0
+
+
 async def cmd_completion(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     print(_render_completion(args.shell, _cli_command_name()), end="")
@@ -2710,6 +2784,29 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify.add_argument("path", nargs="?", help="ZIP path. Defaults to the latest registered artifact.")
     artifact_verify.add_argument("--json", action="store_true")
 
+    agent = subparsers.add_parser("agent", help="Read-only MCP/Ollama planning scaffold commands.")
+    agent_subparsers = agent.add_subparsers(dest="agent_command", required=True)
+
+    agent_inspect = agent_subparsers.add_parser("inspect", help="Inspect local repo, git, artifact, and Promptbranch state without mutating anything.")
+    agent_inspect.add_argument("path", nargs="?", default=".", help="Repo path to inspect. Defaults to current directory.")
+    agent_inspect.add_argument("--max-files", type=int, default=80, help="Maximum repo file sample size to include.")
+    agent_inspect.add_argument("--json", action="store_true")
+
+    agent_doctor_parser = agent_subparsers.add_parser("doctor", help="Run read-only MCP/agent readiness checks.")
+    agent_doctor_parser.add_argument("path", nargs="?", default=".", help="Repo path to inspect. Defaults to current directory.")
+    agent_doctor_parser.add_argument("--json", action="store_true")
+
+    agent_plan = agent_subparsers.add_parser("plan", help="Classify a request into a policy-gated Promptbranch/MCP plan without executing it.")
+    agent_plan.add_argument("request", help="Natural-language request to classify.")
+    agent_plan.add_argument("--path", default=".", help="Repo path used for command suggestions. Defaults to current directory.")
+    agent_plan.add_argument("--json", action="store_true")
+
+    mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")
+    mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
+    mcp_manifest = mcp_subparsers.add_parser("manifest", help="Emit the Promptbranch MCP tool manifest.")
+    mcp_manifest.add_argument("--include-controlled-writes", action="store_true", help="Include gated write/process tools in addition to read-only tools.")
+    mcp_manifest.add_argument("--json", action="store_true")
+
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)
     test_smoke = test_subparsers.add_parser("smoke", help="Run the standard Promptbranch smoke suite.")
@@ -2972,6 +3069,10 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_src(backend, args)
     if args.command == "artifact":
         return await cmd_artifact(backend, args)
+    if args.command == "agent":
+        return await cmd_agent(backend, args)
+    if args.command == "mcp":
+        return await cmd_mcp(backend, args)
     if args.command == "test":
         return await cmd_test(backend, args)
     if args.command == "doctor":

@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.138
+
+- Added the first read-only MCP/Ollama planning scaffold: `pb agent inspect`, `pb agent doctor`, and `pb agent plan`.
+- Added `pb mcp manifest` to emit the default read-only MCP tool surface and optional gated write/process tool specs.
+- The local agent layer is deterministic and read-only by default; it classifies requests and proposes commands but does not execute writes or destructive actions.
+
 ## v0.0.137
 
 - `pb src add <file>` / `pbsa <file>` now overwrites an existing file source with the same display name by default: the old source is removed, the new file is uploaded, and persistence is verified.

@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.137" in out
+    assert "0.0.138" in out
     assert "promptbranch" in out
 
 
@@ -283,3 +283,28 @@ def test_parser_accepts_strict_task_visibility_escape_hatch() -> None:
     args = parser.parse_args(["test-suite", "--allow-recent-state-task-fallback"])
     assert args.command == "test-suite"
     assert args.allow_recent_state_task_fallback is True
+
+
+def test_parser_accepts_agent_commands() -> None:
+    parser = make_parser()
+    inspect_args = parser.parse_args(["agent", "inspect", ".", "--json"])
+    doctor_args = parser.parse_args(["agent", "doctor", ".", "--json"])
+    plan_args = parser.parse_args(["agent", "plan", "sync repo", "--path", ".", "--json"])
+
+    assert inspect_args.command == "agent"
+    assert inspect_args.agent_command == "inspect"
+    assert inspect_args.json is True
+    assert doctor_args.agent_command == "doctor"
+    assert plan_args.agent_command == "plan"
+    assert plan_args.request == "sync repo"
+    assert plan_args.path == "."
+
+
+def test_parser_accepts_mcp_manifest_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["mcp", "manifest", "--include-controlled-writes", "--json"])
+
+    assert args.command == "mcp"
+    assert args.mcp_command == "manifest"
+    assert args.include_controlled_writes is True
+    assert args.json is True
