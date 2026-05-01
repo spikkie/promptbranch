@@ -11,6 +11,7 @@ from promptbranch_mcp import (
     mcp_tool_manifest,
     plan_agent_request,
     serve_mcp_stdio,
+    mcp_host_config,
 )
 
 
@@ -83,7 +84,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.139"
+    assert init["result"]["serverInfo"]["version"] == "0.0.140"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -151,3 +152,15 @@ def test_mcp_stdio_serves_newline_delimited_json(tmp_path: Path) -> None:
     payload = json.loads(stdout.getvalue().strip())
     assert payload["id"] == 1
     assert "tools" in payload["result"]
+
+
+def test_mcp_host_config_emits_stdio_server_config(tmp_path: Path) -> None:
+    payload = mcp_host_config(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile", command="promptbranch")
+
+    assert payload["ok"] is True
+    assert payload["action"] == "mcp_config"
+    server = payload["config"]["mcpServers"]["promptbranch"]
+    assert server["command"] == "promptbranch"
+    assert "mcp" in server["args"]
+    assert "serve" in server["args"]
+    assert str(tmp_path.resolve()) in server["args"]

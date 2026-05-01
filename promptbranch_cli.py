@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
-from promptbranch_mcp import agent_doctor, inspect_local_context, mcp_tool_manifest, plan_agent_request, serve_mcp_stdio
+from promptbranch_mcp import agent_doctor, inspect_local_context, mcp_host_config, mcp_tool_manifest, plan_agent_request, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -40,7 +40,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.139"
+CLI_VERSION = "0.0.140"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1674,7 +1674,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "--json", "--path", "--max-files"],
-        "mcp": ["manifest", "serve", "--json", "--path", "--include-controlled-writes"],
+        "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-writes", "--host", "--server-name", "--command"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
@@ -2481,10 +2481,25 @@ async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
 
     if args.mcp_command == "manifest":
         payload = mcp_tool_manifest(include_controlled_writes=args.include_controlled_writes)
+    elif args.mcp_command == "config":
+        profile_dir = getattr(args, "profile_dir", None)
+        if not profile_dir and hasattr(backend, "profile_dir"):
+            profile_dir = getattr(backend, "profile_dir")
+        payload = mcp_host_config(
+            repo_path=getattr(args, "path", "."),
+            profile_dir=profile_dir,
+            server_name=getattr(args, "server_name", "promptbranch"),
+            command=getattr(args, "mcp_executable", "promptbranch"),
+            include_controlled_writes=getattr(args, "include_controlled_writes", False),
+            host=getattr(args, "host", "generic"),
+        )
     else:
         raise RuntimeError(f"Unknown mcp command: {args.mcp_command}")
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if args.mcp_command == "config":
+        print(json.dumps(payload.get("config"), indent=2, ensure_ascii=False))
         return 0
     print(f"mode={payload.get('mode')}")
     print(f"tool_count={payload.get('tool_count')}")
@@ -2819,6 +2834,14 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_serve = mcp_subparsers.add_parser("serve", help="Run the read-only Promptbranch MCP stdio server.")
     mcp_serve.add_argument("--path", default=".", help="Repo path exposed to read-only filesystem/git tools. Defaults to current directory.")
     mcp_serve.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools but reject execution until a deterministic executor is implemented.")
+
+    mcp_config = mcp_subparsers.add_parser("config", help="Emit an MCP host config snippet for pb mcp serve.")
+    mcp_config.add_argument("--path", default=".", help="Repo path exposed to the MCP host. Defaults to current directory.")
+    mcp_config.add_argument("--host", default="generic", choices=["generic", "claude-desktop", "cursor"], help="Host label for documentation. Output shape stays mcpServers JSON.")
+    mcp_config.add_argument("--server-name", default="promptbranch", help="MCP server name to place under mcpServers.")
+    mcp_config.add_argument("--command", dest="mcp_executable", default="promptbranch", help="Executable used by the MCP host. Use an absolute path when GUI hosts cannot find promptbranch on PATH.")
+    mcp_config.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools in the server manifest, but execution remains rejected.")
+    mcp_config.add_argument("--json", action="store_true", help="Emit metadata and config as JSON. Without this flag, print only the config snippet.")
 
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)

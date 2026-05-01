@@ -116,6 +116,13 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.140
+
+- Added `pb mcp config` to emit a standard `mcpServers` host configuration snippet for `pb mcp serve`.
+- Added `mcp_smoke` to the test-suite selectors, available via `pb test-suite --only mcp_smoke --json` or `pb test smoke --only mcp_smoke --json`.
+- Added `docs/howto/14-use-mcp-local-agent.md` with MCP host config, stdio smoke, and safety-boundary guidance.
+- Preserved read-only MCP server semantics; controlled write tools remain non-executable from `pb mcp serve`.
+
 ## v0.0.139
 
 - Added `pb mcp serve` as a minimal read-only MCP stdio JSON-RPC server.

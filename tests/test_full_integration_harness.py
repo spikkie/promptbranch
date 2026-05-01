@@ -83,6 +83,7 @@ def test_resolve_step_selection_skips_cleanup_when_keep_project_enabled() -> Non
         keep_project=True,
     )
     assert "project_remove_cleanup" not in selection.enabled_steps
+    assert "mcp_smoke" in selection.enabled_steps
     assert "login_check" in selection.enabled_steps
 
 
@@ -107,6 +108,15 @@ def test_resolve_step_selection_supports_project_list_debug() -> None:
         "login_check",
         "project_list_debug",
     )
+
+
+def test_resolve_step_selection_supports_mcp_smoke_without_login() -> None:
+    selection = resolve_step_selection(
+        only_values=["mcp"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert selection.enabled_steps == ("mcp_smoke",)
 
 
 def test_parser_accepts_project_list_debug_options() -> None:

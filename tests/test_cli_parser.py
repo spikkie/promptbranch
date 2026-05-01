@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.139" in out
+    assert "0.0.140" in out
     assert "promptbranch" in out
 
 
@@ -308,3 +308,14 @@ def test_parser_accepts_mcp_manifest_command() -> None:
     assert args.mcp_command == "manifest"
     assert args.include_controlled_writes is True
     assert args.json is True
+
+
+def test_parser_accepts_mcp_config_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["mcp", "config", "--path", ".", "--host", "claude-desktop", "--server-name", "pb", "--command", "promptbranch", "--json"])
+
+    assert args.command == "mcp"
+    assert args.mcp_command == "config"
+    assert args.host == "claude-desktop"
+    assert args.server_name == "pb"
+    assert args.mcp_executable == "promptbranch"

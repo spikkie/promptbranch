@@ -20,6 +20,8 @@ from promptbranch_shell_model import ToolRisk, required_prechecks_for_action, ri
 from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
+MCP_PROTOCOL_VERSION = "2024-11-05"
+MCP_SERVER_VERSION = "0.0.140"
 DEFAULT_AGENT_MAX_FILES = 80
 
 
@@ -166,6 +168,46 @@ def mcp_tool_manifest(*, include_controlled_writes: bool = False) -> dict[str, A
     }
 
 
+def mcp_host_config(
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    server_name: str = "promptbranch",
+    command: str = "promptbranch",
+    include_controlled_writes: bool = False,
+    host: str = "generic",
+) -> dict[str, Any]:
+    """Return an MCP host configuration snippet for this repo."""
+
+    root = Path(repo_path).expanduser().resolve()
+    resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
+    args: list[str] = []
+    if resolved_profile is not None:
+        args.extend(["--profile-dir", str(resolved_profile)])
+    args.extend(["mcp", "serve", "--path", str(root)])
+    if include_controlled_writes:
+        args.append("--include-controlled-writes")
+
+    server = {"command": command, "args": args}
+    config = {"mcpServers": {server_name: server}}
+    return {
+        "ok": True,
+        "schema_version": MCP_SCHEMA_VERSION,
+        "action": "mcp_config",
+        "host": host,
+        "server_name": server_name,
+        "repo_path": str(root),
+        "profile_dir": str(resolved_profile) if resolved_profile is not None else None,
+        "mode": "read_only" if not include_controlled_writes else "read_only_plus_controlled_writes",
+        "config": config,
+        "install_notes": [
+            "Add config.mcpServers.promptbranch to your MCP host configuration.",
+            "Use an executable command path; shell aliases usually do not work in GUI-launched MCP hosts.",
+            "The server is read-only by default; controlled write tools are listed only when requested and are not executable yet.",
+        ],
+    }
+
+
 def _run_read_only_command(args: list[str], *, cwd: Path, timeout: float = 3.0) -> dict[str, Any]:
     try:
         completed = subprocess.run(
@@ -265,7 +307,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.139 exposes deterministic read-only planning first; Ollama integration remains a later adapter.",
+            "reason": "v0.0.140 exposes deterministic read-only planning and MCP host config first; Ollama integration remains a later adapter.",
         },
     }
     return payload
@@ -506,9 +548,9 @@ def handle_mcp_jsonrpc_message(
         return _jsonrpc_result(
             message_id,
             {
-                "protocolVersion": str(params.get("protocolVersion") or "2024-11-05"),
+                "protocolVersion": str(params.get("protocolVersion") or MCP_PROTOCOL_VERSION),
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "promptbranch", "version": "0.0.139"},
+                "serverInfo": {"name": "promptbranch", "version": MCP_SERVER_VERSION},
                 "instructions": "Promptbranch MCP exposes read-only repo/git/state/artifact tools by default. Write tools are policy-gated and not executable from this server yet.",
             },
         )
