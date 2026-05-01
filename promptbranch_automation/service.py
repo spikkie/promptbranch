@@ -431,6 +431,7 @@ class ChatGPTAutomationService:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         async with self._lock:
             logger.info("Adding ChatGPT project source")
@@ -440,6 +441,7 @@ class ChatGPTAutomationService:
                 file_path=file_path,
                 display_name=display_name,
                 keep_open=keep_open,
+                overwrite_existing=overwrite_existing,
             )
 
     async def discover_project_source_capabilities(

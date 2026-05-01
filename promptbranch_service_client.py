@@ -294,12 +294,14 @@ class ChatGPTServiceClient:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
         project_url: Optional[str] = None,
     ) -> dict[str, Any]:
         normalized_display_name = Path(display_name).name if display_name else None
         data = {
             "type": source_kind,
             "keep_open": str(keep_open).lower(),
+            "overwrite_existing": str(overwrite_existing).lower(),
         }
         if value is not None:
             data["value"] = value

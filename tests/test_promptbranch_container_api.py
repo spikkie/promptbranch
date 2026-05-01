@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.136"
+    assert payload["version"] == "0.0.137"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.136"
+    assert response.json()["version"] == "0.0.137"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -106,8 +106,9 @@ def test_add_project_source_file_preserves_uploaded_basename_and_defaults_displa
     captured: dict[str, object] = {}
 
     class FakeService:
-        async def add_project_source(self, *, source_kind: str, value=None, file_path=None, display_name=None, keep_open: bool = False):
+        async def add_project_source(self, *, source_kind: str, value=None, file_path=None, display_name=None, keep_open: bool = False, overwrite_existing: bool = True):
             captured["source_kind"] = source_kind
+            captured["overwrite_existing"] = overwrite_existing
             captured["file_path"] = file_path
             captured["display_name"] = display_name
             captured["keep_open"] = keep_open
@@ -131,6 +132,7 @@ def test_add_project_source_file_preserves_uploaded_basename_and_defaults_displa
     assert captured["basename"] == "architecture-process_0.1.16.zip"
     assert captured["display_name"] == "architecture-process_0.1.16.zip"
     assert captured["exists_during_call"] is True
+    assert captured["overwrite_existing"] is True
 
 
 def test_ask_file_upload_preserves_uploaded_basename(monkeypatch) -> None:

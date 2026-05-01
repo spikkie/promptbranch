@@ -397,6 +397,7 @@ class DockerServiceAdapter:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         return await asyncio.to_thread(
             self._add_project_source_sync,
@@ -405,6 +406,7 @@ class DockerServiceAdapter:
             file_path,
             display_name,
             keep_open,
+            overwrite_existing,
         )
 
     def _add_project_source_sync(
@@ -414,6 +416,7 @@ class DockerServiceAdapter:
         file_path: Optional[str],
         display_name: Optional[str],
         keep_open: bool,
+        overwrite_existing: bool,
     ) -> dict[str, Any]:
         with self._client() as client:
             return client.add_project_source(
@@ -422,6 +425,7 @@ class DockerServiceAdapter:
                 file_path=file_path,
                 display_name=display_name,
                 keep_open=keep_open,
+                overwrite_existing=overwrite_existing,
                 project_url=self.project_url,
             )
 
