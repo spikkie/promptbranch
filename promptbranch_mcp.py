@@ -1,8 +1,8 @@
-"""Read-only MCP/Ollama planning scaffold for Promptbranch.
+"""Read-only MCP/Ollama planning and stdio server scaffold for Promptbranch.
 
-This module does not start an MCP JSON-RPC server yet.  It defines the local
-read-only tool surface and policy-gated agent planning contracts that the MCP
-server can expose later without giving a local LLM direct mutation authority.
+The default MCP surface is deliberately read-only. Controlled write tools can
+be listed for planning, but the stdio server rejects their execution until a
+future deterministic executor layer explicitly enables and validates them.
 """
 
 from __future__ import annotations
@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from promptbranch_artifacts import ArtifactRegistry, iter_repo_files, read_version
+from promptbranch_artifacts import ArtifactRegistry, iter_repo_files, read_version, verify_zip_artifact
 from promptbranch_shell_model import ToolRisk, required_prechecks_for_action, risk_for_action
 from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
@@ -264,10 +265,327 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.138 exposes deterministic read-only planning first; Ollama integration remains a later adapter.",
+            "reason": "v0.0.139 exposes deterministic read-only planning first; Ollama integration remains a later adapter.",
         },
     }
     return payload
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _mcp_content(payload: dict[str, Any], *, is_error: bool = False) -> dict[str, Any]:
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(payload, indent=2, ensure_ascii=False),
+            }
+        ],
+        "structuredContent": payload,
+        "isError": is_error,
+    }
+
+
+def _tool_input_schema(tool_name: str) -> dict[str, Any]:
+    if tool_name == "filesystem.list":
+        return {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Repo-relative directory to list. Defaults to repo root."},
+                "max_files": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Maximum files to return."},
+            },
+            "additionalProperties": False,
+        }
+    if tool_name == "filesystem.read":
+        return {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Repo-relative file path to read."},
+                "max_bytes": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "Maximum UTF-8 bytes to return."},
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        }
+    if tool_name == "artifact.verify":
+        return {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Artifact ZIP path. Defaults to current registry artifact."},
+            },
+            "additionalProperties": False,
+        }
+    return {"type": "object", "properties": {}, "additionalProperties": False}
+
+
+def mcp_server_tools(*, include_controlled_writes: bool = False) -> list[dict[str, Any]]:
+    manifest = mcp_tool_manifest(include_controlled_writes=include_controlled_writes)
+    tools: list[dict[str, Any]] = []
+    for tool in manifest.get("tools", []):
+        if not isinstance(tool, dict):
+            continue
+        tools.append(
+            {
+                "name": str(tool.get("name") or ""),
+                "description": str(tool.get("description") or ""),
+                "inputSchema": _tool_input_schema(str(tool.get("name") or "")),
+                "annotations": {
+                    "readOnlyHint": bool(tool.get("read_only")),
+                    "destructiveHint": False,
+                    "idempotentHint": bool(tool.get("read_only")),
+                    "openWorldHint": False,
+                },
+            }
+        )
+    return tools
+
+
+def _current_state_snapshot(profile_dir: Path) -> dict[str, Any]:
+    return ConversationStateStore(str(profile_dir)).snapshot(None)
+
+
+def _safe_repo_relative_path(root: Path, value: str | None, *, default: str = ".") -> tuple[Path, str | None]:
+    rel = (value or default).strip() or default
+    if Path(rel).is_absolute():
+        candidate = Path(rel).expanduser().resolve()
+    else:
+        candidate = (root / rel).resolve()
+    if not _path_is_relative_to(candidate, root):
+        return candidate, "path_outside_repo"
+    return candidate, None
+
+
+def _read_bounded_text(path: Path, *, max_bytes: int) -> dict[str, Any]:
+    if not path.is_file():
+        return {"ok": False, "error": "file_not_found", "path": str(path)}
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "path": str(path)}
+    truncated = len(data) > max_bytes
+    data = data[:max_bytes]
+    try:
+        text = data.decode("utf-8")
+        encoding = "utf-8"
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", errors="replace")
+        encoding = "utf-8-replacement"
+    return {
+        "ok": True,
+        "path": str(path),
+        "encoding": encoding,
+        "truncated": truncated,
+        "bytes_returned": len(data),
+        "text": text,
+    }
+
+
+def call_read_only_mcp_tool(
+    name: str,
+    arguments: Optional[dict[str, Any]] = None,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    args = arguments or {}
+    root = Path(repo_path).expanduser().resolve()
+    resolved_profile = resolve_profile_dir(str(profile_dir) if profile_dir else None)
+
+    if name == "promptbranch.state.read":
+        return {"ok": True, "tool": name, "state": _current_state_snapshot(resolved_profile)}
+
+    if name == "promptbranch.workspace.current":
+        state = _current_state_snapshot(resolved_profile)
+        return {
+            "ok": True,
+            "tool": name,
+            "workspace": state.get("workspace") or {},
+            "project_home_url": state.get("resolved_project_home_url") or state.get("current_project_home_url"),
+            "project_name": state.get("project_name"),
+        }
+
+    if name == "promptbranch.task.current":
+        state = _current_state_snapshot(resolved_profile)
+        return {
+            "ok": True,
+            "tool": name,
+            "task": state.get("task") or {},
+            "conversation_url": state.get("conversation_url") or state.get("current_conversation_url"),
+            "conversation_id": state.get("conversation_id"),
+        }
+
+    if name == "filesystem.list":
+        max_files = int(args.get("max_files") or DEFAULT_AGENT_MAX_FILES)
+        max_files = max(1, min(max_files, 500))
+        target, error = _safe_repo_relative_path(root, str(args.get("path") or "."), default=".")
+        if error:
+            return {"ok": False, "tool": name, "error": error, "path": str(target), "repo_path": str(root)}
+        if target == root:
+            file_count, file_sample, file_errors = _safe_file_sample(root, max_files=max_files)
+            return {"ok": not file_errors, "tool": name, "repo_path": str(root), "path": str(target), "file_count": file_count, "files": file_sample, "truncated": file_count > len(file_sample), "errors": file_errors}
+        if not target.exists():
+            return {"ok": False, "tool": name, "error": "path_not_found", "path": str(target), "repo_path": str(root)}
+        if not target.is_dir():
+            return {"ok": False, "tool": name, "error": "path_not_directory", "path": str(target), "repo_path": str(root)}
+        files = sorted(path.relative_to(root).as_posix() for path in target.rglob("*") if path.is_file())
+        return {"ok": True, "tool": name, "repo_path": str(root), "path": str(target), "file_count": len(files), "files": files[:max_files], "truncated": len(files) > max_files, "errors": []}
+
+    if name == "filesystem.read":
+        max_bytes = int(args.get("max_bytes") or 20000)
+        max_bytes = max(1, min(max_bytes, 100000))
+        target, error = _safe_repo_relative_path(root, str(args.get("path") or ""), default="")
+        if error:
+            return {"ok": False, "tool": name, "error": error, "path": str(target), "repo_path": str(root)}
+        payload = _read_bounded_text(target, max_bytes=max_bytes)
+        payload.update({"tool": name, "repo_path": str(root), "relative_path": target.relative_to(root).as_posix() if _path_is_relative_to(target, root) else None})
+        return payload
+
+    if name == "git.status":
+        return {"ok": True, "tool": name, "repo_path": str(root), "git": _git_snapshot(root)}
+
+    if name == "git.diff.summary":
+        diff_stat = _run_read_only_command(["git", "diff", "--stat"], cwd=root)
+        return {"ok": bool(diff_stat.get("ok")), "tool": name, "repo_path": str(root), "diff_stat": diff_stat.get("stdout") or "", "command": diff_stat}
+
+    if name == "artifact.registry.current":
+        registry = ArtifactRegistry(resolved_profile)
+        return {"ok": True, "tool": name, "registry_path": str(registry.path), "artifact_dir": str(registry.artifact_dir), "current": registry.current()}
+
+    if name == "artifact.verify":
+        path_arg = args.get("path")
+        if path_arg:
+            artifact_path = Path(str(path_arg)).expanduser()
+            if not artifact_path.is_absolute():
+                artifact_path = (root / artifact_path).resolve()
+        else:
+            current = ArtifactRegistry(resolved_profile).current()
+            artifact_path = Path(str(current.get("path"))) if isinstance(current, dict) and current.get("path") else None
+        if artifact_path is None:
+            return {"ok": False, "tool": name, "error": "no_current_artifact"}
+        payload = verify_zip_artifact(artifact_path)
+        payload["tool"] = name
+        return payload
+
+    return {"ok": False, "tool": name, "error": "unsupported_or_write_tool", "supported_read_only_tools": [tool.name for tool in READ_ONLY_MCP_TOOLS]}
+
+
+def _jsonrpc_result(message_id: Any, result: dict[str, Any]) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": message_id, "result": result}
+
+
+def _jsonrpc_error(message_id: Any, code: int, message: str, data: Any = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"jsonrpc": "2.0", "id": message_id, "error": {"code": code, "message": message}}
+    if data is not None:
+        payload["error"]["data"] = data
+    return payload
+
+
+def handle_mcp_jsonrpc_message(
+    message: dict[str, Any],
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    include_controlled_writes: bool = False,
+) -> dict[str, Any] | None:
+    message_id = message.get("id")
+    method = message.get("method")
+    params = message.get("params") if isinstance(message.get("params"), dict) else {}
+
+    if not method:
+        return _jsonrpc_error(message_id, -32600, "Invalid Request", {"reason": "missing method"})
+
+    if message_id is None and method in {"notifications/initialized", "notifications/cancelled", "$/cancelRequest"}:
+        return None
+
+    if method == "initialize":
+        return _jsonrpc_result(
+            message_id,
+            {
+                "protocolVersion": str(params.get("protocolVersion") or "2024-11-05"),
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": "promptbranch", "version": "0.0.139"},
+                "instructions": "Promptbranch MCP exposes read-only repo/git/state/artifact tools by default. Write tools are policy-gated and not executable from this server yet.",
+            },
+        )
+
+    if method in {"ping", "$/ping"}:
+        return _jsonrpc_result(message_id, {})
+
+    if method == "tools/list":
+        return _jsonrpc_result(message_id, {"tools": mcp_server_tools(include_controlled_writes=include_controlled_writes)})
+
+    if method == "tools/call":
+        name = str(params.get("name") or "")
+        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        manifest_tools = mcp_tool_manifest(include_controlled_writes=include_controlled_writes).get("tools", [])
+        tool_meta = next((tool for tool in manifest_tools if isinstance(tool, dict) and tool.get("name") == name), None)
+        if tool_meta is None:
+            return _jsonrpc_result(message_id, _mcp_content({"ok": False, "error": "unknown_tool", "tool": name}, is_error=True))
+        if not bool(tool_meta.get("read_only")):
+            return _jsonrpc_result(
+                message_id,
+                _mcp_content(
+                    {
+                        "ok": False,
+                        "error": "write_tool_not_executable_via_mcp_serve",
+                        "tool": name,
+                        "required_policy": "deterministic_executor_prechecks",
+                    },
+                    is_error=True,
+                ),
+            )
+        payload = call_read_only_mcp_tool(name, arguments, repo_path=repo_path, profile_dir=profile_dir)
+        return _jsonrpc_result(message_id, _mcp_content(payload, is_error=not bool(payload.get("ok"))))
+
+    if method == "resources/list":
+        return _jsonrpc_result(message_id, {"resources": []})
+
+    if method == "prompts/list":
+        return _jsonrpc_result(message_id, {"prompts": []})
+
+    return _jsonrpc_error(message_id, -32601, "Method not found", {"method": method})
+
+
+def serve_mcp_stdio(
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    include_controlled_writes: bool = False,
+    input_stream: Any = None,
+    output_stream: Any = None,
+) -> int:
+    """Serve a minimal MCP JSON-RPC stdio loop."""
+
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
+    for raw in input_stream:
+        line = str(raw).strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError as exc:
+            response = _jsonrpc_error(None, -32700, "Parse error", {"error": str(exc)})
+        else:
+            if not isinstance(message, dict):
+                response = _jsonrpc_error(None, -32600, "Invalid Request", {"reason": "message must be an object"})
+            else:
+                response = handle_mcp_jsonrpc_message(
+                    message,
+                    repo_path=repo_path,
+                    profile_dir=profile_dir,
+                    include_controlled_writes=include_controlled_writes,
+                )
+        if response is None:
+            continue
+        output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
+        output_stream.flush()
+    return 0
 
 
 def _contains_any(text: str, needles: Iterable[str]) -> bool:

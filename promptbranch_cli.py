@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
-from promptbranch_mcp import agent_doctor, inspect_local_context, mcp_tool_manifest, plan_agent_request
+from promptbranch_mcp import agent_doctor, inspect_local_context, mcp_tool_manifest, plan_agent_request, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -40,7 +40,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.138"
+CLI_VERSION = "0.0.139"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1674,7 +1674,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "--json", "--path", "--max-files"],
-        "mcp": ["manifest", "--json", "--include-controlled-writes"],
+        "mcp": ["manifest", "serve", "--json", "--path", "--include-controlled-writes"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
@@ -2469,7 +2469,16 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
 
 
 async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
-    del backend
+    if args.mcp_command == "serve":
+        profile_dir = getattr(args, "profile_dir", None)
+        if not profile_dir and hasattr(backend, "profile_dir"):
+            profile_dir = getattr(backend, "profile_dir")
+        return serve_mcp_stdio(
+            repo_path=getattr(args, "path", "."),
+            profile_dir=profile_dir,
+            include_controlled_writes=getattr(args, "include_controlled_writes", False),
+        )
+
     if args.mcp_command == "manifest":
         payload = mcp_tool_manifest(include_controlled_writes=args.include_controlled_writes)
     else:
@@ -2806,6 +2815,10 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_manifest = mcp_subparsers.add_parser("manifest", help="Emit the Promptbranch MCP tool manifest.")
     mcp_manifest.add_argument("--include-controlled-writes", action="store_true", help="Include gated write/process tools in addition to read-only tools.")
     mcp_manifest.add_argument("--json", action="store_true")
+
+    mcp_serve = mcp_subparsers.add_parser("serve", help="Run the read-only Promptbranch MCP stdio server.")
+    mcp_serve.add_argument("--path", default=".", help="Repo path exposed to read-only filesystem/git tools. Defaults to current directory.")
+    mcp_serve.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools but reject execution until a deterministic executor is implemented.")
 
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)
