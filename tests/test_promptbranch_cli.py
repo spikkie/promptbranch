@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.135"
+    assert captured.out.strip() == "promptbranch 0.0.136"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1014,7 +1014,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.135"
+    assert payload["version"] == "0.0.136"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1346,3 +1346,30 @@ def test_task_list_payload_reports_unique_indexed_task_count_not_source_observat
     assert payload["visibility_status"] == "indexed"
     assert payload["indexed_task_count"] == 20
     assert payload["indexed_observation_count"] == 30
+
+
+def test_task_list_payload_recomputes_stale_service_visibility_diagnostics() -> None:
+    chats, payload = _chat_list_payload(
+        {
+            "ok": True,
+            "visibility_status": "missing",
+            "indexed_observation_count": 20,
+            "recent_state_count": 99,
+            "source_counts": {"snorlax": 20, "project_endpoint": 25, "dom": 0, "current_page": 0, "history": 0, "history_detail": 0},
+            "chats": [
+                {
+                    "id": f"task-{idx}",
+                    "title": f"Task {idx}",
+                    "conversation_url": f"https://chatgpt.com/g/g-p-demo/c/task-{idx}",
+                    "source": "project_endpoint",
+                }
+                for idx in range(25)
+            ],
+        }
+    )
+
+    assert len(chats) == 25
+    assert payload["visibility_status"] == "indexed"
+    assert payload["indexed_task_count"] == 25
+    assert payload["indexed_observation_count"] == 45
+    assert payload["recent_state_count"] == 0

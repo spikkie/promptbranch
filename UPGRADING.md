@@ -116,6 +116,10 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.136
+
+- Recomputed task-list visibility diagnostics in the CLI after merging backend rows; stale service fields such as `visibility_status=missing` and old observation counts are no longer preserved when project endpoint rows are present.
+
 ## v0.0.135
 
 - Fixed the project-specific conversations endpoint probe by clamping `limit` to 50. Live v0.0.134 diagnostics showed ChatGPT returns HTTP 422 when `/backend-api/gizmos/<project-id>/conversations` is called with `limit=100`.
