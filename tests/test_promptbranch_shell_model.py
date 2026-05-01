@@ -42,7 +42,7 @@ def test_mutation_result_verified_contract_is_json_ready() -> None:
         committed=True,
         verified=True,
         state_updated=True,
-        artifact=ArtifactRef(source_ref="repo.zip", source_version="v0.0.134"),
+        artifact=ArtifactRef(source_ref="repo.zip", source_version="v0.0.135"),
     )
 
     payload = result.to_dict()
@@ -71,19 +71,19 @@ def test_state_store_tracks_workspace_task_and_artifact_independently(tmp_path) 
     store.remember(project_url, conversation_url, project_name="my-project")
     store.remember_artifact(
         project_url=project_url,
-        artifact_ref="chatgpt_claudecode_workflow_v0.0.134.zip",
-        artifact_version="v0.0.134",
-        source_ref="chatgpt_claudecode_workflow_v0.0.134.zip",
-        source_version="v0.0.134",
+        artifact_ref="chatgpt_claudecode_workflow_v0.0.135.zip",
+        artifact_version="v0.0.135",
+        source_ref="chatgpt_claudecode_workflow_v0.0.135.zip",
+        source_version="v0.0.135",
     )
 
     snapshot = store.snapshot(project_url)
     assert snapshot["schema_version"] == 2
     assert snapshot["workspace"]["project_home_url"] == project_url
     assert snapshot["task"]["conversation_id"] == "12345678-1234-1234-1234-1234567890ab"
-    assert snapshot["artifact"]["artifact_version"] == "v0.0.134"
-    assert snapshot["artifact"]["source_ref"] == "chatgpt_claudecode_workflow_v0.0.134.zip"
+    assert snapshot["artifact"]["artifact_version"] == "v0.0.135"
+    assert snapshot["artifact"]["source_ref"] == "chatgpt_claudecode_workflow_v0.0.135.zip"
 
     on_disk = json.loads((tmp_path / ".promptbranch_state.json").read_text(encoding="utf-8"))
     assert on_disk["schema_version"] == 2
-    assert on_disk["current"]["artifact_ref"] == "chatgpt_claudecode_workflow_v0.0.134.zip"
+    assert on_disk["current"]["artifact_ref"] == "chatgpt_claudecode_workflow_v0.0.135.zip"

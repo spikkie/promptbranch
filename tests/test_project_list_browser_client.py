@@ -722,8 +722,9 @@ def test_collect_project_chats_via_project_conversations_endpoint_uses_project_e
     page = object()
     calls: list[str | None] = []
 
-    async def fake_fetch(page, *, project_id, cursor=None, limit=100):
+    async def fake_fetch(page, *, project_id, cursor=None, limit=50):
         assert project_id == "g-p-current"
+        assert limit == 50
         calls.append(cursor)
         if cursor is None:
             return {
@@ -1251,10 +1252,11 @@ def test_collect_project_endpoint_exposes_diagnostics_when_empty(tmp_path: Path)
     client = _make_client(tmp_path)
     page = object()
 
-    async def fake_fetch(page, *, project_id, cursor=None, limit=100):
+    async def fake_fetch(page, *, project_id, cursor=None, limit=50):
+        assert limit == 50
         return {
             "status": 200,
-            "url": "https://chatgpt.com/backend-api/gizmos/g-p-current/conversations?limit=100",
+            "url": "https://chatgpt.com/backend-api/gizmos/g-p-current/conversations?limit=50",
             "used_authorization": True,
             "payload": {"data": {"unexpected": []}},
             "text": '{"data":{"unexpected":[]}}',
@@ -1277,3 +1279,33 @@ def test_collect_project_endpoint_exposes_diagnostics_when_empty(tmp_path: Path)
     assert diagnostics[0]["status"] == 200
     assert diagnostics[0]["discovered_count"] == 0
     assert "payload_shape" in diagnostics[0]
+
+
+def test_fetch_project_conversations_page_clamps_limit_to_50(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class FakePage:
+        async def evaluate(self, _script, args):
+            assert args["limit"] == 50
+            assert args["cursor"] is None
+            assert args["projectId"] == "g-p-current"
+            return {
+                "ok": True,
+                "status": 200,
+                "url": "https://chatgpt.com/backend-api/gizmos/g-p-current/conversations?limit=50",
+                "text": "{}",
+                "usedAuthorization": True,
+            }
+
+    import asyncio
+
+    result = asyncio.run(
+        client._fetch_project_conversations_page(
+            FakePage(),
+            project_id="g-p-current",
+            limit=100,
+        )
+    )
+
+    assert result["status"] == 200
+    assert result["payload"] == {}
