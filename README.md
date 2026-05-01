@@ -1,4 +1,4 @@
-# promptbranch v0.0.138
+# promptbranch v0.0.139
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -24,6 +24,25 @@ The repository now includes focused manuals under `docs/howto/` instead of forci
 - `docs/howto/07-use-the-python-client.md`
 - `docs/howto/12-troubleshooting.md`
 
+## MCP / local agent scaffold
+
+Read-only local inspection and planning commands:
+
+```bash
+pb agent inspect . --json
+pb agent doctor . --json
+pb agent plan "sync repo" --json
+pb mcp manifest --json
+```
+
+Run the read-only MCP stdio server for a local MCP host:
+
+```bash
+pb mcp serve --path .
+```
+
+`pb mcp serve` exposes read-only repo/git/state/artifact tools. Controlled write tools may be listed for planning with `--include-controlled-writes`, but execution is rejected until a deterministic write executor is implemented.
+
 ## Reusable Docker service
 
 Build the image:
@@ -35,7 +54,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.138 .
+docker build -t promptbranch-service:0.0.139 .
 ```
 
 Run it:
@@ -50,7 +69,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.138
+  promptbranch-service:0.0.139
 ```
 
 Compose option:
@@ -238,7 +257,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.138.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.139.zip
 ```
 
 From an extracted checkout:

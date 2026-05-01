@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.139
+
+- Added `pb mcp serve` as a minimal read-only MCP stdio JSON-RPC server.
+- The server exposes read-only repo/git/state/artifact tools from the existing MCP manifest.
+- Controlled write tools can be listed for planning, but `pb mcp serve` rejects their execution until a deterministic executor is implemented.
+
 ## v0.0.138
 
 - Added the first read-only MCP/Ollama planning scaffold: `pb agent inspect`, `pb agent doctor`, and `pb agent plan`.
