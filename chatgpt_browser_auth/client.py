@@ -3777,12 +3777,13 @@ class ChatGPTBrowserClient:
         *,
         project_id: str,
         cursor: Optional[str] = None,
-        limit: int = 100,
+        limit: int = 50,
     ) -> dict[str, Any]:
+        # Live ChatGPT rejects this endpoint with HTTP 422 when limit > 50.
         try:
-            limit = max(1, min(int(limit), 100))
+            limit = max(1, min(int(limit), 50))
         except Exception:
-            limit = 100
+            limit = 50
         result = await page.evaluate(
             r'''
             async ({ projectId, cursor, limit }) => {
@@ -3848,7 +3849,7 @@ class ChatGPTBrowserClient:
         project_url: str,
         label: str,
         max_pages: int = 10,
-        limit: int = 100,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         project_id = self._extract_project_id_from_url(project_url)
         if not project_id:

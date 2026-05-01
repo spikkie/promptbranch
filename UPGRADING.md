@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.135
+
+- Fixed the project-specific conversations endpoint probe by clamping `limit` to 50. Live v0.0.134 diagnostics showed ChatGPT returns HTTP 422 when `/backend-api/gizmos/<project-id>/conversations` is called with `limit=100`.
+- Preserved task-list cache behavior and the v0.0.134 source-add positional shorthand.
+- Added/updated focused parser and endpoint-limit regression coverage.
+
 ## v0.0.134
 
 - Made `promptbranch src add <file>` equivalent to `promptbranch src add --file <file>`, so the `pbsa` alias can be used as `pbsa my_gitlab_0.0.4.zip`.
