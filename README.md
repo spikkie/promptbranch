@@ -1,4 +1,4 @@
-# promptbranch v0.0.133
+# promptbranch v0.0.134
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -35,7 +35,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.133 .
+docker build -t promptbranch-service:0.0.134 .
 ```
 
 Run it:
@@ -50,7 +50,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.133
+  promptbranch-service:0.0.134
 ```
 
 Compose option:
@@ -238,7 +238,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.133.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.134.zip
 ```
 
 From an extracted checkout:
@@ -479,9 +479,12 @@ Useful aliases:
 | `pbs` | `promptbranch state` |
 | `pbv` | `promptbranch version` |
 | `pba` | `promptbranch ask` |
-| `pbsl` | `promptbranch project-source-list` |
-| `pbsf` | `promptbranch project-source-add --file` |
-| `pbsr` | `promptbranch project-source-remove` |
+| `pbsl` | `promptbranch src list` |
+| `pbsa` | `promptbranch src add` |
+| `pbsf` | `promptbranch src add --type file --file` |
+| `pbsr` | `promptbranch src rm` |
+
+`pbsa my_gitlab_0.0.4.zip` is now equivalent to `promptbranch src add --file my_gitlab_0.0.4.zip`.
 | `pbstatus` | compact `.pb_profile` state line |
 
 For a tmux footer/status segment:

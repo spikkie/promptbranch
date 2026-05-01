@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.134
+
+- Made `promptbranch src add <file>` equivalent to `promptbranch src add --file <file>`, so the `pbsa` alias can be used as `pbsa my_gitlab_0.0.4.zip`.
+- Kept the existing `--file` form for compatibility and added validation to reject conflicting positional and `--file` paths.
+- Applied the same positional file shorthand to legacy `project-source-add <file>`.
+
 ## v0.0.133
 
 - Added a fresh per-project task-list cache in `.pb_profile` after `pb task list`, so a follow-up `pb task use <index>` can resolve from the just-shown list without opening a browser/service request again.

@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.133"
+    assert captured.out.strip() == "promptbranch 0.0.134"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -815,6 +815,31 @@ def test_test_suite_command_dispatches_to_runner(monkeypatch, capsys) -> None:
     assert payload['action'] == 'test_suite'
 
 
+def test_src_add_positional_file_delegates_as_file_source(monkeypatch, capsys, tmp_path) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "action": "add"}
+
+    file_path = tmp_path / "my_gitlab_0.0.4.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "add", str(file_path)])
+
+    assert exit_code == 0
+    assert calls["source_kind"] == "file"
+    assert calls["file_path"] == str(file_path)
+    assert calls["display_name"] == "my_gitlab_0.0.4.zip"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+
+
 def test_main_project_source_add_file_normalizes_name_to_basename(monkeypatch, capsys, tmp_path) -> None:
     calls: dict[str, object] = {}
 
@@ -867,6 +892,13 @@ def test_phase1_canonical_parser_accepts_ws_task_src_test_and_doctor() -> None:
     assert src_args.src_command == "add"
     assert src_args.type == "file"
     assert src_args.file == "demo.zip"
+
+    positional_src_args = parser.parse_args(["src", "add", "demo.zip"])
+    assert positional_src_args.command == "src"
+    assert positional_src_args.src_command == "add"
+    assert positional_src_args.type == "file"
+    assert positional_src_args.file_path == "demo.zip"
+    assert positional_src_args.file is None
 
     test_args = parser.parse_args(["test", "smoke", "--only", "project_list_debug"])
     assert test_args.command == "test"
@@ -982,7 +1014,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.133"
+    assert payload["version"] == "0.0.134"
     assert payload["checks"]["workspace_selected"] is True
 
 

@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.133"
+CLI_VERSION = "0.0.134"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1559,10 +1559,17 @@ async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
     source_kind = args.type or "file"
     value = args.value
-    file_path = args.file
+    positional_file_path = getattr(args, "file_path", None)
+    file_path = args.file or positional_file_path
     display_name = args.name
+    if args.file and positional_file_path and args.file != positional_file_path:
+        print("error: pass the file path either positionally or with --file, not both", file=sys.stderr)
+        return 2
+    if source_kind != "file" and positional_file_path:
+        print("error: positional source path is only supported when --type=file", file=sys.stderr)
+        return 2
     if source_kind == "file" and not file_path:
-        print("error: --file is required when --type=file", file=sys.stderr)
+        print("error: file path is required when --type=file", file=sys.stderr)
         return 2
     if source_kind in {"link", "text"} and not value:
         print(f"error: --value is required when --type={source_kind}", file=sys.stderr)
@@ -2658,6 +2665,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_list.add_argument("--keep-open", action="store_true")
 
     src_add = src_subparsers.add_parser("add", help="Add a source to the current workspace.")
+    src_add.add_argument("file_path", nargs="?", help="Local file path for file sources. Equivalent to --file.")
     src_add.add_argument("--type", choices=["link", "text", "file"], default="file")
     src_add.add_argument("--value", help="Source payload for link/text sources.")
     src_add.add_argument("--file", help="Local file path for file sources.")
@@ -2794,6 +2802,7 @@ def make_parser() -> argparse.ArgumentParser:
         "project-source-add",
         help="Add a source to the configured ChatGPT project (Sources tab).",
     )
+    source_add.add_argument("file_path", nargs="?", help="Local file path for file sources. Equivalent to --file.")
     source_add.add_argument("--type", choices=["link", "text", "file"], default="file")
     source_add.add_argument("--value", help="Source payload for link/text sources.")
     source_add.add_argument("--file", help="Local file path for file sources.")
