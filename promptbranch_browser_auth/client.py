@@ -885,6 +885,7 @@ class ChatGPTBrowserClient:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         self._log(
             "project-source-add",
@@ -904,6 +905,7 @@ class ChatGPTBrowserClient:
             file_path=file_path,
             display_name=display_name,
             keep_open=keep_open,
+            overwrite_existing=overwrite_existing,
         )
 
     async def discover_project_source_capabilities(
@@ -2353,6 +2355,7 @@ class ChatGPTBrowserClient:
         file_path: Optional[str],
         display_name: Optional[str],
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
@@ -2374,6 +2377,8 @@ class ChatGPTBrowserClient:
         matched_source: Optional[dict[str, Any]] = None
         duplicate_notice: Optional[str] = None
         duplicate_detected = False
+        overwritten_existing = False
+        overwrite_remove_result: Optional[dict[str, Any]] = None
 
         if normalized_kind == "file":
             source_match_candidates = self._build_source_match_candidates(
@@ -2391,6 +2396,32 @@ class ChatGPTBrowserClient:
                 matched_source = existing_source
                 duplicate_detected = True
                 duplicate_notice = f"Project source already exists: {canonical_display_name or source_match_candidates[0]}"
+                if overwrite_existing:
+                    overwrite_source_name = (
+                        self._preferred_source_card_identity(existing_source)
+                        or canonical_display_name
+                        or source_match_candidates[0]
+                    )
+                    self._log(
+                        "project-source-add",
+                        "existing file source found; overwriting by removing it before upload",
+                        project_url=project_home_url,
+                        source_name=overwrite_source_name,
+                        requested_name=canonical_display_name,
+                    )
+                    overwrite_remove_result = await self._remove_project_source_operation(
+                        context=context,
+                        page=page,
+                        source_name=overwrite_source_name,
+                        exact=True,
+                        keep_open=False,
+                    )
+                    await self._open_project_sources_tab(page)
+                    before_sources = await self._snapshot_project_source_cards(page)
+                    matched_source = None
+                    duplicate_detected = False
+                    duplicate_notice = None
+                    overwritten_existing = True
 
         save_request_watch = None
         if normalized_kind in {"text", "file"} and not duplicate_detected:
@@ -2479,13 +2510,17 @@ class ChatGPTBrowserClient:
             "source_match_requested": requested_match,
             "source_match_candidates": persistence_candidates,
             "persistence_verified": True,
-            "already_exists": duplicate_detected,
+            "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
+            "overwritten": overwritten_existing,
+            "removed_existing": bool(overwrite_remove_result and overwrite_remove_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }
+        if overwrite_remove_result is not None:
+            result["overwrite_remove_result"] = overwrite_remove_result
         if duplicate_notice:
             result["duplicate_notice"] = duplicate_notice
-        log_message = "project source already exists" if duplicate_detected else "project source added"
+        log_message = "project source already exists" if duplicate_detected else ("project source overwritten" if overwritten_existing else "project source added")
         self._log("project-source-add", log_message, **result)
         if keep_open and self.config.is_headed:
             pause_message = "Source already exists. Press Enter to close the browser... " if duplicate_detected else "Source added. Press Enter to close the browser... "

@@ -39,7 +39,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.136"
+CLI_VERSION = "0.0.137"
 COMMANDS = {
     "login-check",
     "ask",
@@ -263,6 +263,7 @@ class DirectBackend:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         effective_project_url = self._effective_project_home_url()
         original_project_url = self._service.settings.project_url
@@ -274,6 +275,7 @@ class DirectBackend:
                 file_path=file_path,
                 display_name=display_name,
                 keep_open=keep_open,
+                overwrite_existing=overwrite_existing,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -509,6 +511,7 @@ class ServiceBackend:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         return await self._call(
             self._client.add_project_source,
@@ -517,6 +520,7 @@ class ServiceBackend:
             file_path=file_path,
             display_name=display_name,
             keep_open=keep_open,
+            overwrite_existing=overwrite_existing,
             project_url=self._effective_project_home_url(),
         )
 
@@ -1585,6 +1589,7 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
         file_path=file_path,
         display_name=display_name,
         keep_open=args.keep_open,
+        overwrite_existing=not getattr(args, "no_overwrite", False),
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
@@ -1663,7 +1668,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
-        "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
+        "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
@@ -1673,7 +1678,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "project-resolve": ["--keep-open"],
         "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-remove": ["--keep-open"],
-        "project-source-add": ["--type", "--value", "--file", "--name", "--keep-open"],
+        "project-source-add": ["--type", "--value", "--file", "--name", "--no-overwrite", "--keep-open"],
         "project-source-list": ["--json", "--keep-open"],
         "project-source-remove": ["--exact", "--keep-open"],
         "chat-list": ["--json", "--keep-open", "--deep-history"],
@@ -2670,6 +2675,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_add.add_argument("--value", help="Source payload for link/text sources.")
     src_add.add_argument("--file", help="Local file path for file sources.")
     src_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
+    src_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
     src_add.add_argument("--keep-open", action="store_true")
 
     src_remove = src_subparsers.add_parser("rm", aliases=["remove"], help="Remove a source from the current workspace.")
@@ -2807,6 +2813,7 @@ def make_parser() -> argparse.ArgumentParser:
     source_add.add_argument("--value", help="Source payload for link/text sources.")
     source_add.add_argument("--file", help="Local file path for file sources.")
     source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
+    source_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
     source_add.add_argument("--keep-open", action="store_true")
 
     source_list = subparsers.add_parser(

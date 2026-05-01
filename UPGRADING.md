@@ -116,6 +116,11 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.137
+
+- `pb src add <file>` / `pbsa <file>` now overwrites an existing file source with the same display name by default: the old source is removed, the new file is uploaded, and persistence is verified.
+- Added `--no-overwrite` for source-add commands to retain the previous duplicate-skip behavior.
+
 ## v0.0.136
 
 - Recomputed task-list visibility diagnostics in the CLI after merging backend rows; stale service fields such as `visibility_status=missing` and old observation counts are no longer preserved when project endpoint rows are present.

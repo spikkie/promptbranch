@@ -407,6 +407,7 @@ class ChatGPTAutomation:
         file_path: Optional[str] = None,
         display_name: Optional[str] = None,
         keep_open: bool = False,
+        overwrite_existing: bool = True,
     ) -> dict[str, Any]:
         return await self.client.add_project_source(
             source_kind=source_kind,
@@ -414,6 +415,7 @@ class ChatGPTAutomation:
             file_path=file_path,
             display_name=display_name,
             keep_open=keep_open,
+            overwrite_existing=overwrite_existing,
         )
 
     async def discover_project_source_capabilities(

@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.136"
+    assert captured.out.strip() == "promptbranch 0.0.137"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -836,6 +836,7 @@ def test_src_add_positional_file_delegates_as_file_source(monkeypatch, capsys, t
     assert calls["source_kind"] == "file"
     assert calls["file_path"] == str(file_path)
     assert calls["display_name"] == "my_gitlab_0.0.4.zip"
+    assert calls["overwrite_existing"] is True
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
 
@@ -869,6 +870,7 @@ def test_main_project_source_add_file_normalizes_name_to_basename(monkeypatch, c
 
     assert exit_code == 0
     assert calls["display_name"] == "candlecast-src-0.19.5.82.2.zip"
+    assert calls["overwrite_existing"] is True
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
 
@@ -892,6 +894,10 @@ def test_phase1_canonical_parser_accepts_ws_task_src_test_and_doctor() -> None:
     assert src_args.src_command == "add"
     assert src_args.type == "file"
     assert src_args.file == "demo.zip"
+    assert src_args.no_overwrite is False
+
+    src_no_overwrite_args = parser.parse_args(["src", "add", "--file", "demo.zip", "--no-overwrite"])
+    assert src_no_overwrite_args.no_overwrite is True
 
     positional_src_args = parser.parse_args(["src", "add", "demo.zip"])
     assert positional_src_args.command == "src"
@@ -1014,7 +1020,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.136"
+    assert payload["version"] == "0.0.137"
     assert payload["checks"]["workspace_selected"] is True
 
 

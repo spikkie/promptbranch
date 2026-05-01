@@ -254,6 +254,8 @@ def test_add_project_source_file_defaults_name_to_file_basename(tmp_path: Path) 
         body = request.read().decode("utf-8", errors="ignore")
         assert 'name="name"' in body
         assert "architecture-process_0.1.16.zip" in body
+        assert 'name="overwrite_existing"' in body
+        assert "true" in body
         return httpx.Response(200, json={"ok": True, "action": "add"})
 
     transport = httpx.MockTransport(handler)

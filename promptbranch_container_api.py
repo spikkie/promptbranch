@@ -144,7 +144,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.136"
+SERVICE_VERSION = "0.0.137"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -503,6 +503,7 @@ async def add_project_source(
     value: Optional[str] = Form(default=None),
     display_name: Optional[str] = Form(default=None, alias="name"),
     keep_open: bool = Form(False),
+    overwrite_existing: bool = Form(True),
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
@@ -527,6 +528,7 @@ async def add_project_source(
             file_path=(str(temp_path) if temp_path is not None else None),
             display_name=display_name,
             keep_open=keep_open,
+            overwrite_existing=overwrite_existing,
         )
     except HTTPException:
         raise
