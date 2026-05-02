@@ -116,7 +116,7 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
-## v0.0.141
+## v0.0.142
 
 - `pb mcp config` now resolves the MCP executable to an absolute path by default when possible, avoiding GUI-host PATH/alias failures.
 - Added `pb mcp host-smoke` to launch the generated host config and verify read-only calls through the configured stdio server.
@@ -277,3 +277,13 @@ If you still depend on them, pin to `v0.0.67` temporarily and migrate before ado
 - Added `scripts/setup-promptbranch-shell.sh` to install the aliases into Bash or Zsh rc files.
 - Added `scripts/promptbranch-statusline.sh` for compact Promptbranch state output in shell prompts or tmux footer/status lines.
 - The status helper resolves the nearest inherited `.pb_profile` directory.
+
+## v0.0.142
+
+- Added deterministic read-only local agent execution:
+  - `pb agent ask "read VERSION and git status" --path . --json`
+  - `pb agent tool-call filesystem.read '{"path":"VERSION"}' --path . --json`
+  - `pb agent models --json`
+- `pb agent ask` uses a rule-based planner for read-only MCP tools. Ollama is not trusted for tool planning.
+- Ollama can be used only for optional summaries with `--model` or `--summarize`; failures are non-fatal.
+- Write-capable MCP tools remain blocked.

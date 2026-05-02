@@ -85,7 +85,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.141"
+    assert init["result"]["serverInfo"]["version"] == "0.0.142"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -210,3 +210,42 @@ def test_mcp_host_smoke_launches_configured_read_only_server(tmp_path: Path) -> 
     assert payload["action"] == "mcp_host_smoke"
     assert payload["checks"]["command_is_absolute"] is True
     assert payload["checks"]["filesystem_read_ok"] is True
+
+
+def test_agent_tool_call_executes_only_read_only_tool(tmp_path: Path) -> None:
+    from promptbranch_mcp import agent_tool_call
+
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+
+    ok = agent_tool_call("filesystem.read", {"path": "VERSION"}, repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+    assert ok["ok"] is True
+    assert ok["result"]["text"] == "v9.9.9\n"
+
+    blocked = agent_tool_call("promptbranch.src.sync", {"path": "."}, repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+    assert blocked["ok"] is False
+    assert blocked["status"] == "blocked"
+
+
+def test_agent_ask_uses_rule_based_read_only_planner(tmp_path: Path) -> None:
+    from promptbranch_mcp import agent_ask
+
+    (tmp_path / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+
+    payload = agent_ask("read VERSION and git status", repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+
+    assert payload["ok"] is True
+    assert payload["planner"] == "rule_based_v1"
+    assert payload["ollama"]["used_for_planning"] is False
+    names = [call["name"] for call in payload["tool_calls"]]
+    assert "filesystem.read" in names
+    assert "git.status" in names
+
+
+def test_ollama_models_unavailable_is_clean() -> None:
+    from promptbranch_mcp import ollama_models
+
+    payload = ollama_models(host="http://127.0.0.1:9", timeout_seconds=0.2)
+
+    assert payload["ok"] is False
+    assert payload["action"] == "agent_models"
+    assert payload["models"] == []
