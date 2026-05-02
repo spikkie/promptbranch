@@ -119,6 +119,15 @@ def test_resolve_step_selection_supports_mcp_smoke_without_login() -> None:
     assert selection.enabled_steps == ("mcp_smoke",)
 
 
+def test_resolve_step_selection_supports_mcp_host_smoke_without_login() -> None:
+    selection = resolve_step_selection(
+        only_values=["mcp_host_smoke"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert selection.enabled_steps == ("mcp_host_smoke",)
+
+
 def test_parser_accepts_project_list_debug_options() -> None:
     parser = make_parser()
     args = parser.parse_args(

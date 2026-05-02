@@ -116,6 +116,14 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.141
+
+- `pb mcp config` now resolves the MCP executable to an absolute path by default when possible, avoiding GUI-host PATH/alias failures.
+- Added `pb mcp host-smoke` to launch the generated host config and verify read-only calls through the configured stdio server.
+- Added `mcp_host_smoke` as an optional local-only test-suite selector: `pb test-suite --only mcp_host_smoke --json`.
+- Updated MCP help/how-to docs with absolute-path config and host-smoke workflow.
+- Preserved read-only MCP server semantics; controlled write tools remain non-executable from `pb mcp serve`.
+
 ## v0.0.140
 
 - Added `pb mcp config` to emit a standard `mcpServers` host configuration snippet for `pb mcp serve`.
