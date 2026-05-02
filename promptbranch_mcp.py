@@ -25,7 +25,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.142"
+MCP_SERVER_VERSION = "0.0.143"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -376,7 +376,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.142 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.143 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -1124,6 +1124,239 @@ def agent_ask(
         },
     }
 
+
+
+def _call_ollama_generate_json(
+    *,
+    prompt: str,
+    model: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    num_predict: int = 120,
+) -> dict[str, Any]:
+    """Ask Ollama for a JSON-mode response and parse the response string.
+
+    This is intentionally diagnostic, not trusted execution. The parsed payload
+    is validated separately before any MCP tool call is allowed.
+    """
+
+    endpoint = host.rstrip("/") + "/api/generate"
+    body = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0, "num_predict": max(1, min(int(num_predict), 512))},
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    started = time.monotonic()
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.5, float(timeout_seconds))) as response:  # noqa: S310 - local operator-configured endpoint
+            raw = response.read(4_000_000)
+    except urllib.error.URLError as exc:
+        return {"ok": False, "status": "unavailable", "error": str(exc), "model": model, "host": host}
+    except OSError as exc:
+        return {"ok": False, "status": "error", "error": str(exc), "model": model, "host": host}
+    duration = round(time.monotonic() - started, 3)
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {"ok": False, "status": "invalid_outer_response", "error": str(exc), "model": model, "host": host, "duration_seconds": duration}
+    text = str(payload.get("response") or "") if isinstance(payload, dict) else ""
+    try:
+        parsed = json.loads(text) if text.strip() else None
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "status": "invalid_inner_json",
+            "error": str(exc),
+            "model": model,
+            "host": host,
+            "duration_seconds": duration,
+            "response_text": text,
+            "raw": payload,
+        }
+    return {
+        "ok": isinstance(parsed, dict),
+        "status": "parsed" if isinstance(parsed, dict) else "not_an_object",
+        "model": model,
+        "host": host,
+        "duration_seconds": duration,
+        "response_text": text,
+        "parsed": parsed,
+        "raw": payload,
+    }
+
+
+def _validate_llm_mcp_tool_call(parsed: Any) -> dict[str, Any]:
+    read_only_names = {spec.name for spec in READ_ONLY_MCP_TOOLS}
+    if not isinstance(parsed, dict):
+        return {"ok": False, "status": "not_an_object", "error": "model output must be a JSON object"}
+    tool = parsed.get("tool") or parsed.get("name")
+    arguments = parsed.get("arguments") if isinstance(parsed.get("arguments"), dict) else parsed.get("args")
+    if arguments is None:
+        arguments = {}
+    if not isinstance(tool, str) or not tool.strip():
+        return {"ok": False, "status": "missing_tool", "error": "model output must include a tool string", "parsed": parsed}
+    tool = tool.strip()
+    if tool not in read_only_names:
+        return {
+            "ok": False,
+            "status": "tool_not_allowed",
+            "error": "model selected an unknown or non-read-only tool",
+            "tool": tool,
+            "supported_read_only_tools": sorted(read_only_names),
+            "parsed": parsed,
+        }
+    if not isinstance(arguments, dict):
+        return {"ok": False, "status": "invalid_arguments", "error": "arguments must be a JSON object", "tool": tool, "parsed": parsed}
+    return {"ok": True, "status": "validated", "tool": tool, "arguments": arguments}
+
+
+def mcp_tool_call_via_stdio(
+    tool: str,
+    arguments: Optional[dict[str, Any]] = None,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    command: str | None = None,
+    resolve_command: bool = True,
+    timeout_seconds: float = 8.0,
+) -> dict[str, Any]:
+    """Call one read-only MCP tool through the actual stdio server boundary."""
+
+    root = Path(repo_path).expanduser().resolve()
+    resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
+    config = mcp_host_config(repo_path=root, profile_dir=resolved_profile, command=command, resolve_command=resolve_command)
+    server = config["config"]["mcpServers"]["promptbranch"]
+    messages = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": MCP_PROTOCOL_VERSION}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}},
+    ]
+    request_text = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in messages)
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            [str(server["command"]), *[str(arg) for arg in server.get("args", [])]],
+            input=request_text,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        return {"ok": False, "action": "mcp_tool_call_via_stdio", "status": "command_not_found", "config": config, "error": str(exc)}
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "action": "mcp_tool_call_via_stdio",
+            "status": "timeout",
+            "config": config,
+            "timeout_seconds": timeout_seconds,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+        }
+    except OSError as exc:
+        return {"ok": False, "action": "mcp_tool_call_via_stdio", "status": "os_error", "config": config, "error": str(exc)}
+    duration = round(time.monotonic() - started, 3)
+    responses = _read_json_lines(completed.stdout)
+    call_response = next((item for item in responses if isinstance(item, dict) and item.get("id") == 2), None)
+    result = call_response.get("result") if isinstance(call_response, dict) and isinstance(call_response.get("result"), dict) else {}
+    is_error = bool(result.get("isError")) if isinstance(result, dict) else True
+    return {
+        "ok": completed.returncode == 0 and not is_error and isinstance(call_response, dict),
+        "action": "mcp_tool_call_via_stdio",
+        "status": "verified" if completed.returncode == 0 and not is_error and isinstance(call_response, dict) else "failed",
+        "transport": "stdio",
+        "tool": tool,
+        "arguments": arguments or {},
+        "duration_seconds": duration,
+        "config": config,
+        "responses": responses,
+        "tool_response": call_response,
+        "stderr": completed.stderr.strip(),
+        "returncode": completed.returncode,
+    }
+
+
+def agent_mcp_llm_smoke(
+    request: str = "read VERSION",
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    model: str = "llama3.2:3b",
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    command: str | None = None,
+    mcp_timeout_seconds: float = 8.0,
+) -> dict[str, Any]:
+    """Diagnostic: let Ollama propose one read-only MCP tool call, then execute it via stdio.
+
+    The local model never receives execution authority. Promptbranch validates the
+    proposed tool against the read-only allowlist before calling the MCP server.
+    """
+
+    prompt = (
+        "You are selecting exactly one read-only MCP tool call for Promptbranch. "
+        "Return only one JSON object with this schema: "
+        "{\"tool\":\"filesystem.read\",\"arguments\":{\"path\":\"VERSION\",\"max_bytes\":2000}}. "
+        "Allowed tools: filesystem.read, git.status, git.diff.summary, filesystem.list, "
+        "promptbranch.state.read, promptbranch.workspace.current, promptbranch.task.current, "
+        "artifact.registry.current, artifact.verify. "
+        "For reading VERSION, use filesystem.read with path VERSION. "
+        f"User request: {request}"
+    )
+    model_result = _call_ollama_generate_json(
+        prompt=prompt,
+        model=model,
+        host=ollama_host,
+        timeout_seconds=ollama_timeout_seconds,
+        num_predict=120,
+    )
+    validation = _validate_llm_mcp_tool_call(model_result.get("parsed") if isinstance(model_result, dict) else None)
+    if not model_result.get("ok") or not validation.get("ok"):
+        return {
+            "ok": False,
+            "action": "agent_mcp_llm_smoke",
+            "status": "model_tool_call_invalid",
+            "mode": "ollama_proposes_validated_mcp_stdio",
+            "request": request,
+            "ollama": model_result,
+            "validation": validation,
+            "mcp": None,
+            "safety": {
+                "model_has_execution_authority": False,
+                "promptbranch_validates_read_only_allowlist": True,
+                "write_tools_blocked": True,
+            },
+        }
+    mcp_result = mcp_tool_call_via_stdio(
+        str(validation["tool"]),
+        validation.get("arguments") if isinstance(validation.get("arguments"), dict) else {},
+        repo_path=repo_path,
+        profile_dir=profile_dir,
+        command=command,
+        timeout_seconds=mcp_timeout_seconds,
+    )
+    return {
+        "ok": bool(mcp_result.get("ok")),
+        "action": "agent_mcp_llm_smoke",
+        "status": "verified" if mcp_result.get("ok") else "mcp_call_failed",
+        "mode": "ollama_proposes_validated_mcp_stdio",
+        "request": request,
+        "ollama": model_result,
+        "validation": validation,
+        "mcp": mcp_result,
+        "safety": {
+            "model_has_execution_authority": False,
+            "promptbranch_validates_read_only_allowlist": True,
+            "write_tools_blocked": True,
+            "transport": "stdio",
+        },
+    }
 
 def agent_doctor(
     *,

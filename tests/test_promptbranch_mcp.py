@@ -85,7 +85,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.142"
+    assert init["result"]["serverInfo"]["version"] == "0.0.143"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -249,3 +249,113 @@ def test_ollama_models_unavailable_is_clean() -> None:
     assert payload["ok"] is False
     assert payload["action"] == "agent_models"
     assert payload["models"] == []
+
+
+def test_llm_mcp_tool_call_validation_blocks_write_tool() -> None:
+    from promptbranch_mcp import _validate_llm_mcp_tool_call
+
+    valid = _validate_llm_mcp_tool_call({"tool": "filesystem.read", "arguments": {"path": "VERSION"}})
+    assert valid["ok"] is True
+    assert valid["tool"] == "filesystem.read"
+
+    blocked = _validate_llm_mcp_tool_call({"tool": "promptbranch.src.sync", "arguments": {"path": "."}})
+    assert blocked["ok"] is False
+    assert blocked["status"] == "tool_not_allowed"
+
+
+def test_mcp_tool_call_via_stdio_uses_real_server_boundary(tmp_path: Path) -> None:
+    from promptbranch_mcp import mcp_tool_call_via_stdio
+
+    (tmp_path / "VERSION").write_text("v0.0.boundary\n", encoding="utf-8")
+    wrapper = tmp_path / "promptbranch-wrapper"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f"exec {__import__('sys').executable} -S -c "
+        + repr(
+            "import sys; "
+            f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r}); "
+            "from promptbranch_mcp import serve_mcp_stdio; "
+            f"raise SystemExit(serve_mcp_stdio(repo_path={str(tmp_path)!r}, profile_dir={str(tmp_path / '.pb_profile')!r}))"
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+    payload = mcp_tool_call_via_stdio(
+        "filesystem.read",
+        {"path": "VERSION"},
+        repo_path=tmp_path,
+        profile_dir=tmp_path / ".pb_profile",
+        command=str(wrapper),
+        timeout_seconds=10.0,
+    )
+
+    assert payload["ok"] is True
+    assert payload["transport"] == "stdio"
+    assert payload["tool_response"]["result"]["structuredContent"]["text"] == "v0.0.boundary\n"
+
+
+def test_agent_mcp_llm_smoke_validates_model_then_calls_mcp(monkeypatch, tmp_path: Path) -> None:
+    from promptbranch_mcp import agent_mcp_llm_smoke
+    import promptbranch_mcp
+
+    (tmp_path / "VERSION").write_text("v0.0.llm\n", encoding="utf-8")
+    wrapper = tmp_path / "promptbranch-wrapper"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f"exec {__import__('sys').executable} -S -c "
+        + repr(
+            "import sys; "
+            f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r}); "
+            "from promptbranch_mcp import serve_mcp_stdio; "
+            f"raise SystemExit(serve_mcp_stdio(repo_path={str(tmp_path)!r}, profile_dir={str(tmp_path / '.pb_profile')!r}))"
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+    monkeypatch.setattr(
+        promptbranch_mcp,
+        "_call_ollama_generate_json",
+        lambda **kwargs: {
+            "ok": True,
+            "status": "parsed",
+            "model": kwargs.get("model"),
+            "response_text": '{"tool":"filesystem.read","arguments":{"path":"VERSION","max_bytes":2000}}',
+            "parsed": {"tool": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}},
+        },
+    )
+
+    payload = agent_mcp_llm_smoke(
+        "read VERSION",
+        repo_path=tmp_path,
+        profile_dir=tmp_path / ".pb_profile",
+        model="fake-local-model",
+        command=str(wrapper),
+        mcp_timeout_seconds=10.0,
+    )
+
+    assert payload["ok"] is True
+    assert payload["mode"] == "ollama_proposes_validated_mcp_stdio"
+    assert payload["validation"]["tool"] == "filesystem.read"
+    assert payload["mcp"]["ok"] is True
+    assert payload["safety"]["model_has_execution_authority"] is False
+
+
+def test_agent_mcp_llm_smoke_fails_when_model_output_is_invalid(monkeypatch, tmp_path: Path) -> None:
+    from promptbranch_mcp import agent_mcp_llm_smoke
+    import promptbranch_mcp
+
+    monkeypatch.setattr(
+        promptbranch_mcp,
+        "_call_ollama_generate_json",
+        lambda **kwargs: {"ok": True, "status": "parsed", "model": kwargs.get("model"), "parsed": {}},
+    )
+
+    payload = agent_mcp_llm_smoke("read VERSION", repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile", model="fake-local-model")
+
+    assert payload["ok"] is False
+    assert payload["status"] == "model_tool_call_invalid"
+    assert payload["mcp"] is None

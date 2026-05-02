@@ -116,7 +116,7 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
-## v0.0.142
+## v0.0.143
 
 - `pb mcp config` now resolves the MCP executable to an absolute path by default when possible, avoiding GUI-host PATH/alias failures.
 - Added `pb mcp host-smoke` to launch the generated host config and verify read-only calls through the configured stdio server.
@@ -278,7 +278,7 @@ If you still depend on them, pin to `v0.0.67` temporarily and migrate before ado
 - Added `scripts/promptbranch-statusline.sh` for compact Promptbranch state output in shell prompts or tmux footer/status lines.
 - The status helper resolves the nearest inherited `.pb_profile` directory.
 
-## v0.0.142
+## v0.0.143
 
 - Added deterministic read-only local agent execution:
   - `pb agent ask "read VERSION and git status" --path . --json`
@@ -287,3 +287,15 @@ If you still depend on them, pin to `v0.0.67` temporarily and migrate before ado
 - `pb agent ask` uses a rule-based planner for read-only MCP tools. Ollama is not trusted for tool planning.
 - Ollama can be used only for optional summaries with `--model` or `--summarize`; failures are non-fatal.
 - Write-capable MCP tools remain blocked.
+
+## v0.0.143
+
+- Added `pb agent mcp-llm-smoke` as a diagnostic path where Ollama proposes exactly one read-only MCP tool call.
+- Promptbranch validates the model output against the read-only MCP tool allowlist before calling `pb mcp serve` over stdio.
+- The local model has no execution authority; invalid JSON, unknown tools, and write-tool proposals fail the smoke test instead of falling back silently.
+
+Example:
+
+```bash
+pb agent mcp-llm-smoke "read VERSION" --path . --model llama3.2:3b --json
+```

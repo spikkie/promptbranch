@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
-from promptbranch_mcp import agent_ask, agent_doctor, agent_tool_call, inspect_local_context, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, ollama_models, plan_agent_request, serve_mcp_stdio
+from promptbranch_mcp import agent_ask, agent_doctor, agent_mcp_llm_smoke, agent_tool_call, inspect_local_context, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, ollama_models, plan_agent_request, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -40,7 +40,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.142"
+CLI_VERSION = "0.0.143"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1673,7 +1673,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
-        "agent": ["inspect", "doctor", "plan", "ask", "tool-call", "models", "--json", "--path", "--max-files", "--model"],
+        "agent": ["inspect", "doctor", "plan", "ask", "tool-call", "models", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-writes", "--host", "--server-name", "--command"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
@@ -2454,6 +2454,17 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
                 payload = {"ok": False, "action": "agent_tool_call", "status": "invalid_arguments_json", "error": "arguments must decode to a JSON object", "tool": args.tool}
             else:
                 payload = agent_tool_call(args.tool, tool_args, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None))
+    elif args.agent_command == "mcp-llm-smoke":
+        payload = agent_mcp_llm_smoke(
+            getattr(args, "request", "read VERSION"),
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            model=getattr(args, "model", "llama3.2:3b"),
+            ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
+            ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
+            command=getattr(args, "command", None),
+            mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
+        )
     elif args.agent_command == "models":
         payload = ollama_models(
             host=getattr(args, "ollama_host", "http://localhost:11434"),
@@ -2907,6 +2918,16 @@ def make_parser() -> argparse.ArgumentParser:
     agent_tool_call_parser.add_argument("arguments", nargs="?", default="{}", help="JSON object with tool arguments.")
     agent_tool_call_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
     agent_tool_call_parser.add_argument("--json", action="store_true")
+
+    agent_mcp_llm_smoke_parser = agent_subparsers.add_parser("mcp-llm-smoke", help="Diagnostic: ask Ollama to propose one read-only MCP tool call, validate it, then execute via MCP stdio.")
+    agent_mcp_llm_smoke_parser.add_argument("request", nargs="?", default="read VERSION", help="Read-only request for the model to map to one MCP tool call.")
+    agent_mcp_llm_smoke_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
+    agent_mcp_llm_smoke_parser.add_argument("--model", default="llama3.2:3b", help="Ollama model used to propose the MCP tool call.")
+    agent_mcp_llm_smoke_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
+    agent_mcp_llm_smoke_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for the Ollama proposal call.")
+    agent_mcp_llm_smoke_parser.add_argument("--command", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_mcp_llm_smoke_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for the MCP stdio tool call.")
+    agent_mcp_llm_smoke_parser.add_argument("--json", action="store_true")
 
     agent_models_parser = agent_subparsers.add_parser("models", help="List local Ollama models, if Ollama is available.")
     agent_models_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
