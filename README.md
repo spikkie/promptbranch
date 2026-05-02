@@ -1,4 +1,4 @@
-# promptbranch v0.0.142
+# promptbranch v0.0.143
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.142 .
+docker build -t promptbranch-service:0.0.143 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.142
+  promptbranch-service:0.0.143
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.142.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.143.zip
 ```
 
 From an extracted checkout:
@@ -530,3 +530,13 @@ set -g status-right '#(/path/to/chatgpt_claudecode_workflow/scripts/promptbranch
 ```
 
 The status helper resolves the nearest inherited `.pb_profile` directory.
+
+### Ollama-to-MCP diagnostic smoke
+
+`pb agent mcp-llm-smoke` is a diagnostic bridge for local-agent work. It asks Ollama to propose one read-only MCP tool call, validates that proposal, then executes it through the real `pb mcp serve` stdio boundary.
+
+```bash
+pb agent mcp-llm-smoke "read VERSION" --path . --model llama3.2:3b --json
+```
+
+This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.

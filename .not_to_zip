@@ -35,8 +35,8 @@ helm-chart/charts/
 venv/
 
 # profile
-# .pb_profile/
-# profile/
+.pb_profile/
+profile/
 
 # debug files
 debug_artifacts/
