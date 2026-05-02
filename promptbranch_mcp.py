@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -23,8 +25,10 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.141"
+MCP_SERVER_VERSION = "0.0.142"
 DEFAULT_AGENT_MAX_FILES = 80
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -372,7 +376,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.141 exposes deterministic read-only planning and MCP host config first; Ollama integration remains a later adapter.",
+            "reason": "v0.0.142 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -911,6 +915,213 @@ def plan_agent_request(request: str, *, repo_path: str | Path = ".") -> dict[str
         "mode": "policy_gated",
         "planner": "deterministic_v1",
         "plan": plan.to_dict(),
+    }
+
+
+
+def ollama_models(*, host: str = DEFAULT_OLLAMA_HOST, timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS) -> dict[str, Any]:
+    """List local Ollama models without requiring Ollama for normal operation."""
+
+    endpoint = host.rstrip("/") + "/api/tags"
+    try:
+        with urllib.request.urlopen(endpoint, timeout=max(0.5, float(timeout_seconds))) as response:  # noqa: S310 - local operator-configured endpoint
+            raw = response.read(2_000_000)
+    except urllib.error.URLError as exc:
+        return {
+            "ok": False,
+            "action": "agent_models",
+            "host": host,
+            "status": "unavailable",
+            "error": str(exc),
+            "models": [],
+        }
+    except OSError as exc:
+        return {
+            "ok": False,
+            "action": "agent_models",
+            "host": host,
+            "status": "error",
+            "error": str(exc),
+            "models": [],
+        }
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "action": "agent_models",
+            "host": host,
+            "status": "invalid_response",
+            "error": str(exc),
+            "models": [],
+        }
+    models = payload.get("models") if isinstance(payload, dict) else []
+    names = [str(item.get("name")) for item in models if isinstance(item, dict) and item.get("name")]
+    return {
+        "ok": True,
+        "action": "agent_models",
+        "host": host,
+        "status": "available",
+        "count": len(names),
+        "models": models if isinstance(models, list) else [],
+        "model_names": names,
+    }
+
+
+def _call_ollama_generate(
+    *,
+    prompt: str,
+    model: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    num_predict: int = 160,
+) -> dict[str, Any]:
+    endpoint = host.rstrip("/") + "/api/generate"
+    body = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0, "num_predict": max(1, min(int(num_predict), 512))},
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.5, float(timeout_seconds))) as response:  # noqa: S310 - local operator-configured endpoint
+            raw = response.read(4_000_000)
+    except urllib.error.URLError as exc:
+        return {"ok": False, "status": "unavailable", "error": str(exc), "model": model, "host": host}
+    except OSError as exc:
+        return {"ok": False, "status": "error", "error": str(exc), "model": model, "host": host}
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {"ok": False, "status": "invalid_response", "error": str(exc), "model": model, "host": host}
+    text = str(payload.get("response") or "") if isinstance(payload, dict) else ""
+    return {"ok": bool(text.strip()), "status": "generated" if text.strip() else "empty", "model": model, "host": host, "text": text.strip(), "raw": payload}
+
+
+def _read_only_tool_specs_for_request(request: str) -> tuple[dict[str, Any], ...]:
+    """Map simple operator requests to read-only MCP calls deterministically."""
+
+    text = " ".join(str(request or "").lower().split())
+    calls: list[dict[str, Any]] = []
+
+    def add(name: str, arguments: dict[str, Any] | None = None) -> None:
+        item = {"name": name, "arguments": arguments or {}}
+        if item not in calls:
+            calls.append(item)
+
+    if "version" in text:
+        add("filesystem.read", {"path": "VERSION", "max_bytes": 2000})
+    if "readme" in text:
+        add("filesystem.read", {"path": "README.md", "max_bytes": 12000})
+    if "git" in text and ("status" in text or "state" in text or "dirty" in text):
+        add("git.status")
+    if "diff" in text:
+        add("git.diff.summary")
+    if "state" in text or "workspace" in text or "current" in text or "task" in text:
+        add("promptbranch.state.read")
+    if "list" in text and ("file" in text or "repo" in text):
+        add("filesystem.list", {"path": ".", "max_files": 80})
+
+    if not calls:
+        add("filesystem.list", {"path": ".", "max_files": 40})
+        add("git.status")
+    return tuple(calls)
+
+
+def agent_tool_call(
+    tool: str,
+    arguments: Optional[dict[str, Any]] = None,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Call one read-only MCP tool through the deterministic local executor."""
+
+    read_only_names = {spec.name for spec in READ_ONLY_MCP_TOOLS}
+    if tool not in read_only_names:
+        return {
+            "ok": False,
+            "action": "agent_tool_call",
+            "status": "blocked",
+            "tool": tool,
+            "error": "tool_not_read_only_or_unknown",
+            "supported_read_only_tools": sorted(read_only_names),
+        }
+    payload = call_read_only_mcp_tool(tool, arguments or {}, repo_path=repo_path, profile_dir=profile_dir)
+    return {
+        "ok": bool(payload.get("ok")),
+        "action": "agent_tool_call",
+        "status": "verified" if payload.get("ok") else "failed",
+        "tool": tool,
+        "arguments": arguments or {},
+        "result": payload,
+    }
+
+
+def agent_ask(
+    request: str,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    model: str | None = None,
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    summarize: bool = False,
+) -> dict[str, Any]:
+    """Execute a deterministic read-only local-agent request.
+
+    Ollama is intentionally not used for tool planning. The local LLM may be
+    used only to summarize already-collected tool results, and failures are
+    non-fatal because read-only tool output remains the source of truth.
+    """
+
+    tool_specs = _read_only_tool_specs_for_request(request)
+    results = [
+        agent_tool_call(
+            str(spec.get("name") or ""),
+            spec.get("arguments") if isinstance(spec.get("arguments"), dict) else {},
+            repo_path=repo_path,
+            profile_dir=profile_dir,
+        )
+        for spec in tool_specs
+    ]
+    ok = all(item.get("ok") for item in results)
+    summary: dict[str, Any] | None = None
+    if summarize or model:
+        selected_model = model or "llama3.2:3b"
+        summary_prompt = (
+            "Summarize these read-only Promptbranch MCP tool results in at most 8 bullet points. "
+            "Do not propose write actions.\n\n"
+            + json.dumps({"request": request, "tool_results": results}, ensure_ascii=False)[:12000]
+        )
+        summary = _call_ollama_generate(
+            prompt=summary_prompt,
+            model=selected_model,
+            host=ollama_host,
+            timeout_seconds=ollama_timeout_seconds,
+            num_predict=220,
+        )
+    return {
+        "ok": ok,
+        "action": "agent_ask",
+        "mode": "deterministic_read_only",
+        "planner": "rule_based_v1",
+        "request": request,
+        "risk": "read",
+        "auto_allowed": True,
+        "tool_calls": [dict(spec) for spec in tool_specs],
+        "results": results,
+        "ollama": {
+            "used_for_planning": False,
+            "used_for_summary": bool(summary),
+            "model": model,
+            "summary": summary,
+            "note": "Ollama is optional; invalid/empty local model output does not block deterministic read-only tool results.",
+        },
     }
 
 

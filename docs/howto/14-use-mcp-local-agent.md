@@ -99,3 +99,22 @@ The MCP server is intentionally read-only by default:
 - controlled writes are not executable from `pb mcp serve` yet
 
 Write-capable MCP execution should only be added after deterministic prechecks and transactional verification exist.
+
+## Deterministic local agent commands
+
+`pb agent ask` uses a rule-based read-only planner. It does not let Ollama choose tools.
+Ollama may be used only for optional summaries of tool results.
+
+```bash
+pb agent ask "read VERSION and git status" --path . --json
+pb agent tool-call filesystem.read '{"path":"VERSION"}' --path . --json
+pb agent models --json
+```
+
+Expected behavior:
+
+- `agent ask` maps simple read requests to safe MCP tools such as `filesystem.read` and `git.status`
+- `agent tool-call` rejects unknown or write-capable tools
+- `agent models` reports local Ollama availability, but Ollama failures do not block read-only MCP tool calls
+
+This is deliberate. Small local models may produce `{}`, invalid JSON, or unrelated text even in JSON mode, so planning remains deterministic.
