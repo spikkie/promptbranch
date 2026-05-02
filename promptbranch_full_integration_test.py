@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_service_client import ChatGPTServiceClient
-from promptbranch_mcp import handle_mcp_jsonrpc_message, mcp_host_config, mcp_tool_manifest, serve_mcp_stdio
+from promptbranch_mcp import handle_mcp_jsonrpc_message, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -47,6 +47,7 @@ CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "project_remove_cleanup",
 )
 OPTIONAL_STEP_ORDER: tuple[str, ...] = (
+    "mcp_host_smoke",
     "project_list_debug",
 )
 FULL_STEP_ORDER: tuple[str, ...] = CANONICAL_STEP_ORDER + OPTIONAL_STEP_ORDER
@@ -55,6 +56,8 @@ STEP_ALIASES: dict[str, tuple[str, ...]] = {
     "all": CANONICAL_STEP_ORDER,
     "mcp": ("mcp_smoke",),
     "mcp_smoke": ("mcp_smoke",),
+    "mcp_host": ("mcp_host_smoke",),
+    "mcp_host_smoke": ("mcp_host_smoke",),
     "project_list": ("project_list_debug",),
     "project_list_debug": ("project_list_debug",),
     "login": ("login_check",),
@@ -111,6 +114,7 @@ REMOVAL_STEPS = {
 }
 LOCAL_ONLY_STEPS = {
     "mcp_smoke",
+    "mcp_host_smoke",
 }
 ALLOWED_STEP_TOKENS = set(FULL_STEP_ORDER) | set(STEP_ALIASES)
 
@@ -662,9 +666,16 @@ def _run_mcp_smoke(*, repo_path: Path, profile_dir: Optional[str]) -> dict[str, 
         "tools": tool_names,
         "server_info": init.get("result", {}).get("serverInfo") if isinstance(init, dict) else None,
         "host_config": host_config.get("config"),
+        "command_resolution": host_config.get("command_resolution"),
         "stdio_tool_count": len(stdio_payload.get("result", {}).get("tools", [])) if isinstance(stdio_payload.get("result"), dict) else None,
     }
 
+
+def _run_mcp_host_smoke(*, repo_path: Path, profile_dir: Optional[str]) -> dict[str, Any]:
+    result = mcp_host_smoke(repo_path=repo_path, profile_dir=profile_dir)
+    if result.get("ok") is not True:
+        raise IntegrationAssertionError(f"mcp_host_smoke failed: {result!r}")
+    return result
 
 
 def _require(condition: bool, message: str) -> None:
@@ -1158,6 +1169,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 steps,
                 "mcp_smoke",
                 asyncio.to_thread(_run_mcp_smoke, repo_path=Path.cwd(), profile_dir=args.profile_dir),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+
+        if should_run("mcp_host_smoke"):
+            await _run_step(
+                steps,
+                "mcp_host_smoke",
+                asyncio.to_thread(_run_mcp_host_smoke, repo_path=Path.cwd(), profile_dir=args.profile_dir),
                 step_delay_seconds=args.step_delay_seconds,
             )
 

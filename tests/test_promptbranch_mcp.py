@@ -12,6 +12,7 @@ from promptbranch_mcp import (
     plan_agent_request,
     serve_mcp_stdio,
     mcp_host_config,
+    mcp_host_smoke,
 )
 
 
@@ -84,7 +85,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.140"
+    assert init["result"]["serverInfo"]["version"] == "0.0.141"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -155,12 +156,57 @@ def test_mcp_stdio_serves_newline_delimited_json(tmp_path: Path) -> None:
 
 
 def test_mcp_host_config_emits_stdio_server_config(tmp_path: Path) -> None:
-    payload = mcp_host_config(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile", command="promptbranch")
+    payload = mcp_host_config(
+        repo_path=tmp_path,
+        profile_dir=tmp_path / ".pb_profile",
+        command="promptbranch",
+        resolve_command=False,
+    )
 
     assert payload["ok"] is True
     assert payload["action"] == "mcp_config"
+    assert payload["command_resolution"]["source"] == "raw"
     server = payload["config"]["mcpServers"]["promptbranch"]
     assert server["command"] == "promptbranch"
     assert "mcp" in server["args"]
     assert "serve" in server["args"]
     assert str(tmp_path.resolve()) in server["args"]
+
+
+def test_mcp_host_config_resolves_absolute_command(tmp_path: Path) -> None:
+    payload = mcp_host_config(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile", command="/bin/echo")
+
+    assert payload["command_resolution"]["is_absolute"] is True
+    assert payload["config"]["mcpServers"]["promptbranch"]["command"] == "/bin/echo"
+
+
+def test_mcp_host_smoke_launches_configured_read_only_server(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
+    wrapper = tmp_path / "promptbranch-wrapper"
+    cli = Path(__file__).resolve().parents[1] / "promptbranch_cli.py"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f"exec {__import__('sys').executable} -S -c "
+        + repr(
+            "import sys; "
+            f"sys.path.insert(0, {str(cli.parent)!r}); "
+            "from promptbranch_mcp import serve_mcp_stdio; "
+            f"raise SystemExit(serve_mcp_stdio(repo_path={str(tmp_path)!r}, profile_dir={str(tmp_path / '.pb_profile')!r}))"
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+    payload = mcp_host_smoke(
+        repo_path=tmp_path,
+        profile_dir=tmp_path / ".pb_profile",
+        command=str(wrapper),
+        resolve_command=True,
+        timeout_seconds=10.0,
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"] == "mcp_host_smoke"
+    assert payload["checks"]["command_is_absolute"] is True
+    assert payload["checks"]["filesystem_read_ok"] is True

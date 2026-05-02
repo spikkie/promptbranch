@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -21,7 +23,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.140"
+MCP_SERVER_VERSION = "0.0.141"
 DEFAULT_AGENT_MAX_FILES = 80
 
 
@@ -168,12 +170,69 @@ def mcp_tool_manifest(*, include_controlled_writes: bool = False) -> dict[str, A
     }
 
 
+def resolve_mcp_executable(command: str | None = None, *, resolve_command: bool = True) -> dict[str, Any]:
+    """Resolve the executable used by GUI-launched MCP hosts.
+
+    GUI applications often do not inherit the interactive shell PATH, so a raw
+    alias like ``pb`` or ``promptbranch`` is weaker than an absolute executable
+    path. Resolution is best-effort: when the command cannot be resolved, the
+    original value is preserved and the result is marked unresolved.
+    """
+
+    requested = (command or "promptbranch").strip() or "promptbranch"
+    expanded = os.path.expanduser(requested)
+    path = Path(expanded)
+
+    if not resolve_command:
+        return {
+            "requested": requested,
+            "command": requested,
+            "resolved": False,
+            "is_absolute": Path(requested).is_absolute(),
+            "source": "raw",
+            "warning": "command resolution disabled; GUI MCP hosts may not find shell aliases",
+        }
+
+    if path.is_absolute():
+        exists = path.exists()
+        return {
+            "requested": requested,
+            "command": str(path),
+            "resolved": exists,
+            "is_absolute": True,
+            "source": "absolute_path",
+            "warning": None if exists else "absolute command path does not currently exist",
+        }
+
+    found = shutil.which(requested)
+    if found:
+        resolved = str(Path(found).resolve())
+        return {
+            "requested": requested,
+            "command": resolved,
+            "resolved": True,
+            "is_absolute": True,
+            "source": "PATH",
+            "warning": None,
+        }
+
+    return {
+        "requested": requested,
+        "command": requested,
+        "resolved": False,
+        "is_absolute": False,
+        "source": "unresolved",
+        "warning": "command was not found on PATH; pass --command /absolute/path/to/promptbranch",
+    }
+
+
 def mcp_host_config(
     *,
     repo_path: str | Path = ".",
     profile_dir: str | Path | None = None,
     server_name: str = "promptbranch",
-    command: str = "promptbranch",
+    command: str | None = None,
+    resolve_command: bool = True,
     include_controlled_writes: bool = False,
     host: str = "generic",
 ) -> dict[str, Any]:
@@ -181,6 +240,7 @@ def mcp_host_config(
 
     root = Path(repo_path).expanduser().resolve()
     resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
+    command_resolution = resolve_mcp_executable(command, resolve_command=resolve_command)
     args: list[str] = []
     if resolved_profile is not None:
         args.extend(["--profile-dir", str(resolved_profile)])
@@ -188,8 +248,16 @@ def mcp_host_config(
     if include_controlled_writes:
         args.append("--include-controlled-writes")
 
-    server = {"command": command, "args": args}
+    server = {"command": str(command_resolution["command"]), "args": args}
     config = {"mcpServers": {server_name: server}}
+    install_notes = [
+        "Add config.mcpServers.promptbranch to your MCP host configuration.",
+        "Use an executable command path; shell aliases usually do not work in GUI-launched MCP hosts.",
+        "The server is read-only by default; controlled write tools are listed only when requested and are not executable yet.",
+    ]
+    warning = command_resolution.get("warning")
+    if warning:
+        install_notes.insert(1, str(warning))
     return {
         "ok": True,
         "schema_version": MCP_SCHEMA_VERSION,
@@ -199,12 +267,9 @@ def mcp_host_config(
         "repo_path": str(root),
         "profile_dir": str(resolved_profile) if resolved_profile is not None else None,
         "mode": "read_only" if not include_controlled_writes else "read_only_plus_controlled_writes",
+        "command_resolution": command_resolution,
         "config": config,
-        "install_notes": [
-            "Add config.mcpServers.promptbranch to your MCP host configuration.",
-            "Use an executable command path; shell aliases usually do not work in GUI-launched MCP hosts.",
-            "The server is read-only by default; controlled write tools are listed only when requested and are not executable yet.",
-        ],
+        "install_notes": install_notes,
     }
 
 
@@ -307,7 +372,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.140 exposes deterministic read-only planning and MCP host config first; Ollama integration remains a later adapter.",
+            "reason": "v0.0.141 exposes deterministic read-only planning and MCP host config first; Ollama integration remains a later adapter.",
         },
     }
     return payload
@@ -628,6 +693,148 @@ def serve_mcp_stdio(
         output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
         output_stream.flush()
     return 0
+
+
+def _mcp_host_smoke_messages(read_path: str) -> list[dict[str, Any]]:
+    return [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": MCP_PROTOCOL_VERSION}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "promptbranch.state.read", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "filesystem.read", "arguments": {"path": read_path, "max_bytes": 2000}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "git.status", "arguments": {}}},
+    ]
+
+
+def _read_json_lines(text: str) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            payloads.append({"jsonrpc_parse_error": True, "line": line})
+            continue
+        if isinstance(parsed, dict):
+            payloads.append(parsed)
+        else:
+            payloads.append({"jsonrpc_parse_error": True, "value": parsed})
+    return payloads
+
+
+def mcp_host_smoke(
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    server_name: str = "promptbranch",
+    command: str | None = None,
+    resolve_command: bool = True,
+    include_controlled_writes: bool = False,
+    host: str = "generic",
+    timeout_seconds: float = 8.0,
+) -> dict[str, Any]:
+    """Launch the generated MCP host config and call read-only tools."""
+
+    root = Path(repo_path).expanduser().resolve()
+    resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
+    config = mcp_host_config(
+        repo_path=root,
+        profile_dir=resolved_profile,
+        server_name=server_name,
+        command=command,
+        resolve_command=resolve_command,
+        include_controlled_writes=include_controlled_writes,
+        host=host,
+    )
+    server = config["config"]["mcpServers"][server_name]
+    read_path = "VERSION" if (root / "VERSION").is_file() else "README.md"
+    if not (root / read_path).is_file():
+        read_path = "."
+    messages = _mcp_host_smoke_messages(read_path)
+    request_text = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in messages)
+
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            [str(server["command"]), *[str(arg) for arg in server.get("args", [])]],
+            input=request_text,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        return {
+            "ok": False,
+            "action": "mcp_host_smoke",
+            "status": "command_not_found",
+            "config": config,
+            "error": str(exc),
+            "checks": {"command_launchable": False},
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "action": "mcp_host_smoke",
+            "status": "timeout",
+            "config": config,
+            "timeout_seconds": timeout_seconds,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "checks": {"command_launchable": True, "completed_before_timeout": False},
+        }
+    except OSError as exc:
+        return {
+            "ok": False,
+            "action": "mcp_host_smoke",
+            "status": "os_error",
+            "config": config,
+            "error": str(exc),
+            "checks": {"command_launchable": False},
+        }
+
+    duration = round(time.monotonic() - started, 3)
+    responses = _read_json_lines(completed.stdout)
+    by_id = {item.get("id"): item for item in responses if isinstance(item, dict)}
+
+    def _tool_ok(message_id: int) -> bool:
+        item = by_id.get(message_id)
+        if not isinstance(item, dict):
+            return False
+        result = item.get("result") if isinstance(item.get("result"), dict) else {}
+        return result.get("isError") is False
+
+    tools_result = by_id.get(2, {}).get("result") if isinstance(by_id.get(2), dict) else {}
+    tools = tools_result.get("tools") if isinstance(tools_result, dict) else []
+    tool_names = [tool.get("name") for tool in tools if isinstance(tool, dict)]
+    init_result = by_id.get(1, {}).get("result") if isinstance(by_id.get(1), dict) else {}
+    checks = {
+        "command_is_absolute": bool(config.get("command_resolution", {}).get("is_absolute")),
+        "command_resolved": bool(config.get("command_resolution", {}).get("resolved")),
+        "process_returncode_zero": completed.returncode == 0,
+        "initialize_ok": isinstance(init_result, dict) and init_result.get("serverInfo", {}).get("name") == "promptbranch",
+        "tools_list_ok": "filesystem.read" in tool_names and "promptbranch.state.read" in tool_names,
+        "state_read_ok": _tool_ok(3),
+        "filesystem_read_ok": _tool_ok(4),
+        "git_status_ok": _tool_ok(5),
+        "write_tools_not_executed": True,
+    }
+    return {
+        "ok": all(checks.values()),
+        "action": "mcp_host_smoke",
+        "status": "verified" if all(checks.values()) else "failed",
+        "duration_seconds": duration,
+        "repo_path": str(root),
+        "profile_dir": str(resolved_profile) if resolved_profile is not None else None,
+        "read_path": read_path,
+        "config": config,
+        "checks": checks,
+        "responses": responses,
+        "stderr": completed.stderr.strip(),
+        "returncode": completed.returncode,
+    }
 
 
 def _contains_any(text: str, needles: Iterable[str]) -> bool:

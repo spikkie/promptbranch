@@ -27,24 +27,42 @@ The default manifest is read-only. `--include-controlled-writes` only lists gate
 pb mcp config --path . --json
 ```
 
-The output contains a standard `mcpServers` snippet:
+The output contains a standard `mcpServers` snippet. By default, Promptbranch tries to resolve the executable to an absolute path:
 
 ```json
 {
   "mcpServers": {
     "promptbranch": {
-      "command": "promptbranch",
+      "command": "/absolute/path/to/promptbranch",
       "args": ["mcp", "serve", "--path", "/absolute/repo/path"]
     }
   }
 }
 ```
 
-For GUI-launched MCP hosts, shell aliases usually do not work. Use an executable command or an absolute path:
+For GUI-launched MCP hosts, shell aliases usually do not work. You can force a specific executable or disable resolution explicitly:
 
 ```bash
 pb mcp config --path . --command /home/spikkie/.local/bin/promptbranch --json
+pb mcp config --path . --command promptbranch --no-resolve-command --json
 ```
+
+## Verify host-style wiring
+
+Before editing a real MCP host config, launch the generated server command and call read-only tools through stdio:
+
+```bash
+pb mcp host-smoke --path . --json
+```
+
+Expected checks include:
+
+- `command_is_absolute=true`
+- `initialize_ok=true`
+- `tools_list_ok=true`
+- `state_read_ok=true`
+- `filesystem_read_ok=true`
+- `git_status_ok=true`
 
 ## Run the stdio server smoke test
 
@@ -62,11 +80,13 @@ Expected result:
 
 ```bash
 pb test-suite --only mcp_smoke --json
+pb test-suite --only mcp_host_smoke --json
 # or
 pb test smoke --only mcp_smoke --json
+pb test smoke --only mcp_host_smoke --json
 ```
 
-This is a local-only suite step. It does not open ChatGPT and does not require a selected project.
+These are local-only suite steps. They do not open ChatGPT and do not require a selected project.
 
 ## Safety boundary
 
