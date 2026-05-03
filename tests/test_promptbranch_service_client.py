@@ -285,3 +285,16 @@ def test_add_project_source_file_normalizes_display_name_to_basename(tmp_path: P
         )
 
     assert payload["ok"] is True
+
+
+def test_ask_result_uses_long_ask_timeout_when_client_timeout_is_short() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        assert request.extensions["timeout"]["read"] == 900.0
+        return httpx.Response(200, json={"ok": True, "answer": "ready"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", timeout=300.0, transport=transport) as client:
+        payload = client.ask_result("Reply with one short sentence.")
+
+    assert payload["answer"] == "ready"

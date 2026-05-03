@@ -20,9 +20,10 @@ class ChatGPTServiceClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._token = token
+        self._timeout = float(timeout)
         self._client = httpx.Client(
             base_url=self.base_url,
-            timeout=timeout,
+            timeout=self._timeout,
             headers=self._build_headers(),
             transport=transport,
         )
@@ -126,9 +127,10 @@ class ChatGPTServiceClient:
                     "/v1/ask",
                     data=data,
                     files={"file": (path.name, handle, "application/octet-stream")},
+                    timeout=max(self._timeout, 900.0),
                 )
         else:
-            response = self._client.post("/v1/ask", data=data)
+            response = self._client.post("/v1/ask", data=data, timeout=max(self._timeout, 900.0))
         return self._json(response)
 
     def discover_project_source_capabilities(
