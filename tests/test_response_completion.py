@@ -270,3 +270,35 @@ def client_module_selectors() -> list[str]:
     from promptbranch_browser_auth.client import ASSISTANT_MESSAGE_SELECTORS
 
     return ASSISTANT_MESSAGE_SELECTORS
+
+
+def test_response_completion_ready_uses_stable_text_fallback_when_composer_selector_missing(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._response_completion_signal_ready(
+        current_url="https://chatgpt.com/g/g-p-demo/c/abc123",
+        content_present=True,
+        stop_visible=False,
+        thinking_visible=False,
+        composer_idle_visible=False,
+        composer_signal_known=False,
+        fallback_stable_ready=True,
+        observed_running_state=True,
+        observed_idle_after_running=True,
+    ) is True
+
+
+def test_response_completion_ready_does_not_use_missing_composer_without_fallback(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._response_completion_signal_ready(
+        current_url="https://chatgpt.com/g/g-p-demo/c/abc123",
+        content_present=True,
+        stop_visible=False,
+        thinking_visible=False,
+        composer_idle_visible=False,
+        composer_signal_known=False,
+        fallback_stable_ready=False,
+        observed_running_state=True,
+        observed_idle_after_running=True,
+    ) is False

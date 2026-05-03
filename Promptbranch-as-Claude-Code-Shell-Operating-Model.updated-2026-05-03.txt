@@ -1,0 +1,342 @@
+# Promptbranch as Claude Code Shell — Operating Model
+
+Updated: 2026-05-03
+
+## Purpose
+
+Promptbranch should turn ChatGPT Projects into a Claude-Code-like workflow shell.
+
+The goal is not to automate the website visually as the primary interface. The goal is to make **Promptbranch** the local control plane and use **ChatGPT.com** as the execution surface.
+
+This remains the correct framing:
+
+```text
+Promptbranch CLI / local host = operator control plane
+ChatGPT Project              = workspace
+ChatGPT chat/conversation    = task/session
+Project sources              = repo snapshots, specs, logs, source bundles
+Generated ZIP artifacts      = release outputs
+MCP servers                  = deterministic local capabilities
+Ollama                       = optional local reasoning/summarization
+Skills                       = reusable operating procedures / playbooks
+```
+
+Do **not** target literal Claude Code parity. ChatGPT Projects do not expose the same native filesystem/edit/test loop. Target the same process shape:
+
+```bash
+pb ws use "project"
+pb task use 3
+pb src sync .
+pb ask "analyze this"
+pb artifact release
+pb test smoke
+```
+
+## Core model
+
+Promptbranch should track exactly three active scopes:
+
+- **Workspace** = current ChatGPT Project
+- **Task** = current chat/conversation inside that project
+- **Artifact** = current repo snapshot, source bundle, or release ZIP
+
+State must not conflate these scopes.
+
+Recommended state shape:
+
+```json
+{
+  "workspace": {
+    "project_home_url": "...",
+    "project_name": "...",
+    "project_slug": "..."
+  },
+  "task": {
+    "conversation_url": "...",
+    "conversation_id": "...",
+    "title": "..."
+  },
+  "artifact": {
+    "artifact_ref": "...",
+    "artifact_version": "...",
+    "source_ref": "...",
+    "source_version": "..."
+  },
+  "updated_at": "..."
+}
+```
+
+## Updated architecture: Promptbranch-native MCP host
+
+We will **not depend on Cursor or Claude Desktop as MCP hosts**.
+
+Promptbranch should define its own host/client/server architecture on the machine where Promptbranch runs:
+
+```text
+User
+  ↓
+pb CLI / Promptbranch local host
+  ├─ Promptbranch MCP client manager
+  ├─ deterministic planner and policy gate
+  ├─ optional Ollama adapter
+  ├─ skill registry
+  └─ MCP server connections
+       └─ pb mcp serve --path <repo>
+```
+
+Terminology:
+
+- **Host**: Promptbranch local orchestration layer.
+- **Client**: Promptbranch MCP client connection manager.
+- **Server**: `pb mcp serve`, exposing tools/resources over MCP.
+- **Model**: Ollama, used only for proposal or summarization, never direct execution.
+- **Skill**: instruction/playbook package that guides planning, not an executable authority.
+
+Cursor, Claude Desktop, Codex, or VS Code can remain compatibility targets, but not architectural dependencies.
+
+## Current implemented MCP/agent status
+
+Implemented and tested through v0.0.143:
+
+```bash
+pb mcp manifest --json
+pb mcp serve --path .
+pb mcp config --path . --json
+pb mcp host-smoke --path . --json
+
+pb agent ask "read VERSION and git status" --path . --json
+pb agent tool-call filesystem.read '{"path":"VERSION"}' --path . --json
+pb agent models --json
+pb agent mcp-llm-smoke "read VERSION" --path . --model llama3.2:3b --json
+```
+
+Current read-only MCP tools:
+
+```text
+promptbranch.state.read
+promptbranch.workspace.current
+promptbranch.task.current
+filesystem.list
+filesystem.read
+git.status
+git.diff.summary
+artifact.registry.current
+artifact.verify
+```
+
+Current rule:
+
+```text
+Read-only tools may run automatically.
+Write/process/destructive tools remain blocked until deterministic prechecks and transactional verification are implemented.
+```
+
+## Current Ollama status
+
+Ollama is available locally and can list models, but current local models are **not reliable enough for trusted tool planning**.
+
+Observed behavior:
+
+- `qwen2.5-coder:3b` ignored a JSON-only classification prompt and emitted unrelated repeated Python text.
+- `llama3.2:3b` returned `{}` or invalid/repetitive JSON-like garbage for simple structured prompts.
+
+Therefore, **Ollama must not be the default planner**.
+
+Current safe rule:
+
+```text
+Promptbranch deterministic planner chooses tools.
+Ollama may propose or summarize only.
+Promptbranch validates every model proposal before MCP execution.
+Invalid/empty model output must fail closed or be ignored.
+```
+
+Good current architecture:
+
+```text
+User request
+  ↓
+Promptbranch deterministic planner or skill-guided planner
+  ↓
+Policy gate
+  ↓
+MCP tool call
+  ↓
+Optional Ollama summary
+```
+
+Not allowed yet:
+
+```text
+User request
+  ↓
+Ollama directly calls tools
+  ↓
+MCP executes
+```
+
+## Skills model
+
+A skill is not an MCP server.
+
+Use this distinction:
+
+```text
+MCP server = capability provider
+Skill      = operating procedure / workflow instructions
+Host       = policy and orchestration
+Ollama     = optional reasoning/summarization
+```
+
+A skill should be a local, validated package such as:
+
+```text
+.promptbranch/skills/repo-inspection/
+  SKILL.md
+  references/
+  scripts/        # optional, disabled by default
+```
+
+Example `SKILL.md`:
+
+```markdown
+---
+name: repo-inspection
+description: Inspect a repository using read-only Promptbranch MCP tools.
+allowed_tools:
+  - filesystem.read
+  - git.status
+  - git.diff.summary
+risk: read
+---
+
+When asked to inspect a repository:
+1. Read VERSION if present.
+2. Run git.status.
+3. If dirty, run git.diff.summary.
+4. Report version, branch, dirty files, and risk.
+5. Never call write tools.
+```
+
+Skills may guide plans, but they must never bypass the policy gate.
+
+Bad:
+
+```text
+skill says "remove source" → source removed
+```
+
+Good:
+
+```text
+skill suggests workflow → planner proposes tool calls → policy validates → MCP executes allowed tools
+```
+
+## Design principles
+
+### 1. Backend-first reads
+
+Preferred order:
+
+1. backend JSON / network payload
+2. saved Promptbranch state
+3. DOM scraping
+4. OCR/image fallback only as last resort
+
+DOM scraping is fallback only.
+
+### 2. Transactional writes
+
+Required sequence for every mutation:
+
+1. trigger action
+2. wait for settled/backend-confirmed state
+3. re-read and verify persistence
+4. update Promptbranch state only after verification
+
+Never:
+
+- assume success immediately after a click
+- refresh before commit/save is stable
+- update local state before persistence is confirmed
+- retry destructive UI actions without detecting collateral change
+
+### 3. Daily regression validation
+
+Run smoke checks frequently and treat failures as workflow regressions.
+
+Minimum:
+
+```bash
+pb test smoke --json
+pb test-suite --only mcp_smoke --json
+pb test-suite --only mcp_host_smoke --json
+```
+
+## Key failure pattern: early refresh aborting save
+
+Source add could appear to work briefly but not persist.
+
+Correct post-save rule:
+
+```text
+After Save, wait for:
+- dialog closed
+- Sources surface idle
+- Add button visible again
+- short stability dwell
+Only then perform explicit persistence verification.
+```
+
+General lesson:
+
+```text
+UI transition is not proof of persistence.
+A mutation is complete only after verified re-read.
+```
+
+## Canonical shell grammar
+
+Canonical command groups:
+
+```bash
+pb ws ...
+pb task ...
+pb src ...
+pb artifact ...
+pb test ...
+pb debug ...
+pb doctor
+pb ask ...
+pb agent ...
+pb mcp ...
+pb skill ...
+```
+
+Legacy aliases may remain, but they should not define the public architecture.
+
+## Updated MVP direction
+
+The MVP should now focus on a Promptbranch-native local host loop, not external MCP hosts.
+
+MVP must prove:
+
+1. Promptbranch can read project/task/artifact state.
+2. Promptbranch can expose local read-only tools over MCP.
+3. Promptbranch can act as the MCP host/client itself.
+4. Promptbranch can call its MCP server over stdio.
+5. Ollama can optionally propose or summarize, but invalid output cannot execute.
+6. Skills can guide read-only planning under a strict allowlist.
+7. All mutation paths remain transactional and verified.
+
+## Verdict
+
+The architecture should be:
+
+```text
+Promptbranch host controls policy.
+MCP servers provide deterministic capabilities.
+Skills provide procedures.
+Ollama proposes/summarizes only.
+ChatGPT.com remains the execution surface for model work and project/task context.
+```

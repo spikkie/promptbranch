@@ -82,17 +82,27 @@ COMPOSER_STOP_BUTTON_SELECTORS = [
     '#thread-bottom #composer-submit-button[data-testid="stop-button"]',
     '#thread-bottom button[data-testid="stop-button"]',
     '#thread-bottom button[aria-label*="Stop" i]',
+    '#composer-submit-button[data-testid="stop-button"]',
+    'button[data-testid="stop-button"]',
+    'button[aria-label*="Stop" i]',
 ]
 COMPOSER_SEND_READY_SELECTORS = [
     '#thread-bottom #composer-submit-button[data-testid="send-button"]',
     '#thread-bottom #composer-submit-button[aria-label="Send prompt"]',
     '#thread-bottom button[data-testid="send-button"]',
     '#thread-bottom button[aria-label="Send prompt"]',
+    '#composer-submit-button[data-testid="send-button"]',
+    '#composer-submit-button[aria-label="Send prompt"]',
+    'button[data-testid="send-button"]',
+    'button[aria-label="Send prompt"]',
 ]
 COMPOSER_IDLE_INDICATOR_SELECTORS = [
     '#thread-bottom button[aria-label="Start Voice"]',
     '#thread-bottom button[aria-label="Start dictation"]',
-    '#thread-bottom #prompt-textarea',
+    'button[aria-label="Start Voice"]',
+    'button[aria-label="Start dictation"]',
+    'button[aria-label*="voice" i]',
+    'button[aria-label*="dictation" i]',
 ]
 SEND_READY_ARIA_HINTS = ('send prompt', 'send')
 SEND_READY_ID_HINTS = ('composer-submit-button', 'send-button')
@@ -7796,17 +7806,30 @@ class ChatGPTBrowserClient:
         stop_visible: bool,
         thinking_visible: bool,
         composer_idle_visible: bool,
+        composer_signal_known: bool = True,
+        fallback_stable_ready: bool = False,
         observed_running_state: bool,
         observed_idle_after_running: bool,
     ) -> bool:
         ui_idle = not stop_visible and not thinking_visible
         if not ui_idle:
             return False
-        if not composer_idle_visible:
+        if composer_idle_visible:
+            if observed_running_state and observed_idle_after_running:
+                return True
+            return bool(content_present and self._is_conversation_url(current_url))
+        if composer_signal_known:
             return False
-        if observed_running_state and observed_idle_after_running:
-            return True
-        return bool(content_present and self._is_conversation_url(current_url))
+        # ChatGPT sometimes hides or renames the composer idle controls while the
+        # final answer has already settled.  Use this only as a conservative
+        # fallback; the caller must prove a longer stable-text condition first.
+        return bool(
+            fallback_stable_ready
+            and content_present
+            and observed_running_state
+            and observed_idle_after_running
+            and self._is_conversation_url(current_url)
+        )
 
     def _project_conversation_path_prefix(self) -> Optional[str]:
         parsed = urlparse(self.config.project_url)
@@ -8237,12 +8260,23 @@ class ChatGPTBrowserClient:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
                 text_length = len(candidate_text)
 
+                composer_signal_known = bool(submit_state.get("selector"))
+                composer_idle_visible = bool(submit_state.get("idle_visible") or submit_state.get("send_ready"))
+                fallback_stable_ready = bool(
+                    not composer_signal_known
+                    and (
+                        (text_length >= 512 and stable_polls >= stable_required)
+                        or stable_polls >= 120
+                    )
+                )
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
                     content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
-                    composer_idle_visible=bool(submit_state.get("idle_visible") or submit_state.get("send_ready")),
+                    composer_idle_visible=composer_idle_visible,
+                    composer_signal_known=composer_signal_known,
+                    fallback_stable_ready=fallback_stable_ready,
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
@@ -8260,6 +8294,8 @@ class ChatGPTBrowserClient:
                         submit_data_testid=submit_state.get("data_testid"),
                         submit_idle_visible=submit_state.get("idle_visible"),
                         submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
+                        composer_signal_known=composer_signal_known,
+                        fallback_stable_ready=fallback_stable_ready,
                         thinking_visible=thinking_state.get("visible"),
                         thinking_text=thinking_state.get("text"),
                         observed_running_state=observed_running_state,
@@ -8418,12 +8454,21 @@ class ChatGPTBrowserClient:
                 if first_payload_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
 
+                composer_signal_known = bool(submit_state.get("selector"))
+                composer_idle_visible = bool(submit_state.get("idle_visible") or submit_state.get("send_ready"))
+                fallback_stable_ready = bool(
+                    not composer_signal_known
+                    and payload is not None
+                    and stable_polls >= stable_required
+                )
                 completion_ready = self._response_completion_signal_ready(
                     current_url=current_url,
                     content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
-                    composer_idle_visible=bool(submit_state.get("idle_visible") or submit_state.get("send_ready")),
+                    composer_idle_visible=composer_idle_visible,
+                    composer_signal_known=composer_signal_known,
+                    fallback_stable_ready=fallback_stable_ready,
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
@@ -8441,6 +8486,8 @@ class ChatGPTBrowserClient:
                         submit_data_testid=submit_state.get("data_testid"),
                         submit_idle_visible=submit_state.get("idle_visible"),
                         submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
+                        composer_signal_known=composer_signal_known,
+                        fallback_stable_ready=fallback_stable_ready,
                         thinking_visible=thinking_state.get("visible"),
                         thinking_text=thinking_state.get("text"),
                         observed_running_state=observed_running_state,
