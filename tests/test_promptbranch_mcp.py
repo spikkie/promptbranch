@@ -424,3 +424,63 @@ def test_ollama_proposal_accepts_alias_tool_call(monkeypatch) -> None:
     assert payload["status"] == "validated"
     assert payload["selected"]["tool"] == "filesystem.read"
     assert payload["selected"]["alias_tool"] == "read_file"
+
+from promptbranch_mcp import agent_run, skill_list, skill_show, skill_validate
+
+
+def test_skill_list_includes_builtin_repo_inspection() -> None:
+    payload = skill_list()
+    names = {item["name"] for item in payload["skills"]}
+    assert payload["ok"] is True
+    assert "repo-inspection" in names
+
+
+def test_skill_validate_builtin_repo_inspection_is_read_only() -> None:
+    payload = skill_validate("repo-inspection")
+    assert payload["ok"] is True
+    assert payload["status"] == "valid"
+    assert payload["skill"]["risk"] == "read"
+    assert set(payload["skill"]["allowed_tools"]) == {"filesystem.read", "git.status", "git.diff.summary"}
+
+
+def test_skill_show_can_omit_content() -> None:
+    payload = skill_show("repo-inspection", include_content=False)
+    assert payload["ok"] is True
+    assert "content" not in payload
+
+
+def test_agent_run_rejects_destructive_original_request() -> None:
+    payload = agent_run("delete VERSION")
+    assert payload["ok"] is False
+    assert payload["status"] == "risk_rejected"
+    assert payload["results"] == []
+
+
+def test_agent_run_uses_mcp_stdio_boundary_for_deterministic_plan(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_mcp(tool, arguments=None, **kwargs):
+        calls.append((tool, arguments or {}, kwargs))
+        return {"ok": True, "tool": tool, "arguments": arguments or {}, "status": "verified"}
+
+    monkeypatch.setattr("promptbranch_mcp.mcp_tool_call_via_stdio", fake_mcp)
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    payload = agent_run("read VERSION and git status", repo_path=tmp_path)
+    assert payload["ok"] is True
+    assert payload["planner"] == "rule_based_v1"
+    assert [item[0] for item in calls] == ["filesystem.read", "git.status"]
+
+
+def test_agent_run_skill_repo_inspection_enforces_skill_allowed_tools(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_mcp(tool, arguments=None, **kwargs):
+        calls.append((tool, arguments or {}, kwargs))
+        return {"ok": True, "tool": tool, "arguments": arguments or {}, "status": "verified"}
+
+    monkeypatch.setattr("promptbranch_mcp.mcp_tool_call_via_stdio", fake_mcp)
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    payload = agent_run("inspect repo", repo_path=tmp_path, skill="repo-inspection")
+    assert payload["ok"] is True
+    assert payload["planner"] == "skill:repo-inspection"
+    assert [item[0] for item in calls] == ["filesystem.read", "git.status", "git.diff.summary"]

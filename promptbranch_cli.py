@@ -19,7 +19,9 @@ from promptbranch_mcp import (
     agent_ask,
     agent_doctor,
     agent_mcp_llm_smoke,
+    agent_run,
     agent_tool_call,
+    mcp_tool_call_via_stdio,
     inspect_local_context,
     mcp_host_config,
     mcp_host_smoke,
@@ -28,6 +30,9 @@ from promptbranch_mcp import (
     ollama_propose_mcp_tool_call,
     plan_agent_request,
     serve_mcp_stdio,
+    skill_list,
+    skill_show,
+    skill_validate,
 )
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
@@ -54,7 +59,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.147"
+CLI_VERSION = "0.0.148"
 COMMANDS = {
     "login-check",
     "ask",
@@ -65,6 +70,7 @@ COMMANDS = {
     "artifact",
     "agent",
     "mcp",
+    "skill",
     "test",
     "doctor",
     "debug",
@@ -1729,7 +1735,8 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
-        "agent": ["inspect", "doctor", "plan", "ask", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model"],
+        "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
+        "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-writes", "--host", "--server-name", "--command"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
@@ -2500,6 +2507,43 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
             ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
             summarize=getattr(args, "summarize", False),
         )
+    elif args.agent_command == "run":
+        payload = agent_run(
+            args.request,
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            skill=getattr(args, "skill", None),
+            model=getattr(args, "model", None),
+            proposal_mode=getattr(args, "proposal_mode", "deterministic"),
+            ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
+            ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
+            command=getattr(args, "mcp_executable", None),
+            mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
+        )
+    elif args.agent_command == "host-smoke":
+        payload = mcp_host_smoke(
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            command=getattr(args, "mcp_executable", None),
+            timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
+        )
+    elif args.agent_command == "mcp-call":
+        try:
+            tool_args = json.loads(args.arguments or "{}")
+        except json.JSONDecodeError as exc:
+            payload = {"ok": False, "action": "agent_mcp_call", "status": "invalid_arguments_json", "error": str(exc), "tool": args.tool}
+        else:
+            if not isinstance(tool_args, dict):
+                payload = {"ok": False, "action": "agent_mcp_call", "status": "invalid_arguments_json", "error": "arguments must decode to a JSON object", "tool": args.tool}
+            else:
+                payload = mcp_tool_call_via_stdio(
+                    args.tool,
+                    tool_args,
+                    repo_path=args.path,
+                    profile_dir=getattr(args, "profile_dir", None),
+                    command=getattr(args, "mcp_executable", None),
+                    timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
+                )
     elif args.agent_command == "tool-call":
         try:
             tool_args = json.loads(args.arguments or "{}")
@@ -2585,6 +2629,37 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
     for command in commands:
         if isinstance(command, list):
             print("command=" + " ".join(str(part) for part in command))
+    return 0 if payload.get("ok") else 1
+
+
+async def cmd_skill(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.skill_command == "list":
+        payload = skill_list(repo_path=args.path, profile_dir=getattr(args, "profile_dir", None))
+    elif args.skill_command == "show":
+        payload = skill_show(args.skill, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None), include_content=not getattr(args, "no_content", False))
+    elif args.skill_command == "validate":
+        payload = skill_validate(args.skill, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None))
+    else:
+        raise RuntimeError(f"Unknown skill command: {args.skill_command}")
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0 if payload.get("ok") else 1
+
+    if args.skill_command == "list":
+        for item in payload.get("skills", []) if isinstance(payload.get("skills"), list) else []:
+            if isinstance(item, dict):
+                print(f"{item.get('name')}	{item.get('risk')}	{item.get('source')}")
+        return 0 if payload.get("ok") else 1
+
+    print(f"status={payload.get('status')}")
+    validation = payload.get("validation") if isinstance(payload.get("validation"), dict) else payload
+    skill_info = validation.get("skill") if isinstance(validation.get("skill"), dict) else {}
+    if skill_info.get("name"):
+        print(f"name={skill_info.get('name')}")
+    errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+    for error in errors:
+        print(f"error={error}")
     return 0 if payload.get("ok") else 1
 
 
@@ -2977,6 +3052,32 @@ def make_parser() -> argparse.ArgumentParser:
     agent_ask_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for optional Ollama calls.")
     agent_ask_parser.add_argument("--json", action="store_true")
 
+    agent_run_parser = agent_subparsers.add_parser("run", help="Canonical Promptbranch-native host/client run command over MCP stdio.")
+    agent_run_parser.add_argument("request", help="Natural-language read-only request, for example: read VERSION and git status.")
+    agent_run_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
+    agent_run_parser.add_argument("--skill", help="Optional local skill name/path, for example repo-inspection.")
+    agent_run_parser.add_argument("--model", help="Optional Ollama tool-use model for proposal mode. Defaults to deterministic planning unless --proposal-mode ollama is set.")
+    agent_run_parser.add_argument("--proposal-mode", choices=["deterministic", "ollama"], default="deterministic", help="Planning source. Ollama mode still passes through policy validation.")
+    agent_run_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL for proposal mode.")
+    agent_run_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for Ollama proposal calls.")
+    agent_run_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_run_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for each MCP stdio tool call.")
+    agent_run_parser.add_argument("--json", action="store_true")
+
+    agent_host_smoke_parser = agent_subparsers.add_parser("host-smoke", help="Smoke-test Promptbranch as an MCP host/client by launching pb mcp serve over stdio.")
+    agent_host_smoke_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
+    agent_host_smoke_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_host_smoke_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for the MCP stdio smoke run.")
+    agent_host_smoke_parser.add_argument("--json", action="store_true")
+
+    agent_mcp_call_parser = agent_subparsers.add_parser("mcp-call", help="Call one read-only MCP tool through the actual stdio server boundary.")
+    agent_mcp_call_parser.add_argument("tool", help="Read-only MCP tool name, for example filesystem.read.")
+    agent_mcp_call_parser.add_argument("arguments", nargs="?", default="{}", help="JSON object with tool arguments.")
+    agent_mcp_call_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
+    agent_mcp_call_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_mcp_call_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for the MCP stdio tool call.")
+    agent_mcp_call_parser.add_argument("--json", action="store_true")
+
     agent_tool_call_parser = agent_subparsers.add_parser("tool-call", help="Call one read-only MCP tool through the deterministic local executor.")
     agent_tool_call_parser.add_argument("tool", help="Read-only MCP tool name, for example filesystem.read.")
     agent_tool_call_parser.add_argument("arguments", nargs="?", default="{}", help="JSON object with tool arguments.")
@@ -3006,6 +3107,24 @@ def make_parser() -> argparse.ArgumentParser:
     agent_models_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
     agent_models_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for Ollama model listing.")
     agent_models_parser.add_argument("--json", action="store_true")
+
+    skill = subparsers.add_parser("skill", help="Local Promptbranch skill registry commands.")
+    skill_subparsers = skill.add_subparsers(dest="skill_command", required=True)
+
+    skill_list_parser = skill_subparsers.add_parser("list", help="List built-in and local skills.")
+    skill_list_parser.add_argument("--path", default=".", help="Repo path used to discover local .promptbranch/skills.")
+    skill_list_parser.add_argument("--json", action="store_true")
+
+    skill_show_parser = skill_subparsers.add_parser("show", help="Show a skill by name or path.")
+    skill_show_parser.add_argument("skill", help="Skill name or path, for example repo-inspection.")
+    skill_show_parser.add_argument("--path", default=".", help="Repo path used to discover local .promptbranch/skills.")
+    skill_show_parser.add_argument("--no-content", action="store_true", help="Omit SKILL.md content from JSON output.")
+    skill_show_parser.add_argument("--json", action="store_true")
+
+    skill_validate_parser = skill_subparsers.add_parser("validate", help="Validate a skill by name or path.")
+    skill_validate_parser.add_argument("skill", help="Skill name or path, for example .promptbranch/skills/repo-inspection.")
+    skill_validate_parser.add_argument("--path", default=".", help="Repo path used to discover local .promptbranch/skills.")
+    skill_validate_parser.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")
     mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -3302,6 +3421,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_artifact(backend, args)
     if args.command == "agent":
         return await cmd_agent(backend, args)
+    if args.command == "skill":
+        return await cmd_skill(backend, args)
     if args.command == "mcp":
         return await cmd_mcp(backend, args)
     if args.command == "test":
