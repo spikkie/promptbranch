@@ -14,7 +14,21 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
-from promptbranch_mcp import agent_ask, agent_doctor, agent_mcp_llm_smoke, agent_tool_call, inspect_local_context, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, ollama_models, plan_agent_request, serve_mcp_stdio
+from promptbranch_mcp import (
+    DEFAULT_OLLAMA_TOOL_MODEL,
+    agent_ask,
+    agent_doctor,
+    agent_mcp_llm_smoke,
+    agent_tool_call,
+    inspect_local_context,
+    mcp_host_config,
+    mcp_host_smoke,
+    mcp_tool_manifest,
+    ollama_models,
+    ollama_propose_mcp_tool_call,
+    plan_agent_request,
+    serve_mcp_stdio,
+)
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -40,7 +54,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.145"
+CLI_VERSION = "0.0.146"
 COMMANDS = {
     "login-check",
     "ask",
@@ -107,6 +121,32 @@ def _split_ask_response(response: Any) -> tuple[Any, Optional[str]]:
         conversation_url = response.get("conversation_url")
         return response["answer"], conversation_url if isinstance(conversation_url, str) else None
     return response, None
+
+
+def _read_prompt_file(path_value: str) -> str:
+    if path_value == "-":
+        return sys.stdin.read()
+    return Path(path_value).read_text(encoding="utf-8")
+
+
+def _merge_prompt_text(prompt: Optional[str], prompt_file: Optional[str]) -> str:
+    parts: list[str] = []
+    if prompt:
+        parts.append(prompt)
+    if prompt_file:
+        parts.append(_read_prompt_file(prompt_file).strip())
+    elif not prompt and not sys.stdin.isatty():
+        parts.append(sys.stdin.read().strip())
+    return "\n\n".join(part for part in parts if part)
+
+
+def _collect_ask_attachment_paths(args: argparse.Namespace) -> list[str]:
+    paths: list[str] = []
+    legacy_file = getattr(args, "file", None)
+    if legacy_file:
+        paths.append(legacy_file)
+    paths.extend(getattr(args, "attachments", None) or [])
+    return paths
 
 
 class DirectBackend:
@@ -307,6 +347,7 @@ class DirectBackend:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: Optional[str] = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -323,6 +364,7 @@ class DirectBackend:
             result = await self._service.ask_question_result(
                 prompt=prompt,
                 file_path=file_path,
+                attachment_paths=attachment_paths,
                 conversation_url=conversation_url,
                 expect_json=expect_json,
                 keep_open=keep_open,
@@ -547,6 +589,7 @@ class ServiceBackend:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: Optional[str] = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -557,6 +600,7 @@ class ServiceBackend:
             self._client.ask_result,
             prompt,
             file_path=file_path,
+            attachment_paths=attachment_paths,
             conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
@@ -1609,16 +1653,28 @@ async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Name
 
 
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
-    prompt = args.prompt
-    if not prompt and not sys.stdin.isatty():
-        prompt = sys.stdin.read().strip()
+    try:
+        prompt = _merge_prompt_text(args.prompt, getattr(args, "prompt_file", None))
+    except (OSError, UnicodeError) as exc:
+        print(f"error: could not read prompt file: {exc}", file=sys.stderr)
+        return 2
     if not prompt:
         print("error: prompt is required", file=sys.stderr)
         return 2
 
+    attachment_paths = _collect_ask_attachment_paths(args)
+    for attachment_path in attachment_paths:
+        if not Path(attachment_path).is_file():
+            print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)
+            return 2
+
+    legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) else None
+    repeatable_attachments = attachment_paths if not legacy_single_file else None
+
     response = await backend.ask(
         prompt=prompt,
-        file_path=args.file,
+        file_path=legacy_single_file,
+        attachment_paths=repeatable_attachments,
         conversation_url=args.conversation_url,
         expect_json=args.json,
         keep_open=args.keep_open,
@@ -1673,7 +1729,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
-        "agent": ["inspect", "doctor", "plan", "ask", "tool-call", "models", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model"],
+        "agent": ["inspect", "doctor", "plan", "ask", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-writes", "--host", "--server-name", "--command"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
@@ -2454,12 +2510,20 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
                 payload = {"ok": False, "action": "agent_tool_call", "status": "invalid_arguments_json", "error": "arguments must decode to a JSON object", "tool": args.tool}
             else:
                 payload = agent_tool_call(args.tool, tool_args, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None))
+    elif args.agent_command == "ollama-propose":
+        payload = ollama_propose_mcp_tool_call(
+            getattr(args, "request", "read VERSION"),
+            model=getattr(args, "model", DEFAULT_OLLAMA_TOOL_MODEL),
+            ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
+            ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
+            allow_schema_fallback=not getattr(args, "no_schema_fallback", False),
+        )
     elif args.agent_command == "mcp-llm-smoke":
         payload = agent_mcp_llm_smoke(
             getattr(args, "request", "read VERSION"),
             repo_path=args.path,
             profile_dir=getattr(args, "profile_dir", None),
-            model=getattr(args, "model", "llama3.2:3b"),
+            model=getattr(args, "model", DEFAULT_OLLAMA_TOOL_MODEL),
             ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
             ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
             command=getattr(args, "command", None),
@@ -2919,10 +2983,19 @@ def make_parser() -> argparse.ArgumentParser:
     agent_tool_call_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
     agent_tool_call_parser.add_argument("--json", action="store_true")
 
+    agent_ollama_propose_parser = agent_subparsers.add_parser("ollama-propose", help="Ask Ollama to propose one read-only MCP tool call, then validate without executing it.")
+    agent_ollama_propose_parser.add_argument("request", nargs="?", default="read VERSION", help="Read-only request for the model to map to one MCP tool call.")
+    agent_ollama_propose_parser.add_argument("--path", default=".", help="Accepted for symmetry with other agent commands; proposal itself does not read the repo.")
+    agent_ollama_propose_parser.add_argument("--model", default=DEFAULT_OLLAMA_TOOL_MODEL, help="Ollama tool-use model. Defaults to llama3-groq-tool-use:8b.")
+    agent_ollama_propose_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
+    agent_ollama_propose_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for the Ollama proposal call.")
+    agent_ollama_propose_parser.add_argument("--no-schema-fallback", action="store_true", help="Disable JSON-schema fallback after native chat-tools fail.")
+    agent_ollama_propose_parser.add_argument("--json", action="store_true")
+
     agent_mcp_llm_smoke_parser = agent_subparsers.add_parser("mcp-llm-smoke", help="Diagnostic: ask Ollama to propose one read-only MCP tool call, validate it, then execute via MCP stdio.")
     agent_mcp_llm_smoke_parser.add_argument("request", nargs="?", default="read VERSION", help="Read-only request for the model to map to one MCP tool call.")
     agent_mcp_llm_smoke_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
-    agent_mcp_llm_smoke_parser.add_argument("--model", default="llama3.2:3b", help="Ollama model used to propose the MCP tool call.")
+    agent_mcp_llm_smoke_parser.add_argument("--model", default=DEFAULT_OLLAMA_TOOL_MODEL, help="Ollama model used to propose the MCP tool call. Defaults to llama3-groq-tool-use:8b.")
     agent_mcp_llm_smoke_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
     agent_mcp_llm_smoke_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for the Ollama proposal call.")
     agent_mcp_llm_smoke_parser.add_argument("--command", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
@@ -3155,7 +3228,9 @@ def make_parser() -> argparse.ArgumentParser:
 
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
-    ask.add_argument("--file", help="Optional file to upload with the prompt.")
+    ask.add_argument("--prompt-file", help="Read additional prompt text from a UTF-8 file. If prompt text is also provided, both are joined with a blank line.")
+    ask.add_argument("--file", help="Legacy single chat attachment. Prefer repeatable --attach for multiple files.")
+    ask.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
     ask.add_argument("--json", action="store_true", help="Request strict JSON mode.")
     ask.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
     ask.add_argument("--keep-open", action="store_true")

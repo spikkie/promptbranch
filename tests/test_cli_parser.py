@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.145" in out
+    assert "0.0.146" in out
     assert "promptbranch" in out
 
 
@@ -319,3 +319,21 @@ def test_parser_accepts_mcp_config_command() -> None:
     assert args.host == "claude-desktop"
     assert args.server_name == "pb"
     assert args.mcp_executable == "promptbranch"
+
+
+def test_parser_accepts_ask_prompt_file_and_repeatable_attachments() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "ask",
+        "review",
+        "--prompt-file",
+        "prompt.md",
+        "--attach",
+        "one.log",
+        "--attachment",
+        "two.txt",
+    ])
+    assert args.command == "ask"
+    assert args.prompt == "review"
+    assert args.prompt_file == "prompt.md"
+    assert args.attachments == ["one.log", "two.txt"]

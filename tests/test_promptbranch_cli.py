@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.145"
+    assert captured.out.strip() == "promptbranch 0.0.146"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1020,7 +1020,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.145"
+    assert payload["version"] == "0.0.146"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1379,3 +1379,39 @@ def test_task_list_payload_recomputes_stale_service_visibility_diagnostics() -> 
     assert payload["indexed_task_count"] == 25
     assert payload["indexed_observation_count"] == 45
     assert payload["recent_state_count"] == 0
+
+
+def test_main_ask_combines_prompt_file_and_repeatable_attachments(monkeypatch, capsys, tmp_path) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("extra context", encoding="utf-8")
+    first = tmp_path / "one.log"
+    second = tmp_path / "two.log"
+    first.write_text("one", encoding="utf-8")
+    second.write_text("two", encoding="utf-8")
+    captured_kwargs: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            captured_kwargs.update(kwargs)
+            assert prompt == "review\n\nextra context"
+            return {"answer": "ok", "conversation_url": "https://chatgpt.com/g/demo/c/123"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile"),
+        "--project-url", "https://chatgpt.com/g/demo/project",
+        "ask", "review",
+        "--prompt-file", str(prompt_file),
+        "--attach", str(first),
+        "--attachment", str(second),
+    ])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "ok"
+    assert captured_kwargs["attachment_paths"] == [str(first), str(second)]
+    assert captured_kwargs["file_path"] is None

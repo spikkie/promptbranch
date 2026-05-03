@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.145"
+    assert payload["version"] == "0.0.146"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.145"
+    assert response.json()["version"] == "0.0.146"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -160,3 +160,32 @@ def test_ask_file_upload_preserves_uploaded_basename(monkeypatch) -> None:
     assert response.json()["answer"] == "ready"
     assert captured["basename"] == "architecture-process_0.1.16.zip"
     assert captured["exists_during_call"] is True
+
+
+def test_ask_multiple_attachments_preserve_uploaded_basenames(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        async def ask_question_result(self, **kwargs):
+            paths = [Path(path) for path in kwargs["attachment_paths"]]
+            captured["basenames"] = [path.name for path in paths]
+            captured["exists_during_call"] = [path.exists() for path in paths]
+            captured["file_path"] = kwargs.get("file_path")
+            return {"answer": "ready", "conversation_url": None}
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post(
+        "/v1/ask",
+        data={"prompt": "hello"},
+        files=[
+            ("attachments", ("one.log", b"one", "text/plain")),
+            ("attachments", ("two.log", b"two", "text/plain")),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "ready"
+    assert captured["basenames"] == ["one.log", "two.log"]
+    assert captured["exists_during_call"] == [True, True]
+    assert captured["file_path"] is None

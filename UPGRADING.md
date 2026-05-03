@@ -16,6 +16,8 @@ What changed:
 Migration support that remains:
 - config fallback: `~/.config/chatgpt-cli/config.json` is still read if the new config path is absent
 
+
+
 ## Public command and package replacements
 
 | Old | New |
@@ -115,6 +117,22 @@ These names are no longer packaged in v0.0.68+:
 - top-level `chatgpt_*` modules listed above
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
+
+## v0.0.146.1
+
+- Added deterministic original-request risk classification before any Ollama-proposed MCP tool call can execute.
+- `pb agent ollama-propose` asks Ollama to propose one read-only tool call, validates model-facing aliases, and never executes the result.
+- `pb agent mcp-llm-smoke` now defaults to `llama3-groq-tool-use:8b`, uses model-facing aliases such as `read_file`, and rejects write/destructive requests before calling Ollama.
+- Native Ollama `/api/chat` tool-calling is preferred; JSON-schema generation is only a fallback for requests already classified as read-only.
+- Destructive prompts such as `delete VERSION` now return `risk_rejected` instead of allowing a model to reframe them into a benign read.
+
+
+## v0.0.146.2
+
+- Added chat-message attachments for `pb ask` without adding those files to Project Sources. Use repeatable `--attach` / `--attachment` flags for logs and other one-off context files.
+- Kept legacy `--file` as a single chat attachment for compatibility.
+- Added `--prompt-file` so the prompt body can be read from a UTF-8 file and optionally combined with a short inline instruction.
+- Extended the Docker service `/v1/ask` multipart endpoint to accept multiple `attachments` uploads while preserving uploaded basenames in temporary files.
 
 ## v0.0.145
 
@@ -303,5 +321,5 @@ If you still depend on them, pin to `v0.0.67` temporarily and migrate before ado
 Example:
 
 ```bash
-pb agent mcp-llm-smoke "read VERSION" --path . --model llama3.2:3b --json
+pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b --json
 ```

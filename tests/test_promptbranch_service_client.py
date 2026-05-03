@@ -298,3 +298,25 @@ def test_ask_result_uses_long_ask_timeout_when_client_timeout_is_short() -> None
         payload = client.ask_result("Reply with one short sentence.")
 
     assert payload["answer"] == "ready"
+
+
+def test_ask_result_posts_repeatable_attachments(tmp_path: Path) -> None:
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.txt"
+    first.write_text("one", encoding="utf-8")
+    second.write_text("two", encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert "Analyze these logs" in body
+        assert "first.log" in body
+        assert "second.txt" in body
+        assert body.count('name="attachments"') == 2
+        return httpx.Response(200, json={"ok": True, "answer": "ready", "conversation_url": None})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.ask_result("Analyze these logs", attachment_paths=[str(first), str(second)])
+
+    assert payload["answer"] == "ready"

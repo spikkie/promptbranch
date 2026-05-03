@@ -31,18 +31,52 @@ def _normalized_upload_filename(filename: Optional[str], *, default: str = "atta
     return candidate
 
 
-async def _persist_upload_to_named_temp_path(file: UploadFile, *, default_filename: str = "attachment.bin") -> tuple[Path, Path]:
+def _unique_temp_upload_name(raw_name: Optional[str], used_names: set[str], *, default: str) -> str:
+    name = _normalized_upload_filename(raw_name, default=default)
+    if name not in used_names:
+        used_names.add(name)
+        return name
+    stem = Path(name).stem or "attachment"
+    suffix = Path(name).suffix
+    counter = 2
+    while True:
+        candidate = f"{stem}-{counter}{suffix}"
+        if candidate not in used_names:
+            used_names.add(candidate)
+            return candidate
+        counter += 1
+
+
+async def _persist_uploads_to_named_temp_paths(files: list[UploadFile], *, default_filename: str = "attachment.bin") -> tuple[Path, list[Path]]:
     temp_dir = Path(tempfile.mkdtemp(prefix="promptbranch-upload-"))
-    temp_path = temp_dir / _normalized_upload_filename(file.filename, default=default_filename)
-    temp_path.write_bytes(await file.read())
-    return temp_dir, temp_path
+    paths: list[Path] = []
+    used_names: set[str] = set()
+    for index, upload in enumerate(files, start=1):
+        name = _unique_temp_upload_name(
+            upload.filename,
+            used_names,
+            default=default_filename if index == 1 else f"attachment-{index}.bin",
+        )
+        temp_path = temp_dir / name
+        temp_path.write_bytes(await upload.read())
+        paths.append(temp_path)
+    return temp_dir, paths
 
 
-def _cleanup_temp_upload(temp_path: Optional[Path], temp_dir: Optional[Path]) -> None:
-    if temp_path is not None:
+async def _persist_upload_to_named_temp_path(file: UploadFile, *, default_filename: str = "attachment.bin") -> tuple[Path, Path]:
+    temp_dir, paths = await _persist_uploads_to_named_temp_paths([file], default_filename=default_filename)
+    return temp_dir, paths[0]
+
+
+def _cleanup_temp_uploads(temp_paths: list[Path], temp_dir: Optional[Path]) -> None:
+    for temp_path in temp_paths:
         temp_path.unlink(missing_ok=True)
     if temp_dir is not None:
         temp_dir.rmdir()
+
+
+def _cleanup_temp_upload(temp_path: Optional[Path], temp_dir: Optional[Path]) -> None:
+    _cleanup_temp_uploads([temp_path] if temp_path is not None else [], temp_dir)
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -144,7 +178,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.145"
+SERVICE_VERSION = "0.0.146"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 
@@ -342,21 +376,31 @@ async def ask(
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
+    attachments: Optional[list[UploadFile]] = File(default=None),
 ) -> AskResponse:
-    temp_path: Optional[Path] = None
+    temp_paths: list[Path] = []
     temp_dir: Optional[Path] = None
     try:
+        upload_files: list[UploadFile] = []
         if file is not None:
-            temp_dir, temp_path = await _persist_upload_to_named_temp_path(file)
+            upload_files.append(file)
+        upload_files.extend(attachments or [])
+        if upload_files:
+            temp_dir, temp_paths = await _persist_uploads_to_named_temp_paths(upload_files)
 
-        result = await _service_for(project_url).ask_question_result(
-            prompt=prompt,
-            file_path=(str(temp_path) if temp_path is not None else None),
-            conversation_url=conversation_url,
-            expect_json=expect_json,
-            keep_open=keep_open,
-            retries=retries,
-        )
+        ask_kwargs = {
+            "prompt": prompt,
+            "conversation_url": conversation_url,
+            "expect_json": expect_json,
+            "keep_open": keep_open,
+            "retries": retries,
+        }
+        if len(temp_paths) == 1:
+            ask_kwargs["file_path"] = str(temp_paths[0])
+        elif temp_paths:
+            ask_kwargs["attachment_paths"] = [str(path) for path in temp_paths]
+
+        result = await _service_for(project_url).ask_question_result(**ask_kwargs)
         return AskResponse(
             answer=result["answer"],
             conversation_url=result.get("conversation_url"),
@@ -364,7 +408,7 @@ async def ask(
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
     finally:
-        _cleanup_temp_upload(temp_path, temp_dir)
+        _cleanup_temp_uploads(temp_paths, temp_dir)
 
 
 @protected.get("/projects", dependencies=[Depends(require_service_token)])
