@@ -613,12 +613,14 @@ class ChatGPTBrowserClient:
         self,
         prompt: str,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         expect_json: bool = False,
         keep_open: bool = False,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
             file_path=file_path,
+            attachment_paths=attachment_paths,
             expect_json=expect_json,
             keep_open=keep_open,
         )
@@ -628,6 +630,7 @@ class ChatGPTBrowserClient:
         self,
         prompt: str,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -641,6 +644,7 @@ class ChatGPTBrowserClient:
             driver=self.driver_name,
             prompt_length=len(prompt),
             file_path=file_path,
+            attachment_paths=attachment_paths,
             expect_json=expect_json,
             keep_open=keep_open,
         )
@@ -649,6 +653,7 @@ class ChatGPTBrowserClient:
             operation=self._ask_question_operation,
             prompt=prompt,
             file_path=file_path,
+            attachment_paths=attachment_paths,
             conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
@@ -1095,6 +1100,42 @@ class ChatGPTBrowserClient:
             await self._pause_for_keep_open("Login check passed. Press Enter to close the browser... ")
         return result
 
+    @staticmethod
+    def _coerce_chat_attachment_paths(
+        *,
+        file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
+    ) -> list[str]:
+        paths: list[str] = []
+        if file_path:
+            paths.append(file_path)
+        for attachment_path in attachment_paths or []:
+            if attachment_path:
+                paths.append(attachment_path)
+        return paths
+
+    async def _upload_chat_attachments(self, page: Any, file_paths: list[str]) -> None:
+        normalized_paths = [str(Path(path)) for path in file_paths]
+        for path in normalized_paths:
+            if not os.path.exists(path):
+                raise FileNotFoundError(path)
+        self._log("upload", "upload requested", file_paths=normalized_paths, attachment_count=len(normalized_paths))
+        file_input = page.locator('input[type="file"]')
+        file_count = await file_input.count()
+        self._log("upload", "file input selector count", selector='input[type="file"]', count=file_count)
+        if not file_count:
+            raise ResponseTimeoutError("File upload input was not found")
+        payload: Any = normalized_paths[0] if len(normalized_paths) == 1 else normalized_paths
+        try:
+            await file_input.first.set_input_files(payload)
+        except Exception as exc:
+            if len(normalized_paths) <= 1:
+                raise
+            self._log("upload", "multi-file upload failed; retrying single files", error=str(exc), attachment_count=len(normalized_paths))
+            for path in normalized_paths:
+                await file_input.first.set_input_files(path)
+        self._log("upload", "file uploaded to browser input", file_paths=normalized_paths, attachment_count=len(normalized_paths))
+
     async def _ask_question_operation(
         self,
         *,
@@ -1102,6 +1143,7 @@ class ChatGPTBrowserClient:
         page: Any,
         prompt: str,
         file_path: Optional[str],
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: str | None = None,
         expect_json: bool,
         keep_open: bool = False,
@@ -1115,6 +1157,11 @@ class ChatGPTBrowserClient:
         await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
         self._log("composer", "filling prompt", prompt_length=len(prompt))
         await input_locator.fill(prompt)
+
+
+        upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
+        if upload_paths:
+            await self._upload_chat_attachments(page, upload_paths)
 
         if file_path:
             self._log("upload", "upload requested", file_path=file_path)

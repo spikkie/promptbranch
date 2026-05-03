@@ -85,7 +85,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.145"
+    assert init["result"]["serverInfo"]["version"] == "0.0.146"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -359,3 +359,68 @@ def test_agent_mcp_llm_smoke_fails_when_model_output_is_invalid(monkeypatch, tmp
     assert payload["ok"] is False
     assert payload["status"] == "model_tool_call_invalid"
     assert payload["mcp"] is None
+
+
+def test_request_risk_classifier_blocks_destructive_original_intent() -> None:
+    from promptbranch_mcp import classify_agent_request_risk
+
+    payload = classify_agent_request_risk("delete VERSION")
+
+    assert payload["risk"] == "destructive"
+    assert payload["auto_allowed"] is False
+    assert payload["status"] == "blocked_original_request_destructive"
+
+
+def test_llm_validation_rejects_read_tool_for_destructive_request() -> None:
+    from promptbranch_mcp import _validate_llm_mcp_tool_call
+
+    payload = _validate_llm_mcp_tool_call(
+        {"tool": "read_file", "arguments": {"path": "VERSION"}},
+        original_request="delete VERSION",
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "original_request_not_read_only"
+    assert payload["request_risk"]["risk"] == "destructive"
+
+
+def test_ollama_proposal_blocks_original_write_intent_before_model(monkeypatch) -> None:
+    import promptbranch_mcp
+    from promptbranch_mcp import ollama_propose_mcp_tool_call
+
+    def fail_if_called(**kwargs):  # pragma: no cover - should never be called
+        raise AssertionError("model should not be called for destructive requests")
+
+    monkeypatch.setattr(promptbranch_mcp, "_call_ollama_chat_tool_call", fail_if_called)
+    monkeypatch.setattr(promptbranch_mcp, "_call_ollama_generate_json", fail_if_called)
+
+    payload = ollama_propose_mcp_tool_call("delete VERSION", model="fake-local-model")
+
+    assert payload["ok"] is False
+    assert payload["status"] == "risk_rejected"
+    assert payload["request_risk"]["risk"] == "destructive"
+    assert payload["proposals"] == []
+
+
+def test_ollama_proposal_accepts_alias_tool_call(monkeypatch) -> None:
+    import promptbranch_mcp
+    from promptbranch_mcp import ollama_propose_mcp_tool_call
+
+    monkeypatch.setattr(
+        promptbranch_mcp,
+        "_call_ollama_chat_tool_call",
+        lambda **kwargs: {
+            "ok": True,
+            "status": "tool_call",
+            "source": "ollama_chat_tools_aliases",
+            "model": kwargs.get("model"),
+            "parsed": {"tool": "read_file", "arguments": {"path": "VERSION", "max_bytes": 2000}},
+        },
+    )
+
+    payload = ollama_propose_mcp_tool_call("read VERSION", model="fake-local-model")
+
+    assert payload["ok"] is True
+    assert payload["status"] == "validated"
+    assert payload["selected"]["tool"] == "filesystem.read"
+    assert payload["selected"]["alias_tool"] == "read_file"

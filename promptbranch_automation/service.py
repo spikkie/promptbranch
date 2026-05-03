@@ -475,6 +475,7 @@ class ChatGPTAutomationService:
         *,
         prompt: str,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
@@ -482,6 +483,7 @@ class ChatGPTAutomationService:
         result = await self.ask_question_result(
             prompt=prompt,
             file_path=file_path,
+            attachment_paths=attachment_paths,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
@@ -493,6 +495,7 @@ class ChatGPTAutomationService:
         *,
         prompt: str,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -510,11 +513,13 @@ class ChatGPTAutomationService:
                             "attempt": attempt,
                             "expect_json": expect_json,
                             "file_path": file_path,
+                            "attachment_count": len(attachment_paths or []),
                         },
                     )
                     result = await self._build_bot().ask_question_result(
                         prompt=prompt,
                         file_path=file_path,
+                        attachment_paths=attachment_paths,
                         conversation_url=conversation_url,
                         expect_json=expect_json,
                         keep_open=keep_open,

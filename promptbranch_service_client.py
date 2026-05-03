@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Optional
 
@@ -80,6 +81,7 @@ class ChatGPTServiceClient:
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -89,6 +91,7 @@ class ChatGPTServiceClient:
         payload = self.ask_result(
             prompt,
             file_path=file_path,
+            attachment_paths=attachment_paths,
             conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
@@ -97,11 +100,25 @@ class ChatGPTServiceClient:
         )
         return payload.get("answer")
 
+    @staticmethod
+    def _coerce_attachment_paths(
+        file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
+    ) -> list[Path]:
+        paths: list[Path] = []
+        if file_path:
+            paths.append(Path(file_path))
+        for attachment_path in attachment_paths or []:
+            if attachment_path:
+                paths.append(Path(attachment_path))
+        return paths
+
     def ask_result(
         self,
         prompt: str,
         *,
         file_path: Optional[str] = None,
+        attachment_paths: Optional[list[str]] = None,
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
@@ -120,13 +137,22 @@ class ChatGPTServiceClient:
         if conversation_url:
             data["conversation_url"] = conversation_url
 
-        if file_path:
-            path = Path(file_path)
-            with path.open("rb") as handle:
+        attachment_path_objects = self._coerce_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
+        if attachment_path_objects:
+            with ExitStack() as stack:
+                if len(attachment_path_objects) == 1 and not attachment_paths:
+                    path = attachment_path_objects[0]
+                    handle = stack.enter_context(path.open("rb"))
+                    files: Any = {"file": (path.name, handle, "application/octet-stream")}
+                else:
+                    files = []
+                    for path in attachment_path_objects:
+                        handle = stack.enter_context(path.open("rb"))
+                        files.append(("attachments", (path.name, handle, "application/octet-stream")))
                 response = self._client.post(
                     "/v1/ask",
                     data=data,
-                    files={"file": (path.name, handle, "application/octet-stream")},
+                    files=files,
                     timeout=max(self._timeout, 900.0),
                 )
         else:

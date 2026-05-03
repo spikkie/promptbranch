@@ -1,4 +1,4 @@
-# promptbranch v0.0.145
+# promptbranch v0.0.146
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.145 .
+docker build -t promptbranch-service:0.0.146 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.145
+  promptbranch-service:0.0.146
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.145.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.146.zip
 ```
 
 From an extracted checkout:
@@ -334,6 +334,18 @@ Ask one question against local automation:
 
 ```bash
 promptbranch ask "Explain Python context managers in 5 lines"
+```
+
+Attach one-off files to the chat message without adding them to Project Sources:
+
+```bash
+promptbranch ask "Analyze these logs" --attach ./logs/service.log --attach ./logs/browser.log
+```
+
+Read the prompt body from a file and optionally prepend a short inline instruction:
+
+```bash
+promptbranch ask "Focus on root cause and next fix" --prompt-file ./prompts/debug-request.md --attach ./logs/latest.log
 ```
 
 Ask one question through the Docker service with explicit flags:
@@ -531,12 +543,30 @@ set -g status-right '#(/path/to/chatgpt_claudecode_workflow/scripts/promptbranch
 
 The status helper resolves the nearest inherited `.pb_profile` directory.
 
+
+### Ollama read-only proposal mode
+
+`pb agent ollama-propose` asks a local Ollama model to propose one read-only MCP tool call and validates the proposal without executing it. The default tool-use model is `llama3-groq-tool-use:8b`. Model-facing aliases are mapped back to Promptbranch MCP tools:
+
+| Model alias | MCP tool |
+|---|---|
+| `read_file` | `filesystem.read` |
+| `git_status` | `git.status` |
+| `git_diff_summary` | `git.diff.summary` |
+
+```bash
+pb agent ollama-propose "read VERSION" --path . --json
+pb agent mcp-llm-smoke "read VERSION" --path . --json
+```
+
+Promptbranch classifies the original request before accepting any model proposal. Write/destructive requests such as `delete VERSION` are rejected before MCP execution, even if the model proposes a read-only tool.
+
 ### Ollama-to-MCP diagnostic smoke
 
 `pb agent mcp-llm-smoke` is a diagnostic bridge for local-agent work. It asks Ollama to propose one read-only MCP tool call, validates that proposal, then executes it through the real `pb mcp serve` stdio boundary.
 
 ```bash
-pb agent mcp-llm-smoke "read VERSION" --path . --model llama3.2:3b --json
+pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b --json
 ```
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.

@@ -25,10 +25,54 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.145"
+MCP_SERVER_VERSION = "0.0.146"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
+DEFAULT_OLLAMA_TOOL_MODEL = "llama3-groq-tool-use:8b"
+
+MODEL_TOOL_ALIAS_TO_MCP: dict[str, str] = {
+    "read_file": "filesystem.read",
+    "git_status": "git.status",
+    "git_diff_summary": "git.diff.summary",
+    "list_files": "filesystem.list",
+    "state_read": "promptbranch.state.read",
+    "artifact_verify": "artifact.verify",
+}
+
+MODEL_FACING_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a repo-relative file. Use this to read VERSION or README.md.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Repo-relative path, for example VERSION"},
+                    "max_bytes": {"type": "integer", "description": "Maximum number of bytes to read"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "Read git branch, dirty status, and diff stat for the repository.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff_summary",
+            "description": "Read a concise git diff summary for the repository.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+)
 
 
 @dataclass(frozen=True)
@@ -376,7 +420,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.145 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.146 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -845,6 +889,86 @@ def _contains_any(text: str, needles: Iterable[str]) -> bool:
     return any(needle in text for needle in needles)
 
 
+def _normalized_request_text(request: str) -> str:
+    return " " + " ".join(str(request or "").strip().lower().replace("_", " ").replace("-", " ").split()) + " "
+
+
+def classify_agent_request_risk(request: str) -> dict[str, Any]:
+    """Classify original operator request risk before accepting any model proposal.
+
+    This is intentionally conservative. The local model may propose a benign
+    read tool for a destructive prompt such as "delete VERSION". That must be
+    rejected based on the original request, not on the model's reframing.
+    """
+
+    text = _normalized_request_text(request)
+    destructive_terms = (
+        " delete ",
+        " remove ",
+        " rm ",
+        " erase ",
+        " unlink ",
+        " destroy ",
+        " wipe ",
+        " purge ",
+        " drop ",
+        " source rm ",
+        " rm source ",
+        " delete source ",
+        " remove source ",
+    )
+    write_terms = (
+        " overwrite ",
+        " write ",
+        " modify ",
+        " edit ",
+        " commit ",
+        " push ",
+        " sync ",
+        " release ",
+        " upload ",
+        " add source ",
+        " source add ",
+        " pbsa ",
+        " package ",
+        " make zip ",
+        " rename ",
+    )
+    process_terms = (
+        " run test ",
+        " run tests ",
+        " smoke test ",
+        " test suite ",
+        " pytest ",
+    )
+
+    matched = [term.strip() for term in destructive_terms if term in text]
+    if matched:
+        return {
+            "risk": ToolRisk.DESTRUCTIVE.value,
+            "auto_allowed": False,
+            "status": "blocked_original_request_destructive",
+            "matched_terms": matched,
+        }
+    matched = [term.strip() for term in write_terms if term in text]
+    if matched:
+        return {
+            "risk": ToolRisk.WRITE.value,
+            "auto_allowed": False,
+            "status": "blocked_original_request_write",
+            "matched_terms": matched,
+        }
+    matched = [term.strip() for term in process_terms if term in text]
+    if matched:
+        return {
+            "risk": ToolRisk.EXTERNAL_PROCESS.value,
+            "auto_allowed": False,
+            "status": "blocked_original_request_process",
+            "matched_terms": matched,
+        }
+    return {"risk": ToolRisk.READ.value, "auto_allowed": True, "status": "read_only", "matched_terms": []}
+
+
 def plan_agent_request(request: str, *, repo_path: str | Path = ".") -> dict[str, Any]:
     text = " ".join(str(request or "").strip().lower().split())
     notes: list[str] = []
@@ -1190,29 +1314,252 @@ def _call_ollama_generate_json(
     }
 
 
-def _validate_llm_mcp_tool_call(parsed: Any) -> dict[str, Any]:
+def _normalize_model_tool_name(tool: Any) -> str | None:
+    if not isinstance(tool, str):
+        return None
+    cleaned = tool.strip()
+    if not cleaned:
+        return None
+    # Direct MCP names remain accepted for compatibility with v0.0.143 tests.
+    if cleaned in {spec.name for spec in READ_ONLY_MCP_TOOLS}:
+        return cleaned
+    alias = cleaned.lower().replace("-", "_").replace(".", "_").replace(" ", "_")
+    aliases = {
+        "read_file": "filesystem.read",
+        "filesystem_read": "filesystem.read",
+        "file_read": "filesystem.read",
+        "read_version": "filesystem.read",
+        "git_status": "git.status",
+        "status": "git.status",
+        "git_diff_summary": "git.diff.summary",
+        "diff_summary": "git.diff.summary",
+        "list_files": "filesystem.list",
+        "filesystem_list": "filesystem.list",
+        "state_read": "promptbranch.state.read",
+        "promptbranch_state_read": "promptbranch.state.read",
+        "artifact_verify": "artifact.verify",
+    }
+    return aliases.get(alias)
+
+
+def _alias_for_mcp_tool(tool: str | None) -> str | None:
+    if tool is None:
+        return None
+    for alias, mcp_name in MODEL_TOOL_ALIAS_TO_MCP.items():
+        if mcp_name == tool:
+            return alias
+    return None
+
+
+def _validate_llm_mcp_tool_call(parsed: Any, *, original_request: str | None = None) -> dict[str, Any]:
     read_only_names = {spec.name for spec in READ_ONLY_MCP_TOOLS}
+    if original_request is not None:
+        risk = classify_agent_request_risk(original_request)
+        if not risk.get("auto_allowed"):
+            return {
+                "ok": False,
+                "status": "original_request_not_read_only",
+                "error": "original request risk is not read-only; model proposal is not eligible for execution",
+                "request_risk": risk,
+                "parsed": parsed,
+            }
     if not isinstance(parsed, dict):
         return {"ok": False, "status": "not_an_object", "error": "model output must be a JSON object"}
-    tool = parsed.get("tool") or parsed.get("name")
+    raw_tool = parsed.get("tool") or parsed.get("name")
     arguments = parsed.get("arguments") if isinstance(parsed.get("arguments"), dict) else parsed.get("args")
     if arguments is None:
         arguments = {}
-    if not isinstance(tool, str) or not tool.strip():
+    if not isinstance(raw_tool, str) or not raw_tool.strip():
         return {"ok": False, "status": "missing_tool", "error": "model output must include a tool string", "parsed": parsed}
-    tool = tool.strip()
+    tool = _normalize_model_tool_name(raw_tool)
     if tool not in read_only_names:
         return {
             "ok": False,
             "status": "tool_not_allowed",
             "error": "model selected an unknown or non-read-only tool",
-            "tool": tool,
+            "tool": raw_tool.strip(),
+            "normalized_tool": tool,
             "supported_read_only_tools": sorted(read_only_names),
+            "model_tool_aliases": MODEL_TOOL_ALIAS_TO_MCP,
             "parsed": parsed,
         }
     if not isinstance(arguments, dict):
         return {"ok": False, "status": "invalid_arguments", "error": "arguments must be a JSON object", "tool": tool, "parsed": parsed}
-    return {"ok": True, "status": "validated", "tool": tool, "arguments": arguments}
+    if tool == "filesystem.read":
+        path = arguments.get("path")
+        if not isinstance(path, str) or not path.strip():
+            # Only repair the common read VERSION prompt. Do not repair ambiguous file reads.
+            if original_request and "version" in _normalized_request_text(original_request):
+                arguments = dict(arguments)
+                arguments["path"] = "VERSION"
+                arguments["_repaired_missing_path"] = True
+            else:
+                return {"ok": False, "status": "invalid_arguments", "error": "filesystem.read requires repo-relative path", "tool": tool, "parsed": parsed}
+        path = str(arguments.get("path") or "")
+        if path.startswith("/") or ".." in path.split("/"):
+            return {"ok": False, "status": "unsafe_path", "error": "filesystem.read path must be repo-relative and cannot traverse", "tool": tool, "arguments": arguments, "parsed": parsed}
+        arguments.setdefault("max_bytes", 2000)
+    return {
+        "ok": True,
+        "status": "validated",
+        "tool": tool,
+        "alias_tool": _alias_for_mcp_tool(tool),
+        "arguments": arguments,
+    }
+
+
+def _call_ollama_chat_tool_call(
+    *,
+    request_text: str,
+    model: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    num_predict: int = 120,
+) -> dict[str, Any]:
+    endpoint = host.rstrip("/") + "/api/chat"
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a read-only tool selection engine for Promptbranch. "
+                        "Use exactly one provided tool if the user asks to read a file or inspect git. "
+                        "Do not answer with prose when a tool is appropriate."
+                    ),
+                },
+                {"role": "user", "content": request_text},
+            ],
+            "tools": list(MODEL_FACING_TOOL_SCHEMAS),
+            "stream": False,
+            "options": {"temperature": 0, "num_predict": max(1, min(int(num_predict), 512))},
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    started = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=max(0.5, float(timeout_seconds))) as response:  # noqa: S310
+            raw = response.read(4_000_000)
+    except urllib.error.URLError as exc:
+        return {"ok": False, "status": "unavailable", "error": str(exc), "model": model, "host": host, "source": "ollama_chat_tools_aliases"}
+    except OSError as exc:
+        return {"ok": False, "status": "error", "error": str(exc), "model": model, "host": host, "source": "ollama_chat_tools_aliases"}
+    duration = round(time.monotonic() - started, 3)
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {"ok": False, "status": "invalid_outer_response", "error": str(exc), "model": model, "host": host, "duration_seconds": duration, "source": "ollama_chat_tools_aliases"}
+    message = payload.get("message") if isinstance(payload, dict) else {}
+    calls = message.get("tool_calls") if isinstance(message, dict) else None
+    if not calls:
+        return {"ok": False, "status": "no_tool_calls", "model": model, "host": host, "duration_seconds": duration, "raw": payload, "source": "ollama_chat_tools_aliases"}
+    call = calls[0] if isinstance(calls, list) else None
+    fn = call.get("function", {}) if isinstance(call, dict) else {}
+    parsed = {"tool": fn.get("name"), "arguments": fn.get("arguments") or {}}
+    return {"ok": True, "status": "tool_call", "model": model, "host": host, "duration_seconds": duration, "parsed": parsed, "raw_tool_call": call, "raw": payload, "source": "ollama_chat_tools_aliases"}
+
+
+def _model_schema_prompt_for_request(request: str) -> str:
+    return (
+        "You are a tool-call selector. Return exactly one JSON object. No markdown. No prose.\n\n"
+        "Allowed tool aliases:\n"
+        "- read_file: read a repo-relative file, arguments {\"path\":\"VERSION\",\"max_bytes\":2000}\n"
+        "- git_status: inspect git status, arguments {}\n"
+        "- git_diff_summary: inspect git diff summary, arguments {}\n\n"
+        "Examples:\n"
+        "User: read VERSION\n"
+        "Assistant: {\"tool\":\"read_file\",\"arguments\":{\"path\":\"VERSION\",\"max_bytes\":2000},\"reason\":\"Need to read VERSION file\"}\n\n"
+        "User: git status\n"
+        "Assistant: {\"tool\":\"git_status\",\"arguments\":{},\"reason\":\"Need repository git status\"}\n\n"
+        f"Now classify this user request:\nUser: {request}\nAssistant:"
+    )
+
+
+def ollama_propose_mcp_tool_call(
+    request: str,
+    *,
+    model: str = DEFAULT_OLLAMA_TOOL_MODEL,
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    allow_schema_fallback: bool = True,
+) -> dict[str, Any]:
+    request_risk = classify_agent_request_risk(request)
+    if not request_risk.get("auto_allowed"):
+        return {
+            "ok": False,
+            "action": "agent_ollama_propose",
+            "status": "risk_rejected",
+            "mode": "ollama_proposes_read_only_tool",
+            "request": request,
+            "request_risk": request_risk,
+            "selected": None,
+            "proposals": [],
+            "model_tool_aliases": MODEL_TOOL_ALIAS_TO_MCP,
+        }
+
+    proposals: list[dict[str, Any]] = []
+    chat = _call_ollama_chat_tool_call(
+        request_text=request,
+        model=model,
+        host=ollama_host,
+        timeout_seconds=ollama_timeout_seconds,
+        num_predict=120,
+    )
+    chat_validation = _validate_llm_mcp_tool_call(chat.get("parsed"), original_request=request)
+    chat["validation"] = chat_validation
+    proposals.append(chat)
+    if chat.get("ok") and chat_validation.get("ok"):
+        selected = {**chat_validation, "source": chat.get("source"), "model": model}
+        return {
+            "ok": True,
+            "action": "agent_ollama_propose",
+            "status": "validated",
+            "mode": "ollama_proposes_read_only_tool",
+            "request": request,
+            "request_risk": request_risk,
+            "selected": selected,
+            "proposals": proposals,
+            "model_tool_aliases": MODEL_TOOL_ALIAS_TO_MCP,
+        }
+
+    if allow_schema_fallback:
+        schema = _call_ollama_generate_json(
+            prompt=_model_schema_prompt_for_request(request),
+            model=model,
+            host=ollama_host,
+            timeout_seconds=ollama_timeout_seconds,
+            num_predict=120,
+        )
+        schema["source"] = "ollama_generate_schema_aliases"
+        schema_validation = _validate_llm_mcp_tool_call(schema.get("parsed"), original_request=request)
+        schema["validation"] = schema_validation
+        proposals.append(schema)
+        if schema.get("ok") and schema_validation.get("ok"):
+            selected = {**schema_validation, "source": schema.get("source"), "model": model}
+            return {
+                "ok": True,
+                "action": "agent_ollama_propose",
+                "status": "validated",
+                "mode": "ollama_proposes_read_only_tool",
+                "request": request,
+                "request_risk": request_risk,
+                "selected": selected,
+                "proposals": proposals,
+                "model_tool_aliases": MODEL_TOOL_ALIAS_TO_MCP,
+            }
+
+    return {
+        "ok": False,
+        "action": "agent_ollama_propose",
+        "status": "model_tool_call_invalid",
+        "mode": "ollama_proposes_read_only_tool",
+        "request": request,
+        "request_risk": request_risk,
+        "selected": None,
+        "proposals": proposals,
+        "model_tool_aliases": MODEL_TOOL_ALIAS_TO_MCP,
+    }
 
 
 def mcp_tool_call_via_stdio(
@@ -1287,7 +1634,7 @@ def agent_mcp_llm_smoke(
     *,
     repo_path: str | Path = ".",
     profile_dir: str | Path | None = None,
-    model: str = "llama3.2:3b",
+    model: str = DEFAULT_OLLAMA_TOOL_MODEL,
     ollama_host: str = DEFAULT_OLLAMA_HOST,
     ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
     command: str | None = None,
@@ -1295,47 +1642,39 @@ def agent_mcp_llm_smoke(
 ) -> dict[str, Any]:
     """Diagnostic: let Ollama propose one read-only MCP tool call, then execute it via stdio.
 
-    The local model never receives execution authority. Promptbranch validates the
-    proposed tool against the read-only allowlist before calling the MCP server.
+    The original request is risk-classified before any model proposal can execute.
+    A destructive request that the model reframes as a benign read is rejected.
     """
 
-    prompt = (
-        "You are selecting exactly one read-only MCP tool call for Promptbranch. "
-        "Return only one JSON object with this schema: "
-        "{\"tool\":\"filesystem.read\",\"arguments\":{\"path\":\"VERSION\",\"max_bytes\":2000}}. "
-        "Allowed tools: filesystem.read, git.status, git.diff.summary, filesystem.list, "
-        "promptbranch.state.read, promptbranch.workspace.current, promptbranch.task.current, "
-        "artifact.registry.current, artifact.verify. "
-        "For reading VERSION, use filesystem.read with path VERSION. "
-        f"User request: {request}"
-    )
-    model_result = _call_ollama_generate_json(
-        prompt=prompt,
+    proposal = ollama_propose_mcp_tool_call(
+        request,
         model=model,
-        host=ollama_host,
-        timeout_seconds=ollama_timeout_seconds,
-        num_predict=120,
+        ollama_host=ollama_host,
+        ollama_timeout_seconds=ollama_timeout_seconds,
+        allow_schema_fallback=True,
     )
-    validation = _validate_llm_mcp_tool_call(model_result.get("parsed") if isinstance(model_result, dict) else None)
-    if not model_result.get("ok") or not validation.get("ok"):
+    selected = proposal.get("selected") if isinstance(proposal, dict) else None
+    if not proposal.get("ok") or not isinstance(selected, dict):
         return {
             "ok": False,
             "action": "agent_mcp_llm_smoke",
-            "status": "model_tool_call_invalid",
+            "status": proposal.get("status", "model_tool_call_invalid") if isinstance(proposal, dict) else "model_tool_call_invalid",
             "mode": "ollama_proposes_validated_mcp_stdio",
             "request": request,
-            "ollama": model_result,
-            "validation": validation,
+            "ollama_proposal": proposal,
+            "validation": selected,
             "mcp": None,
             "safety": {
                 "model_has_execution_authority": False,
+                "original_request_risk_checked": True,
                 "promptbranch_validates_read_only_allowlist": True,
                 "write_tools_blocked": True,
             },
         }
+
     mcp_result = mcp_tool_call_via_stdio(
-        str(validation["tool"]),
-        validation.get("arguments") if isinstance(validation.get("arguments"), dict) else {},
+        str(selected["tool"]),
+        selected.get("arguments") if isinstance(selected.get("arguments"), dict) else {},
         repo_path=repo_path,
         profile_dir=profile_dir,
         command=command,
@@ -1347,11 +1686,12 @@ def agent_mcp_llm_smoke(
         "status": "verified" if mcp_result.get("ok") else "mcp_call_failed",
         "mode": "ollama_proposes_validated_mcp_stdio",
         "request": request,
-        "ollama": model_result,
-        "validation": validation,
+        "ollama_proposal": proposal,
+        "validation": selected,
         "mcp": mcp_result,
         "safety": {
             "model_has_execution_authority": False,
+            "original_request_risk_checked": True,
             "promptbranch_validates_read_only_allowlist": True,
             "write_tools_blocked": True,
             "transport": "stdio",

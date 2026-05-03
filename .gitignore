@@ -96,3 +96,12 @@ debug_artifacts/
 
 # chatgpt projects
 promptbranch-project-list.json
+
+
+# temp ignore 
+chatgpt_claudecode_workflow_v0.0.146/
+ollama_mcp_verification_harness.zip
+ollama_mcp_verification_harness/
+ollama_mcp_verification_harness_v2.zip
+ollama_mcp_verification_harness_v2/
+
