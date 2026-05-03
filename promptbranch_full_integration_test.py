@@ -982,7 +982,7 @@ def _task_entry_matches_conversation(item: dict[str, Any], *, conversation_url: 
 
 
 def _task_entry_is_indexed(item: dict[str, Any]) -> bool:
-    return str(item.get("source") or "").strip().lower() in {"snorlax", "dom", "history", "current_page", ""}
+    return str(item.get("source") or "").strip().lower() in {"snorlax", "project_endpoint", "dom", "history", "current_page", ""}
 
 
 def _task_list_visibility_status_for_match(matched: dict[str, Any] | None) -> str:

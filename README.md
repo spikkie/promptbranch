@@ -570,3 +570,10 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 ```
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
+
+## v0.0.147
+
+- Fixed `pb agent mcp-llm-smoke ...` CLI parsing: its `--command` option no longer overwrites the root command parser destination.
+- Treat `project_endpoint` task rows as indexed task-list visibility in the live integration suite.
+- Preserved v0.0.146 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
+

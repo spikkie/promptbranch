@@ -54,7 +54,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.146"
+CLI_VERSION = "0.0.147"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2526,7 +2526,7 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
             model=getattr(args, "model", DEFAULT_OLLAMA_TOOL_MODEL),
             ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
             ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
-            command=getattr(args, "command", None),
+            command=getattr(args, "mcp_executable", None),
             mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
         )
     elif args.agent_command == "models":
@@ -2998,7 +2998,7 @@ def make_parser() -> argparse.ArgumentParser:
     agent_mcp_llm_smoke_parser.add_argument("--model", default=DEFAULT_OLLAMA_TOOL_MODEL, help="Ollama model used to propose the MCP tool call. Defaults to llama3-groq-tool-use:8b.")
     agent_mcp_llm_smoke_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
     agent_mcp_llm_smoke_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for the Ollama proposal call.")
-    agent_mcp_llm_smoke_parser.add_argument("--command", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_mcp_llm_smoke_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
     agent_mcp_llm_smoke_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for the MCP stdio tool call.")
     agent_mcp_llm_smoke_parser.add_argument("--json", action="store_true")
 
