@@ -25,7 +25,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.146"
+MCP_SERVER_VERSION = "0.0.148"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -1125,6 +1125,386 @@ def _call_ollama_generate(
     text = str(payload.get("response") or "") if isinstance(payload, dict) else ""
     return {"ok": bool(text.strip()), "status": "generated" if text.strip() else "empty", "model": model, "host": host, "text": text.strip(), "raw": payload}
 
+
+
+
+BUILTIN_SKILL_DOCS: dict[str, str] = {
+    "repo-inspection": """---
+name: repo-inspection
+description: Inspect repository state using read-only MCP tools.
+risk: read
+allowed_tools:
+  - filesystem.read
+  - git.status
+  - git.diff.summary
+prechecks:
+  - repo_path_exists
+  - tool_read_only
+---
+
+## Procedure
+
+1. Read VERSION if present.
+2. Run git.status.
+3. If dirty, run git.diff.summary.
+4. Report version, branch, short SHA, dirty state, and risk.
+5. Never execute write tools.
+""",
+}
+
+SKILL_SEARCH_DIR_NAMES: tuple[str, ...] = (".promptbranch/skills", "skills")
+
+
+def _parse_skill_frontmatter(text: str) -> tuple[dict[str, Any], str, list[str]]:
+    errors: list[str] = []
+    stripped = text.lstrip()
+    if not stripped.startswith("---"):
+        return {}, text, ["missing_frontmatter"]
+    parts = stripped.split("---", 2)
+    if len(parts) < 3:
+        return {}, text, ["unterminated_frontmatter"]
+    raw = parts[1]
+    body = parts[2].lstrip("\n")
+    data: dict[str, Any] = {}
+    current_key: str | None = None
+    for raw_line in raw.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - ") and current_key:
+            data.setdefault(current_key, [])
+            if isinstance(data[current_key], list):
+                data[current_key].append(line[4:].strip())
+            else:
+                errors.append(f"frontmatter_key_not_list:{current_key}")
+            continue
+        if ":" not in line:
+            errors.append(f"invalid_frontmatter_line:{line.strip()}")
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        current_key = key
+        if value == "":
+            data[key] = []
+        else:
+            if value.lower() in {"true", "false"}:
+                data[key] = value.lower() == "true"
+            else:
+                data[key] = value
+    return data, body, errors
+
+
+def _skill_dirs(repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> list[Path]:
+    root = Path(repo_path).expanduser().resolve()
+    dirs = [(root / name).resolve() for name in SKILL_SEARCH_DIR_NAMES]
+    if profile_dir:
+        dirs.append((Path(profile_dir).expanduser().resolve() / "skills").resolve())
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    dirs.append((config_home / "promptbranch" / "skills").resolve())
+    return dirs
+
+
+def _find_skill_path(name_or_path: str, *, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> Path | None:
+    raw = str(name_or_path or "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if path.exists():
+        if path.is_dir():
+            return path / "SKILL.md"
+        return path
+    root = Path(repo_path).expanduser().resolve()
+    candidate = (root / raw).resolve()
+    if candidate.exists():
+        if candidate.is_dir():
+            return candidate / "SKILL.md"
+        return candidate
+    for directory in _skill_dirs(root, profile_dir):
+        candidate = directory / raw / "SKILL.md"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _read_skill_document(name_or_path: str, *, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> tuple[str | None, str | None, str | None]:
+    raw = str(name_or_path or "").strip()
+    path = _find_skill_path(raw, repo_path=repo_path, profile_dir=profile_dir)
+    if path and path.exists():
+        try:
+            return path.read_text(encoding="utf-8"), str(path), None
+        except OSError as exc:
+            return None, str(path), str(exc)
+    if raw in BUILTIN_SKILL_DOCS:
+        return BUILTIN_SKILL_DOCS[raw], f"builtin:{raw}", None
+    return None, None, "skill_not_found"
+
+
+def _all_read_only_tool_names() -> set[str]:
+    return {spec.name for spec in READ_ONLY_MCP_TOOLS}
+
+
+def validate_skill_document(text: str, *, source: str = "inline") -> dict[str, Any]:
+    frontmatter, body, parse_errors = _parse_skill_frontmatter(text)
+    errors: list[str] = list(parse_errors)
+    name = frontmatter.get("name")
+    risk = str(frontmatter.get("risk") or "").strip() or "read"
+    allowed_tools = frontmatter.get("allowed_tools")
+    prechecks = frontmatter.get("prechecks")
+    if not isinstance(name, str) or not name.strip():
+        errors.append("missing_name")
+    if risk not in {ToolRisk.READ.value, ToolRisk.EXTERNAL_PROCESS.value, ToolRisk.WRITE.value, ToolRisk.DESTRUCTIVE.value}:
+        errors.append(f"invalid_risk:{risk}")
+    if not isinstance(allowed_tools, list) or not allowed_tools:
+        errors.append("missing_allowed_tools")
+        allowed_tool_values: list[str] = []
+    else:
+        allowed_tool_values = [str(item).strip() for item in allowed_tools if str(item).strip()]
+    read_only = _all_read_only_tool_names()
+    unknown_tools = [tool for tool in allowed_tool_values if tool not in read_only and tool not in {spec.name for spec in CONTROLLED_WRITE_MCP_TOOLS}]
+    write_tools = [tool for tool in allowed_tool_values if tool in {spec.name for spec in CONTROLLED_WRITE_MCP_TOOLS}]
+    if unknown_tools:
+        errors.append("unknown_tools")
+    if risk == ToolRisk.READ.value and write_tools:
+        errors.append("write_tools_not_allowed_for_read_skill")
+    if prechecks is not None and not isinstance(prechecks, list):
+        errors.append("prechecks_must_be_list")
+    return {
+        "ok": not errors,
+        "action": "skill_validate",
+        "status": "valid" if not errors else "invalid",
+        "source": source,
+        "skill": {
+            "name": name,
+            "description": frontmatter.get("description"),
+            "risk": risk,
+            "allowed_tools": allowed_tool_values,
+            "prechecks": prechecks if isinstance(prechecks, list) else [],
+            "body_length": len(body),
+        },
+        "errors": errors,
+        "unknown_tools": unknown_tools,
+        "write_tools": write_tools,
+        "frontmatter": frontmatter,
+    }
+
+
+def skill_validate(name_or_path: str, *, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> dict[str, Any]:
+    text, source, error = _read_skill_document(name_or_path, repo_path=repo_path, profile_dir=profile_dir)
+    if text is None:
+        return {"ok": False, "action": "skill_validate", "status": "not_found", "requested": name_or_path, "source": source, "error": error}
+    payload = validate_skill_document(text, source=source or str(name_or_path))
+    payload["requested"] = name_or_path
+    return payload
+
+
+def skill_show(name_or_path: str, *, repo_path: str | Path = ".", profile_dir: str | Path | None = None, include_content: bool = True) -> dict[str, Any]:
+    text, source, error = _read_skill_document(name_or_path, repo_path=repo_path, profile_dir=profile_dir)
+    if text is None:
+        return {"ok": False, "action": "skill_show", "status": "not_found", "requested": name_or_path, "source": source, "error": error}
+    validation = validate_skill_document(text, source=source or str(name_or_path))
+    payload = {"ok": validation.get("ok"), "action": "skill_show", "status": validation.get("status"), "requested": name_or_path, "source": source, "validation": validation}
+    if include_content:
+        payload["content"] = text
+    return payload
+
+
+def skill_list(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> dict[str, Any]:
+    skills: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for name, text in BUILTIN_SKILL_DOCS.items():
+        validation = validate_skill_document(text, source=f"builtin:{name}")
+        skill = validation.get("skill") if isinstance(validation.get("skill"), dict) else {}
+        skills.append({"name": name, "source": f"builtin:{name}", "builtin": True, "ok": bool(validation.get("ok")), "description": skill.get("description"), "risk": skill.get("risk"), "allowed_tools": skill.get("allowed_tools")})
+        seen.add(name)
+    for directory in _skill_dirs(repo_path, profile_dir):
+        if not directory.exists() or not directory.is_dir():
+            continue
+        for skill_file in sorted(directory.glob("*/SKILL.md")):
+            name = skill_file.parent.name
+            if name in seen:
+                continue
+            try:
+                text = skill_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            validation = validate_skill_document(text, source=str(skill_file))
+            skill = validation.get("skill") if isinstance(validation.get("skill"), dict) else {}
+            skills.append({"name": name, "source": str(skill_file), "builtin": False, "ok": bool(validation.get("ok")), "description": skill.get("description"), "risk": skill.get("risk"), "allowed_tools": skill.get("allowed_tools")})
+            seen.add(name)
+    return {"ok": True, "action": "skill_list", "count": len(skills), "skills": skills}
+
+
+def _plan_tool_calls_for_skill(skill_name: str, request: str, *, repo_path: str | Path = ".") -> tuple[list[dict[str, Any]], list[str]]:
+    normalized_name = str(skill_name or "").strip()
+    notes: list[str] = []
+    if normalized_name != "repo-inspection":
+        notes.append("unknown_skill_plan_defaulted_to_read_only_request_classifier")
+        return [dict(item) for item in _read_only_tool_specs_for_request(request)], notes
+    root = Path(repo_path).expanduser().resolve()
+    calls: list[dict[str, Any]] = []
+    if (root / "VERSION").is_file():
+        calls.append({"name": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}})
+    else:
+        notes.append("VERSION file not present; skipped filesystem.read VERSION")
+    calls.append({"name": "git.status", "arguments": {}})
+    # git.diff.summary is included; callers can inspect empty diff output. This keeps the skill deterministic
+    # and avoids hidden branching on a pre-read git result.
+    calls.append({"name": "git.diff.summary", "arguments": {}})
+    return calls, notes
+
+
+def agent_run(
+    request: str,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    skill: str | None = None,
+    model: str | None = None,
+    proposal_mode: str = "deterministic",
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    command: str | None = None,
+    mcp_timeout_seconds: float = 8.0,
+) -> dict[str, Any]:
+    """Canonical Promptbranch-native host command.
+
+    This intentionally exercises the real MCP stdio boundary for tool execution.
+    Deterministic and skill-guided planning are read-only. Ollama proposal mode may
+    propose one tool only and still passes through the same request-risk gate.
+    """
+
+    request_risk = classify_agent_request_risk(request)
+    if not request_risk.get("auto_allowed"):
+        return {
+            "ok": False,
+            "action": "agent_run",
+            "status": "risk_rejected",
+            "mode": "promptbranch_native_host",
+            "request": request,
+            "request_risk": request_risk,
+            "skill": skill,
+            "proposal_mode": proposal_mode,
+            "plan": [],
+            "results": [],
+            "safety": {"original_request_risk_checked": True, "mcp_transport": "stdio", "write_tools_blocked": True},
+        }
+
+    notes: list[str] = []
+    validation: dict[str, Any] | None = None
+    plan: list[dict[str, Any]] = []
+    proposal: dict[str, Any] | None = None
+    planner = "rule_based_v1"
+
+    if skill:
+        validation = skill_validate(skill, repo_path=repo_path, profile_dir=profile_dir)
+        if not validation.get("ok"):
+            return {
+                "ok": False,
+                "action": "agent_run",
+                "status": "skill_invalid",
+                "mode": "promptbranch_native_host",
+                "request": request,
+                "request_risk": request_risk,
+                "skill": skill,
+                "skill_validation": validation,
+                "plan": [],
+                "results": [],
+            }
+        skill_info = validation.get("skill") if isinstance(validation.get("skill"), dict) else {}
+        allowed = set(skill_info.get("allowed_tools") or [])
+        plan, skill_notes = _plan_tool_calls_for_skill(str(skill_info.get("name") or skill), request, repo_path=repo_path)
+        notes.extend(skill_notes)
+        disallowed = [item.get("name") for item in plan if item.get("name") not in allowed]
+        if disallowed:
+            return {
+                "ok": False,
+                "action": "agent_run",
+                "status": "skill_plan_disallowed_tool",
+                "mode": "promptbranch_native_host",
+                "request": request,
+                "request_risk": request_risk,
+                "skill": skill,
+                "skill_validation": validation,
+                "disallowed_tools": disallowed,
+                "plan": plan,
+                "results": [],
+            }
+        planner = f"skill:{skill_info.get('name') or skill}"
+    elif proposal_mode == "ollama" or model:
+        selected_model = model or DEFAULT_OLLAMA_TOOL_MODEL
+        proposal = ollama_propose_mcp_tool_call(
+            request,
+            model=selected_model,
+            ollama_host=ollama_host,
+            ollama_timeout_seconds=ollama_timeout_seconds,
+            allow_schema_fallback=True,
+        )
+        selected = proposal.get("selected") if isinstance(proposal, dict) else None
+        if not proposal.get("ok") or not isinstance(selected, dict):
+            return {
+                "ok": False,
+                "action": "agent_run",
+                "status": proposal.get("status", "model_tool_call_invalid") if isinstance(proposal, dict) else "model_tool_call_invalid",
+                "mode": "promptbranch_native_host",
+                "request": request,
+                "request_risk": request_risk,
+                "proposal_mode": "ollama",
+                "ollama_proposal": proposal,
+                "plan": [],
+                "results": [],
+            }
+        plan = [{"name": str(selected.get("tool") or ""), "arguments": selected.get("arguments") if isinstance(selected.get("arguments"), dict) else {}}]
+        planner = "ollama_proposal_validated"
+    else:
+        plan = [dict(item) for item in _read_only_tool_specs_for_request(request)]
+
+    read_only = _all_read_only_tool_names()
+    blocked = [item.get("name") for item in plan if item.get("name") not in read_only]
+    if blocked:
+        return {
+            "ok": False,
+            "action": "agent_run",
+            "status": "plan_contains_non_read_only_tool",
+            "mode": "promptbranch_native_host",
+            "request": request,
+            "request_risk": request_risk,
+            "skill": skill,
+            "planner": planner,
+            "blocked_tools": blocked,
+            "plan": plan,
+            "results": [],
+        }
+
+    results: list[dict[str, Any]] = []
+    for item in plan:
+        result = mcp_tool_call_via_stdio(
+            str(item.get("name") or ""),
+            item.get("arguments") if isinstance(item.get("arguments"), dict) else {},
+            repo_path=repo_path,
+            profile_dir=profile_dir,
+            command=command,
+            timeout_seconds=mcp_timeout_seconds,
+        )
+        results.append(result)
+    ok = all(bool(item.get("ok")) for item in results)
+    return {
+        "ok": ok,
+        "action": "agent_run",
+        "status": "verified" if ok else "tool_call_failed",
+        "mode": "promptbranch_native_host",
+        "planner": planner,
+        "request": request,
+        "request_risk": request_risk,
+        "proposal_mode": "ollama" if proposal is not None else "deterministic",
+        "skill": skill,
+        "skill_validation": validation,
+        "ollama_proposal": proposal,
+        "plan": plan,
+        "results": results,
+        "notes": notes,
+        "safety": {"original_request_risk_checked": True, "mcp_transport": "stdio", "write_tools_blocked": True, "model_has_execution_authority": False},
+    }
 
 def _read_only_tool_specs_for_request(request: str) -> tuple[dict[str, Any], ...]:
     """Map simple operator requests to read-only MCP calls deterministically."""

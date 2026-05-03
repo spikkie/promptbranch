@@ -330,3 +330,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Treat `project_endpoint` task rows as indexed task-list visibility in the live integration suite.
 - Preserved v0.0.146 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
 
+
+
+## v0.0.148
+
+- Added `pb agent run` as the canonical Promptbranch-native local host/client command. It executes read-only plans through the actual `pb mcp serve` stdio boundary.
+- Added `pb agent host-smoke` and `pb agent mcp-call` aliases for host/client verification and direct MCP stdio tool calls.
+- Added local skill registry commands: `pb skill list`, `pb skill show`, and `pb skill validate`.
+- Added built-in/local `repo-inspection` skill with read-only `filesystem.read`, `git.status`, and `git.diff.summary` tools.
+- Kept write, destructive, source-sync, and artifact-release execution blocked from the agent path.

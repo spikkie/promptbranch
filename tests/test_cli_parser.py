@@ -337,3 +337,28 @@ def test_parser_accepts_ask_prompt_file_and_repeatable_attachments() -> None:
     assert args.prompt == "review"
     assert args.prompt_file == "prompt.md"
     assert args.attachments == ["one.log", "two.txt"]
+
+
+def test_parser_accepts_agent_run_host_smoke_and_mcp_call() -> None:
+    parser = make_parser()
+    run_args = parser.parse_args(["agent", "run", "read VERSION", "--path", ".", "--skill", "repo-inspection", "--json"])
+    host_args = parser.parse_args(["agent", "host-smoke", "--path", ".", "--json"])
+    call_args = parser.parse_args(["agent", "mcp-call", "filesystem.read", '{"path":"VERSION"}', "--path", ".", "--json"])
+    assert run_args.command == "agent"
+    assert run_args.agent_command == "run"
+    assert run_args.skill == "repo-inspection"
+    assert host_args.agent_command == "host-smoke"
+    assert call_args.agent_command == "mcp-call"
+    assert call_args.tool == "filesystem.read"
+
+
+def test_parser_accepts_skill_commands() -> None:
+    parser = make_parser()
+    list_args = parser.parse_args(["skill", "list", "--json"])
+    show_args = parser.parse_args(["skill", "show", "repo-inspection", "--no-content", "--json"])
+    validate_args = parser.parse_args(["skill", "validate", ".promptbranch/skills/repo-inspection", "--json"])
+    assert list_args.command == "skill"
+    assert list_args.skill_command == "list"
+    assert show_args.skill == "repo-inspection"
+    assert show_args.no_content is True
+    assert validate_args.skill_command == "validate"

@@ -40,3 +40,6 @@ profile/
 
 # debug files
 debug_artifacts/
+
+# Extracted release folders should never be repackaged
+chatgpt_claudecode_workflow_v*/
