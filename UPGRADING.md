@@ -116,6 +116,12 @@ These names are no longer packaged in v0.0.68+:
 
 If you still depend on them, pin to `v0.0.67` temporarily and migrate before adopting `v0.0.68+`.
 
+## v0.0.144
+
+- Hardened `pb ask` response completion detection so an interim assistant progress/thought message is not treated as the final answer.
+- Completion now requires the answer content to be stable, no stop/thinking indicator to be visible, and the composer to be idle again.
+- This specifically prevents the browser session from closing when ChatGPT emits a short first assistant thought/update while the final response is still pending.
+
 ## v0.0.143
 
 - `pb mcp config` now resolves the MCP executable to an absolute path by default when possible, avoiding GUI-host PATH/alias failures.

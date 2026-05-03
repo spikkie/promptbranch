@@ -25,7 +25,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.143"
+MCP_SERVER_VERSION = "0.0.144"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -376,7 +376,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.143 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.144 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload

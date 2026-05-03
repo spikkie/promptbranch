@@ -7795,11 +7795,14 @@ class ChatGPTBrowserClient:
         content_present: bool,
         stop_visible: bool,
         thinking_visible: bool,
+        composer_idle_visible: bool,
         observed_running_state: bool,
         observed_idle_after_running: bool,
     ) -> bool:
         ui_idle = not stop_visible and not thinking_visible
         if not ui_idle:
+            return False
+        if not composer_idle_visible:
             return False
         if observed_running_state and observed_idle_after_running:
             return True
@@ -8239,6 +8242,7 @@ class ChatGPTBrowserClient:
                     content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
+                    composer_idle_visible=bool(submit_state.get("idle_visible") or submit_state.get("send_ready")),
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
@@ -8419,6 +8423,7 @@ class ChatGPTBrowserClient:
                     content_present=bool(text_length),
                     stop_visible=bool(submit_state.get("stop_visible")),
                     thinking_visible=bool(thinking_state.get("visible")),
+                    composer_idle_visible=bool(submit_state.get("idle_visible") or submit_state.get("send_ready")),
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
