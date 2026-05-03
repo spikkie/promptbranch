@@ -32,7 +32,7 @@ def test_mcp_manifest_can_include_controlled_writes() -> None:
     assert payload["mode"] == "read_only_plus_controlled_writes"
     tools = {tool["name"]: tool for tool in payload["tools"]}
     assert tools["promptbranch.src.sync"]["risk"] == "write"
-    assert tools["test.smoke.run"]["risk"] == "external_process"
+    assert tools["test.smoke"]["risk"] == "external_process"
 
 
 def test_agent_inspect_is_read_only_and_reports_repo_state(tmp_path: Path) -> None:
@@ -85,7 +85,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.146"
+    assert init["result"]["serverInfo"]["version"] == "0.0.149"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -484,3 +484,50 @@ def test_agent_run_skill_repo_inspection_enforces_skill_allowed_tools(monkeypatc
     assert payload["ok"] is True
     assert payload["planner"] == "skill:repo-inspection"
     assert [item[0] for item in calls] == ["filesystem.read", "git.status", "git.diff.summary"]
+
+
+def test_agent_risk_classifier_allows_controlled_smoke_only() -> None:
+    from promptbranch_mcp import classify_agent_request_risk
+
+    smoke = classify_agent_request_risk("run smoke tests")
+    assert smoke["risk"] == "external_process"
+    assert smoke["auto_allowed"] is True
+    assert smoke["controlled_tool"] == "test.smoke"
+
+    pytest_req = classify_agent_request_risk("run pytest")
+    assert pytest_req["risk"] == "external_process"
+    assert pytest_req["auto_allowed"] is False
+
+
+def test_agent_run_wires_controlled_smoke_tool(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_mcp
+
+    calls = []
+
+    def fake_mcp(tool, arguments=None, **kwargs):
+        calls.append((tool, arguments or {}, kwargs))
+        return {"ok": True, "status": "verified", "tool": tool, "arguments": arguments or {}}
+
+    monkeypatch.setattr(promptbranch_mcp, "mcp_tool_call_via_stdio", fake_mcp)
+    payload = promptbranch_mcp.agent_run("run smoke tests", repo_path=tmp_path, command="/tmp/promptbranch", mcp_timeout_seconds=9)
+
+    assert payload["ok"] is True
+    assert payload["planner"] == "controlled_process_v1"
+    assert payload["request_risk"]["controlled_tool"] == "test.smoke"
+    assert [item[0] for item in calls] == ["test.smoke"]
+    assert calls[0][1]["timeout_seconds"] == 60.0
+    assert calls[0][1]["command"] == "/tmp/promptbranch"
+
+
+def test_agent_tool_call_allows_controlled_test_smoke(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_mcp
+
+    def fake_controlled(tool, arguments=None, **kwargs):
+        return {"ok": True, "tool": tool, "status": "verified", "arguments": arguments or {}}
+
+    monkeypatch.setattr(promptbranch_mcp, "call_controlled_process_mcp_tool", fake_controlled)
+    payload = promptbranch_mcp.agent_tool_call("test.smoke", {"timeout_seconds": 5}, repo_path=tmp_path)
+
+    assert payload["ok"] is True
+    assert payload["tool"] == "test.smoke"
+    assert payload["result"]["status"] == "verified"

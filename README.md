@@ -1,4 +1,4 @@
-# promptbranch v0.0.148
+# promptbranch v0.0.149
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.148 .
+docker build -t promptbranch-service:0.0.149 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.148
+  promptbranch-service:0.0.149
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.148.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.149.zip
 ```
 
 From an extracted checkout:
@@ -575,14 +575,25 @@ This command is intentionally not autonomous. The model proposes; Promptbranch v
 
 - Fixed `pb agent mcp-llm-smoke ...` CLI parsing: its `--command` option no longer overwrites the root command parser destination.
 - Treat `project_endpoint` task rows as indexed task-list visibility in the live integration suite.
-- Preserved v0.0.148 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
+- Preserved v0.0.149 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
 
 
 
-## v0.0.148
+## v0.0.149
 
 - Added `pb agent run` as the canonical Promptbranch-native local host/client command. It executes read-only plans through the actual `pb mcp serve` stdio boundary.
 - Added `pb agent host-smoke` and `pb agent mcp-call` aliases for host/client verification and direct MCP stdio tool calls.
 - Added local skill registry commands: `pb skill list`, `pb skill show`, and `pb skill validate`.
 - Added built-in/local `repo-inspection` skill with read-only `filesystem.read`, `git.status`, and `git.diff.summary` tools.
 - Kept write, destructive, source-sync, and artifact-release execution blocked from the agent path.
+
+## v0.0.149 controlled smoke process tool
+
+`pb agent run "run smoke tests" --path . --json` executes the bounded `test.smoke` tool through the MCP stdio path. The tool uses a fixed Promptbranch smoke command, captures stdout/stderr/exit code, enforces a timeout, and does not allow arbitrary shell commands.
+
+Direct calls:
+
+```bash
+pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
+pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
+```

@@ -332,10 +332,17 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.148
+## v0.0.149
 
 - Added `pb agent run` as the canonical Promptbranch-native local host/client command. It executes read-only plans through the actual `pb mcp serve` stdio boundary.
 - Added `pb agent host-smoke` and `pb agent mcp-call` aliases for host/client verification and direct MCP stdio tool calls.
 - Added local skill registry commands: `pb skill list`, `pb skill show`, and `pb skill validate`.
 - Added built-in/local `repo-inspection` skill with read-only `filesystem.read`, `git.status`, and `git.diff.summary` tools.
 - Kept write, destructive, source-sync, and artifact-release execution blocked from the agent path.
+
+## v0.0.149
+
+- Added controlled `test.smoke` MCP process tool.
+- `pb agent run "run smoke tests" --path . --json` now plans `test.smoke` through the Promptbranch-native MCP stdio boundary.
+- `test.smoke` runs only fixed local Promptbranch smoke selectors by default (`mcp_smoke`, `mcp_host_smoke`) with hard timeout, stdout/stderr capture, exit code capture, and parsed JSON when available.
+- Destructive/write/source/artifact tools remain blocked.

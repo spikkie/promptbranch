@@ -25,7 +25,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.148"
+MCP_SERVER_VERSION = "0.0.149"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -141,8 +141,8 @@ READ_ONLY_MCP_TOOLS: tuple[McpToolSpec, ...] = (
 
 CONTROLLED_WRITE_MCP_TOOLS: tuple[McpToolSpec, ...] = (
     McpToolSpec(
-        name="test.smoke.run",
-        description="Run Promptbranch smoke tests through the deterministic executor.",
+        name="test.smoke",
+        description="Run bounded Promptbranch local smoke checks through the deterministic process executor.",
         risk=ToolRisk.EXTERNAL_PROCESS,
         read_only=False,
         requires_confirmation=False,
@@ -168,6 +168,17 @@ CONTROLLED_WRITE_MCP_TOOLS: tuple[McpToolSpec, ...] = (
         command_hint=("pb", "src", "sync", ".", "--json"),
     ),
 )
+
+CONTROLLED_PROCESS_TOOL_ALIASES: dict[str, str] = {
+    "test.smoke": "test.smoke",
+    "test.smoke.run": "test.smoke",
+}
+
+def _controlled_process_tool_names() -> set[str]:
+    return set(CONTROLLED_PROCESS_TOOL_ALIASES) | {"test.smoke"}
+
+def _normalize_mcp_tool_name(name: str) -> str:
+    return CONTROLLED_PROCESS_TOOL_ALIASES.get(str(name or "").strip(), str(name or "").strip())
 
 
 @dataclass(frozen=True)
@@ -301,7 +312,7 @@ def mcp_host_config(
     install_notes = [
         "Add config.mcpServers.promptbranch to your MCP host configuration.",
         "Use an executable command path; shell aliases usually do not work in GUI-launched MCP hosts.",
-        "The server is read-only by default; controlled write tools are listed only when requested and are not executable yet.",
+        "The server is read-only by default; the bounded test.smoke process tool is executable only when controlled tools are explicitly requested; write/source/artifact tools remain blocked.",
     ]
     warning = command_resolution.get("warning")
     if warning:
@@ -346,6 +357,170 @@ def _run_read_only_command(args: list[str], *, cwd: Path, timeout: float = 3.0) 
         "stderr": completed.stderr.strip(),
     }
 
+
+
+def _parse_last_json_object(text: str) -> dict[str, Any] | None:
+    stripped = str(text or "").strip()
+    if not stripped:
+        return None
+    try:
+        parsed = json.loads(stripped)
+        return parsed if isinstance(parsed, dict) else {"value": parsed}
+    except json.JSONDecodeError:
+        pass
+    # CLI wrappers may add banner/log lines before JSON. Scan from the end for a JSON object.
+    lines = [line for line in stripped.splitlines() if line.strip()]
+    for index in range(len(lines)):
+        candidate = "\n".join(lines[index:]).strip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        return parsed if isinstance(parsed, dict) else {"value": parsed}
+    return None
+
+
+def _normalize_only_selectors(value: Any) -> list[str]:
+    allowed = {"mcp_smoke", "mcp_host_smoke"}
+    if value is None:
+        return ["mcp_smoke", "mcp_host_smoke"]
+    if isinstance(value, str):
+        raw = [item.strip() for item in value.replace(",", " ").split() if item.strip()]
+    elif isinstance(value, list):
+        raw = []
+        for item in value:
+            raw.extend(str(item).replace(",", " ").split())
+        raw = [item.strip() for item in raw if item.strip()]
+    else:
+        return ["mcp_smoke", "mcp_host_smoke"]
+    normalized = []
+    for item in raw:
+        if item in allowed and item not in normalized:
+            normalized.append(item)
+    return normalized or ["mcp_smoke", "mcp_host_smoke"]
+
+
+def _run_test_smoke_tool(
+    args: dict[str, Any] | None,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run a bounded, non-arbitrary Promptbranch smoke subset.
+
+    This deliberately does not accept shell text. The command is fixed to
+    Promptbranch's local MCP smoke selectors so the first controlled process
+    tool does not mutate ChatGPT projects or sources.
+    """
+
+    arguments = args or {}
+    root = Path(repo_path).expanduser().resolve()
+    timeout_seconds = float(arguments.get("timeout_seconds") or 60.0)
+    timeout_seconds = max(5.0, min(timeout_seconds, 300.0))
+    only = _normalize_only_selectors(arguments.get("only"))
+    command_resolution = resolve_mcp_executable(str(arguments.get("command") or "promptbranch"))
+    executable = str(command_resolution.get("command") or "promptbranch")
+    argv = [executable]
+    if profile_dir:
+        argv.extend(["--profile-dir", str(Path(profile_dir).expanduser().resolve())])
+    argv.extend(["test", "smoke", "--json"])
+    for selector in only:
+        argv.extend(["--only", selector])
+
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=str(root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        timed_out = False
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "tool": "test.smoke",
+            "status": "timeout",
+            "risk": ToolRisk.EXTERNAL_PROCESS.value,
+            "repo_path": str(root),
+            "argv": argv,
+            "timeout_seconds": timeout_seconds,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "exit_code": None,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "parsed_json": None,
+            "safety": {
+                "arbitrary_shell_allowed": False,
+                "fixed_command": True,
+                "selectors": only,
+                "source_or_artifact_mutation_allowed": False,
+            },
+        }
+    except FileNotFoundError as exc:
+        return {
+            "ok": False,
+            "tool": "test.smoke",
+            "status": "command_not_found",
+            "risk": ToolRisk.EXTERNAL_PROCESS.value,
+            "repo_path": str(root),
+            "argv": argv,
+            "timeout_seconds": timeout_seconds,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "parsed_json": None,
+            "command_resolution": command_resolution,
+            "safety": {
+                "arbitrary_shell_allowed": False,
+                "fixed_command": True,
+                "selectors": only,
+                "source_or_artifact_mutation_allowed": False,
+            },
+        }
+
+    duration = round(time.monotonic() - started, 3)
+    parsed = _parse_last_json_object(completed.stdout)
+    return {
+        "ok": completed.returncode == 0,
+        "tool": "test.smoke",
+        "status": "verified" if completed.returncode == 0 else "failed",
+        "risk": ToolRisk.EXTERNAL_PROCESS.value,
+        "repo_path": str(root),
+        "argv": argv,
+        "timeout_seconds": timeout_seconds,
+        "duration_seconds": duration,
+        "exit_code": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "parsed_json": parsed,
+        "command_resolution": command_resolution,
+        "safety": {
+            "arbitrary_shell_allowed": False,
+            "fixed_command": True,
+            "selectors": only,
+            "source_or_artifact_mutation_allowed": False,
+        },
+    }
+
+
+def call_controlled_process_mcp_tool(
+    name: str,
+    args: dict[str, Any] | None,
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    normalized = _normalize_mcp_tool_name(name)
+    if normalized == "test.smoke":
+        return _run_test_smoke_tool(args or {}, repo_path=repo_path, profile_dir=profile_dir)
+    return {"ok": False, "tool": name, "error": "unsupported_controlled_process_tool", "normalized_tool": normalized}
 
 def _git_snapshot(repo_path: Path) -> dict[str, Any]:
     status = _run_read_only_command(["git", "status", "--short", "--branch"], cwd=repo_path)
@@ -420,7 +595,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.146 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.149 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -464,6 +639,21 @@ def _tool_input_schema(tool_name: str) -> dict[str, Any]:
                 "max_bytes": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "Maximum UTF-8 bytes to return."},
             },
             "required": ["path"],
+            "additionalProperties": False,
+        }
+    if _normalize_mcp_tool_name(tool_name) == "test.smoke":
+        return {
+            "type": "object",
+            "properties": {
+                "timeout_seconds": {"type": "number", "minimum": 5, "maximum": 300, "description": "Hard timeout for the fixed smoke command."},
+                "only": {
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {"type": "string"}},
+                    ],
+                    "description": "Optional local smoke selectors. Allowed: mcp_smoke, mcp_host_smoke.",
+                },
+            },
             "additionalProperties": False,
         }
     if tool_name == "artifact.verify":
@@ -664,7 +854,7 @@ def handle_mcp_jsonrpc_message(
                 "protocolVersion": str(params.get("protocolVersion") or MCP_PROTOCOL_VERSION),
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": "promptbranch", "version": MCP_SERVER_VERSION},
-                "instructions": "Promptbranch MCP exposes read-only repo/git/state/artifact tools by default. Write tools are policy-gated and not executable from this server yet.",
+                "instructions": "Promptbranch MCP exposes read-only repo/git/state/artifact tools by default. The bounded test.smoke process tool is available only when controlled tools are explicitly requested; write/source/artifact tools remain blocked.",
             },
         )
 
@@ -676,12 +866,17 @@ def handle_mcp_jsonrpc_message(
 
     if method == "tools/call":
         name = str(params.get("name") or "")
+        normalized_name = _normalize_mcp_tool_name(name)
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         manifest_tools = mcp_tool_manifest(include_controlled_writes=include_controlled_writes).get("tools", [])
-        tool_meta = next((tool for tool in manifest_tools if isinstance(tool, dict) and tool.get("name") == name), None)
+        tool_meta = next((tool for tool in manifest_tools if isinstance(tool, dict) and tool.get("name") in {name, normalized_name}), None)
         if tool_meta is None:
             return _jsonrpc_result(message_id, _mcp_content({"ok": False, "error": "unknown_tool", "tool": name}, is_error=True))
         if not bool(tool_meta.get("read_only")):
+            normalized_name = _normalize_mcp_tool_name(name)
+            if include_controlled_writes and normalized_name in _controlled_process_tool_names():
+                payload = call_controlled_process_mcp_tool(normalized_name, arguments, repo_path=repo_path, profile_dir=profile_dir)
+                return _jsonrpc_result(message_id, _mcp_content(payload, is_error=not bool(payload.get("ok"))))
             return _jsonrpc_result(
                 message_id,
                 _mcp_content(
@@ -934,12 +1129,20 @@ def classify_agent_request_risk(request: str) -> dict[str, Any]:
         " make zip ",
         " rename ",
     )
-    process_terms = (
-        " run test ",
-        " run tests ",
+    controlled_process_terms = (
+        " run smoke test ",
+        " run smoke tests ",
         " smoke test ",
-        " test suite ",
+        " smoke tests ",
+        " test smoke ",
+        " mcp smoke ",
+    )
+    blocked_process_terms = (
         " pytest ",
+        " run test suite ",
+        " test suite ",
+        " run command ",
+        " shell ",
     )
 
     matched = [term.strip() for term in destructive_terms if term in text]
@@ -958,7 +1161,16 @@ def classify_agent_request_risk(request: str) -> dict[str, Any]:
             "status": "blocked_original_request_write",
             "matched_terms": matched,
         }
-    matched = [term.strip() for term in process_terms if term in text]
+    matched = [term.strip() for term in controlled_process_terms if term in text]
+    if matched:
+        return {
+            "risk": ToolRisk.EXTERNAL_PROCESS.value,
+            "auto_allowed": True,
+            "status": "controlled_process_allowed",
+            "matched_terms": matched,
+            "controlled_tool": "test.smoke",
+        }
+    matched = [term.strip() for term in blocked_process_terms if term in text]
     if matched:
         return {
             "risk": ToolRisk.EXTERNAL_PROCESS.value,
@@ -1457,10 +1669,20 @@ def agent_run(
         plan = [{"name": str(selected.get("tool") or ""), "arguments": selected.get("arguments") if isinstance(selected.get("arguments"), dict) else {}}]
         planner = "ollama_proposal_validated"
     else:
-        plan = [dict(item) for item in _read_only_tool_specs_for_request(request)]
+        if request_risk.get("risk") == ToolRisk.EXTERNAL_PROCESS.value and request_risk.get("controlled_tool") == "test.smoke":
+            process_args: dict[str, Any] = {"timeout_seconds": max(float(mcp_timeout_seconds), 60.0)}
+            if command:
+                process_args["command"] = command
+            plan = [{"name": "test.smoke", "arguments": process_args}]
+            planner = "controlled_process_v1"
+        else:
+            plan = [dict(item) for item in _read_only_tool_specs_for_request(request)]
 
     read_only = _all_read_only_tool_names()
-    blocked = [item.get("name") for item in plan if item.get("name") not in read_only]
+    allowed_tools = set(read_only)
+    if request_risk.get("risk") == ToolRisk.EXTERNAL_PROCESS.value and request_risk.get("controlled_tool") == "test.smoke":
+        allowed_tools.update(_controlled_process_tool_names())
+    blocked = [item.get("name") for item in plan if _normalize_mcp_tool_name(str(item.get("name") or "")) not in allowed_tools]
     if blocked:
         return {
             "ok": False,
@@ -1545,22 +1767,28 @@ def agent_tool_call(
 ) -> dict[str, Any]:
     """Call one read-only MCP tool through the deterministic local executor."""
 
+    normalized_tool = _normalize_mcp_tool_name(tool)
     read_only_names = {spec.name for spec in READ_ONLY_MCP_TOOLS}
-    if tool not in read_only_names:
+    if normalized_tool in read_only_names:
+        payload = call_read_only_mcp_tool(normalized_tool, arguments or {}, repo_path=repo_path, profile_dir=profile_dir)
+    elif normalized_tool in _controlled_process_tool_names():
+        payload = call_controlled_process_mcp_tool(normalized_tool, arguments or {}, repo_path=repo_path, profile_dir=profile_dir)
+    else:
         return {
             "ok": False,
             "action": "agent_tool_call",
             "status": "blocked",
-            "tool": tool,
-            "error": "tool_not_read_only_or_unknown",
-            "supported_read_only_tools": sorted(read_only_names),
+            "tool": normalized_tool,
+            "requested_tool": tool,
+            "error": "tool_not_read_only_or_controlled_process",
+            "supported_tools": sorted(read_only_names | _controlled_process_tool_names()),
         }
-    payload = call_read_only_mcp_tool(tool, arguments or {}, repo_path=repo_path, profile_dir=profile_dir)
     return {
         "ok": bool(payload.get("ok")),
         "action": "agent_tool_call",
         "status": "verified" if payload.get("ok") else "failed",
-        "tool": tool,
+        "tool": normalized_tool,
+        "requested_tool": tool,
         "arguments": arguments or {},
         "result": payload,
     }
@@ -1735,7 +1963,7 @@ def _validate_llm_mcp_tool_call(parsed: Any, *, original_request: str | None = N
     read_only_names = {spec.name for spec in READ_ONLY_MCP_TOOLS}
     if original_request is not None:
         risk = classify_agent_request_risk(original_request)
-        if not risk.get("auto_allowed"):
+        if risk.get("risk") != ToolRisk.READ.value:
             return {
                 "ok": False,
                 "status": "original_request_not_read_only",
@@ -1865,7 +2093,7 @@ def ollama_propose_mcp_tool_call(
     allow_schema_fallback: bool = True,
 ) -> dict[str, Any]:
     request_risk = classify_agent_request_risk(request)
-    if not request_risk.get("auto_allowed"):
+    if request_risk.get("risk") != ToolRisk.READ.value:
         return {
             "ok": False,
             "action": "agent_ollama_propose",
@@ -1951,18 +2179,33 @@ def mcp_tool_call_via_stdio(
     command: str | None = None,
     resolve_command: bool = True,
     timeout_seconds: float = 8.0,
+    include_controlled_writes: bool | None = None,
 ) -> dict[str, Any]:
-    """Call one read-only MCP tool through the actual stdio server boundary."""
+    """Call one MCP tool through the actual stdio server boundary.
+
+    Read-only tools use the default read-only server. The first controlled
+    process tool, ``test.smoke``, explicitly starts the server with controlled
+    tools listed and only that bounded process tool executable.
+    """
 
     root = Path(repo_path).expanduser().resolve()
     resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
-    config = mcp_host_config(repo_path=root, profile_dir=resolved_profile, command=command, resolve_command=resolve_command)
+    normalized_tool = _normalize_mcp_tool_name(tool)
+    if include_controlled_writes is None:
+        include_controlled_writes = normalized_tool in _controlled_process_tool_names()
+    config = mcp_host_config(repo_path=root, profile_dir=resolved_profile, command=command, resolve_command=resolve_command, include_controlled_writes=bool(include_controlled_writes))
     server = config["config"]["mcpServers"]["promptbranch"]
+    tool_arguments = arguments or {}
     messages = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": MCP_PROTOCOL_VERSION}},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": normalized_tool, "arguments": tool_arguments}},
     ]
     request_text = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in messages)
+    requested_timeout = max(1.0, float(timeout_seconds))
+    effective_timeout = requested_timeout
+    if normalized_tool in _controlled_process_tool_names():
+        inner_timeout = float(tool_arguments.get("timeout_seconds") or 60.0)
+        effective_timeout = max(effective_timeout, min(max(inner_timeout, 5.0), 300.0) + 5.0)
     started = time.monotonic()
     try:
         completed = subprocess.run(
@@ -1971,7 +2214,7 @@ def mcp_tool_call_via_stdio(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=max(1.0, float(timeout_seconds)),
+            timeout=effective_timeout,
             check=False,
         )
     except FileNotFoundError as exc:
@@ -1982,7 +2225,8 @@ def mcp_tool_call_via_stdio(
             "action": "mcp_tool_call_via_stdio",
             "status": "timeout",
             "config": config,
-            "timeout_seconds": timeout_seconds,
+            "timeout_seconds": effective_timeout,
+            "requested_timeout_seconds": timeout_seconds,
             "stdout": exc.stdout or "",
             "stderr": exc.stderr or "",
         }
@@ -1998,9 +2242,12 @@ def mcp_tool_call_via_stdio(
         "action": "mcp_tool_call_via_stdio",
         "status": "verified" if completed.returncode == 0 and not is_error and isinstance(call_response, dict) else "failed",
         "transport": "stdio",
-        "tool": tool,
-        "arguments": arguments or {},
+        "tool": normalized_tool,
+        "requested_tool": tool,
+        "arguments": tool_arguments,
         "duration_seconds": duration,
+        "timeout_seconds": effective_timeout,
+        "requested_timeout_seconds": timeout_seconds,
         "config": config,
         "responses": responses,
         "tool_response": call_response,
