@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.153"
+    assert captured.out.strip() == "promptbranch 0.0.154"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -803,6 +803,7 @@ def test_test_suite_command_dispatches_to_runner(monkeypatch, capsys) -> None:
     async def fake_run_test_suite_async(**kwargs):
         assert kwargs['keep_project'] is True
         assert kwargs['only'] == ['project_list_debug']
+        assert kwargs['profile'] == 'browser'
         return {'ok': True, 'action': 'test_suite'}
 
     monkeypatch.setattr('promptbranch_cli.run_test_suite_async', fake_run_test_suite_async)
@@ -813,6 +814,23 @@ def test_test_suite_command_dispatches_to_runner(monkeypatch, capsys) -> None:
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload['action'] == 'test_suite'
+
+
+def test_test_suite_full_profile_dispatches_to_runner(monkeypatch, capsys) -> None:
+    async def fake_run_test_suite_async(**kwargs):
+        assert kwargs['profile'] == 'full'
+        assert kwargs['path'] == '.'
+        assert kwargs['package_zip'] == 'release.zip'
+        return {'ok': True, 'action': 'test_suite', 'profile': 'full'}
+
+    monkeypatch.setattr('promptbranch_cli.run_test_suite_async', fake_run_test_suite_async)
+
+    from promptbranch_cli import main
+
+    rc = main(['test-suite', '--profile', 'full', '--path', '.', '--package-zip', 'release.zip'])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload['profile'] == 'full'
 
 
 def test_src_add_positional_file_delegates_as_file_source(monkeypatch, capsys, tmp_path) -> None:
@@ -1020,7 +1038,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.153"
+    assert payload["version"] == "0.0.154"
     assert payload["checks"]["workspace_selected"] is True
 
 
