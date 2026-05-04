@@ -451,6 +451,9 @@ class ChatGPTBrowserClient:
         self._artifact_dir = Path(self.config.debug_artifact_dir)
         self._profile_key = str(Path(self.config.profile_dir).expanduser().resolve())
         self._rate_limit_cooldown_path = Path(self._profile_key) / '.conversation_history_rate_limit_until'
+        self._rate_limit_events: list[dict[str, object]] = []
+        self._rate_limit_cooldown_wait_seconds_total = 0.0
+        self._rate_limit_cooldown_wait_count = 0
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
@@ -475,8 +478,43 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log('rate-limit', 'failed writing cooldown file', path=str(self._rate_limit_cooldown_path), error=str(exc))
 
+    def _record_rate_limit_event(self, *, kind: str, trigger: str | None = None, status: int | None = None, url: str | None = None, label: str | None = None, wait_seconds: float | None = None) -> None:
+        event: dict[str, object] = {
+            'kind': kind,
+            'monotonic_time': round(time.monotonic(), 6),
+        }
+        if trigger is not None:
+            event['trigger'] = trigger
+        if status is not None:
+            event['status'] = status
+        if url:
+            event['url'] = url
+        if label:
+            event['label'] = label
+        if wait_seconds is not None:
+            event['wait_seconds'] = round(max(0.0, float(wait_seconds)), 3)
+        self._rate_limit_events.append(event)
+
+    def _rate_limit_telemetry_snapshot(self) -> dict[str, object]:
+        events = list(self._rate_limit_events)
+        return {
+            'rate_limit_modal_detected': any(event.get('kind') == 'modal_detected' for event in events),
+            'conversation_history_429_seen': any(int(event.get('status') or 0) == 429 for event in events),
+            'cooldown_wait_seconds_total': round(self._rate_limit_cooldown_wait_seconds_total, 3),
+            'cooldown_wait_count': int(self._rate_limit_cooldown_wait_count),
+            'service_rate_limit_events': events,
+        }
+
+    def _attach_rate_limit_telemetry(self, result: Any) -> Any:
+        telemetry = self._rate_limit_telemetry_snapshot()
+        if isinstance(result, dict):
+            result.setdefault('rate_limit_telemetry', telemetry)
+            return result
+        return result
+
     def _note_conversation_history_rate_limit(self, *, trigger: str, url: str, status: int | None = None) -> None:
         cooldown_seconds = max(0.0, float(self.config.conversation_history_rate_limit_cooldown_seconds))
+        self._record_rate_limit_event(kind='conversation_history_rate_limit', trigger=trigger, status=status, url=url)
         if cooldown_seconds <= 0:
             return
         cooldown_until = time.time() + cooldown_seconds
@@ -512,8 +550,12 @@ class ChatGPTBrowserClient:
         remaining = cooldown_until - time.time()
         if remaining <= 0:
             return
-        self._log('rate-limit', 'waiting for persisted conversation history cooldown', wait_seconds=round(remaining, 3), path=str(self._rate_limit_cooldown_path))
-        await asyncio.sleep(remaining)
+        wait_seconds = max(0.0, float(remaining))
+        self._rate_limit_cooldown_wait_seconds_total += wait_seconds
+        self._rate_limit_cooldown_wait_count += 1
+        self._record_rate_limit_event(kind='cooldown_wait', wait_seconds=wait_seconds, url=str(self._rate_limit_cooldown_path))
+        self._log('rate-limit', 'waiting for persisted conversation history cooldown', wait_seconds=round(wait_seconds, 3), path=str(self._rate_limit_cooldown_path))
+        await asyncio.sleep(wait_seconds)
 
     def _can_wait_for_keep_open(self) -> bool:
         stdin = getattr(sys, "stdin", None)
@@ -571,12 +613,14 @@ class ChatGPTBrowserClient:
                 return saw_modal
             if not saw_modal:
                 saw_modal = True
+                current_url = await self._safe_page_url(page)
+                self._record_rate_limit_event(kind='modal_detected', trigger='modal', status=429, url=current_url, label=label)
                 self._note_conversation_history_rate_limit(
                     trigger='modal',
-                    url=await self._safe_page_url(page),
+                    url=current_url,
                     status=429,
                 )
-                self._log('rate-limit', 'rate limit modal detected', label=label, current_url=await self._safe_page_url(page), timeout_ms=timeout_ms)
+                self._log('rate-limit', 'rate limit modal detected', label=label, current_url=current_url, timeout_ms=timeout_ms)
             ack = await self._find_visible_locator(page, RATE_LIMIT_MODAL_ACK_SELECTORS, label=f'{label}-rate-limit-ack')
             if ack is not None:
                 try:
@@ -1061,6 +1105,7 @@ class ChatGPTBrowserClient:
 
             try:
                 result = await operation(context=context, page=page, **kwargs)
+                result = self._attach_rate_limit_telemetry(result)
                 self._log("result", f"{operation_name} completed", result_type=type(result).__name__)
                 return result
             except Exception as exc:

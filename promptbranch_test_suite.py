@@ -141,6 +141,70 @@ def _step(name: str, payload: dict[str, Any], *, expected_failure: bool = False,
     }
 
 
+def _empty_rate_limit_telemetry() -> dict[str, Any]:
+    return {
+        "rate_limit_modal_detected": False,
+        "conversation_history_429_seen": False,
+        "cooldown_wait_seconds_total": 0.0,
+        "cooldown_wait_count": 0,
+        "planned_cooldown_wait_seconds_total": 0.0,
+        "planned_cooldown_wait_count": 0,
+        "service_rate_limit_events": [],
+    }
+
+
+def _merge_rate_limit_telemetry(target: dict[str, Any], telemetry: Any) -> None:
+    if not isinstance(telemetry, dict):
+        return
+    target["rate_limit_modal_detected"] = bool(target.get("rate_limit_modal_detected")) or bool(telemetry.get("rate_limit_modal_detected"))
+    target["conversation_history_429_seen"] = bool(target.get("conversation_history_429_seen")) or bool(telemetry.get("conversation_history_429_seen"))
+    try:
+        target["cooldown_wait_seconds_total"] = round(float(target.get("cooldown_wait_seconds_total") or 0.0) + float(telemetry.get("cooldown_wait_seconds_total") or 0.0), 3)
+    except (TypeError, ValueError):
+        pass
+    try:
+        target["cooldown_wait_count"] = int(target.get("cooldown_wait_count") or 0) + int(telemetry.get("cooldown_wait_count") or 0)
+    except (TypeError, ValueError):
+        pass
+    events = telemetry.get("service_rate_limit_events")
+    if isinstance(events, list):
+        target.setdefault("service_rate_limit_events", []).extend(event for event in events if isinstance(event, dict))
+
+
+def extract_rate_limit_telemetry(summary: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate rate-limit telemetry from a browser/full test-suite summary.
+
+    Service-backed and direct browser operations attach per-operation
+    ``rate_limit_telemetry`` payloads. The integration harness also records
+    planned ``rate_limit_cooldown`` steps after ask operations; those are
+    kept separate from actual ChatGPT 429/modal cooldown waits so operators
+    can distinguish pacing from throttling.
+    """
+    aggregate = _empty_rate_limit_telemetry()
+
+    def visit_step(step: Any) -> None:
+        if not isinstance(step, dict):
+            return
+        details = step.get("details")
+        if isinstance(details, dict):
+            _merge_rate_limit_telemetry(aggregate, details.get("rate_limit_telemetry"))
+            if step.get("name") == "rate_limit_cooldown":
+                try:
+                    delay = float(details.get("delay_seconds") or 0.0)
+                except (TypeError, ValueError):
+                    delay = 0.0
+                aggregate["planned_cooldown_wait_seconds_total"] = round(float(aggregate.get("planned_cooldown_wait_seconds_total") or 0.0) + max(0.0, delay), 3)
+                aggregate["planned_cooldown_wait_count"] = int(aggregate.get("planned_cooldown_wait_count") or 0) + 1
+
+    for key in ("steps", "cleanup_steps"):
+        for step in summary.get(key) or []:
+            visit_step(step)
+
+    aggregate["service_rate_limit_events"] = list(aggregate.get("service_rate_limit_events") or [])
+    aggregate["event_count"] = len(aggregate["service_rate_limit_events"])
+    return aggregate
+
+
 def _package_hygiene(package_zip: str | None, *, repo_path: Path) -> dict[str, Any]:
     version = _read_version(repo_path)
     candidates: list[Path] = []
@@ -230,6 +294,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
             "model_has_execution_authority": False,
             "source_or_artifact_mutation_allowed": False,
         },
+        "rate_limit_telemetry": _empty_rate_limit_telemetry(),
     }
 
 
@@ -246,7 +311,16 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "enabled": bool(rate_limit_safe),
         "default_for_profile": profile == "full",
         "cooldown_signal": "conversation_history_429_or_modal",
-        "operator_message": "If ChatGPT shows 'You're making requests too quickly', the live browser profile will honor persisted cooldowns and use conservative pacing by default for full runs.",
+        "telemetry_fields": [
+            "rate_limit_modal_detected",
+            "conversation_history_429_seen",
+            "cooldown_wait_seconds_total",
+            "cooldown_wait_count",
+            "planned_cooldown_wait_seconds_total",
+            "planned_cooldown_wait_count",
+            "service_rate_limit_events",
+        ],
+        "operator_message": "If ChatGPT shows 'You're making requests too quickly', the live browser profile will honor persisted cooldowns and report rate-limit telemetry in the suite JSON.",
     }
 
     if profile == "agent":
@@ -256,6 +330,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
 
     browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
     browser_summary = await run_integration(browser_args)
+    browser_summary["rate_limit_telemetry"] = extract_rate_limit_telemetry(browser_summary)
     browser_summary["rate_limit_strategy"] = {
         **rate_limit_strategy,
         "step_delay_seconds": getattr(browser_args, "step_delay_seconds", None),
@@ -276,6 +351,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "browser": browser_summary,
         "agent": agent_summary,
         "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),
+        "rate_limit_telemetry": browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
         "safety": {
             "write_tools_blocked": bool(agent_summary.get("safety", {}).get("write_tools_blocked")),
             "model_has_execution_authority": False,

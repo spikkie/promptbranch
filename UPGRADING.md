@@ -333,12 +333,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.156
+## v0.0.157
 
-- `pb test full --json` now enables conservative rate-limit-safe pacing by default. This is intended to reduce repeated ChatGPT conversation-history 429/modals during full live browser runs.
-- Use `--no-rate-limit-safe` to keep the older/faster defaults, or override individual delay flags directly.
-- `pb test-suite --profile full --json` receives the same default behavior.
-- Service/browser automation now defaults conversation-history cooldown to 180 seconds.
+- Browser/full test-suite JSON now includes `rate_limit_telemetry` so operators can tell whether ChatGPT conversation-history throttling actually occurred.
+- Telemetry fields include `rate_limit_modal_detected`, `conversation_history_429_seen`, `cooldown_wait_seconds_total`, `cooldown_wait_count`, `planned_cooldown_wait_seconds_total`, `planned_cooldown_wait_count`, and `service_rate_limit_events`.
+- Per-browser-operation payloads also carry `rate_limit_telemetry` when the automation layer observes a modal, 429 response, or persisted cooldown wait.
+- Conservative pacing remains the default for `pb test full --json`; v0.0.157 improves observability rather than changing the safety policy.
 
 ## v0.0.155
 

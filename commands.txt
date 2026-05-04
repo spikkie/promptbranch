@@ -1,0 +1,5 @@
+ver=chatgpt_claudecode_workflow_v0.0.156;cp ~/Downloads/$ver.zip  .; mkdir $ver; mv $ver.zip $ver; cd $ver; unzip $ver.zip; bc . ..; cd ..;rm -rf ./$ver
+ga  .
+zip_it
+pbsa chatgpt_claudecode_workflow_v0.0.156.zip
+pb test full --json 2>&1 | tee pb_test.full.v0.0.156.log
