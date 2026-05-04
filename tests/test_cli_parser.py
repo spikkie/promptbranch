@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.157" in out
+    assert "0.0.158" in out
     assert "promptbranch" in out
 
 
@@ -423,3 +423,13 @@ def test_parser_accepts_rate_limit_safe_flags_for_test_full() -> None:
     assert enabled.rate_limit_safe is True
     disabled = parser.parse_args(["test", "full", "--no-rate-limit-safe"])
     assert disabled.rate_limit_safe is False
+
+
+def test_parser_accepts_test_report_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(['test', 'report', 'pb_test.full.log', '--service-log', 'service.log', '--json'])
+    assert args.command == 'test'
+    assert args.test_command == 'report'
+    assert args.log == 'pb_test.full.log'
+    assert args.service_log == 'service.log'
+    assert args.json is True
