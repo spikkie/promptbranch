@@ -1,4 +1,4 @@
-# promptbranch v0.0.154
+# promptbranch v0.0.155
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.154 .
+docker build -t promptbranch-service:0.0.155 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.154
+  promptbranch-service:0.0.155
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.154.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.155.zip
 ```
 
 From an extracted checkout:
@@ -572,7 +572,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
-## v0.0.154
+## v0.0.155
 
 - Added `pb test-suite --profile agent --json` for local MCP/agent/skill/controlled-process/package hygiene validation without requiring ChatGPT/browser automation.
 - Added `pb test-suite --profile full --json`, which runs the existing browser/project/source/task integration suite and then the new local agent profile.

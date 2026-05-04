@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.154" in out
+    assert "0.0.155" in out
     assert "promptbranch" in out
 
 
@@ -230,6 +230,27 @@ def test_parser_accepts_test_suite_full_profile() -> None:
     assert args.profile == 'full'
     assert args.path == '.'
     assert args.package_zip == 'release.zip'
+
+
+def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
+    parser = make_parser()
+
+    browser = parser.parse_args(['test', 'browser', '--json'])
+    assert browser.command == 'test'
+    assert browser.test_command == 'browser'
+    assert browser.json is True
+
+    agent = parser.parse_args(['test', 'agent', '--path', '.', '--package-zip', 'release.zip'])
+    assert agent.command == 'test'
+    assert agent.test_command == 'agent'
+    assert agent.path == '.'
+    assert agent.package_zip == 'release.zip'
+
+    full = parser.parse_args(['test', 'full', '--json', '--keep-project'])
+    assert full.command == 'test'
+    assert full.test_command == 'full'
+    assert full.json is True
+    assert full.keep_project is True
 
 
 def test_parser_defaults_project_source_add_type_to_file() -> None:
