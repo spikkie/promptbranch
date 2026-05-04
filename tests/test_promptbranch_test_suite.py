@@ -90,3 +90,98 @@ def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, 
     assert result["ok"] is True
     assert result["rate_limit_strategy"]["browser_required"] is False
     assert result["rate_limit_strategy"]["enabled"] is False
+
+
+def test_extract_rate_limit_telemetry_aggregates_operation_and_planned_cooldowns() -> None:
+    summary = {
+        "steps": [
+            {
+                "name": "login_check",
+                "details": {
+                    "rate_limit_telemetry": {
+                        "rate_limit_modal_detected": True,
+                        "conversation_history_429_seen": True,
+                        "cooldown_wait_seconds_total": 12.345,
+                        "cooldown_wait_count": 1,
+                        "service_rate_limit_events": [
+                            {"kind": "modal_detected", "status": 429, "label": "login"}
+                        ],
+                    }
+                },
+            },
+            {
+                "name": "rate_limit_cooldown",
+                "details": {"delay_seconds": 45.0, "reason": "after ask_question"},
+            },
+        ],
+        "cleanup_steps": [
+            {
+                "name": "project_remove_cleanup",
+                "details": {
+                    "rate_limit_telemetry": {
+                        "rate_limit_modal_detected": False,
+                        "conversation_history_429_seen": False,
+                        "cooldown_wait_seconds_total": 3.0,
+                        "cooldown_wait_count": 1,
+                        "service_rate_limit_events": [
+                            {"kind": "cooldown_wait", "wait_seconds": 3.0}
+                        ],
+                    }
+                },
+            }
+        ],
+    }
+
+    telemetry = suite.extract_rate_limit_telemetry(summary)
+
+    assert telemetry["rate_limit_modal_detected"] is True
+    assert telemetry["conversation_history_429_seen"] is True
+    assert telemetry["cooldown_wait_seconds_total"] == 15.345
+    assert telemetry["cooldown_wait_count"] == 2
+    assert telemetry["planned_cooldown_wait_seconds_total"] == 45.0
+    assert telemetry["planned_cooldown_wait_count"] == 1
+    assert telemetry["event_count"] == 2
+
+
+def test_browser_profile_reports_rate_limit_telemetry(monkeypatch) -> None:
+    async def fake_run_integration(args):
+        return {
+            "ok": True,
+            "action": "test_suite",
+            "profile": "browser",
+            "steps": [
+                {
+                    "name": "project_resolve_before_create",
+                    "ok": True,
+                    "duration_seconds": 0.1,
+                    "details": {
+                        "rate_limit_telemetry": {
+                            "rate_limit_modal_detected": False,
+                            "conversation_history_429_seen": True,
+                            "cooldown_wait_seconds_total": 5.0,
+                            "cooldown_wait_count": 1,
+                            "service_rate_limit_events": [
+                                {"kind": "conversation_history_rate_limit", "status": 429}
+                            ],
+                        }
+                    },
+                },
+                {
+                    "name": "rate_limit_cooldown",
+                    "ok": True,
+                    "duration_seconds": 45.0,
+                    "details": {"delay_seconds": 45.0},
+                },
+            ],
+            "cleanup_steps": [],
+        }
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+
+    result = asyncio.run(suite.run_test_suite_async(profile="browser", rate_limit_safe=True))
+
+    assert result["ok"] is True
+    assert result["rate_limit_telemetry"]["conversation_history_429_seen"] is True
+    assert result["rate_limit_telemetry"]["cooldown_wait_seconds_total"] == 5.0
+    assert result["rate_limit_telemetry"]["planned_cooldown_wait_seconds_total"] == 45.0
+    assert "rate_limit_modal_detected" in result["rate_limit_strategy"]["telemetry_fields"]

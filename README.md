@@ -1,4 +1,4 @@
-# promptbranch v0.0.156
+# promptbranch v0.0.157
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.156 .
+docker build -t promptbranch-service:0.0.157 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.156
+  promptbranch-service:0.0.157
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.156.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.157.zip
 ```
 
 From an extracted checkout:
@@ -572,12 +572,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
-## v0.0.156
+## v0.0.157
 
-- Made `pb test full --json` rate-limit-safe by default for the live browser portion. Conservative defaults now use longer step and post-ask delays to reduce ChatGPT conversation-history 429/modal pressure.
-- Added `--rate-limit-safe` / `--no-rate-limit-safe` flags to `pb test full`, `pb test browser`, `pb test smoke`, and `pb test-suite --profile ...`.
-- Added rate-limit strategy metadata to test-suite JSON output so full runs report whether conservative pacing was enabled.
-- Increased the default service-side conversation-history cooldown from 120 seconds to 180 seconds and extended modal wait timeout to match the “wait a few minutes” warning.
+- Added aggregate rate-limit telemetry to browser/full test-suite JSON output.
+- `pb test full --json` now reports `rate_limit_telemetry` fields such as `rate_limit_modal_detected`, `conversation_history_429_seen`, `cooldown_wait_seconds_total`, `cooldown_wait_count`, and `service_rate_limit_events`.
+- Per-browser-operation results now include `rate_limit_telemetry` when the automation client observes a ChatGPT conversation-history 429, rate-limit modal, or persisted cooldown wait.
+- Planned post-ask pacing is reported separately as `planned_cooldown_wait_seconds_total` / `planned_cooldown_wait_count`, so conservative pacing is distinguishable from actual ChatGPT throttling.
 - No new write/source/artifact/model execution authority was added.
 
 ## v0.0.155
