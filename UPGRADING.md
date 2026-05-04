@@ -360,3 +360,10 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - `pb agent run "run smoke tests" --path . --json` now plans `test.smoke` through the Promptbranch-native MCP stdio boundary.
 - `test.smoke` runs only fixed local Promptbranch smoke selectors by default (`mcp_smoke`, `mcp_host_smoke`) with hard timeout, stdout/stderr capture, exit code capture, and parsed JSON when available.
 - Destructive/write/source/artifact tools remain blocked.
+
+
+## v0.0.152
+
+- Added `pb agent summarize-log <log-file> --json` as a read-only local log summarization helper.
+- Agent JSON command output is now emitted once.
+- No source/artifact write execution was added.

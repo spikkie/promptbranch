@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.151" in out
+    assert "0.0.152" in out
     assert "promptbranch" in out
 
 
@@ -372,3 +372,15 @@ def test_parser_accepts_skill_commands() -> None:
     assert show_args.skill == "repo-inspection"
     assert show_args.no_content is True
     assert validate_args.skill_command == "validate"
+
+
+def test_parser_accepts_agent_summarize_log_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["agent", "summarize-log", "session.log", "--path", ".", "--model", "fake", "--max-bytes", "4096", "--json"])
+    assert args.command == "agent"
+    assert args.agent_command == "summarize-log"
+    assert args.log_path == "session.log"
+    assert args.path == "."
+    assert args.model == "fake"
+    assert args.max_bytes == 4096
+    assert args.json is True

@@ -118,3 +118,18 @@ Expected behavior:
 - `agent models` reports local Ollama availability, but Ollama failures do not block read-only MCP tool calls
 
 This is deliberate. Small local models may produce `{}`, invalid JSON, or unrelated text even in JSON mode, so planning remains deterministic.
+
+## Summarize a captured log with Ollama
+
+`pb agent summarize-log` reads one repo-bounded log file and asks Ollama to summarize the bounded excerpt. It is summary-only: Ollama does not plan tools, execute commands, update state, or bypass policy. If Ollama is unavailable, the command returns `summary_unavailable` with the deterministic read metadata preserved.
+
+```bash
+pb agent summarize-log session.log --path . --json
+```
+
+Safety properties:
+
+- the log path must stay inside `--path`
+- the read is bounded by `--max-bytes`
+- model failure does not hide the raw read status
+- write/source/artifact actions remain blocked

@@ -20,6 +20,7 @@ from promptbranch_mcp import (
     agent_doctor,
     agent_mcp_llm_smoke,
     agent_run,
+    agent_summarize_log,
     agent_tool_call,
     mcp_tool_call_via_stdio,
     inspect_local_context,
@@ -59,7 +60,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.151"
+CLI_VERSION = "0.0.152"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2573,6 +2574,15 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
             command=getattr(args, "mcp_executable", None),
             mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
         )
+    elif args.agent_command == "summarize-log":
+        payload = agent_summarize_log(
+            args.log_path,
+            repo_path=args.path,
+            model=getattr(args, "model", "llama3.2:3b"),
+            ollama_host=getattr(args, "ollama_host", "http://localhost:11434"),
+            ollama_timeout_seconds=getattr(args, "ollama_timeout_seconds", 8.0),
+            max_bytes=getattr(args, "max_bytes", 12000),
+        )
     elif args.agent_command == "models":
         payload = ollama_models(
             host=getattr(args, "ollama_host", "http://localhost:11434"),
@@ -3102,6 +3112,15 @@ def make_parser() -> argparse.ArgumentParser:
     agent_mcp_llm_smoke_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
     agent_mcp_llm_smoke_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for the MCP stdio tool call.")
     agent_mcp_llm_smoke_parser.add_argument("--json", action="store_true")
+
+    agent_summarize_log_parser = agent_subparsers.add_parser("summarize-log", help="Summarize a repo-bounded log file with optional Ollama; never executes tools or writes state.")
+    agent_summarize_log_parser.add_argument("log_path", help="Repo-relative log file path to summarize.")
+    agent_summarize_log_parser.add_argument("--path", default=".", help="Repo path used to bound the log read. Defaults to current directory.")
+    agent_summarize_log_parser.add_argument("--model", default="llama3.2:3b", help="Ollama model used only for summarization.")
+    agent_summarize_log_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
+    agent_summarize_log_parser.add_argument("--ollama-timeout-seconds", type=float, default=8.0, help="Timeout for the Ollama summary call.")
+    agent_summarize_log_parser.add_argument("--max-bytes", type=int, default=12000, help="Maximum bytes to read from the log before summarization.")
+    agent_summarize_log_parser.add_argument("--json", action="store_true")
 
     agent_models_parser = agent_subparsers.add_parser("models", help="List local Ollama models, if Ollama is available.")
     agent_models_parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama base URL.")
