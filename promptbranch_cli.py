@@ -60,7 +60,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.155"
+CLI_VERSION = "0.0.156"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1916,6 +1916,8 @@ def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
 
 
 async def cmd_test_suite(args: argparse.Namespace) -> int:
+    _apply_test_suite_defaults(args)
+    _apply_rate_limit_safe_defaults(args)
     payload = {
         'project_url': args.project_url,
         'email': args.email,
@@ -1959,6 +1961,7 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'profile': getattr(args, 'profile', 'browser'),
         'path': getattr(args, 'path', '.'),
         'package_zip': getattr(args, 'package_zip', None),
+        'rate_limit_safe': getattr(args, 'rate_limit_safe', None),
     }
     summary = await run_test_suite_async(**payload)
     if args.json or True:
@@ -2415,9 +2418,46 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "profile": "browser",
         "path": ".",
         "package_zip": None,
+        "rate_limit_safe": None,
     }
     for name, value in defaults.items():
         if not hasattr(args, name):
+            setattr(args, name, value)
+
+
+def _apply_rate_limit_safe_defaults(args: argparse.Namespace) -> None:
+    """Apply conservative pacing for the live full browser profile.
+
+    ChatGPT may temporarily limit conversation-history access when repeated
+    browser contexts cause the web app to fetch `/backend-api/conversations`
+    too quickly. The full profile is intentionally broad, so make it slower by
+    default while still allowing operators to opt out with
+    `--no-rate-limit-safe` or explicit delay flags.
+    """
+    profile = str(getattr(args, "profile", "browser") or "browser").lower()
+    requested = getattr(args, "rate_limit_safe", None)
+    rate_limit_safe = (profile == "full") if requested is None else bool(requested)
+    setattr(args, "rate_limit_safe", rate_limit_safe)
+    if not rate_limit_safe or profile not in {"browser", "full"}:
+        return
+
+    conservative = {
+        "step_delay_seconds": 15.0,
+        "post_ask_delay_seconds": 45.0,
+        "task_list_visible_poll_min_seconds": 30.0,
+        "task_list_visible_poll_max_seconds": 60.0,
+        "task_list_visible_max_attempts": 3,
+    }
+    legacy_defaults = {
+        "step_delay_seconds": 8.0,
+        "post_ask_delay_seconds": 20.0,
+        "task_list_visible_poll_min_seconds": 20.0,
+        "task_list_visible_poll_max_seconds": 45.0,
+        "task_list_visible_max_attempts": 4,
+    }
+    for name, value in conservative.items():
+        current = getattr(args, name, None)
+        if current is None or current == legacy_defaults.get(name):
             setattr(args, name, value)
 
 
@@ -2904,6 +2944,8 @@ def _add_test_suite_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     parser.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     parser.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    parser.add_argument("--rate-limit-safe", dest="rate_limit_safe", action="store_true", default=None, help="Use conservative live-browser pacing for ChatGPT conversation-history rate limits. Default for full profile.")
+    parser.add_argument("--no-rate-limit-safe", dest="rate_limit_safe", action="store_false", help="Disable conservative full-profile pacing.")
     parser.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
     parser.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
     parser.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
@@ -3226,6 +3268,8 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_smoke.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     test_smoke.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    test_smoke.add_argument("--rate-limit-safe", dest="rate_limit_safe", action="store_true", default=None, help="Use conservative live-browser pacing for ChatGPT conversation-history rate limits.")
+    test_smoke.add_argument("--no-rate-limit-safe", dest="rate_limit_safe", action="store_false", help="Disable conservative live-browser pacing.")
     test_smoke.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
     test_smoke.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
     test_smoke.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
@@ -3401,6 +3445,8 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_suite.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
     test_suite.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    test_suite.add_argument("--rate-limit-safe", dest="rate_limit_safe", action="store_true", default=None, help="Use conservative live-browser pacing for ChatGPT conversation-history rate limits. Default for full profile.")
+    test_suite.add_argument("--no-rate-limit-safe", dest="rate_limit_safe", action="store_false", help="Disable conservative full-profile pacing.")
     test_suite.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
     test_suite.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
     test_suite.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")

@@ -68,6 +68,7 @@ def build_test_suite_namespace(
     profile: str = "browser",
     path: str = ".",
     package_zip: Optional[str] = None,
+    rate_limit_safe: Optional[bool] = None,
 ) -> argparse.Namespace:
     parser = make_integration_parser()
     args = parser.parse_args([])
@@ -111,6 +112,7 @@ def build_test_suite_namespace(
         'service_token': service_token,
         'service_timeout_seconds': service_timeout_seconds,
         'clear_singleton_locks': clear_singleton_locks,
+        'rate_limit_safe': rate_limit_safe,
     }
     for key, value in overrides.items():
         if value is not None:
@@ -235,14 +237,33 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     profile = str(kwargs.pop("profile", "browser") or "browser").strip().lower()
     repo_path = kwargs.pop("path", ".")
     package_zip = kwargs.pop("package_zip", None)
+    requested_rate_limit_safe = kwargs.pop("rate_limit_safe", None)
+    rate_limit_safe = (profile == "full") if requested_rate_limit_safe is None else bool(requested_rate_limit_safe)
     if profile not in TEST_SUITE_PROFILES:
         return {"ok": False, "action": "test_suite", "status": "invalid_profile", "profile": profile, "valid_profiles": list(TEST_SUITE_PROFILES)}
 
-    if profile == "agent":
-        return _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+    rate_limit_strategy = {
+        "enabled": bool(rate_limit_safe),
+        "default_for_profile": profile == "full",
+        "cooldown_signal": "conversation_history_429_or_modal",
+        "operator_message": "If ChatGPT shows 'You're making requests too quickly', the live browser profile will honor persisted cooldowns and use conservative pacing by default for full runs.",
+    }
 
-    browser_args = build_test_suite_namespace(**kwargs)
+    if profile == "agent":
+        summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+        summary["rate_limit_strategy"] = {**rate_limit_strategy, "browser_required": False}
+        return summary
+
+    browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
     browser_summary = await run_integration(browser_args)
+    browser_summary["rate_limit_strategy"] = {
+        **rate_limit_strategy,
+        "step_delay_seconds": getattr(browser_args, "step_delay_seconds", None),
+        "post_ask_delay_seconds": getattr(browser_args, "post_ask_delay_seconds", None),
+        "task_list_visible_poll_min_seconds": getattr(browser_args, "task_list_visible_poll_min_seconds", None),
+        "task_list_visible_poll_max_seconds": getattr(browser_args, "task_list_visible_poll_max_seconds", None),
+        "task_list_visible_max_attempts": getattr(browser_args, "task_list_visible_max_attempts", None),
+    }
     if profile == "browser":
         browser_summary.setdefault("profile", "browser")
         return browser_summary
@@ -254,6 +275,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "profile": "full",
         "browser": browser_summary,
         "agent": agent_summary,
+        "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),
         "safety": {
             "write_tools_blocked": bool(agent_summary.get("safety", {}).get("write_tools_blocked")),
             "model_has_execution_authority": False,
