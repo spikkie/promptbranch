@@ -333,6 +333,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.151
+
+- Hardened `mcp_host_smoke`: it no longer falls back to `filesystem.read` on `.` when `VERSION`/`README.md` is missing. It now fails with `read_target_missing` and path diagnostics instead of trying to read a directory.
+- Added git-root-aware skill path resolution so `pb skill validate .promptbranch/skills/repo-inspection --path <subdir>` can still resolve repo-relative skill paths.
+- Added artifact packaging regression coverage for `.pytest_cache/`, `__pycache__/`, and `*.pyc` exclusions.
+
 ## v0.0.150
 
 - Public MCP controlled mode is now named controlled processes. Use `--include-controlled-processes`.

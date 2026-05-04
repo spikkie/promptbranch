@@ -1,4 +1,4 @@
-# promptbranch v0.0.150
+# promptbranch v0.0.151
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.150 .
+docker build -t promptbranch-service:0.0.151 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.150
+  promptbranch-service:0.0.151
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.150.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.151.zip
 ```
 
 From an extracted checkout:
@@ -572,6 +572,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
+## v0.0.151
+
+- Hardened `mcp_host_smoke`: it no longer falls back to `filesystem.read` on `.` when `VERSION`/`README.md` is missing. It now fails with `read_target_missing` and path diagnostics instead of trying to read a directory.
+- Added git-root-aware skill path resolution so `pb skill validate .promptbranch/skills/repo-inspection --path <subdir>` can still resolve repo-relative skill paths.
+- Added artifact packaging regression coverage for `.pytest_cache/`, `__pycache__/`, and `*.pyc` exclusions.
+
 ## v0.0.150
 
 - Renamed the public MCP controlled mode from controlled writes to controlled processes: use `--include-controlled-processes`.
@@ -583,7 +589,7 @@ This command is intentionally not autonomous. The model proposes; Promptbranch v
 
 - Fixed `pb agent mcp-llm-smoke ...` CLI parsing: its `--command` option no longer overwrites the root command parser destination.
 - Treat `project_endpoint` task rows as indexed task-list visibility in the live integration suite.
-- Preserved v0.0.150 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
+- Preserved v0.0.146 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
 
 
 
