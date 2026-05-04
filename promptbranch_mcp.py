@@ -26,7 +26,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.152"
+MCP_SERVER_VERSION = "0.0.153"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -204,7 +204,7 @@ def _coerce_controlled_process_flag(
     include_controlled_processes: bool = False,
     include_controlled_writes: bool | None = None,
 ) -> bool:
-    """Normalize the v0.0.152 controlled-process flag.
+    """Normalize the v0.0.153 controlled-process flag.
 
     ``include_controlled_writes`` is kept as a deprecated compatibility alias
     for older callers, but it now exposes only controlled process tools. It does
@@ -609,7 +609,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.152 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.153 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -741,6 +741,71 @@ def _read_bounded_text(path: Path, *, max_bytes: int) -> dict[str, Any]:
         "truncated": truncated,
         "bytes_returned": len(data),
         "text": text,
+    }
+
+def _deterministic_log_summary(text: str, *, max_marker_lines: int = 12) -> dict[str, Any]:
+    """Return a local read-only summary that does not depend on a model.
+
+    This is deliberately heuristic. It gives the operator a useful result when
+    Ollama is unavailable or slow, while preserving the safety rule that models
+    cannot plan, execute, or mutate state.
+    """
+
+    lines = text.splitlines()
+    lowered = text.lower()
+    headings = [line.strip() for line in lines if line.strip().startswith("=====")][:20]
+    marker_terms = (
+        '"ok": false',
+        '"status": "risk_rejected"',
+        '"status": "path_outside_repo"',
+        '"status": "summary_unavailable"',
+        '"status": "error"',
+        'failed',
+        'failure',
+        'timed out',
+        'timeout',
+        'traceback',
+        'exception',
+        'error',
+    )
+    marker_lines: list[str] = []
+    for line in lines:
+        compact = line.strip()
+        if not compact:
+            continue
+        lower = compact.lower()
+        if any(term in lower for term in marker_terms):
+            marker_lines.append(compact[:500])
+            if len(marker_lines) >= max_marker_lines:
+                break
+
+    counts = {
+        "ok_true": text.count('"ok": true'),
+        "ok_false": text.count('"ok": false'),
+        "verified": text.count('"status": "verified"'),
+        "risk_rejected": text.count('"status": "risk_rejected"'),
+        "path_outside_repo": text.count('"status": "path_outside_repo"'),
+        "summary_unavailable": text.count('"status": "summary_unavailable"'),
+        "timed_out": lowered.count("timed out") + lowered.count("timeout"),
+        "traceback": lowered.count("traceback"),
+    }
+    hard_failure = bool(counts["traceback"] or counts["ok_false"] or counts["timed_out"] or "failed" in lowered or "exception" in lowered)
+    if counts["risk_rejected"] and not counts["traceback"]:
+        assessment = "contains expected policy rejections; inspect marker_lines for unexpected failures"
+    elif hard_failure:
+        assessment = "contains failure or timeout markers"
+    else:
+        assessment = "no obvious failure markers detected in bounded excerpt"
+
+    return {
+        "ok": True,
+        "status": "generated",
+        "method": "deterministic_heuristic_v1",
+        "line_count": len(lines),
+        "counts": counts,
+        "headings": headings,
+        "marker_lines": marker_lines,
+        "assessment": assessment,
     }
 
 
@@ -1726,6 +1791,7 @@ def agent_summarize_log(
         "Do not invent results and do not propose write/destructive actions.\n\n"
         + text[:max_bytes]
     )
+    deterministic_summary = _deterministic_log_summary(text[:max_bytes])
     summary = _call_ollama_generate(
         prompt=prompt,
         model=model,
@@ -1736,19 +1802,21 @@ def agent_summarize_log(
     return {
         "ok": True,
         "action": "agent_summarize_log",
-        "status": "summarized" if summary.get("ok") else "summary_unavailable",
+        "status": "summarized" if summary.get("ok") else "deterministic_summary",
         "mode": "ollama_summary_read_only",
         "repo_path": str(root),
         "log_path": raw_path,
         "resolved_path": str(target),
         "read": {k: v for k, v in read_payload.items() if k != "text"},
+        "deterministic_summary": deterministic_summary,
         "ollama": {
             "used_for_planning": False,
             "used_for_summary": True,
             "model": model,
             "host": ollama_host,
             "summary": summary,
-            "note": "Ollama summary failure is non-fatal; the log read metadata remains authoritative.",
+            "fallback_used": not bool(summary.get("ok")),
+            "note": "Ollama summary failure is non-fatal; deterministic_summary and read metadata remain authoritative.",
         },
         "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
     }

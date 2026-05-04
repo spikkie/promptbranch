@@ -121,7 +121,7 @@ This is deliberate. Small local models may produce `{}`, invalid JSON, or unrela
 
 ## Summarize a captured log with Ollama
 
-`pb agent summarize-log` reads one repo-bounded log file and asks Ollama to summarize the bounded excerpt. It is summary-only: Ollama does not plan tools, execute commands, update state, or bypass policy. If Ollama is unavailable, the command returns `summary_unavailable` with the deterministic read metadata preserved.
+`pb agent summarize-log` reads one repo-bounded log file and asks Ollama to summarize the bounded excerpt. It is summary-only: Ollama does not plan tools, execute commands, update state, or bypass policy. If Ollama is unavailable or times out, the command returns `deterministic_summary` with a local heuristic summary plus deterministic read metadata preserved.
 
 ```bash
 pb agent summarize-log session.log --path . --json

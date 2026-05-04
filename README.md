@@ -1,4 +1,4 @@
-# promptbranch v0.0.152
+# promptbranch v0.0.153
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.152 .
+docker build -t promptbranch-service:0.0.153 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.152
+  promptbranch-service:0.0.153
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.152.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.153.zip
 ```
 
 From an extracted checkout:
@@ -571,6 +571,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
+
+## v0.0.153
+
+- Added a deterministic fallback summary to `pb agent summarize-log` so Ollama timeout/unavailability still returns a local heuristic `deterministic_summary`.
+- Preserved repo-bounded reads and model safety: Ollama still cannot plan, execute tools, update state, or bypass policy.
+- Kept source sync, artifact release, arbitrary shell/process execution, and write-capable MCP execution blocked.
 
 ## v0.0.152
 
