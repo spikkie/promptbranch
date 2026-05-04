@@ -26,13 +26,15 @@ def test_mcp_manifest_is_read_only_by_default() -> None:
     assert "promptbranch.state.read" in {tool["name"] for tool in payload["tools"]}
 
 
-def test_mcp_manifest_can_include_controlled_writes() -> None:
-    payload = mcp_tool_manifest(include_controlled_writes=True)
+def test_mcp_manifest_can_include_controlled_processes() -> None:
+    payload = mcp_tool_manifest(include_controlled_processes=True)
 
-    assert payload["mode"] == "read_only_plus_controlled_writes"
+    assert payload["mode"] == "read_only_plus_controlled_process"
     tools = {tool["name"]: tool for tool in payload["tools"]}
-    assert tools["promptbranch.src.sync"]["risk"] == "write"
     assert tools["test.smoke"]["risk"] == "external_process"
+    assert "promptbranch.src.sync" not in tools
+    assert "artifact.release.create" not in tools
+    assert set(payload["blocked_write_tools"]) == {"promptbranch.src.sync", "artifact.release.create"}
 
 
 def test_agent_inspect_is_read_only_and_reports_repo_state(tmp_path: Path) -> None:
@@ -85,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.149"
+    assert init["result"]["serverInfo"]["version"] == "0.0.150"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -126,7 +128,7 @@ def test_mcp_jsonrpc_filesystem_read_is_repo_bounded(tmp_path: Path) -> None:
     assert blocked["result"]["structuredContent"]["error"] == "path_outside_repo"
 
 
-def test_mcp_controlled_write_tool_is_listed_but_not_executed(tmp_path: Path) -> None:
+def test_mcp_write_tool_is_not_exposed_under_controlled_processes(tmp_path: Path) -> None:
     response = handle_mcp_jsonrpc_message(
         {
             "jsonrpc": "2.0",
@@ -136,11 +138,11 @@ def test_mcp_controlled_write_tool_is_listed_but_not_executed(tmp_path: Path) ->
         },
         repo_path=tmp_path,
         profile_dir=tmp_path / ".pb_profile",
-        include_controlled_writes=True,
+        include_controlled_processes=True,
     )
     assert response is not None
     assert response["result"]["isError"] is True
-    assert response["result"]["structuredContent"]["error"] == "write_tool_not_executable_via_mcp_serve"
+    assert response["result"]["structuredContent"]["error"] == "unknown_tool"
 
 
 def test_mcp_stdio_serves_newline_delimited_json(tmp_path: Path) -> None:

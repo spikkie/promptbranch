@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.149" in out
+    assert "0.0.150" in out
     assert "promptbranch" in out
 
 
@@ -302,11 +302,21 @@ def test_parser_accepts_agent_commands() -> None:
 
 def test_parser_accepts_mcp_manifest_command() -> None:
     parser = make_parser()
+    args = parser.parse_args(["mcp", "manifest", "--include-controlled-processes", "--json"])
+
+    assert args.command == "mcp"
+    assert args.mcp_command == "manifest"
+    assert args.include_controlled_processes is True
+    assert args.json is True
+
+
+def test_parser_keeps_deprecated_controlled_writes_alias() -> None:
+    parser = make_parser()
     args = parser.parse_args(["mcp", "manifest", "--include-controlled-writes", "--json"])
 
     assert args.command == "mcp"
     assert args.mcp_command == "manifest"
-    assert args.include_controlled_writes is True
+    assert args.include_controlled_processes is True
     assert args.json is True
 
 

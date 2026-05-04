@@ -59,7 +59,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.149"
+CLI_VERSION = "0.0.150"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1737,7 +1737,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
-        "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-writes", "--host", "--server-name", "--command"],
+        "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
         "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
@@ -2671,11 +2671,11 @@ async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
         return serve_mcp_stdio(
             repo_path=getattr(args, "path", "."),
             profile_dir=profile_dir,
-            include_controlled_writes=getattr(args, "include_controlled_writes", False),
+            include_controlled_processes=getattr(args, "include_controlled_processes", False),
         )
 
     if args.mcp_command == "manifest":
-        payload = mcp_tool_manifest(include_controlled_writes=args.include_controlled_writes)
+        payload = mcp_tool_manifest(include_controlled_processes=args.include_controlled_processes)
     elif args.mcp_command == "config":
         profile_dir = getattr(args, "profile_dir", None)
         if not profile_dir and hasattr(backend, "profile_dir"):
@@ -2686,7 +2686,7 @@ async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
             server_name=getattr(args, "server_name", "promptbranch"),
             command=getattr(args, "mcp_executable", None),
             resolve_command=not getattr(args, "no_resolve_command", False),
-            include_controlled_writes=getattr(args, "include_controlled_writes", False),
+            include_controlled_processes=getattr(args, "include_controlled_processes", False),
             host=getattr(args, "host", "generic"),
         )
     elif args.mcp_command == "host-smoke":
@@ -2699,7 +2699,7 @@ async def cmd_mcp(backend: CommandBackend, args: argparse.Namespace) -> int:
             server_name=getattr(args, "server_name", "promptbranch"),
             command=getattr(args, "mcp_executable", None),
             resolve_command=not getattr(args, "no_resolve_command", False),
-            include_controlled_writes=getattr(args, "include_controlled_writes", False),
+            include_controlled_processes=getattr(args, "include_controlled_processes", False),
             host=getattr(args, "host", "generic"),
             timeout_seconds=getattr(args, "timeout_seconds", 8.0),
         )
@@ -3129,12 +3129,14 @@ def make_parser() -> argparse.ArgumentParser:
     mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")
     mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_manifest = mcp_subparsers.add_parser("manifest", help="Emit the Promptbranch MCP tool manifest.")
-    mcp_manifest.add_argument("--include-controlled-writes", action="store_true", help="Include gated write/process tools in addition to read-only tools.")
+    mcp_manifest.add_argument("--include-controlled-processes", action="store_true", help="Include the bounded controlled process tool surface in addition to read-only tools.")
+    mcp_manifest.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_manifest.add_argument("--json", action="store_true")
 
     mcp_serve = mcp_subparsers.add_parser("serve", help="Run the read-only Promptbranch MCP stdio server.")
     mcp_serve.add_argument("--path", default=".", help="Repo path exposed to read-only filesystem/git tools. Defaults to current directory.")
-    mcp_serve.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools but reject execution until a deterministic executor is implemented.")
+    mcp_serve.add_argument("--include-controlled-processes", action="store_true", help="List and allow the bounded controlled process tool surface; source/artifact writes remain blocked.")
+    mcp_serve.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
 
     mcp_config = mcp_subparsers.add_parser("config", help="Emit an MCP host config snippet for pb mcp serve.")
     mcp_config.add_argument("--path", default=".", help="Repo path exposed to the MCP host. Defaults to current directory.")
@@ -3142,7 +3144,8 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_config.add_argument("--server-name", default="promptbranch", help="MCP server name to place under mcpServers.")
     mcp_config.add_argument("--command", dest="mcp_executable", help="Executable used by the MCP host. Defaults to resolving promptbranch to an absolute path when possible.")
     mcp_config.add_argument("--no-resolve-command", action="store_true", help="Do not resolve the MCP executable to an absolute path.")
-    mcp_config.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools in the server manifest, but execution remains rejected.")
+    mcp_config.add_argument("--include-controlled-processes", action="store_true", help="List the bounded controlled process tool surface in the server manifest; source/artifact writes remain blocked.")
+    mcp_config.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_config.add_argument("--json", action="store_true", help="Emit metadata and config as JSON. Without this flag, print only the config snippet.")
 
     mcp_host_smoke_parser = mcp_subparsers.add_parser("host-smoke", help="Launch the generated MCP host config and verify read-only tool calls.")
@@ -3151,7 +3154,8 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_host_smoke_parser.add_argument("--server-name", default="promptbranch", help="MCP server name to place under mcpServers.")
     mcp_host_smoke_parser.add_argument("--command", dest="mcp_executable", help="Executable used by the MCP host. Defaults to resolving promptbranch to an absolute path when possible.")
     mcp_host_smoke_parser.add_argument("--no-resolve-command", action="store_true", help="Do not resolve the MCP executable to an absolute path.")
-    mcp_host_smoke_parser.add_argument("--include-controlled-writes", action="store_true", help="List controlled write tools in the server manifest, but execution remains rejected.")
+    mcp_host_smoke_parser.add_argument("--include-controlled-processes", action="store_true", help="List the bounded controlled process tool surface in the server manifest; source/artifact writes remain blocked.")
+    mcp_host_smoke_parser.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_host_smoke_parser.add_argument("--timeout-seconds", type=float, default=8.0, help="Timeout for the host-smoke stdio subprocess.")
     mcp_host_smoke_parser.add_argument("--json", action="store_true", help="Emit the full host-smoke result as JSON.")
 

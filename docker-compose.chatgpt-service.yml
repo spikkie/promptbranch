@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.0.149
+    image: promptbranch-service:0.0.150
     init: true
     ports:
       - "8000:8000"
