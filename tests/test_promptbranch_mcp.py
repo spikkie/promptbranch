@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.150"
+    assert init["result"]["serverInfo"]["version"] == "0.0.151"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -212,6 +212,60 @@ def test_mcp_host_smoke_launches_configured_read_only_server(tmp_path: Path) -> 
     assert payload["action"] == "mcp_host_smoke"
     assert payload["checks"]["command_is_absolute"] is True
     assert payload["checks"]["filesystem_read_ok"] is True
+
+
+
+
+def test_mcp_host_smoke_reports_missing_file_target_without_reading_directory(tmp_path: Path) -> None:
+    wrapper = tmp_path / "promptbranch-wrapper"
+    wrapper.write_text("#!/bin/sh\necho should-not-launch\n", encoding="utf-8")
+    wrapper.chmod(0o755)
+
+    payload = mcp_host_smoke(
+        repo_path=tmp_path,
+        profile_dir=tmp_path / ".pb_profile",
+        command=str(wrapper),
+        resolve_command=True,
+        timeout_seconds=10.0,
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "read_target_missing"
+    assert payload["read_path"] is None
+    assert payload["read_candidates"] == ["VERSION", "README.md"]
+    assert payload["checks"]["filesystem_read_ok"] is False
+    assert "filesystem.read on a directory" in payload["diagnostic"]
+
+
+def test_skill_validate_resolves_repo_relative_path_from_git_subdirectory(tmp_path: Path) -> None:
+    import subprocess
+
+    from promptbranch_mcp import skill_validate
+
+    repo = tmp_path / "repo"
+    skill_dir = repo / ".promptbranch" / "skills" / "repo-inspection"
+    nested = repo / "test"
+    skill_dir.mkdir(parents=True)
+    nested.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: repo-inspection\n"
+        "description: Inspect repo\n"
+        "risk: read\n"
+        "allowed_tools:\n"
+        "  - filesystem.read\n"
+        "  - git.status\n"
+        "---\n"
+        "Read-only.\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+    payload = skill_validate(".promptbranch/skills/repo-inspection", repo_path=nested)
+
+    assert payload["ok"] is True
+    assert payload["status"] == "valid"
+    assert payload["source"].endswith(".promptbranch/skills/repo-inspection/SKILL.md")
 
 
 def test_agent_tool_call_executes_only_read_only_tool(tmp_path: Path) -> None:

@@ -26,7 +26,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.150"
+MCP_SERVER_VERSION = "0.0.151"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -204,7 +204,7 @@ def _coerce_controlled_process_flag(
     include_controlled_processes: bool = False,
     include_controlled_writes: bool | None = None,
 ) -> bool:
-    """Normalize the v0.0.150 controlled-process flag.
+    """Normalize the v0.0.151 controlled-process flag.
 
     ``include_controlled_writes`` is kept as a deprecated compatibility alias
     for older callers, but it now exposes only controlled process tools. It does
@@ -609,7 +609,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.150 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.151 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -984,6 +984,63 @@ def _read_json_lines(text: str) -> list[dict[str, Any]]:
     return payloads
 
 
+def _git_toplevel(path: str | Path) -> Path | None:
+    """Return the git worktree root for diagnostics/path fallback, if available."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(Path(path).expanduser().resolve()),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    value = completed.stdout.strip()
+    if not value:
+        return None
+    root = Path(value).expanduser().resolve()
+    return root if root.is_dir() else None
+
+
+def _select_host_smoke_read_path(root: Path) -> str | None:
+    """Select a file target for filesystem.read; never return a directory."""
+
+    for candidate in ("VERSION", "README.md"):
+        if (root / candidate).is_file():
+            return candidate
+    return None
+
+
+def _host_smoke_missing_read_target_payload(root: Path, config: dict[str, Any]) -> dict[str, Any]:
+    git_root = _git_toplevel(root)
+    suggested_path = None
+    if git_root is not None and git_root != root and any((git_root / item).is_file() for item in ("VERSION", "README.md")):
+        suggested_path = str(git_root)
+    return {
+        "ok": False,
+        "action": "mcp_host_smoke",
+        "status": "read_target_missing",
+        "repo_path": str(root),
+        "config": config,
+        "read_path": None,
+        "read_candidates": ["VERSION", "README.md"],
+        "git_root": str(git_root) if git_root is not None else None,
+        "suggested_path": suggested_path,
+        "diagnostic": "mcp_host_smoke requires a readable file target and will not call filesystem.read on a directory; run from the repo root or pass --path pointing at a directory containing VERSION or README.md.",
+        "checks": {
+            "read_target_found": False,
+            "filesystem_read_ok": False,
+            "write_tools_not_executed": True,
+        },
+    }
+
+
 def mcp_host_smoke(
     *,
     repo_path: str | Path = ".",
@@ -1011,9 +1068,9 @@ def mcp_host_smoke(
         host=host,
     )
     server = config["config"]["mcpServers"][server_name]
-    read_path = "VERSION" if (root / "VERSION").is_file() else "README.md"
-    if not (root / read_path).is_file():
-        read_path = "."
+    read_path = _select_host_smoke_read_path(root)
+    if read_path is None:
+        return _host_smoke_missing_read_target_payload(root, config)
     messages = _mcp_host_smoke_messages(read_path)
     request_text = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in messages)
 
@@ -1429,7 +1486,11 @@ def _parse_skill_frontmatter(text: str) -> tuple[dict[str, Any], str, list[str]]
 
 def _skill_dirs(repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> list[Path]:
     root = Path(repo_path).expanduser().resolve()
-    dirs = [(root / name).resolve() for name in SKILL_SEARCH_DIR_NAMES]
+    roots = [root]
+    git_root = _git_toplevel(root)
+    if git_root is not None and git_root not in roots:
+        roots.append(git_root)
+    dirs = [(candidate_root / name).resolve() for candidate_root in roots for name in SKILL_SEARCH_DIR_NAMES]
     if profile_dir:
         dirs.append((Path(profile_dir).expanduser().resolve() / "skills").resolve())
     config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
@@ -1447,11 +1508,16 @@ def _find_skill_path(name_or_path: str, *, repo_path: str | Path = ".", profile_
             return path / "SKILL.md"
         return path
     root = Path(repo_path).expanduser().resolve()
-    candidate = (root / raw).resolve()
-    if candidate.exists():
-        if candidate.is_dir():
-            return candidate / "SKILL.md"
-        return candidate
+    candidate_roots = [root]
+    git_root = _git_toplevel(root)
+    if git_root is not None and git_root not in candidate_roots:
+        candidate_roots.append(git_root)
+    for candidate_root in candidate_roots:
+        candidate = (candidate_root / raw).resolve()
+        if candidate.exists():
+            if candidate.is_dir():
+                return candidate / "SKILL.md"
+            return candidate
     for directory in _skill_dirs(root, profile_dir):
         candidate = directory / raw / "SKILL.md"
         if candidate.exists():
