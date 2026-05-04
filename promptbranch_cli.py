@@ -43,7 +43,7 @@ from promptbranch_browser_auth.exceptions import (
     UnsupportedOperationError,
 )
 from promptbranch_service_client import ChatGPTServiceClient
-from promptbranch_test_suite import run_test_suite_async
+from promptbranch_test_suite import package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, render_test_report_text
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -61,7 +61,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.159"
+CLI_VERSION = "0.0.160"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2471,10 +2471,23 @@ async def cmd_test_report(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 1
 
 
+async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
+    result = package_import_smoke(repo_path=getattr(args, "path", "."), python_executable=getattr(args, "python_executable", None))
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"package_import_smoke: {result.get('status')}")
+        for failure in result.get("failures") or []:
+            print(f"- {failure.get('module')}: {failure.get('error_type')} {failure.get('error')}")
+    return 0 if result.get("ok") else 1
+
+
 async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     if args.test_command == "report":
         return await cmd_test_report(args)
+    if args.test_command == "import-smoke":
+        return await cmd_test_import_smoke(args)
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_suite(args)
@@ -3317,6 +3330,11 @@ def make_parser() -> argparse.ArgumentParser:
     test_report.add_argument("--service-log", help="Optional Docker/service log to scan for rate-limit modal/429 evidence.")
     test_report.add_argument("--json", action="store_true", help="Emit the machine-readable report as JSON.")
 
+    test_import_smoke = test_subparsers.add_parser("import-smoke", help="Verify installed Promptbranch package modules import from outside the source tree.")
+    test_import_smoke.add_argument("--path", default=".", help="Repo path containing pyproject.toml; defaults to current directory.")
+    test_import_smoke.add_argument("--python-executable", help="Python executable to use for the isolated import subprocess. Defaults to the current interpreter.")
+    test_import_smoke.add_argument("--json", action="store_true", help="Emit the import-smoke result as JSON.")
+
     doctor = subparsers.add_parser("doctor", help="Run cheap local health checks for the active Promptbranch state.")
     doctor.add_argument("--json", action="store_true", help="Emit doctor checks as JSON.")
 
@@ -3548,6 +3566,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_suite(args)
     if args.command == "test" and getattr(args, "test_command", None) == "report":
         return await cmd_test_report(args)
+    if args.command == "test" and getattr(args, "test_command", None) == "import-smoke":
+        return await cmd_test_import_smoke(args)
 
     backend = build_backend(args)
     if args.command == "login-check":

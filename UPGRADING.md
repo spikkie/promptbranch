@@ -333,7 +333,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.159
+## v0.0.160
 
 - Use `pb test report <log> --json` to summarize `pb test full --json` / `pb test-suite --json` logs.
 - Add `--service-log <docker-log>` when you also want the Docker service log scanned for rate-limit modal and conversation-history 429 evidence.
