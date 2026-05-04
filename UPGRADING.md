@@ -333,6 +333,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.155
+
+- Use `pb test full --json` as the canonical shortcut for the full validation profile.
+- Use `pb test agent --json` for local MCP/agent/skill/package checks.
+- Use `pb test browser --json` for the browser/project/source/task integration profile.
+- Existing `pb test-suite --profile ... --json` commands remain supported.
+
 ## v0.0.154
 
 - Use `pb test-suite --profile full --json` when you want one command to run both the live browser/project/source/task integration suite and the local MCP/agent/skill/package checks.

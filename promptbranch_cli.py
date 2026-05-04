@@ -60,7 +60,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.154"
+CLI_VERSION = "0.0.155"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2412,6 +2412,9 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "project_list_debug_wait_ms": 350,
         "project_list_debug_manual_pause": False,
         "clear_singleton_locks": False,
+        "profile": "browser",
+        "path": ".",
+        "package_zip": None,
     }
     for name, value in defaults.items():
         if not hasattr(args, name):
@@ -2422,6 +2425,10 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
+        return await cmd_test_suite(args)
+    if args.test_command in {"browser", "agent", "full"}:
+        _apply_test_suite_defaults(args)
+        args.profile = args.test_command
         return await cmd_test_suite(args)
     raise RuntimeError(f"Unknown test command: {args.test_command}")
 
@@ -2888,6 +2895,36 @@ def _normalize_global_options(argv: list[str]) -> list[str]:
     return normalized_globals + normalized_rest
 
 
+def _add_test_suite_profile_options(parser: argparse.ArgumentParser) -> None:
+    """Attach the shared options used by pb test-suite profile aliases."""
+    parser.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
+    parser.add_argument("--path", default=".", help="Repo path used by agent/full profiles. Defaults to current directory.")
+    parser.add_argument("--package-zip", help="Optional release ZIP path for package hygiene checks in agent/full profiles.")
+    parser.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
+    parser.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
+    parser.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
+    parser.add_argument("--post-ask-delay-seconds", type=float, default=20.0, help="Additional cooldown after ask steps before reading task/conversation history.")
+    parser.add_argument("--task-list-visible-timeout-seconds", type=float, default=120.0, help="Maximum bounded wait for a task created by ask() to become visible in task listing.")
+    parser.add_argument("--task-list-visible-poll-min-seconds", type=float, default=20.0, help="Initial backoff between task-list visibility probes after ask().")
+    parser.add_argument("--task-list-visible-poll-max-seconds", type=float, default=45.0, help="Maximum backoff between task-list visibility probes after ask().")
+    parser.add_argument("--task-list-visible-max-attempts", type=int, default=4, help="Maximum number of task-list visibility probes after ask().")
+    parser.add_argument("--allow-recent-state-task-fallback", action="store_true", help="Allow task_message_flow to pass when a new task is visible only from local recent_state fallback. Default is strict indexed visibility.")
+    parser.add_argument("--skip", action="append", default=[], help="Comma-separated step selectors to skip.")
+    parser.add_argument("--only", action="append", default=[], help="Comma-separated step selectors to run.")
+    parser.add_argument("--strict-remove-ui", action="store_true", help="Require at least one source removal to succeed through the actual UI path.")
+    parser.add_argument("--project-name", help="Explicit project name to use. Defaults to a generated unique name.")
+    parser.add_argument("--project-name-prefix", default="itest-promptbranch")
+    parser.add_argument("--run-id", help="Optional run identifier used when generating names.")
+    parser.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
+    parser.add_argument("--link-url", default="https://example.com/")
+    parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
+    parser.add_argument("--project-list-debug-scroll-rounds", type=int, default=12)
+    parser.add_argument("--project-list-debug-wait-ms", type=int, default=350)
+    parser.add_argument("--project-list-debug-manual-pause", action="store_true")
+    parser.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_cli_command_name(),
@@ -3208,6 +3245,16 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--project-list-debug-wait-ms", type=int, default=350)
     test_smoke.add_argument("--project-list-debug-manual-pause", action="store_true")
     test_smoke.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
+
+
+    test_browser = test_subparsers.add_parser("browser", help="Run the browser/project/source/task integration test profile.")
+    _add_test_suite_profile_options(test_browser)
+
+    test_agent = test_subparsers.add_parser("agent", help="Run the local MCP/agent/skill/controlled-process/package hygiene test profile.")
+    _add_test_suite_profile_options(test_agent)
+
+    test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
+    _add_test_suite_profile_options(test_full)
 
     doctor = subparsers.add_parser("doctor", help="Run cheap local health checks for the active Promptbranch state.")
     doctor.add_argument("--json", action="store_true", help="Emit doctor checks as JSON.")
