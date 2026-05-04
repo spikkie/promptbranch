@@ -44,7 +44,7 @@ from promptbranch_browser_auth.exceptions import (
 )
 from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import package_import_smoke, run_test_suite_async
-from promptbranch_test_report import build_test_report, render_test_report_text
+from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -61,7 +61,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.160"
+CLI_VERSION = "0.0.161"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1740,7 +1740,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -2471,6 +2471,38 @@ async def cmd_test_report(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 1
 
 
+async def cmd_test_status(args: argparse.Namespace) -> int:
+    status = build_test_status(
+        path=getattr(args, "path", "."),
+        log=getattr(args, "log", None),
+        service_log=getattr(args, "service_log", None),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(status, indent=2, ensure_ascii=False))
+    else:
+        print(f"ok={bool(status.get('ok'))}")
+        print(f"status={status.get('status')}")
+        selected = status.get("selected_log") if isinstance(status.get("selected_log"), dict) else None
+        if selected:
+            print(f"log_path={selected.get('path')}")
+            print(f"log_mtime={selected.get('mtime_iso')}")
+        suite = status.get("suite") if isinstance(status.get("suite"), dict) else {}
+        if suite:
+            print(f"version={suite.get('version')}")
+            print(f"profile={suite.get('profile')}")
+            print(f"failure_count={suite.get('failure_count')}")
+            telemetry = suite.get("rate_limit_telemetry") if isinstance(suite.get("rate_limit_telemetry"), dict) else {}
+            if telemetry:
+                print(
+                    "rate_limit="
+                    f"modal={telemetry.get('rate_limit_modal_detected')} "
+                    f"429={telemetry.get('conversation_history_429_seen')} "
+                    f"cooldowns={telemetry.get('cooldown_wait_count')} "
+                    f"planned={telemetry.get('planned_cooldown_wait_count')}"
+                )
+    return 0 if status.get("ok") else 1
+
+
 async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
     result = package_import_smoke(repo_path=getattr(args, "path", "."), python_executable=getattr(args, "python_executable", None))
     if getattr(args, "json", False):
@@ -2486,6 +2518,8 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
     if args.test_command == "report":
         return await cmd_test_report(args)
+    if args.test_command == "status":
+        return await cmd_test_status(args)
     if args.test_command == "import-smoke":
         return await cmd_test_import_smoke(args)
     if args.test_command == "smoke":
@@ -3330,6 +3364,12 @@ def make_parser() -> argparse.ArgumentParser:
     test_report.add_argument("--service-log", help="Optional Docker/service log to scan for rate-limit modal/429 evidence.")
     test_report.add_argument("--json", action="store_true", help="Emit the machine-readable report as JSON.")
 
+    test_status = test_subparsers.add_parser("status", help="Show the last known full-suite status from local logs without rerunning tests.")
+    test_status.add_argument("--path", default=".", help="Directory to scan for pb_test.full*.log files; defaults to current directory.")
+    test_status.add_argument("--log", help="Explicit full-suite log to use instead of scanning --path.")
+    test_status.add_argument("--service-log", help="Optional Docker/service log to scan alongside the selected test log.")
+    test_status.add_argument("--json", action="store_true", help="Emit the machine-readable status as JSON.")
+
     test_import_smoke = test_subparsers.add_parser("import-smoke", help="Verify installed Promptbranch package modules import from outside the source tree.")
     test_import_smoke.add_argument("--path", default=".", help="Repo path containing pyproject.toml; defaults to current directory.")
     test_import_smoke.add_argument("--python-executable", help="Python executable to use for the isolated import subprocess. Defaults to the current interpreter.")
@@ -3566,6 +3606,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_suite(args)
     if args.command == "test" and getattr(args, "test_command", None) == "report":
         return await cmd_test_report(args)
+    if args.command == "test" and getattr(args, "test_command", None) == "status":
+        return await cmd_test_status(args)
     if args.command == "test" and getattr(args, "test_command", None) == "import-smoke":
         return await cmd_test_import_smoke(args)
 

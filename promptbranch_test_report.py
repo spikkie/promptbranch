@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Iterable
+from datetime import datetime, timezone
 
 
 def _decode_json_objects(text: str) -> list[tuple[int, int, Any]]:
@@ -154,6 +155,104 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "package_hygiene": _package_hygiene_from(agent or payload),
     }
 
+
+
+def _path_mtime_payload(path: Path) -> dict[str, Any]:
+    try:
+        stat = path.stat()
+    except OSError:
+        return {"path": str(path), "mtime": None, "mtime_iso": None, "size_bytes": None}
+    return {
+        "path": str(path),
+        "mtime": stat.st_mtime,
+        "mtime_iso": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        "size_bytes": stat.st_size,
+    }
+
+
+def find_test_status_logs(path: str | Path = ".") -> list[dict[str, Any]]:
+    """Return candidate full-suite logs newest first.
+
+    This deliberately looks only for full-suite style log names so `pb test status`
+    remains a lightweight "last accepted full validation" view instead of a loose
+    log scanner. The parser still validates the JSON payload before a log is
+    accepted as status evidence.
+    """
+    root = Path(path).expanduser()
+    patterns = (
+        "pb_test.full*.log",
+        "pb_test.full*.log.*",
+        "pb_test-suite.full*.log",
+        "pb_test-suite.full*.log.*",
+        "pb_test_suite.full*.log",
+        "pb_test_suite.full*.log.*",
+    )
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+    if root.is_file():
+        candidates.append(root)
+    elif root.is_dir():
+        for pattern in patterns:
+            for item in root.glob(pattern):
+                if item.is_file() and item not in seen:
+                    seen.add(item)
+                    candidates.append(item)
+    candidates.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0.0, reverse=True)
+    return [_path_mtime_payload(item) for item in candidates]
+
+
+def build_test_status(
+    *,
+    path: str | Path = ".",
+    log: str | Path | None = None,
+    service_log: str | Path | None = None,
+    max_candidates: int = 25,
+) -> dict[str, Any]:
+    """Build a lightweight status from the newest valid full-suite log.
+
+    No tests are executed here. The command is intentionally read-only and relies
+    on a previously captured `pb test full --json` log.
+    """
+    if log is not None:
+        candidates = [_path_mtime_payload(Path(log).expanduser())]
+    else:
+        candidates = find_test_status_logs(path)
+    checked: list[dict[str, Any]] = []
+    for candidate in candidates[:max_candidates]:
+        candidate_path = candidate.get("path")
+        if not candidate_path:
+            continue
+        report = build_test_report(candidate_path, service_log=service_log)
+        suite = report.get("suite") if isinstance(report.get("suite"), dict) else {}
+        profile = suite.get("profile") if isinstance(suite, dict) else None
+        accepted = bool(report.get("suite")) and profile == "full"
+        checked.append({
+            **candidate,
+            "status": report.get("status"),
+            "ok": report.get("ok"),
+            "profile": profile,
+            "accepted": accepted,
+        })
+        if accepted:
+            return {
+                "ok": bool(report.get("ok")),
+                "action": "test_status",
+                "status": "verified" if report.get("ok") else "suite_failed",
+                "path": str(Path(path).expanduser()),
+                "selected_log": candidate,
+                "checked": checked,
+                "suite": suite,
+                "source": report.get("source"),
+                **({"service_log": report.get("service_log")} if isinstance(report.get("service_log"), dict) else {}),
+            }
+    return {
+        "ok": False,
+        "action": "test_status",
+        "status": "no_full_suite_log_found" if not candidates else "no_valid_full_suite_log_found",
+        "path": str(Path(path).expanduser()),
+        "candidate_count": len(candidates),
+        "checked": checked,
+    }
 
 def parse_service_log(path: str | Path, *, max_event_lines: int = 40) -> dict[str, Any]:
     service_path = Path(path).expanduser()
