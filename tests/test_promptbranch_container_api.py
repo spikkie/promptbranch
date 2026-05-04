@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.153"
+    assert payload["version"] == "0.0.154"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.153"
+    assert response.json()["version"] == "0.0.154"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -93,11 +93,12 @@ def test_run_test_suite_endpoint_uses_helper(monkeypatch) -> None:
     async def fake_run_test_suite_async(**kwargs):
         assert kwargs['keep_project'] is True
         assert kwargs['only'] == ['project_list_debug']
+        assert kwargs.get('profile') == 'browser'
         return {'ok': True, 'action': 'test_suite'}
 
     monkeypatch.setattr('promptbranch_container_api.run_test_suite_async', fake_run_test_suite_async)
     client = TestClient(app)
-    response = client.post('/v1/test-suite/run', json={'keep_project': True, 'only': ['project_list_debug']})
+    response = client.post('/v1/test-suite/run', json={'keep_project': True, 'only': ['project_list_debug'], 'profile': 'browser'})
     assert response.status_code == 200
     assert response.json()['action'] == 'test_suite'
 

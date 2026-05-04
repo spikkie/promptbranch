@@ -60,7 +60,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.153"
+CLI_VERSION = "0.0.154"
 COMMANDS = {
     "login-check",
     "ask",
@@ -1768,7 +1768,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
-        "test-suite": ["--json", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
+        "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
 
 
@@ -1956,6 +1956,9 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'service_token': args.service_token,
         'service_timeout_seconds': args.service_timeout_seconds,
         'clear_singleton_locks': args.clear_singleton_locks,
+        'profile': getattr(args, 'profile', 'browser'),
+        'path': getattr(args, 'path', '.'),
+        'package_zip': getattr(args, 'package_zip', None),
     }
     summary = await run_test_suite_async(**payload)
     if args.json or True:
@@ -3344,6 +3347,9 @@ def make_parser() -> argparse.ArgumentParser:
 
     test_suite = subparsers.add_parser("test-suite", help="Run the standard end-to-end smoke suite for daily verification.")
     test_suite.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
+    test_suite.add_argument("--profile", choices=["browser", "agent", "full"], default="browser", help="Test profile: browser keeps the existing live integration suite; agent runs local MCP/agent/skill/package checks; full runs both.")
+    test_suite.add_argument("--path", default=".", help="Repo path used by agent/full profiles. Defaults to current directory.")
+    test_suite.add_argument("--package-zip", help="Optional release ZIP path for package hygiene checks in agent/full profiles.")
     test_suite.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
     test_suite.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_suite.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")

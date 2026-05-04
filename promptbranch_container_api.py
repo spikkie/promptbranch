@@ -164,6 +164,9 @@ class TestSuiteRunRequest(BaseModel):
     service_token: Optional[str] = None
     service_timeout_seconds: Optional[float] = None
     clear_singleton_locks: Optional[bool] = None
+    profile: str = "browser"
+    path: str = "."
+    package_zip: Optional[str] = None
 
 
 class ServiceInfo(BaseModel):
@@ -178,7 +181,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.153"
+SERVICE_VERSION = "0.0.154"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 

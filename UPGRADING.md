@@ -333,6 +333,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.154
+
+- Use `pb test-suite --profile full --json` when you want one command to run both the live browser/project/source/task integration suite and the local MCP/agent/skill/package checks.
+- Use `pb test-suite --profile agent --json` for a faster local validation path that does not require ChatGPT/browser access.
+- The default `pb test-suite --json` behavior remains the browser integration suite for compatibility.
+
 ## v0.0.153
 
 - `pb agent summarize-log` now returns a deterministic local fallback summary when Ollama times out or is unavailable.

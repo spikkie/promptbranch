@@ -1,4 +1,4 @@
-# promptbranch v0.0.153
+# promptbranch v0.0.154
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.153 .
+docker build -t promptbranch-service:0.0.154 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.153
+  promptbranch-service:0.0.154
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.153.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.154.zip
 ```
 
 From an extracted checkout:
@@ -572,10 +572,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
-## v0.0.153
+## v0.0.154
 
-- Added a deterministic fallback summary to `pb agent summarize-log` so Ollama timeout/unavailability still returns a local heuristic `deterministic_summary`.
-- Preserved repo-bounded reads and model safety: Ollama still cannot plan, execute tools, update state, or bypass policy.
+- Added `pb test-suite --profile agent --json` for local MCP/agent/skill/controlled-process/package hygiene validation without requiring ChatGPT/browser automation.
+- Added `pb test-suite --profile full --json`, which runs the existing browser/project/source/task integration suite and then the new local agent profile.
+- Added package hygiene checks for release ZIPs: no `.pytest_cache`, no `__pycache__`, no `.pyc`/`.pyo`, no wrapper-folder ZIP layout, and valid ZIP CRC.
+- Preserved the existing default behavior: `pb test-suite --json` still runs the browser integration profile unless a profile is explicitly selected.
 - Kept source sync, artifact release, arbitrary shell/process execution, and write-capable MCP execution blocked.
 
 ## v0.0.152
