@@ -16,10 +16,10 @@ pb agent plan "sync repo" --json
 
 ```bash
 pb mcp manifest --json
-pb mcp manifest --include-controlled-writes --json
+pb mcp manifest --include-controlled-processes --json
 ```
 
-The default manifest is read-only. `--include-controlled-writes` only lists gated write/process tools for planning; `pb mcp serve` still rejects their execution.
+The default manifest is read-only. `--include-controlled-processes` lists the bounded controlled process surface. Currently that means `test.smoke`; source/artifact writes remain blocked and are not exposed by this manifest.
 
 ## Generate host configuration
 
@@ -96,7 +96,7 @@ The MCP server is intentionally read-only by default:
 - git tools only read status/diff summaries
 - Promptbranch state tools only read `.pb_profile`
 - artifact tools verify or inspect metadata
-- controlled writes are not executable from `pb mcp serve` yet
+- source/artifact writes are not executable from `pb mcp serve`
 
 Write-capable MCP execution should only be added after deterministic prechecks and transactional verification exist.
 

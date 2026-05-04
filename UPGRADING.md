@@ -146,14 +146,14 @@ If you still depend on them, pin to `v0.0.67` temporarily and migrate before ado
 - Added `pb mcp host-smoke` to launch the generated host config and verify read-only calls through the configured stdio server.
 - Added `mcp_host_smoke` as an optional local-only test-suite selector: `pb test-suite --only mcp_host_smoke --json`.
 - Updated MCP help/how-to docs with absolute-path config and host-smoke workflow.
-- Preserved read-only MCP server semantics; controlled write tools remain non-executable from `pb mcp serve`.
+- Preserved read-only MCP server semantics; controlled process mode exposes only bounded process tools; source/artifact writes remain blocked from `pb mcp serve`.
 
 ## v0.0.140
 
 - Added `pb mcp config` to emit a standard `mcpServers` host configuration snippet for `pb mcp serve`.
 - Added `mcp_smoke` to the test-suite selectors, available via `pb test-suite --only mcp_smoke --json` or `pb test smoke --only mcp_smoke --json`.
 - Added `docs/howto/14-use-mcp-local-agent.md` with MCP host config, stdio smoke, and safety-boundary guidance.
-- Preserved read-only MCP server semantics; controlled write tools remain non-executable from `pb mcp serve`.
+- Preserved read-only MCP server semantics; controlled process mode exposes only bounded process tools; source/artifact writes remain blocked from `pb mcp serve`.
 
 ## v0.0.139
 
@@ -331,6 +331,14 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Preserved v0.0.146 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
 
 
+
+
+## v0.0.150
+
+- Public MCP controlled mode is now named controlled processes. Use `--include-controlled-processes`.
+- Deprecated `--include-controlled-writes` remains as an alias but no longer implies source/artifact write tool exposure.
+- The controlled-process manifest exposes `test.smoke` only; source sync and artifact release write tools remain blocked.
+- Timeout diagnostics now separate `tool_timeout_seconds` from `transport_timeout_seconds` for controlled MCP process calls.
 
 ## v0.0.149
 

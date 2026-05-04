@@ -1,4 +1,4 @@
-# promptbranch v0.0.149
+# promptbranch v0.0.150
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -58,7 +58,7 @@ pb agent models --json
 
 `pb agent ask` does not let Ollama plan tool calls. The planner is rule-based and read-only; Ollama is optional summary support only.
 
-`pb mcp config` resolves `promptbranch` to an absolute executable path when possible because GUI-launched MCP hosts often do not inherit shell aliases. `pb mcp serve` exposes read-only repo/git/state/artifact tools. Controlled write tools may be listed for planning with `--include-controlled-writes`, but execution is rejected until a deterministic write executor is implemented. See `docs/howto/14-use-mcp-local-agent.md` for host config and smoke-test examples.
+`pb mcp config` resolves `promptbranch` to an absolute executable path when possible because GUI-launched MCP hosts often do not inherit shell aliases. `pb mcp serve` exposes read-only repo/git/state/artifact tools. Controlled process tools may be listed with `--include-controlled-processes`; the only executable controlled process tool is bounded `test.smoke`, while source/artifact writes remain blocked. See `docs/howto/14-use-mcp-local-agent.md` for host config and smoke-test examples.
 
 ## Reusable Docker service
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.149 .
+docker build -t promptbranch-service:0.0.150 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.149
+  promptbranch-service:0.0.150
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.149.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.150.zip
 ```
 
 From an extracted checkout:
@@ -571,11 +571,19 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
+
+## v0.0.150
+
+- Renamed the public MCP controlled mode from controlled writes to controlled processes: use `--include-controlled-processes`.
+- Kept `--include-controlled-writes` as a deprecated compatibility alias that maps to controlled processes only.
+- Limited the controlled MCP surface to the bounded `test.smoke` process tool; source sync and artifact release write tools remain blocked and are not exposed by the controlled-process manifest.
+- Fixed controlled process timeout diagnostics so tool timeout and MCP transport timeout are reported separately.
+
 ## v0.0.147
 
 - Fixed `pb agent mcp-llm-smoke ...` CLI parsing: its `--command` option no longer overwrites the root command parser destination.
 - Treat `project_endpoint` task rows as indexed task-list visibility in the live integration suite.
-- Preserved v0.0.149 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
+- Preserved v0.0.150 Ollama tool-proposal guardrails: original request risk is checked before model proposals execute.
 
 
 

@@ -486,8 +486,8 @@ Start with read-only or constrained tools.
 | Filesystem MCP | list/read repo files and logs | read-only |
 | Git MCP | status, diff, branch, tags | read-only |
 | Promptbranch state MCP | read current ws/task/artifact state | read-only |
-| Test MCP | run smoke/unit tests | controlled write/process |
-| Artifact MCP | scan versions, package ZIPs, verify layout | controlled write |
+| Test MCP | run bounded smoke/unit tests | controlled process |
+| Artifact MCP | scan versions, package ZIPs, verify layout | gated source/artifact write |
 | Promptbranch MCP | expose ws/task/src/artifact commands | gated writes |
 
 Avoid starting with a broad unrestricted shell MCP.
@@ -765,7 +765,7 @@ Priority order:
 3. add task message/answer subresource commands
 4. add `pb doctor` and `pb test smoke`
 5. add read-only MCP/Ollama local agent
-6. add controlled write tools only after the above is stable
+6. add controlled source/artifact write tools only after the above is stable
 
 ---
 
