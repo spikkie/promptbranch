@@ -2,4 +2,8 @@ ver=chatgpt_claudecode_workflow_v0.0.156;cp ~/Downloads/$ver.zip  .; mkdir $ver;
 ga  .
 zip_it
 pbsa chatgpt_claudecode_workflow_v0.0.156.zip
+pipx uninstall promptbranch; pipx install ./chatgpt_claudecode_workflow_v0.0.157.zip
+sudo chown -R spikkie:spikkie /home/spikkie/git/chatgpt_claudecode_workflow/.pb_profile/
+./run_chatgpt_service.sh
 pb test full --json 2>&1 | tee pb_test.full.v0.0.156.log
+docker logs <container_id> > promptbranch-service:0.0.157.log
