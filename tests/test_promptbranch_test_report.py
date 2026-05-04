@@ -13,7 +13,7 @@ def _suite_payload(ok: bool = True) -> dict:
         "browser": {"ok": ok, "steps": [{"name": "browser_step", "ok": ok, "status": "verified" if ok else "failed"}]},
         "agent": {
             "ok": True,
-            "version": "v0.0.160",
+            "version": "v0.0.161",
             "steps": [
                 {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "zip_path": "release.zip", "bad_entries": [], "wrapper_folder": False}}
             ],
@@ -89,3 +89,38 @@ def test_promptbranch_test_report_is_declared_as_installable_module():
     modules = pyproject["tool"]["setuptools"]["py-modules"]
 
     assert "promptbranch_test_report" in modules
+
+
+def test_build_test_status_selects_latest_valid_full_suite_log(tmp_path):
+    old = tmp_path / "pb_test.full.v0.0.160.log"
+    new = tmp_path / "pb_test.full.v0.0.161.log"
+    old.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
+    payload = _suite_payload()
+    payload["agent"]["version"] = "v0.0.161"
+    new.write_text("noise\n" + json.dumps(payload, indent=2), encoding="utf-8")
+
+    import os
+    os.utime(old, (1000, 1000))
+    os.utime(new, (2000, 2000))
+
+    from promptbranch_test_report import build_test_status
+
+    status = build_test_status(path=tmp_path)
+
+    assert status["ok"] is True
+    assert status["action"] == "test_status"
+    assert status["status"] == "verified"
+    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.161.log")
+    assert status["suite"]["version"] == "v0.0.161"
+    assert status["suite"]["profile"] == "full"
+    assert status["suite"]["package_hygiene"]["ok"] is True
+
+
+def test_build_test_status_reports_missing_full_suite_log(tmp_path):
+    from promptbranch_test_report import build_test_status
+
+    status = build_test_status(path=tmp_path)
+
+    assert status["ok"] is False
+    assert status["status"] == "no_full_suite_log_found"
+    assert status["candidate_count"] == 0
