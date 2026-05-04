@@ -44,6 +44,7 @@ from promptbranch_browser_auth.exceptions import (
 )
 from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import run_test_suite_async
+from promptbranch_test_report import build_test_report, render_test_report_text
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -60,7 +61,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.157"
+CLI_VERSION = "0.0.158"
 COMMANDS = {
     "login-check",
     "ask",
@@ -2461,8 +2462,19 @@ def _apply_rate_limit_safe_defaults(args: argparse.Namespace) -> None:
             setattr(args, name, value)
 
 
+async def cmd_test_report(args: argparse.Namespace) -> int:
+    report = build_test_report(args.log, service_log=getattr(args, "service_log", None))
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(render_test_report_text(report), end="")
+    return 0 if report.get("ok") else 1
+
+
 async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     del backend
+    if args.test_command == "report":
+        return await cmd_test_report(args)
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_suite(args)
@@ -3300,6 +3312,11 @@ def make_parser() -> argparse.ArgumentParser:
     test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
     _add_test_suite_profile_options(test_full)
 
+    test_report = test_subparsers.add_parser("report", help="Summarize a pb test-suite / pb test full JSON log.")
+    test_report.add_argument("log", help="Path to a log produced by pb test-suite --json or pb test full --json.")
+    test_report.add_argument("--service-log", help="Optional Docker/service log to scan for rate-limit modal/429 evidence.")
+    test_report.add_argument("--json", action="store_true", help="Emit the machine-readable report as JSON.")
+
     doctor = subparsers.add_parser("doctor", help="Run cheap local health checks for the active Promptbranch state.")
     doctor.add_argument("--json", action="store_true", help="Emit doctor checks as JSON.")
 
@@ -3529,6 +3546,8 @@ async def _async_main(args: argparse.Namespace) -> int:
     if args.command == "test" and getattr(args, "test_command", None) == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_suite(args)
+    if args.command == "test" and getattr(args, "test_command", None) == "report":
+        return await cmd_test_report(args)
 
     backend = build_backend(args)
     if args.command == "login-check":
@@ -3616,6 +3635,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
     args.profile_dir = str(resolve_profile_dir(args.profile_dir))
+    if args.command == "test" and getattr(args, "test_command", None) == "report" and not any(token == "--debug" or token.startswith("--debug=") for token in normalized_argv):
+        args.debug = False
     if args.debug and not _max_retries_was_configured(normalized_argv):
         args.max_retries = 1
     _configure_logging(args.debug)

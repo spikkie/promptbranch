@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.157"
+    assert captured.out.strip() == "promptbranch 0.0.158"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.157"
+    assert payload["version"] == "0.0.158"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1490,3 +1490,39 @@ def test_test_full_can_disable_rate_limit_safe_defaults(monkeypatch, capsys) -> 
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["profile"] == "full"
+
+
+def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
+    log_path = tmp_path / "pb_test.full.log"
+    log_path.write_text(
+        "noise before\n"
+        + json.dumps({
+            "ok": True,
+            "action": "test_suite",
+            "profile": "full",
+            "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
+            "agent": {
+                "ok": True,
+                "version": "v0.0.158",
+                "steps": [
+                    {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
+                ],
+            },
+            "rate_limit_telemetry": {"rate_limit_modal_detected": False, "conversation_history_429_seen": False},
+            "safety": {"write_tools_blocked": True, "model_has_execution_authority": False, "source_or_artifact_mutation_allowed": False},
+        }, indent=2)
+        + "\nnoise after\n",
+        encoding="utf-8",
+    )
+
+    from promptbranch_cli import main
+
+    rc = main(["test", "report", str(log_path), "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "test_report"
+    assert payload["ok"] is True
+    assert payload["suite"]["profile"] == "full"
+    assert payload["suite"]["browser"]["step_count"] == 1
+    assert payload["suite"]["agent"]["step_count"] == 1
+    assert payload["suite"]["package_hygiene"]["status"] == "verified"

@@ -333,6 +333,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.158
+
+- Use `pb test report <log> --json` to summarize `pb test full --json` / `pb test-suite --json` logs.
+- Add `--service-log <docker-log>` when you also want the Docker service log scanned for rate-limit modal and conversation-history 429 evidence.
+- Report output includes top-level pass/fail status, browser/agent step counts, failed steps, rate-limit telemetry, safety state, and package hygiene status.
+- No safety policy changed; this is an observability/reporting release.
+
 ## v0.0.157
 
 - Browser/full test-suite JSON now includes `rate_limit_telemetry` so operators can tell whether ChatGPT conversation-history throttling actually occurred.
