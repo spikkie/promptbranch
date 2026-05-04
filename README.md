@@ -1,4 +1,4 @@
-# promptbranch v0.0.158
+# promptbranch v0.0.159
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.158 .
+docker build -t promptbranch-service:0.0.159 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.158
+  promptbranch-service:0.0.159
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.158.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.159.zip
 ```
 
 From an extracted checkout:
@@ -572,7 +572,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
-## v0.0.158
+## v0.0.159
 
 - Added `pb test report <log> --json` to summarize `pb test full --json` / `pb test-suite --json` logs without manual JSON inspection.
 - The report extracts top-level pass/fail status, browser/agent step counts, failed steps, rate-limit telemetry, safety state, and package hygiene status.

@@ -13,7 +13,7 @@ def _suite_payload(ok: bool = True) -> dict:
         "browser": {"ok": ok, "steps": [{"name": "browser_step", "ok": ok, "status": "verified" if ok else "failed"}]},
         "agent": {
             "ok": True,
-            "version": "v0.0.158",
+            "version": "v0.0.159",
             "steps": [
                 {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "zip_path": "release.zip", "bad_entries": [], "wrapper_folder": False}}
             ],
@@ -79,3 +79,13 @@ def test_parse_service_log_detects_modal_and_conversation_429(tmp_path):
     assert payload["rate_limit_modal_detected"] is True
     assert payload["conversation_history_429_seen"] is True
     assert payload["cooldown_line_count"] == 1
+
+
+def test_promptbranch_test_report_is_declared_as_installable_module():
+    import tomllib
+    from pathlib import Path
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    modules = pyproject["tool"]["setuptools"]["py-modules"]
+
+    assert "promptbranch_test_report" in modules
