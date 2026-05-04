@@ -1,4 +1,4 @@
-# promptbranch v0.0.151
+# promptbranch v0.0.152
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.151 .
+docker build -t promptbranch-service:0.0.152 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.151
+  promptbranch-service:0.0.152
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.151.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.152.zip
 ```
 
 From an extracted checkout:
@@ -571,6 +571,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
+
+## v0.0.152
+
+- Added `pb agent summarize-log <log-file> --json` for repo-bounded, read-only Ollama log summarization.
+- Kept Ollama as summary/proposal support only: it does not plan writes, execute tools, update state, or bypass policy.
+- Fixed `pb agent ... --json` output so agent JSON payloads are emitted once instead of duplicated.
 
 ## v0.0.151
 

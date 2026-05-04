@@ -26,7 +26,7 @@ from promptbranch_state import ConversationStateStore, resolve_profile_dir
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.151"
+MCP_SERVER_VERSION = "0.0.152"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -204,7 +204,7 @@ def _coerce_controlled_process_flag(
     include_controlled_processes: bool = False,
     include_controlled_writes: bool | None = None,
 ) -> bool:
-    """Normalize the v0.0.151 controlled-process flag.
+    """Normalize the v0.0.152 controlled-process flag.
 
     ``include_controlled_writes`` is kept as a deprecated compatibility alias
     for older callers, but it now exposes only controlled process tools. It does
@@ -609,7 +609,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.151 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.152 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload
@@ -1650,6 +1650,108 @@ def _plan_tool_calls_for_skill(skill_name: str, request: str, *, repo_path: str 
     # and avoids hidden branching on a pre-read git result.
     calls.append({"name": "git.diff.summary", "arguments": {}})
     return calls, notes
+
+
+def agent_summarize_log(
+    log_path: str | Path,
+    *,
+    repo_path: str | Path = ".",
+    model: str = "llama3.2:3b",
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    ollama_timeout_seconds: float = DEFAULT_OLLAMA_TIMEOUT_SECONDS,
+    max_bytes: int = 12000,
+) -> dict[str, Any]:
+    """Summarize one repo-bounded log file with Ollama.
+
+    This is intentionally read-only. The log is read deterministically first;
+    Ollama receives a bounded excerpt and may summarize it, but model failure
+    does not hide the raw read metadata. The function never executes tools,
+    mutates state, or reads outside ``repo_path``.
+    """
+
+    root = Path(repo_path).expanduser().resolve()
+    raw_path = str(log_path or "").strip()
+    if not raw_path:
+        return {
+            "ok": False,
+            "action": "agent_summarize_log",
+            "status": "invalid_log_path",
+            "mode": "ollama_summary_read_only",
+            "repo_path": str(root),
+            "log_path": raw_path,
+            "error": "log path is required",
+            "ollama": {"used_for_planning": False, "used_for_summary": False},
+            "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
+        }
+    target, path_error = _safe_repo_relative_path(root, raw_path, default="")
+    if path_error:
+        return {
+            "ok": False,
+            "action": "agent_summarize_log",
+            "status": path_error,
+            "mode": "ollama_summary_read_only",
+            "repo_path": str(root),
+            "log_path": raw_path,
+            "resolved_path": str(target),
+            "error": "log path must be repo-relative and inside repo_path",
+            "ollama": {"used_for_planning": False, "used_for_summary": False},
+            "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
+        }
+
+    max_bytes = max(1, min(int(max_bytes), 100000))
+    read_payload = _read_bounded_text(target, max_bytes=max_bytes)
+    read_payload.update({
+        "repo_path": str(root),
+        "relative_path": target.relative_to(root).as_posix() if _path_is_relative_to(target, root) else None,
+        "max_bytes": max_bytes,
+    })
+    if not read_payload.get("ok"):
+        return {
+            "ok": False,
+            "action": "agent_summarize_log",
+            "status": str(read_payload.get("error") or "log_read_failed"),
+            "mode": "ollama_summary_read_only",
+            "repo_path": str(root),
+            "log_path": raw_path,
+            "resolved_path": str(target),
+            "read": read_payload,
+            "ollama": {"used_for_planning": False, "used_for_summary": False},
+            "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
+        }
+
+    text = str(read_payload.get("text") or "")
+    prompt = (
+        "Summarize this Promptbranch/log output for a developer. Return: "
+        "1) pass/fail status, 2) important failures, 3) likely cause, 4) next safe command. "
+        "Do not invent results and do not propose write/destructive actions.\n\n"
+        + text[:max_bytes]
+    )
+    summary = _call_ollama_generate(
+        prompt=prompt,
+        model=model,
+        host=ollama_host,
+        timeout_seconds=ollama_timeout_seconds,
+        num_predict=320,
+    )
+    return {
+        "ok": True,
+        "action": "agent_summarize_log",
+        "status": "summarized" if summary.get("ok") else "summary_unavailable",
+        "mode": "ollama_summary_read_only",
+        "repo_path": str(root),
+        "log_path": raw_path,
+        "resolved_path": str(target),
+        "read": {k: v for k, v in read_payload.items() if k != "text"},
+        "ollama": {
+            "used_for_planning": False,
+            "used_for_summary": True,
+            "model": model,
+            "host": ollama_host,
+            "summary": summary,
+            "note": "Ollama summary failure is non-fatal; the log read metadata remains authoritative.",
+        },
+        "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
+    }
 
 
 def agent_run(

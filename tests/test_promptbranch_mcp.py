@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.151"
+    assert init["result"]["serverInfo"]["version"] == "0.0.152"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -587,3 +587,54 @@ def test_agent_tool_call_allows_controlled_test_smoke(monkeypatch, tmp_path: Pat
     assert payload["ok"] is True
     assert payload["tool"] == "test.smoke"
     assert payload["result"]["status"] == "verified"
+
+
+def test_agent_summarize_log_is_repo_bounded_and_summary_only(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_mcp
+
+    log = tmp_path / "session.log"
+    log.write_text("ok=true\nstatus=verified\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        promptbranch_mcp,
+        "_call_ollama_generate",
+        lambda **kwargs: {
+            "ok": True,
+            "status": "generated",
+            "model": kwargs.get("model"),
+            "text": "The run verified successfully.",
+        },
+    )
+
+    payload = promptbranch_mcp.agent_summarize_log("session.log", repo_path=tmp_path, model="fake-local-model")
+
+    assert payload["ok"] is True
+    assert payload["action"] == "agent_summarize_log"
+    assert payload["status"] == "summarized"
+    assert payload["read"]["relative_path"] == "session.log"
+    assert payload["ollama"]["used_for_planning"] is False
+    assert payload["ollama"]["used_for_summary"] is True
+    assert payload["safety"]["model_has_execution_authority"] is False
+
+    outside = promptbranch_mcp.agent_summarize_log("../secret.log", repo_path=tmp_path, model="fake-local-model")
+    assert outside["ok"] is False
+    assert outside["status"] == "path_outside_repo"
+
+
+def test_agent_summarize_log_model_failure_preserves_read_metadata(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_mcp
+
+    (tmp_path / "failure.log").write_text("FAIL test_example\n", encoding="utf-8")
+    monkeypatch.setattr(
+        promptbranch_mcp,
+        "_call_ollama_generate",
+        lambda **kwargs: {"ok": False, "status": "unavailable", "error": "connection refused", "model": kwargs.get("model")},
+    )
+
+    payload = promptbranch_mcp.agent_summarize_log("failure.log", repo_path=tmp_path, model="fake-local-model")
+
+    assert payload["ok"] is True
+    assert payload["status"] == "summary_unavailable"
+    assert payload["read"]["ok"] is True
+    assert payload["read"]["relative_path"] == "failure.log"
+    assert payload["ollama"]["summary"]["status"] == "unavailable"
