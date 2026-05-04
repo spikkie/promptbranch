@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.152"
+    assert init["result"]["serverInfo"]["version"] == "0.0.153"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -612,6 +612,7 @@ def test_agent_summarize_log_is_repo_bounded_and_summary_only(monkeypatch, tmp_p
     assert payload["action"] == "agent_summarize_log"
     assert payload["status"] == "summarized"
     assert payload["read"]["relative_path"] == "session.log"
+    assert payload["deterministic_summary"]["status"] == "generated"
     assert payload["ollama"]["used_for_planning"] is False
     assert payload["ollama"]["used_for_summary"] is True
     assert payload["safety"]["model_has_execution_authority"] is False
@@ -634,7 +635,11 @@ def test_agent_summarize_log_model_failure_preserves_read_metadata(monkeypatch, 
     payload = promptbranch_mcp.agent_summarize_log("failure.log", repo_path=tmp_path, model="fake-local-model")
 
     assert payload["ok"] is True
-    assert payload["status"] == "summary_unavailable"
+    assert payload["status"] == "deterministic_summary"
     assert payload["read"]["ok"] is True
     assert payload["read"]["relative_path"] == "failure.log"
+    assert payload["deterministic_summary"]["ok"] is True
+    assert payload["deterministic_summary"]["status"] == "generated"
+    assert payload["deterministic_summary"]["counts"]["ok_false"] == 0
     assert payload["ollama"]["summary"]["status"] == "unavailable"
+    assert payload["ollama"]["fallback_used"] is True
