@@ -1,4 +1,4 @@
-# promptbranch v0.0.155
+# promptbranch v0.0.156
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.155 .
+docker build -t promptbranch-service:0.0.156 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.155
+  promptbranch-service:0.0.156
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.155.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.156.zip
 ```
 
 From an extracted checkout:
@@ -571,6 +571,14 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
+
+## v0.0.156
+
+- Made `pb test full --json` rate-limit-safe by default for the live browser portion. Conservative defaults now use longer step and post-ask delays to reduce ChatGPT conversation-history 429/modal pressure.
+- Added `--rate-limit-safe` / `--no-rate-limit-safe` flags to `pb test full`, `pb test browser`, `pb test smoke`, and `pb test-suite --profile ...`.
+- Added rate-limit strategy metadata to test-suite JSON output so full runs report whether conservative pacing was enabled.
+- Increased the default service-side conversation-history cooldown from 120 seconds to 180 seconds and extended modal wait timeout to match the “wait a few minutes” warning.
+- No new write/source/artifact/model execution authority was added.
 
 ## v0.0.155
 

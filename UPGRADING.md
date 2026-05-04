@@ -333,6 +333,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.156
+
+- `pb test full --json` now enables conservative rate-limit-safe pacing by default. This is intended to reduce repeated ChatGPT conversation-history 429/modals during full live browser runs.
+- Use `--no-rate-limit-safe` to keep the older/faster defaults, or override individual delay flags directly.
+- `pb test-suite --profile full --json` receives the same default behavior.
+- Service/browser automation now defaults conversation-history cooldown to 180 seconds.
+
 ## v0.0.155
 
 - Use `pb test full --json` as the canonical shortcut for the full validation profile.

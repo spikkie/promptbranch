@@ -59,3 +59,34 @@ def test_package_hygiene_detects_cache_entries(tmp_path: Path) -> None:
     assert result["status"] == "failed"
     assert any(".pytest_cache" in entry for entry in result["bad_entries"])
     assert any("__pycache__" in entry for entry in result["bad_entries"])
+
+
+def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
+    (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
+
+    monkeypatch.setattr(suite, "mcp_host_smoke", lambda **kwargs: _ok("mcp_host_smoke"))
+    monkeypatch.setattr(suite, "mcp_tool_call_via_stdio", lambda *args, **kwargs: _ok("mcp_tool_call"))
+    monkeypatch.setattr(suite, "skill_list", lambda **kwargs: _ok("skill_list"))
+    monkeypatch.setattr(suite, "skill_show", lambda *args, **kwargs: _ok("skill_show"))
+    monkeypatch.setattr(suite, "skill_validate", lambda *args, **kwargs: _ok("skill_validate", "valid"))
+    monkeypatch.setattr(suite, "agent_tool_call", lambda *args, **kwargs: _ok("agent_tool_call"))
+    def fake_summarize(log_path: str, **kwargs) -> dict:
+        if str(log_path).startswith("/"):
+            return {"ok": False, "action": "agent_summarize_log", "status": "path_outside_repo"}
+        return {"ok": True, "status": "deterministic_summary"}
+
+    monkeypatch.setattr(suite, "agent_summarize_log", fake_summarize)
+
+    def fake_agent_run(request: str, **kwargs) -> dict:
+        if request in {"sync sources", "create artifact release", "run pytest"}:
+            return {"ok": False, "action": "agent_run", "status": "risk_rejected"}
+        return _ok("agent_run")
+
+    monkeypatch.setattr(suite, "agent_run", fake_agent_run)
+
+    result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
+
+    assert result["ok"] is True
+    assert result["rate_limit_strategy"]["browser_required"] is False
+    assert result["rate_limit_strategy"]["enabled"] is False

@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.155"
+    assert captured.out.strip() == "promptbranch 0.0.156"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.155"
+    assert payload["version"] == "0.0.156"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1450,3 +1450,43 @@ def test_main_ask_combines_prompt_file_and_repeatable_attachments(monkeypatch, c
     assert capsys.readouterr().out.strip() == "ok"
     assert captured_kwargs["attachment_paths"] == [str(first), str(second)]
     assert captured_kwargs["file_path"] is None
+
+
+def test_test_full_uses_rate_limit_safe_defaults(monkeypatch, capsys) -> None:
+    async def fake_run_test_suite_async(**kwargs):
+        assert kwargs["profile"] == "full"
+        assert kwargs["rate_limit_safe"] is True
+        assert kwargs["step_delay_seconds"] == 15.0
+        assert kwargs["post_ask_delay_seconds"] == 45.0
+        assert kwargs["task_list_visible_poll_min_seconds"] == 30.0
+        assert kwargs["task_list_visible_poll_max_seconds"] == 60.0
+        assert kwargs["task_list_visible_max_attempts"] == 3
+        return {"ok": True, "action": "test_suite", "profile": "full"}
+
+    monkeypatch.setattr("promptbranch_cli.run_test_suite_async", fake_run_test_suite_async)
+
+    from promptbranch_cli import main
+
+    rc = main(["test", "full", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["profile"] == "full"
+
+
+def test_test_full_can_disable_rate_limit_safe_defaults(monkeypatch, capsys) -> None:
+    async def fake_run_test_suite_async(**kwargs):
+        assert kwargs["profile"] == "full"
+        assert kwargs["rate_limit_safe"] is False
+        assert kwargs["step_delay_seconds"] == 8.0
+        assert kwargs["post_ask_delay_seconds"] == 20.0
+        assert kwargs["task_list_visible_max_attempts"] == 4
+        return {"ok": True, "action": "test_suite", "profile": "full"}
+
+    monkeypatch.setattr("promptbranch_cli.run_test_suite_async", fake_run_test_suite_async)
+
+    from promptbranch_cli import main
+
+    rc = main(["test", "full", "--no-rate-limit-safe", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["profile"] == "full"

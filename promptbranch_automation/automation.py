@@ -180,12 +180,12 @@ class ChatGPTAutomation:
             else float(min_context_spacing_seconds)
         )
         self.conversation_history_rate_limit_cooldown_seconds = (
-            float(os.getenv("CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS", "120.0"))
+            float(os.getenv("CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS", "180.0"))
             if conversation_history_rate_limit_cooldown_seconds is None
             else float(conversation_history_rate_limit_cooldown_seconds)
         )
         self.rate_limit_modal_wait_timeout_ms = (
-            int(os.getenv("CHATGPT_RATE_LIMIT_MODAL_WAIT_TIMEOUT_MS", "120000"))
+            int(os.getenv("CHATGPT_RATE_LIMIT_MODAL_WAIT_TIMEOUT_MS", "180000"))
             if rate_limit_modal_wait_timeout_ms is None
             else int(rate_limit_modal_wait_timeout_ms)
         )
