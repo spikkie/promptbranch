@@ -35,6 +35,7 @@ def test_agent_profile_runs_local_checks_and_expected_negatives(monkeypatch, tmp
 
     monkeypatch.setattr(suite, "agent_run", fake_agent_run)
     monkeypatch.setattr(suite, "agent_summarize_log", fake_summarize)
+    monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 
@@ -61,6 +62,54 @@ def test_package_hygiene_detects_cache_entries(tmp_path: Path) -> None:
     assert any("__pycache__" in entry for entry in result["bad_entries"])
 
 
+def test_package_import_metadata_detects_undeclared_cli_import(tmp_path: Path) -> None:
+    bad_zip = tmp_path / "bad.zip"
+    pyproject = """[tool.setuptools]
+py-modules = ["promptbranch_cli"]
+"""
+    with zipfile.ZipFile(bad_zip, "w") as archive:
+        archive.writestr("VERSION", "v0.0.test\n")
+        archive.writestr("pyproject.toml", pyproject)
+        archive.writestr("promptbranch_cli.py", "from promptbranch_test_report import build_test_report\n")
+        archive.writestr("promptbranch_test_report.py", "def build_test_report(): pass\n")
+
+    result = suite._package_import_metadata(str(bad_zip), repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert "promptbranch_test_report" in result["missing_import_declarations"]
+
+
+def test_package_import_smoke_runs_outside_repo(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.setuptools]\npy-modules = ["promptbranch_cli", "promptbranch_test_report"]\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = '[{"module":"promptbranch_cli","ok":true}]'
+        stderr = ''
+
+    def fake_run(cmd, cwd, env, text, stdout, stderr, timeout, check):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        captured["env"] = env
+        return Completed()
+
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable="python-test")
+
+    assert result["ok"] is True
+    assert result["source_tree_masking_prevented"] is True
+    assert captured["cmd"][0] == "python-test"
+    assert str(tmp_path) not in captured["env"].get("PYTHONPATH", "")
+    assert captured["cwd"] != str(tmp_path)
+
+
 def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
     (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
@@ -84,6 +133,7 @@ def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, 
         return _ok("agent_run")
 
     monkeypatch.setattr(suite, "agent_run", fake_agent_run)
+    monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 

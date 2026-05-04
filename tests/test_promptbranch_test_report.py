@@ -13,7 +13,7 @@ def _suite_payload(ok: bool = True) -> dict:
         "browser": {"ok": ok, "steps": [{"name": "browser_step", "ok": ok, "status": "verified" if ok else "failed"}]},
         "agent": {
             "ok": True,
-            "version": "v0.0.159",
+            "version": "v0.0.160",
             "steps": [
                 {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "zip_path": "release.zip", "bad_entries": [], "wrapper_folder": False}}
             ],

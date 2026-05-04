@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.159"
+    assert captured.out.strip() == "promptbranch 0.0.160"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.159"
+    assert payload["version"] == "0.0.160"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1492,6 +1492,22 @@ def test_test_full_can_disable_rate_limit_safe_defaults(monkeypatch, capsys) -> 
     assert payload["profile"] == "full"
 
 
+def test_test_import_smoke_command_dispatches(monkeypatch, capsys) -> None:
+    def fake_import_smoke(**kwargs):
+        assert kwargs["repo_path"] == "."
+        return {"ok": True, "action": "package_import_smoke", "status": "verified"}
+
+    monkeypatch.setattr("promptbranch_cli.package_import_smoke", fake_import_smoke)
+
+    from promptbranch_cli import main
+
+    rc = main(["test", "import-smoke", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "package_import_smoke"
+    assert payload["status"] == "verified"
+
+
 def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
     log_path = tmp_path / "pb_test.full.log"
     log_path.write_text(
@@ -1503,7 +1519,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.159",
+                "version": "v0.0.160",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],

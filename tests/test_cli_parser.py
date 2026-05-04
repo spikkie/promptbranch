@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.159" in out
+    assert "0.0.160" in out
     assert "promptbranch" in out
 
 
@@ -251,6 +251,12 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert full.test_command == 'full'
     assert full.json is True
     assert full.keep_project is True
+
+    import_smoke = parser.parse_args(['test', 'import-smoke', '--path', '.', '--json'])
+    assert import_smoke.command == 'test'
+    assert import_smoke.test_command == 'import-smoke'
+    assert import_smoke.path == '.'
+    assert import_smoke.json is True
 
 
 def test_parser_defaults_project_source_add_type_to_file() -> None:

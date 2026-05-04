@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
+import json
+import os
+import subprocess
+import sys
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any, Optional, Sequence
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None  # type: ignore[assignment]
 
 from promptbranch_full_integration_test import make_parser as make_integration_parser, run_integration
 from promptbranch_mcp import (
@@ -205,7 +216,9 @@ def extract_rate_limit_telemetry(summary: dict[str, Any]) -> dict[str, Any]:
     return aggregate
 
 
-def _package_hygiene(package_zip: str | None, *, repo_path: Path) -> dict[str, Any]:
+
+def _find_release_zip(package_zip: str | None, *, repo_path: Path | str) -> tuple[Path | None, list[Path]]:
+    repo_path = Path(repo_path).expanduser().resolve()
     version = _read_version(repo_path)
     candidates: list[Path] = []
     if package_zip:
@@ -213,8 +226,162 @@ def _package_hygiene(package_zip: str | None, *, repo_path: Path) -> dict[str, A
     if version:
         candidates.append(repo_path / f"chatgpt_claudecode_workflow_{version}.zip")
     candidates.extend(sorted(repo_path.glob("chatgpt_claudecode_workflow_v*.zip"), reverse=True))
-
     zip_path = next((candidate.resolve() for candidate in candidates if candidate.exists()), None)
+    return zip_path, candidates
+
+
+def _load_pyproject_from_text(text: str) -> dict[str, Any]:
+    if tomllib is None:
+        return {}
+    try:
+        return tomllib.loads(text)
+    except Exception:
+        return {}
+
+
+def _declared_py_modules_from_pyproject_text(text: str) -> list[str]:
+    data = _load_pyproject_from_text(text)
+    modules = (((data.get("tool") or {}).get("setuptools") or {}).get("py-modules") or []) if isinstance(data, dict) else []
+    return sorted({str(item).strip() for item in modules if str(item).strip()})
+
+
+def _declared_py_modules(repo_path: Path) -> list[str]:
+    try:
+        return _declared_py_modules_from_pyproject_text((repo_path / "pyproject.toml").read_text(encoding="utf-8"))
+    except OSError:
+        return []
+
+
+def _promptbranch_imports_from_source(source: str) -> set[str]:
+    modules: set[str] = set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return modules
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = str(alias.name or "").split(".", 1)[0]
+                if root.startswith("promptbranch_"):
+                    modules.add(root)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            root = str(node.module).split(".", 1)[0]
+            if root.startswith("promptbranch_"):
+                modules.add(root)
+    return modules
+
+
+def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
+    zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
+    if zip_path is None:
+        return {
+            "ok": True,
+            "action": "package_import_metadata",
+            "status": "expected_missing",
+            "diagnostic": "No release ZIP found under repo_path; import metadata check skipped.",
+            "candidates": [str(candidate) for candidate in candidates],
+        }
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            names = set(archive.namelist())
+            try:
+                pyproject_text = archive.read("pyproject.toml").decode("utf-8")
+            except KeyError:
+                return {"ok": False, "action": "package_import_metadata", "status": "missing_pyproject", "zip_path": str(zip_path)}
+            declared = _declared_py_modules_from_pyproject_text(pyproject_text)
+            missing_declared_files = [f"{module}.py" for module in declared if f"{module}.py" not in names]
+            package_roots = {name.split("/", 1)[0] for name in names if name.endswith("/__init__.py") and name.split("/", 1)[0].startswith("promptbranch_")}
+            imported: set[str] = set()
+            for name in names:
+                parts = [part for part in name.split("/") if part]
+                if len(parts) != 1 or not name.endswith(".py") or not parts[0].startswith("promptbranch_"):
+                    continue
+                try:
+                    imported.update(_promptbranch_imports_from_source(archive.read(name).decode("utf-8")))
+                except Exception:
+                    continue
+            missing_import_declarations = sorted(imported.difference(declared).difference(package_roots))
+    except zipfile.BadZipFile as exc:
+        return {"ok": False, "action": "package_import_metadata", "status": "bad_zip", "zip_path": str(zip_path), "error": str(exc)}
+    ok = not missing_declared_files and not missing_import_declarations
+    return {
+        "ok": ok,
+        "action": "package_import_metadata",
+        "status": "verified" if ok else "failed",
+        "zip_path": str(zip_path),
+        "declared_py_modules": declared,
+        "declared_py_module_count": len(declared),
+        "imported_promptbranch_modules": sorted(imported),
+        "package_roots": sorted(package_roots),
+        "missing_declared_files": missing_declared_files,
+        "missing_import_declarations": missing_import_declarations,
+    }
+
+
+def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str | None = None) -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    declared = _declared_py_modules(root)
+    modules = sorted({"promptbranch", "promptbranch.cli", *declared})
+    if not declared:
+        return {"ok": False, "action": "package_import_smoke", "status": "pyproject_missing_or_unreadable", "repo_path": str(root), "modules": modules}
+    executable = python_executable or sys.executable
+    code = "\n".join([
+        "import importlib",
+        "import json",
+        "import sys",
+        "modules = json.loads(sys.argv[1])",
+        "results = []",
+        "for module in modules:",
+        "    try:",
+        "        importlib.import_module(module)",
+        "        results.append({'module': module, 'ok': True})",
+        "    except Exception as exc:",
+        "        results.append({'module': module, 'ok': False, 'error_type': type(exc).__name__, 'error': str(exc)})",
+        "print(json.dumps(results, ensure_ascii=False))",
+        "sys.exit(0 if all(item.get('ok') for item in results) else 1)",
+    ])
+    env = dict(os.environ)
+    kept = []
+    for entry in (env.get("PYTHONPATH") or "").split(os.pathsep):
+        if not entry:
+            continue
+        try:
+            resolved = Path(entry).expanduser().resolve()
+            if resolved == root or root in resolved.parents:
+                continue
+        except OSError:
+            pass
+        kept.append(entry)
+    if kept:
+        env["PYTHONPATH"] = os.pathsep.join(kept)
+    else:
+        env.pop("PYTHONPATH", None)
+    with tempfile.TemporaryDirectory(prefix="promptbranch-import-smoke-") as tmp:
+        completed = subprocess.run([executable, "-c", code, json.dumps(modules)], cwd=tmp, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+    try:
+        results = json.loads(completed.stdout or "[]")
+    except json.JSONDecodeError:
+        results = []
+    failures = [item for item in results if isinstance(item, dict) and not item.get("ok")]
+    ok = completed.returncode == 0 and not failures
+    return {
+        "ok": ok,
+        "action": "package_import_smoke",
+        "status": "verified" if ok else "failed",
+        "repo_path": str(root),
+        "python_executable": executable,
+        "module_count": len(modules),
+        "modules": modules,
+        "failures": failures,
+        "returncode": completed.returncode,
+        "stdout_bytes": len(completed.stdout or ""),
+        "stderr": completed.stderr[-4000:] if completed.stderr else "",
+        "source_tree_masking_prevented": True,
+    }
+
+def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
+    repo_path = Path(repo_path).expanduser().resolve()
+    zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
     if zip_path is None:
         return {
             "ok": True,
@@ -277,6 +444,8 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("agent_reject_sync_sources", agent_run("sync sources", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
     steps.append(_step("agent_reject_artifact_release", agent_run("create artifact release", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
     steps.append(_step("agent_reject_arbitrary_pytest", agent_run("run pytest", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
+    steps.append(_step("package_import_metadata", _package_import_metadata(package_zip, repo_path=root)))
+    steps.append(_step("package_import_smoke", package_import_smoke(repo_path=root)))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
 
     ok = all(bool(step.get("ok")) for step in steps)
