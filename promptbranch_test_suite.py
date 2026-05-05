@@ -559,6 +559,45 @@ def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Pa
         },
     }
 
+
+
+def _src_sync_upload_preflight_plan(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    profile_base = Path(profile_dir).expanduser() if profile_dir else root / ".pb_profile"
+    registry = ArtifactRegistry(profile_base)
+    project_url = "test://promptbranch-preflight-workspace"
+    try:
+        plan, included = build_source_sync_preflight(
+            root,
+            output_dir=registry.artifact_dir,
+            profile_dir=registry.profile_dir,
+            project_url=project_url,
+            upload_requested=True,
+        )
+    except ValueError as exc:
+        return {"ok": False, "action": "src_sync_upload_preflight", "status": "plan_failed", "error": str(exc), "repo_path": str(root)}
+    preflight = plan["preflight"]
+    transaction_id = preflight["transaction_id"]
+    return {
+        "ok": True,
+        "action": "src_sync_upload_preflight",
+        "status": "upload_confirmation_required",
+        "repo_path": str(root),
+        "mutating_actions_executed": False,
+        "project_source_mutated": False,
+        "artifact": {**plan, "would_upload_source": True},
+        "included_count": len(included),
+        "transaction_id": transaction_id,
+        "confirmation": {
+            "required": True,
+            "confirm_flag": "--confirm-upload",
+            "confirm_transaction_id_flag": "--confirm-transaction-id",
+            "confirm_command": f"pb src sync {root} --upload --confirm-upload --confirm-transaction-id {transaction_id} --json",
+        },
+        "collateral_checks": preflight["collateral_checks"],
+        "verification_plan": preflight["verification_plan"],
+    }
+
 def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
     repo_path = Path(repo_path).expanduser().resolve()
     zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
@@ -628,6 +667,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("package_import_metadata", _package_import_metadata(package_zip, repo_path=root)))
     steps.append(_step("package_import_smoke", package_import_smoke(repo_path=root)))
     steps.append(_step("src_sync_dry_run_plan", _src_sync_dry_run_plan(repo_path=root, profile_dir=profile_dir)))
+    steps.append(_step("src_sync_upload_preflight_plan", _src_sync_upload_preflight_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
 
     ok = all(bool(step.get("ok")) for step in steps)

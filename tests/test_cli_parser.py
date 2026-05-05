@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.169" in out
+    assert "0.0.170" in out
     assert "promptbranch" in out
 
 
@@ -309,9 +309,10 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert src_sync.force is True
     assert src_sync.json is True
 
-    upload_sync = parser.parse_args(["src", "sync", ".", "--upload", "--confirm-upload", "--json"])
+    upload_sync = parser.parse_args(["src", "sync", ".", "--upload", "--confirm-upload", "--confirm-transaction-id", "abc123", "--json"])
     assert upload_sync.upload is True
     assert upload_sync.confirm_upload is True
+    assert upload_sync.confirm_transaction_id == "abc123"
 
     artifact_verify = parser.parse_args(["artifact", "verify", "release.zip", "--json"])
     assert artifact_verify.command == "artifact"

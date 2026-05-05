@@ -2281,6 +2281,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     no_upload_requested = bool(getattr(args, "no_upload", False))
     upload_requested = bool(getattr(args, "upload", False) or getattr(args, "confirm_upload", False))
     confirm_upload = bool(getattr(args, "confirm_upload", False))
+    confirm_transaction_id = str(getattr(args, "confirm_transaction_id", None) or "").strip()
 
     if no_upload_requested and upload_requested:
         payload = {
@@ -2418,12 +2419,67 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                 "required": True,
                 "reason": "live ChatGPT project source upload is mutating and requires explicit confirmation",
                 "confirm_flag": "--confirm-upload",
-                "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --json",
+                "confirm_transaction_id_flag": "--confirm-transaction-id",
+                "transaction_id": preflight_plan["preflight"]["transaction_id"],
+                "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --confirm-transaction-id {preflight_plan['preflight']['transaction_id']} --json",
             },
             "warnings": warnings,
         }
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 2
+
+    if upload_requested and confirm_upload:
+        expected_transaction_id = str(preflight_plan["preflight"].get("transaction_id") or "")
+        if not confirm_transaction_id:
+            payload = {
+                "ok": False,
+                "action": "src_sync",
+                "status": "upload_transaction_id_required",
+                "dry_run": False,
+                "no_upload": False,
+                "upload_requested": True,
+                "confirm_upload": True,
+                "mutating_actions_executed": False,
+                "project_source_mutated": False,
+                "repo_path": str(repo_path),
+                "project_url": project_url,
+                "artifact": {**preflight_plan, "would_upload_source": True},
+                "included_count": len(planned_included),
+                "preflight": preflight_plan["preflight"],
+                "transaction_id": expected_transaction_id,
+                "confirmation": {
+                    "required": True,
+                    "reason": "confirmed upload requires the transaction id from a reviewed upload preflight",
+                    "confirm_flag": "--confirm-upload",
+                    "confirm_transaction_id_flag": "--confirm-transaction-id",
+                    "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --confirm-transaction-id {expected_transaction_id} --json",
+                },
+                "error": "confirmed upload requires --confirm-transaction-id from the upload preflight",
+            }
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 2
+        if confirm_transaction_id != expected_transaction_id:
+            payload = {
+                "ok": False,
+                "action": "src_sync",
+                "status": "upload_transaction_id_mismatch",
+                "dry_run": False,
+                "no_upload": False,
+                "upload_requested": True,
+                "confirm_upload": True,
+                "mutating_actions_executed": False,
+                "project_source_mutated": False,
+                "repo_path": str(repo_path),
+                "project_url": project_url,
+                "artifact": {**preflight_plan, "would_upload_source": True},
+                "included_count": len(planned_included),
+                "preflight": preflight_plan["preflight"],
+                "transaction_id": expected_transaction_id,
+                "provided_transaction_id": confirm_transaction_id,
+                "error": "confirmed upload transaction id does not match current preflight",
+            }
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 2
 
     collateral = preflight_plan["preflight"]["collateral_checks"]
     collision_keys = ("output_path_exists", "registry_path_collision", "registry_filename_collision")
@@ -3456,6 +3512,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--no-upload", action="store_true", help="Only package and register the artifact locally; do not upload as a project source.")
     src_sync.add_argument("--upload", action="store_true", help="Request a live ChatGPT project source upload preflight. Requires --confirm-upload to execute.")
     src_sync.add_argument("--confirm-upload", action="store_true", help="Explicitly confirm live ChatGPT project source upload. Use only after reviewing upload preflight.")
+    src_sync.add_argument("--confirm-transaction-id", help="Transaction id from a reviewed --upload preflight. Required with --confirm-upload for live source upload.")
     src_sync.add_argument("--force", action="store_true", help="Allow local artifact overwrite/collision during --no-upload sync.")
     src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
