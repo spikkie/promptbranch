@@ -315,3 +315,20 @@ Read VERSION.
     assert result["collateral_checks"]["requires_before_after_source_snapshot"] is False
     assert result["transaction_plan"]["verification_plan"]["after"]
     assert not (tmp_path / ".pb_profile" / "artifacts" / "repo_v9.9.9.zip").exists()
+
+
+def test_agent_profile_includes_src_sync_upload_preflight_plan(tmp_path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+
+    result = suite._src_sync_upload_preflight_plan(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+
+    assert result["ok"] is True
+    assert result["status"] == "upload_confirmation_required"
+    assert result["mutating_actions_executed"] is False
+    assert result["project_source_mutated"] is False
+    assert result["artifact"]["would_upload_source"] is True
+    assert result["collateral_checks"]["requires_before_after_source_snapshot"] is True
+    assert result["confirmation"]["confirm_transaction_id_flag"] == "--confirm-transaction-id"
+    assert result["transaction_id"] in result["confirmation"]["confirm_command"]
+    assert not (tmp_path / ".pb_profile" / "artifacts" / "repo_v9.9.9.zip").exists()

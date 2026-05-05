@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.169"
+    assert captured.out.strip() == "promptbranch 0.0.170"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.169"
+    assert payload["version"] == "0.0.170"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1411,6 +1411,109 @@ def test_phase3_src_sync_upload_requires_confirmation(monkeypatch, capsys, tmp_p
     assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
 
 
+
+def test_phase3_src_sync_confirm_upload_requires_transaction_id(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["status"] == "upload_transaction_id_required"
+    assert payload["mutating_actions_executed"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["transaction_id"]
+    assert "--confirm-transaction-id" in payload["confirmation"]["confirm_command"]
+    assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
+
+
+def test_phase3_src_sync_confirm_upload_rejects_transaction_id_mismatch(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--confirm-transaction-id", "bad-token", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["status"] == "upload_transaction_id_mismatch"
+    assert payload["provided_transaction_id"] == "bad-token"
+    assert payload["mutating_actions_executed"] is False
+    assert payload["project_source_mutated"] is False
+    assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
+
+
+def test_phase3_src_sync_confirm_upload_with_transaction_id_executes_guarded_upload(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.append(kwargs)
+            return {"ok": True, "action": "source_add", "status": "verified"}
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    preflight_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    preflight_payload = json.loads(capsys.readouterr().out)
+    assert preflight_code == 2
+    transaction_id = preflight_payload["transaction_id"]
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--confirm-transaction-id", transaction_id, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "uploaded"
+    assert payload["project_source_mutated"] is True
+    assert payload["transaction_id"] == transaction_id
+    assert calls[0]["source_kind"] == "file"
+    assert calls[0]["display_name"] == "repo_v1.2.3.zip"
+
 def test_phase3_src_sync_rejects_conflicting_upload_modes(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
@@ -1765,7 +1868,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.169",
+                "version": "v0.0.170",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
