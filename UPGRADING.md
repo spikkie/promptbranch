@@ -333,12 +333,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.161
+## v0.0.162
 
-- Use `pb test report <log> --json` to summarize `pb test full --json` / `pb test-suite --json` logs.
-- Add `--service-log <docker-log>` when you also want the Docker service log scanned for rate-limit modal and conversation-history 429 evidence.
-- Report output includes top-level pass/fail status, browser/agent step counts, failed steps, rate-limit telemetry, safety state, and package hygiene status.
-- No safety policy changed; this is an observability/reporting release.
+- Made JSON-mode CLI output clean for machine consumers: when `--json` is requested and `--debug` is not explicitly set, debug logging is suppressed before command execution.
+- Changed normal CLI logging setup to avoid DEBUG/INFO noise unless debugging is explicitly enabled.
+- Added regression coverage that `pb test status --json` stdout parses directly as JSON even when `CHATGPT_DEBUG=1` is present in the environment.
+- No safety policy changed; source sync, artifact release, broad shell execution, and model execution authority remain blocked.
 
 ## v0.0.157
 
