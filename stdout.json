@@ -1,0 +1,19 @@
+{
+  "ok": false,
+  "action": "test_status",
+  "status": "no_valid_full_suite_log_found",
+  "path": ".",
+  "candidate_count": 1,
+  "checked": [
+    {
+      "path": "/mnt/data/pb_test.full.v0.0.161.log",
+      "mtime": null,
+      "mtime_iso": null,
+      "size_bytes": null,
+      "status": "read_failed",
+      "ok": false,
+      "profile": null,
+      "accepted": false
+    }
+  ]
+}
