@@ -2278,9 +2278,29 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     repo_path = Path(args.path).expanduser().resolve()
     project_url = _artifact_state_project_url(backend)
 
+    no_upload_requested = bool(getattr(args, "no_upload", False))
+    upload_requested = bool(getattr(args, "upload", False) or getattr(args, "confirm_upload", False))
+    confirm_upload = bool(getattr(args, "confirm_upload", False))
+
+    if no_upload_requested and upload_requested:
+        payload = {
+            "ok": False,
+            "action": "src_sync",
+            "status": "conflicting_sync_modes",
+            "dry_run": bool(getattr(args, "dry_run", False)),
+            "no_upload": no_upload_requested,
+            "upload_requested": upload_requested,
+            "confirm_upload": confirm_upload,
+            "mutating_actions_executed": False,
+            "project_source_mutated": False,
+            "repo_path": str(repo_path),
+            "error": "choose either --no-upload or --upload/--confirm-upload, not both",
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+
     if getattr(args, "dry_run", False):
         output_dir = _artifact_output_dir(args, registry)
-        upload_requested = not getattr(args, "no_upload", False)
         try:
             plan, included = build_source_sync_preflight(
                 repo_path,
@@ -2336,7 +2356,6 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         return 0
 
     output_dir = _artifact_output_dir(args, registry)
-    upload_requested = not getattr(args, "no_upload", False)
     try:
         preflight_plan, planned_included = build_source_sync_preflight(
             repo_path,
@@ -2348,6 +2367,62 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         )
     except ValueError as exc:
         print(json.dumps({"ok": False, "action": "src_sync", "status": "preflight_failed", "error": str(exc)}, indent=2, ensure_ascii=False))
+        return 2
+
+    if not no_upload_requested and not upload_requested:
+        payload = {
+            "ok": False,
+            "action": "src_sync",
+            "status": "sync_mode_required",
+            "dry_run": False,
+            "no_upload": False,
+            "upload_requested": False,
+            "confirm_upload": False,
+            "mutating_actions_executed": False,
+            "project_source_mutated": False,
+            "repo_path": str(repo_path),
+            "project_url": project_url,
+            "artifact": {**preflight_plan, "would_upload_source": False},
+            "included_count": len(planned_included),
+            "preflight": preflight_plan["preflight"],
+            "error": "explicit sync mode required; use --no-upload for local packaging or --upload for upload preflight",
+            "next_commands": {
+                "local_package": f"pb src sync {repo_path} --no-upload --json",
+                "upload_preflight": f"pb src sync {repo_path} --upload --json",
+            },
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+
+    if upload_requested and not confirm_upload:
+        warnings: list[str] = []
+        if not project_url:
+            warnings.append("no current workspace is selected; confirmed upload would fail unless you run `pb ws use <project>` first")
+        payload = {
+            "ok": False,
+            "action": "src_sync",
+            "status": "upload_confirmation_required",
+            "dry_run": False,
+            "no_upload": False,
+            "upload_requested": True,
+            "confirm_upload": False,
+            "mutating_actions_executed": False,
+            "project_source_mutated": False,
+            "repo_path": str(repo_path),
+            "project_url": project_url,
+            "artifact": {**preflight_plan, "would_upload_source": True},
+            "included_count": len(planned_included),
+            "preflight": preflight_plan["preflight"],
+            "transaction_id": preflight_plan["preflight"]["transaction_id"],
+            "confirmation": {
+                "required": True,
+                "reason": "live ChatGPT project source upload is mutating and requires explicit confirmation",
+                "confirm_flag": "--confirm-upload",
+                "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --json",
+            },
+            "warnings": warnings,
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 2
 
     collateral = preflight_plan["preflight"]["collateral_checks"]
@@ -2406,7 +2481,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
 
     upload_result: dict[str, Any] | None = None
     uploaded = False
-    if not getattr(args, "no_upload", False):
+    if upload_requested:
         if not project_url:
             payload = {
                 "ok": False,
@@ -2453,13 +2528,15 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         after_state=after_state,
         project_url=project_url,
     )
-    no_upload = bool(getattr(args, "no_upload", False))
+    no_upload = no_upload_requested
     payload = {
         "ok": bool((no_upload and local_verification.get("ok")) or uploaded),
         "action": "src_sync",
         "status": "verified_packaged" if no_upload and local_verification.get("ok") else ("uploaded" if uploaded else ("packaged_unverified" if no_upload else "upload_failed")),
         "dry_run": False,
         "no_upload": no_upload,
+        "upload_requested": upload_requested,
+        "confirm_upload": confirm_upload,
         "mutating_actions_executed": True,
         "project_source_mutated": bool(uploaded),
         "artifact": artifact_payload,
@@ -3377,6 +3454,8 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
     src_sync.add_argument("--filename", help="Override the generated artifact filename.")
     src_sync.add_argument("--no-upload", action="store_true", help="Only package and register the artifact locally; do not upload as a project source.")
+    src_sync.add_argument("--upload", action="store_true", help="Request a live ChatGPT project source upload preflight. Requires --confirm-upload to execute.")
+    src_sync.add_argument("--confirm-upload", action="store_true", help="Explicitly confirm live ChatGPT project source upload. Use only after reviewing upload preflight.")
     src_sync.add_argument("--force", action="store_true", help="Allow local artifact overwrite/collision during --no-upload sync.")
     src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
