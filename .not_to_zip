@@ -27,6 +27,7 @@ coverage/
 *.log
 *.log.*
 *.json.log
+*.log*
 
 # Kubernetes render output
 helm-chart/charts/
