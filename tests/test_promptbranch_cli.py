@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.165"
+    assert captured.out.strip() == "promptbranch 0.0.166"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.165"
+    assert payload["version"] == "0.0.166"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1282,11 +1282,15 @@ def test_chat_list_payload_includes_current_task_from_state_when_backend_empty()
 def test_phase3_parser_accepts_src_sync_and_artifact_commands() -> None:
     parser = make_parser()
 
-    sync_args = parser.parse_args(["src", "sync", ".", "--no-upload", "--json"])
+    sync_args = parser.parse_args(["src", "sync", ".", "--no-upload", "--dry-run", "--json"])
     assert sync_args.command == "src"
     assert sync_args.src_command == "sync"
     assert sync_args.path == "."
     assert sync_args.no_upload is True
+    assert sync_args.dry_run is True
+
+    plan_args = parser.parse_args(["src", "sync", ".", "--plan", "--json"])
+    assert plan_args.dry_run is True
 
     current_args = parser.parse_args(["artifact", "current", "--json"])
     assert current_args.command == "artifact"
@@ -1301,6 +1305,39 @@ def test_phase3_parser_accepts_src_sync_and_artifact_commands() -> None:
     assert verify_args.command == "artifact"
     assert verify_args.artifact_command == "verify"
     assert verify_args.path == "demo.zip"
+
+
+
+
+def test_phase3_src_sync_dry_run_does_not_package_or_record_artifact(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--dry-run", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "planned"
+    assert payload["dry_run"] is True
+    assert payload["mutating_actions_executed"] is False
+    assert payload["artifact"]["filename"] == "repo_v1.2.3.zip"
+    assert payload["included_count"] == 2
+    assert payload["prechecks"]["repo_snapshot_plan_built"] is True
+    assert not Path(payload["artifact"]["path"]).exists()
+    assert not (profile / "promptbranch_artifacts.json").exists()
 
 
 def test_phase3_src_sync_no_upload_packages_and_records_artifact(monkeypatch, capsys, tmp_path) -> None:
@@ -1537,7 +1574,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.165",
+                "version": "v0.0.166",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],

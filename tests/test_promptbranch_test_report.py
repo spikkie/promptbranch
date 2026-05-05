@@ -196,7 +196,7 @@ def test_pyproject_declares_pb_console_script_alias():
 
 
 def test_report_classifies_browser_navigation_network_failure(tmp_path: Path) -> None:
-    log = tmp_path / "pb_test.full.v0.0.165.log"
+    log = tmp_path / "pb_test.full.v0.0.166.log"
     log.write_text(json.dumps({
         "ok": False,
         "action": "test_suite",

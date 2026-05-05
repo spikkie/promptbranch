@@ -237,6 +237,51 @@ class ArtifactRegistry:
         return artifacts[0] if artifacts else None
 
 
+
+
+def plan_repo_snapshot(
+    repo_path: str | Path,
+    *,
+    output_dir: str | Path,
+    filename: str | None = None,
+    kind: str = "source_snapshot",
+    sample_limit: int = 25,
+) -> tuple[dict[str, Any], list[str]]:
+    """Build a non-mutating repo snapshot plan.
+
+    This is intentionally side-effect free: it does not create the output
+    directory, write a ZIP, update the artifact registry, or upload anything to
+    ChatGPT. It reuses the same inclusion/exclusion rules as
+    ``create_repo_snapshot`` so operators can inspect the exact file set before
+    allowing a transactional source sync.
+    """
+    root = Path(repo_path).resolve()
+    if not root.is_dir():
+        raise ValueError(f"repo path is not a directory: {repo_path}")
+    default_name, version = default_artifact_filename(root)
+    artifact_name = filename or default_name
+    if not artifact_name.endswith(".zip"):
+        artifact_name += ".zip"
+    out_dir = Path(output_dir).expanduser().resolve()
+    out_path = out_dir / Path(artifact_name).name
+    files = [path.relative_to(root).as_posix() for path in iter_repo_files(root)]
+    plan = {
+        "kind": kind,
+        "repo_path": str(root),
+        "filename": out_path.name,
+        "path": str(out_path),
+        "version": version,
+        "file_count": len(files),
+        "included_count": len(files),
+        "included_sample": files[: max(0, sample_limit)],
+        "included_sample_truncated": len(files) > max(0, sample_limit),
+        "has_version_file": "VERSION" in files,
+        "would_write_zip": True,
+        "would_update_artifact_registry": True,
+        "would_upload_source": True,
+    }
+    return plan, files
+
 def create_repo_snapshot(
     repo_path: str | Path,
     *,

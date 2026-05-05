@@ -13,7 +13,7 @@ from typing import Any, Optional, Protocol
 from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, plan_repo_snapshot, verify_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -2188,6 +2188,69 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     """Package a repo snapshot and optionally upload it as a project source."""
     registry = _artifact_registry_from_args(args)
     repo_path = Path(args.path).expanduser().resolve()
+    project_url = _artifact_state_project_url(backend)
+
+    if getattr(args, "dry_run", False):
+        output_dir = _artifact_output_dir(args, registry)
+        try:
+            plan, included = plan_repo_snapshot(
+                repo_path,
+                output_dir=output_dir,
+                filename=getattr(args, "filename", None),
+                kind="source_snapshot",
+            )
+        except ValueError as exc:
+            print(json.dumps({"ok": False, "action": "src_sync", "status": "plan_failed", "error": str(exc)}, indent=2, ensure_ascii=False))
+            return 2
+        upload_requested = not getattr(args, "no_upload", False)
+        prechecks = {
+            "repo_path_exists": repo_path.is_dir(),
+            "workspace_selected": bool(project_url),
+            "upload_requested": upload_requested,
+            "repo_snapshot_plan_built": True,
+            "mutating_actions_executed": False,
+        }
+        transaction_plan = {
+            "would_package_repo_snapshot": True,
+            "would_update_artifact_registry": True,
+            "would_upload_project_source": bool(upload_requested),
+            "would_update_promptbranch_artifact_state": bool(project_url),
+            "required_settle_conditions": [
+                "source dialog closed",
+                "sources surface idle",
+                "add button visible",
+                "stability dwell elapsed",
+                "refresh-based persistence verification passed",
+            ] if upload_requested else [],
+        }
+        warnings: list[str] = []
+        if upload_requested and not project_url:
+            warnings.append("no current workspace is selected; live upload would fail unless you run `pb ws use <project>` first")
+        artifact_plan = {**plan, "would_upload_source": bool(upload_requested)}
+        payload = {
+            "ok": True,
+            "action": "src_sync",
+            "status": "planned",
+            "dry_run": True,
+            "mutating_actions_executed": False,
+            "repo_path": str(repo_path),
+            "project_url": project_url,
+            "artifact": artifact_plan,
+            "included_count": len(included),
+            "prechecks": prechecks,
+            "transaction_plan": transaction_plan,
+            "warnings": warnings,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload['status']}")
+            print(f"artifact={artifact_plan['path']}")
+            print(f"file_count={artifact_plan['file_count']}")
+            if warnings:
+                print(f"warning={warnings[0]}")
+        return 0
+
     try:
         record, included = create_repo_snapshot(
             repo_path,
@@ -2199,7 +2262,6 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "action": "src_sync", "error": str(exc)}, indent=2, ensure_ascii=False))
         return 2
 
-    project_url = _artifact_state_project_url(backend)
     upload_result: dict[str, Any] | None = None
     uploaded = False
     if not getattr(args, "no_upload", False):
@@ -2256,7 +2318,6 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         print(f"sha256={record.sha256}")
         print(f"status={payload['status']}")
     return 0 if payload["ok"] else 1
-
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
@@ -3156,6 +3217,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
     src_sync.add_argument("--filename", help="Override the generated artifact filename.")
     src_sync.add_argument("--no-upload", action="store_true", help="Only package and register the artifact locally; do not upload as a project source.")
+    src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
     src_sync.add_argument("--keep-open", action="store_true")
 
