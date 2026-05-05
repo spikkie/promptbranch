@@ -29,7 +29,7 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
-from promptbranch_artifacts import ArtifactRegistry, plan_repo_snapshot
+from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 
 
@@ -527,9 +527,16 @@ def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Pa
     profile_base = Path(profile_dir).expanduser() if profile_dir else root / ".pb_profile"
     registry = ArtifactRegistry(profile_base)
     try:
-        plan, included = plan_repo_snapshot(root, output_dir=registry.artifact_dir, kind="source_snapshot")
+        plan, included = build_source_sync_preflight(
+            root,
+            output_dir=registry.artifact_dir,
+            profile_dir=registry.profile_dir,
+            project_url=None,
+            upload_requested=False,
+        )
     except ValueError as exc:
         return {"ok": False, "action": "src_sync_dry_run", "status": "plan_failed", "error": str(exc), "repo_path": str(root)}
+    preflight = plan["preflight"]
     return {
         "ok": True,
         "action": "src_sync_dry_run",
@@ -538,11 +545,17 @@ def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Pa
         "mutating_actions_executed": False,
         "artifact": {**plan, "would_upload_source": False},
         "included_count": len(included),
+        "before_snapshot": preflight["before_snapshot"],
+        "collateral_checks": preflight["collateral_checks"],
+        "transaction_id": preflight["transaction_id"],
         "transaction_plan": {
+            "transaction_id": preflight["transaction_id"],
             "would_package_repo_snapshot": True,
             "would_update_artifact_registry": True,
             "would_upload_project_source": False,
             "required_settle_conditions": [],
+            "verification_plan": preflight["verification_plan"],
+            "collateral_checks": preflight["collateral_checks"],
         },
     }
 

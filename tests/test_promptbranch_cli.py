@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.166"
+    assert captured.out.strip() == "promptbranch 0.0.167"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.166"
+    assert payload["version"] == "0.0.167"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1336,9 +1336,45 @@ def test_phase3_src_sync_dry_run_does_not_package_or_record_artifact(monkeypatch
     assert payload["artifact"]["filename"] == "repo_v1.2.3.zip"
     assert payload["included_count"] == 2
     assert payload["prechecks"]["repo_snapshot_plan_built"] is True
+    assert payload["transaction_id"]
+    assert payload["before_snapshot"]["repo"]["included_count"] == 2
+    assert payload["before_snapshot"]["artifact_registry"]["exists"] is False
+    assert payload["collateral_checks"]["would_overwrite_artifact_file"] is False
+    assert payload["transaction_plan"]["verification_plan"]["after"]
     assert not Path(payload["artifact"]["path"]).exists()
     assert not (profile / "promptbranch_artifacts.json").exists()
 
+
+
+def test_phase3_src_sync_dry_run_reports_artifact_collisions(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    artifact_dir = profile / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    existing = artifact_dir / "repo_v1.2.3.zip"
+    existing.write_bytes(b"old")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--dry-run", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "planned"
+    assert payload["collateral_checks"]["output_path_exists"] is True
+    assert payload["collateral_checks"]["would_overwrite_artifact_file"] is True
+    assert existing.read_bytes() == b"old"
 
 def test_phase3_src_sync_no_upload_packages_and_records_artifact(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
@@ -1574,7 +1610,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.166",
+                "version": "v0.0.167",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],

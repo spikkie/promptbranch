@@ -13,7 +13,7 @@ from typing import Any, Optional, Protocol
 from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, plan_repo_snapshot, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, plan_repo_snapshot, verify_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -2192,36 +2192,29 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
 
     if getattr(args, "dry_run", False):
         output_dir = _artifact_output_dir(args, registry)
+        upload_requested = not getattr(args, "no_upload", False)
         try:
-            plan, included = plan_repo_snapshot(
+            plan, included = build_source_sync_preflight(
                 repo_path,
                 output_dir=output_dir,
                 filename=getattr(args, "filename", None),
-                kind="source_snapshot",
+                profile_dir=registry.profile_dir,
+                project_url=project_url,
+                upload_requested=upload_requested,
             )
         except ValueError as exc:
             print(json.dumps({"ok": False, "action": "src_sync", "status": "plan_failed", "error": str(exc)}, indent=2, ensure_ascii=False))
             return 2
-        upload_requested = not getattr(args, "no_upload", False)
-        prechecks = {
-            "repo_path_exists": repo_path.is_dir(),
-            "workspace_selected": bool(project_url),
-            "upload_requested": upload_requested,
-            "repo_snapshot_plan_built": True,
-            "mutating_actions_executed": False,
-        }
+        prechecks = plan["preflight"]["preflight"]
         transaction_plan = {
+            "transaction_id": plan["preflight"]["transaction_id"],
             "would_package_repo_snapshot": True,
             "would_update_artifact_registry": True,
             "would_upload_project_source": bool(upload_requested),
             "would_update_promptbranch_artifact_state": bool(project_url),
-            "required_settle_conditions": [
-                "source dialog closed",
-                "sources surface idle",
-                "add button visible",
-                "stability dwell elapsed",
-                "refresh-based persistence verification passed",
-            ] if upload_requested else [],
+            "required_settle_conditions": plan["preflight"]["verification_plan"].get("commit_wait", []),
+            "verification_plan": plan["preflight"]["verification_plan"],
+            "collateral_checks": plan["preflight"]["collateral_checks"],
         }
         warnings: list[str] = []
         if upload_requested and not project_url:
@@ -2238,6 +2231,9 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             "artifact": artifact_plan,
             "included_count": len(included),
             "prechecks": prechecks,
+            "before_snapshot": plan["preflight"]["before_snapshot"],
+            "collateral_checks": plan["preflight"]["collateral_checks"],
+            "transaction_id": plan["preflight"]["transaction_id"],
             "transaction_plan": transaction_plan,
             "warnings": warnings,
         }

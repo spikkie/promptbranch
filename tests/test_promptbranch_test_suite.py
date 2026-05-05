@@ -310,4 +310,8 @@ Read VERSION.
     assert result["status"] == "planned"
     assert result["mutating_actions_executed"] is False
     assert result["artifact"]["filename"].endswith("_v9.9.9.zip")
+    assert result["transaction_id"]
+    assert result["before_snapshot"]["repo"]["included_count"] >= 2
+    assert result["collateral_checks"]["requires_before_after_source_snapshot"] is False
+    assert result["transaction_plan"]["verification_plan"]["after"]
     assert not (tmp_path / ".pb_profile" / "artifacts" / "repo_v9.9.9.zip").exists()

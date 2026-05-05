@@ -25,6 +25,8 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     "*.zip",
     "*.tar.gz",
     "*.log",
+    "*.log.*",
+    "*.json.log",
     ".pytest_cache/",
     ".mypy_cache/",
     ".ruff_cache/",
@@ -281,6 +283,189 @@ def plan_repo_snapshot(
         "would_upload_source": True,
     }
     return plan, files
+
+
+
+def _all_repo_file_candidates(root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for current_root, dirnames, filenames in os.walk(root):
+        current = Path(current_root)
+        for filename in sorted(filenames):
+            candidates.append(current / filename)
+    candidates.sort(key=lambda item: item.relative_to(root).as_posix())
+    return candidates
+
+
+def git_worktree_snapshot(repo_path: str | Path) -> dict[str, Any]:
+    """Return a small read-only git/worktree snapshot for transaction preflights."""
+    root = Path(repo_path).resolve()
+    result: dict[str, Any] = {
+        "repo_path": str(root),
+        "git_available": False,
+        "is_git_repo": False,
+        "branch": None,
+        "short_sha": None,
+        "dirty": None,
+        "status_count": 0,
+        "status_sample": [],
+    }
+    try:
+        status = subprocess.run(
+            ["git", "status", "--short", "--branch"],
+            cwd=str(root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        result["error"] = str(exc)
+        return result
+    result["git_available"] = True
+    if status.returncode != 0:
+        result["error"] = (status.stderr or status.stdout or "git status failed").strip()
+        return result
+    result["is_git_repo"] = True
+    lines = [line for line in status.stdout.splitlines() if line.strip()]
+    branch_line = lines[0] if lines and lines[0].startswith("##") else None
+    status_lines = lines[1:] if branch_line else lines
+    if branch_line:
+        branch_text = branch_line[2:].strip()
+        result["branch"] = branch_text.split("...", 1)[0].strip() or branch_text
+    result["short_sha"] = git_short_sha(root)
+    result["dirty"] = bool(status_lines)
+    result["status_count"] = len(status_lines)
+    result["status_sample"] = status_lines[:20]
+    return result
+
+
+def build_source_sync_preflight(
+    repo_path: str | Path,
+    *,
+    output_dir: str | Path,
+    filename: str | None = None,
+    profile_dir: str | Path | None = None,
+    project_url: str | None = None,
+    upload_requested: bool = True,
+    sample_limit: int = 25,
+) -> tuple[dict[str, Any], list[str]]:
+    """Build a side-effect-free source-sync transaction preflight.
+
+    The returned metadata is deliberately read-only. It describes the file set,
+    current repo/artifact state, collateral-change risks, and the verification
+    contract that a future mutating sync must satisfy before local state may be
+    updated.
+    """
+    root = Path(repo_path).resolve()
+    plan, included = plan_repo_snapshot(
+        root,
+        output_dir=output_dir,
+        filename=filename,
+        kind="source_snapshot",
+        sample_limit=sample_limit,
+    )
+    patterns = _load_not_to_zip_patterns(root)
+    candidates = _all_repo_file_candidates(root)
+    included_set = set(included)
+    excluded = [path.relative_to(root).as_posix() for path in candidates if path.relative_to(root).as_posix() not in included_set]
+    out_path = Path(plan["path"])
+    registry_payload: dict[str, Any] = {"path": None, "exists": False, "current": None, "artifact_count": 0}
+    registry_path_collision = False
+    registry_filename_collision = False
+    if profile_dir is not None:
+        registry = ArtifactRegistry(profile_dir)
+        current = registry.current()
+        artifacts = registry.list()
+        registry_payload = {
+            "path": str(registry.path),
+            "exists": registry.path.exists(),
+            "current": current,
+            "artifact_count": len(artifacts),
+        }
+        registry_path_collision = any(str(item.get("path") or "") == str(out_path) for item in artifacts)
+        registry_filename_collision = any(str(item.get("filename") or "") == str(out_path.name) for item in artifacts)
+    version = plan.get("version")
+    preflight = {
+        "repo_path_exists": root.is_dir(),
+        "version_file_present": (root / "VERSION").is_file(),
+        "version_valid": valid_version_text(version) if version is not None else False,
+        "artifact_filename_safe": (Path(str(plan.get("filename") or "")).name == str(plan.get("filename") or "") and str(plan.get("filename") or "").endswith(".zip")),
+        "output_dir_parent_exists": out_path.parent.parent.exists(),
+        "workspace_selected": bool(project_url),
+        "upload_requested": bool(upload_requested),
+        "repo_snapshot_plan_built": True,
+        "mutating_actions_executed": False,
+    }
+    collateral_checks = {
+        "output_path_exists": out_path.exists(),
+        "would_overwrite_artifact_file": out_path.exists(),
+        "registry_path_collision": registry_path_collision,
+        "registry_filename_collision": registry_filename_collision,
+        "requires_before_after_source_snapshot": bool(upload_requested),
+        "requires_collateral_source_change_detection": bool(upload_requested),
+    }
+    fingerprint_material = json.dumps(
+        {
+            "repo_path": str(root),
+            "artifact_path": str(out_path),
+            "version": version,
+            "included_count": len(included),
+            "project_url": project_url,
+            "upload_requested": bool(upload_requested),
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+    transaction_id = hashlib.sha256(fingerprint_material).hexdigest()[:16]
+    metadata = {
+        "schema_version": 1,
+        "transaction_id": transaction_id,
+        "phase": "preflight",
+        "risk": "write" if upload_requested else "local_write",
+        "mutation_allowed": False,
+        "mutating_actions_executed": False,
+        "preflight": preflight,
+        "before_snapshot": {
+            "repo": {
+                "path": str(root),
+                "version": version,
+                "git": git_worktree_snapshot(root),
+                "candidate_file_count": len(candidates),
+                "included_count": len(included),
+                "excluded_count": len(excluded),
+                "excluded_sample": excluded[: max(0, sample_limit)],
+                "exclude_pattern_count": len(patterns),
+                "artifact_filename": str(plan.get("filename")),
+                "artifact_path": str(plan.get("path")),
+            },
+            "artifact_registry": registry_payload,
+            "workspace": {
+                "project_url": project_url,
+                "selected": bool(project_url),
+            },
+        },
+        "collateral_checks": collateral_checks,
+        "verification_plan": {
+            "before": [
+                "record artifact registry current entry",
+                "record repo git/worktree snapshot",
+                "record project source list before upload" if upload_requested else "project source list not required without upload",
+            ],
+            "commit_wait": [
+                "source dialog closed",
+                "sources surface idle",
+                "add button visible",
+                "stability dwell elapsed",
+            ] if upload_requested else [],
+            "after": [
+                "artifact ZIP exists and sha256 is stable",
+                "artifact registry contains new artifact record",
+                "project source list contains uploaded source ref" if upload_requested else "no project source mutation expected",
+                "no collateral source removals or replacements unless explicitly planned",
+            ],
+        },
+    }
+    return {**plan, "preflight": metadata}, included
 
 def create_repo_snapshot(
     repo_path: str | Path,
