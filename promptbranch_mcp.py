@@ -23,10 +23,10 @@ from typing import Any, Iterable, Optional
 from promptbranch_artifacts import ArtifactRegistry, iter_repo_files, read_version, verify_zip_artifact
 from promptbranch_shell_model import ToolRisk, required_prechecks_for_action, risk_for_action
 from promptbranch_state import ConversationStateStore, resolve_profile_dir
+from promptbranch_version import PACKAGE_VERSION as MCP_SERVER_VERSION
 
 MCP_SCHEMA_VERSION = 1
 MCP_PROTOCOL_VERSION = "2024-11-05"
-MCP_SERVER_VERSION = "0.0.163"
 DEFAULT_AGENT_MAX_FILES = 80
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 8.0
@@ -204,7 +204,7 @@ def _coerce_controlled_process_flag(
     include_controlled_processes: bool = False,
     include_controlled_writes: bool | None = None,
 ) -> bool:
-    """Normalize the v0.0.163 controlled-process flag.
+    """Normalize the v0.0.165 controlled-process flag.
 
     ``include_controlled_writes`` is kept as a deprecated compatibility alias
     for older callers, but it now exposes only controlled process tools. It does
@@ -609,7 +609,7 @@ def inspect_local_context(
         },
         "ollama": {
             "enabled": False,
-            "reason": "v0.0.163 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
+            "reason": "v0.0.165 keeps tool planning deterministic; Ollama is optional and may be used only for summaries/diagnostics.",
         },
     }
     return payload

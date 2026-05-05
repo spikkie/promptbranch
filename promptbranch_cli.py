@@ -45,6 +45,7 @@ from promptbranch_browser_auth.exceptions import (
 from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
+from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -61,7 +62,6 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.164"
 COMMANDS = {
     "login-check",
     "ask",

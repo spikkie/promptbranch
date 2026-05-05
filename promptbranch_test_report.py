@@ -50,6 +50,17 @@ def _step_count(section: dict[str, Any] | None) -> int:
     return len(steps) if isinstance(steps, list) else 0
 
 
+def _classify_failure_text(text: object) -> str | None:
+    haystack = str(text or "")
+    if any(token in haystack for token in ("net::ERR_ADDRESS_UNREACHABLE", "net::ERR_NAME_NOT_RESOLVED", "net::ERR_INTERNET_DISCONNECTED")):
+        return "browser_navigation_unavailable"
+    if "net::ERR_CONNECTION_REFUSED" in haystack or "net::ERR_CONNECTION_RESET" in haystack:
+        return "browser_connection_unavailable"
+    if "HTTPStatusError" in haystack and " 500 " in haystack:
+        return "service_http_500"
+    return None
+
+
 def _failed_steps(section_name: str, section: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(section, dict):
         return []
@@ -63,14 +74,25 @@ def _failed_steps(section_name: str, section: dict[str, Any] | None) -> list[dic
         if bool(step.get("ok")):
             continue
         payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
-        failures.append({
+        diagnostic = payload.get("diagnostic") or payload.get("error")
+        classification = _classify_failure_text(" ".join(str(item or "") for item in (
+            step.get("status"),
+            diagnostic,
+            payload.get("exception"),
+            payload.get("error"),
+            payload.get("message"),
+        )))
+        item = {
             "section": section_name,
             "name": step.get("name"),
             "status": step.get("status") or payload.get("status"),
             "expected_failure": bool(step.get("expected_failure")),
             "expected_status": step.get("expected_status"),
-            "diagnostic": payload.get("diagnostic") or payload.get("error"),
-        })
+            "diagnostic": diagnostic,
+        }
+        if classification:
+            item["classification"] = classification
+        failures.append(item)
     return failures
 
 
@@ -84,6 +106,35 @@ def _find_step(section: dict[str, Any] | None, name: str) -> dict[str, Any] | No
         if isinstance(step, dict) and step.get("name") == name:
             return step
     return None
+
+
+def _step_payload_from(section: dict[str, Any] | None, name: str) -> dict[str, Any] | None:
+    step = _find_step(section, name)
+    if not isinstance(step, dict):
+        return None
+    payload = step.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    return {"ok": bool(step.get("ok")), **payload}
+
+
+def _version_consistency_from(section: dict[str, Any] | None) -> dict[str, Any] | None:
+    source = _step_payload_from(section, "version_consistency")
+    metadata = _step_payload_from(section, "package_import_metadata")
+    smoke = _step_payload_from(section, "package_import_smoke")
+    version_sources: dict[str, Any] = {}
+    if source:
+        version_sources["source"] = source
+    if metadata and isinstance(metadata.get("version_consistency"), dict):
+        version_sources["package_metadata"] = metadata.get("version_consistency")
+    if smoke and isinstance(smoke.get("version_consistency"), dict):
+        version_sources["installed_runtime"] = smoke.get("version_consistency")
+    if not version_sources:
+        return None
+    return {
+        "ok": all(bool(item.get("ok")) for item in version_sources.values() if isinstance(item, dict)),
+        "sources": version_sources,
+    }
 
 
 def _package_hygiene_from(section: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -153,6 +204,7 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "rate_limit_telemetry": rate_limit_telemetry if isinstance(rate_limit_telemetry, dict) else {},
         "safety": safety if isinstance(safety, dict) else {},
         "package_hygiene": _package_hygiene_from(agent or payload),
+        "version_consistency": _version_consistency_from(agent or payload),
     }
 
 
