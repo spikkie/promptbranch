@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from promptbranch_automation import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_test_suite import run_test_suite_async
+from promptbranch_version import PACKAGE_VERSION as SERVICE_VERSION
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -181,7 +182,6 @@ class ServiceInfo(BaseModel):
     auth_required: bool
 
 
-SERVICE_VERSION = "0.0.163"
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 

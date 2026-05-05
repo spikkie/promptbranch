@@ -5,6 +5,7 @@ import ast
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,7 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
+from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 
 
 DEFAULT_ONLY: tuple[str, ...] = ()
@@ -136,6 +138,52 @@ def _read_version(repo_path: Path) -> str | None:
         return (repo_path / "VERSION").read_text(encoding="utf-8").strip()
     except OSError:
         return None
+
+
+def _read_pyproject_version_from_text(text: str) -> str | None:
+    data = _load_pyproject_from_text(text)
+    if not isinstance(data, dict):
+        return None
+    project = data.get("project") if isinstance(data.get("project"), dict) else {}
+    return str(project.get("version") or "").strip() or None
+
+
+def _read_pyproject_version(repo_path: Path) -> str | None:
+    try:
+        return _read_pyproject_version_from_text((repo_path / "pyproject.toml").read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
+def _extract_package_version_constant(source: str) -> str | None:
+    match = re.search(r'^PACKAGE_VERSION\s*=\s*["\']([^"\']+)["\']', source, flags=re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def _version_observation(label: str, value: object) -> dict[str, Any]:
+    return {"name": label, "value": value, "normalized": normalize_version(value)}
+
+
+def _summarize_version_consistency(observations: list[dict[str, Any]], *, expected_version: object | None) -> dict[str, Any]:
+    expected = normalize_version(expected_version)
+    mismatches: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for item in observations:
+        observed = item.get("normalized")
+        if not observed:
+            missing.append(str(item.get("name")))
+            continue
+        if expected and observed != expected:
+            mismatches.append(item)
+    ok = bool(expected) and not missing and not mismatches
+    return {
+        "ok": ok,
+        "expected_version": expected,
+        "expected_version_tag": version_tag(expected) if expected else None,
+        "observations": observations,
+        "missing": missing,
+        "mismatches": mismatches,
+    }
 
 
 def _step(name: str, payload: dict[str, Any], *, expected_failure: bool = False, expected_status: str | None = None) -> dict[str, Any]:
@@ -271,6 +319,24 @@ def _promptbranch_imports_from_source(source: str) -> set[str]:
     return modules
 
 
+def source_version_consistency(*, repo_path: str | Path = ".") -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    expected = _read_version(root)
+    observations = [
+        _version_observation("VERSION", expected),
+        _version_observation("pyproject.project.version", _read_pyproject_version(root)),
+        _version_observation("promptbranch_version.PACKAGE_VERSION", PACKAGE_VERSION),
+    ]
+    consistency = _summarize_version_consistency(observations, expected_version=expected)
+    return {
+        "ok": bool(consistency.get("ok")),
+        "action": "version_consistency",
+        "status": "verified" if consistency.get("ok") else "failed",
+        "repo_path": str(root),
+        **consistency,
+    }
+
+
 def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
     zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
     if zip_path is None:
@@ -289,6 +355,23 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
             except KeyError:
                 return {"ok": False, "action": "package_import_metadata", "status": "missing_pyproject", "zip_path": str(zip_path)}
             declared = _declared_py_modules_from_pyproject_text(pyproject_text)
+            pyproject_version = _read_pyproject_version_from_text(pyproject_text)
+            try:
+                version_file = archive.read("VERSION").decode("utf-8").strip()
+            except KeyError:
+                version_file = None
+            try:
+                version_module = _extract_package_version_constant(archive.read("promptbranch_version.py").decode("utf-8"))
+            except KeyError:
+                version_module = None
+            version_consistency = _summarize_version_consistency(
+                [
+                    _version_observation("zip.VERSION", version_file),
+                    _version_observation("zip.pyproject.project.version", pyproject_version),
+                    _version_observation("zip.promptbranch_version.PACKAGE_VERSION", version_module),
+                ],
+                expected_version=version_file,
+            )
             missing_declared_files = [f"{module}.py" for module in declared if f"{module}.py" not in names]
             package_roots = {name.split("/", 1)[0] for name in names if name.endswith("/__init__.py") and name.split("/", 1)[0].startswith("promptbranch_")}
             imported: set[str] = set()
@@ -303,7 +386,7 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
             missing_import_declarations = sorted(imported.difference(declared).difference(package_roots))
     except zipfile.BadZipFile as exc:
         return {"ok": False, "action": "package_import_metadata", "status": "bad_zip", "zip_path": str(zip_path), "error": str(exc)}
-    ok = not missing_declared_files and not missing_import_declarations
+    ok = not missing_declared_files and not missing_import_declarations and bool(version_consistency.get("ok"))
     return {
         "ok": ok,
         "action": "package_import_metadata",
@@ -315,6 +398,7 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
         "package_roots": sorted(package_roots),
         "missing_declared_files": missing_declared_files,
         "missing_import_declarations": missing_import_declarations,
+        "version_consistency": version_consistency,
     }
 
 
@@ -322,14 +406,18 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     root = Path(repo_path).expanduser().resolve()
     declared = _declared_py_modules(root)
     modules = sorted({"promptbranch", "promptbranch.cli", *declared})
+    expected_version = normalize_version(_read_version(root))
     if not declared:
         return {"ok": False, "action": "package_import_smoke", "status": "pyproject_missing_or_unreadable", "repo_path": str(root), "modules": modules}
     executable = python_executable or sys.executable
     code = "\n".join([
+        "import contextlib",
         "import importlib",
+        "import io",
         "import json",
         "import sys",
         "modules = json.loads(sys.argv[1])",
+        "expected_version = sys.argv[2] or None",
         "results = []",
         "for module in modules:",
         "    try:",
@@ -337,8 +425,53 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "        results.append({'module': module, 'ok': True})",
         "    except Exception as exc:",
         "        results.append({'module': module, 'ok': False, 'error_type': type(exc).__name__, 'error': str(exc)})",
-        "print(json.dumps(results, ensure_ascii=False))",
-        "sys.exit(0 if all(item.get('ok') for item in results) else 1)",
+        "def norm(value):",
+        "    text = str(value or '').strip()",
+        "    if text.lower().startswith('v'):",
+        "        text = text[1:]",
+        "    return text or None",
+        "observations = []",
+        "def observe(name, value):",
+        "    observations.append({'name': name, 'value': value, 'normalized': norm(value)})",
+        "try:",
+        "    from importlib import metadata as importlib_metadata",
+        "    observe('installed_distribution.promptbranch', importlib_metadata.version('promptbranch'))",
+        "except Exception as exc:",
+        "    observe('installed_distribution.promptbranch', None)",
+        "try:",
+        "    import promptbranch_version",
+        "    observe('promptbranch_version.PACKAGE_VERSION', getattr(promptbranch_version, 'PACKAGE_VERSION', None))",
+        "    observe('promptbranch_version.VERSION_TAG', getattr(promptbranch_version, 'VERSION_TAG', None))",
+        "except Exception:",
+        "    observe('promptbranch_version.PACKAGE_VERSION', None)",
+        "try:",
+        "    import promptbranch_cli",
+        "    observe('promptbranch_cli.CLI_VERSION', getattr(promptbranch_cli, 'CLI_VERSION', None))",
+        "    buf = io.StringIO()",
+        "    with contextlib.redirect_stdout(buf):",
+        "        rc = promptbranch_cli.main(['version'])",
+        "    output = buf.getvalue().strip()",
+        "    observe('promptbranch version output', output.split()[-1] if output else None)",
+        "except Exception:",
+        "    observe('promptbranch_cli.CLI_VERSION', None)",
+        "try:",
+        "    import promptbranch_mcp",
+        "    observe('promptbranch_mcp.MCP_SERVER_VERSION', getattr(promptbranch_mcp, 'MCP_SERVER_VERSION', None))",
+        "    init = promptbranch_mcp.handle_mcp_jsonrpc_message({'jsonrpc':'2.0','id':1,'method':'initialize','params':{}})",
+        "    observe('mcp server_info.version', (((init or {}).get('result') or {}).get('serverInfo') or {}).get('version'))",
+        "except Exception:",
+        "    observe('promptbranch_mcp.MCP_SERVER_VERSION', None)",
+        "try:",
+        "    import promptbranch_container_api",
+        "    observe('promptbranch_container_api.SERVICE_VERSION', getattr(promptbranch_container_api, 'SERVICE_VERSION', None))",
+        "except Exception:",
+        "    observe('promptbranch_container_api.SERVICE_VERSION', None)",
+        "missing = [item['name'] for item in observations if not item.get('normalized')]",
+        "mismatches = [item for item in observations if item.get('normalized') and expected_version and item.get('normalized') != expected_version]",
+        "version_consistency = {'ok': bool(expected_version) and not missing and not mismatches, 'expected_version': expected_version, 'observations': observations, 'missing': missing, 'mismatches': mismatches}",
+        "payload = {'imports': results, 'version_consistency': version_consistency}",
+        "print(json.dumps(payload, ensure_ascii=False))",
+        "sys.exit(0 if all(item.get('ok') for item in results) and version_consistency.get('ok') else 1)",
     ])
     env = dict(os.environ)
     kept = []
@@ -357,13 +490,19 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     else:
         env.pop("PYTHONPATH", None)
     with tempfile.TemporaryDirectory(prefix="promptbranch-import-smoke-") as tmp:
-        completed = subprocess.run([executable, "-c", code, json.dumps(modules)], cwd=tmp, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        completed = subprocess.run([executable, "-c", code, json.dumps(modules), expected_version or ""], cwd=tmp, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
     try:
-        results = json.loads(completed.stdout or "[]")
+        subprocess_payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError:
+        subprocess_payload = {}
+    results = subprocess_payload.get("imports") if isinstance(subprocess_payload, dict) else []
+    if not isinstance(results, list):
         results = []
     failures = [item for item in results if isinstance(item, dict) and not item.get("ok")]
-    ok = completed.returncode == 0 and not failures
+    version_consistency = subprocess_payload.get("version_consistency") if isinstance(subprocess_payload, dict) else None
+    if not isinstance(version_consistency, dict):
+        version_consistency = {"ok": False, "expected_version": expected_version, "observations": [], "missing": ["runtime_version_payload"], "mismatches": []}
+    ok = completed.returncode == 0 and not failures and bool(version_consistency.get("ok"))
     return {
         "ok": ok,
         "action": "package_import_smoke",
@@ -373,6 +512,7 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "module_count": len(modules),
         "modules": modules,
         "failures": failures,
+        "version_consistency": version_consistency,
         "returncode": completed.returncode,
         "stdout_bytes": len(completed.stdout or ""),
         "stderr": completed.stderr[-4000:] if completed.stderr else "",
@@ -444,6 +584,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("agent_reject_sync_sources", agent_run("sync sources", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
     steps.append(_step("agent_reject_artifact_release", agent_run("create artifact release", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
     steps.append(_step("agent_reject_arbitrary_pytest", agent_run("run pytest", repo_path=root, profile_dir=profile_dir), expected_failure=True, expected_status="risk_rejected"))
+    steps.append(_step("version_consistency", source_version_consistency(repo_path=root)))
     steps.append(_step("package_import_metadata", _package_import_metadata(package_zip, repo_path=root)))
     steps.append(_step("package_import_smoke", package_import_smoke(repo_path=root)))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
@@ -510,6 +651,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     }
     if profile == "browser":
         browser_summary.setdefault("profile", "browser")
+        browser_summary.setdefault("version", _read_version(Path(repo_path).expanduser().resolve()))
         return browser_summary
 
     agent_summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
@@ -517,6 +659,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "ok": bool(browser_summary.get("ok")) and bool(agent_summary.get("ok")),
         "action": "test_suite",
         "profile": "full",
+        "version": _read_version(Path(repo_path).expanduser().resolve()),
         "browser": browser_summary,
         "agent": agent_summary,
         "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),

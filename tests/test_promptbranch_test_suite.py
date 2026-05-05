@@ -36,6 +36,7 @@ def test_agent_profile_runs_local_checks_and_expected_negatives(monkeypatch, tmp
     monkeypatch.setattr(suite, "agent_run", fake_agent_run)
     monkeypatch.setattr(suite, "agent_summarize_log", fake_summarize)
     monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
+    monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 
@@ -89,7 +90,7 @@ def test_package_import_smoke_runs_outside_repo(monkeypatch, tmp_path: Path) -> 
 
     class Completed:
         returncode = 0
-        stdout = '[{"module":"promptbranch_cli","ok":true}]'
+        stdout = '{"imports":[{"module":"promptbranch_cli","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.test","observations":[],"missing":[],"mismatches":[]}}'
         stderr = ''
 
     def fake_run(cmd, cwd, env, text, stdout, stderr, timeout, check):
@@ -134,6 +135,7 @@ def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, 
 
     monkeypatch.setattr(suite, "agent_run", fake_agent_run)
     monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
+    monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 
@@ -235,3 +237,52 @@ def test_browser_profile_reports_rate_limit_telemetry(monkeypatch) -> None:
     assert result["rate_limit_telemetry"]["cooldown_wait_seconds_total"] == 5.0
     assert result["rate_limit_telemetry"]["planned_cooldown_wait_seconds_total"] == 45.0
     assert "rate_limit_modal_detected" in result["rate_limit_strategy"]["telemetry_fields"]
+
+
+def test_source_version_consistency_detects_pyproject_drift(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.0.0"\n', encoding="utf-8")
+
+    result = suite.source_version_consistency(repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert any(item["name"] == "pyproject.project.version" for item in result["mismatches"])
+
+
+def test_package_import_metadata_checks_zip_versions(tmp_path: Path) -> None:
+    bad_zip = tmp_path / "bad-version.zip"
+    pyproject = """[project]
+version = "0.0.165"
+
+[tool.setuptools]
+py-modules = ["promptbranch_version"]
+"""
+    with zipfile.ZipFile(bad_zip, "w") as archive:
+        archive.writestr("VERSION", "v0.0.166\n")
+        archive.writestr("pyproject.toml", pyproject)
+        archive.writestr("promptbranch_version.py", 'PACKAGE_VERSION = "0.0.165"\n')
+
+    result = suite._package_import_metadata(str(bad_zip), repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["version_consistency"]["ok"] is False
+    assert result["version_consistency"]["mismatches"]
+
+
+def test_package_import_smoke_fails_on_runtime_version_drift(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.165\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[tool.setuptools]\npy-modules = ["promptbranch_version"]\n', encoding="utf-8")
+
+    class Completed:
+        returncode = 1
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":false,"expected_version":"0.0.165","observations":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}],"missing":[],"mismatches":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}]}}'
+        stderr = ""
+
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable="python-test")
+
+    assert result["ok"] is False
+    assert result["version_consistency"]["mismatches"][0]["name"] == "mcp server_info.version"

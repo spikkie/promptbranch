@@ -193,3 +193,28 @@ def test_pyproject_declares_pb_console_script_alias():
 
     assert scripts["promptbranch"] == "promptbranch.cli:main"
     assert scripts["pb"] == "promptbranch.cli:main"
+
+
+def test_report_classifies_browser_navigation_network_failure(tmp_path: Path) -> None:
+    log = tmp_path / "pb_test.full.v0.0.165.log"
+    log.write_text(json.dumps({
+        "ok": False,
+        "action": "test_suite",
+        "profile": "full",
+        "browser": {
+            "ok": False,
+            "steps": [
+                {
+                    "name": "task_message_flow.ask",
+                    "ok": False,
+                    "status": "failed",
+                    "payload": {"error": "Page.goto: net::ERR_ADDRESS_UNREACHABLE https://chatgpt.com/g/demo/project"},
+                }
+            ],
+        },
+        "agent": {"ok": True, "steps": []},
+    }), encoding="utf-8")
+
+    report = build_test_report(log)
+
+    assert report["suite"]["failed_steps"][0]["classification"] == "browser_navigation_unavailable"

@@ -1,0 +1,95 @@
+{
+    "ok": false,
+    "action": "test_status",
+    "status": "suite_failed",
+    "path": ".",
+    "selected_log": {
+        "path": "pb_test.full.v0.0.164.log",
+        "mtime": 1777983022.4826064,
+        "mtime_iso": "2026-05-05T12:10:22.482606+00:00",
+        "size_bytes": 354264
+    },
+    "checked": [
+        {
+            "path": "pb_test.full.v0.0.164.log",
+            "mtime": 1777983022.4826064,
+            "mtime_iso": "2026-05-05T12:10:22.482606+00:00",
+            "size_bytes": 354264,
+            "status": "suite_failed",
+            "ok": false,
+            "profile": "full",
+            "accepted": true
+        }
+    ],
+    "suite": {
+        "ok": false,
+        "action": "test_suite",
+        "profile": "full",
+        "version": "v0.0.164",
+        "browser": {
+            "name": "browser",
+            "ok": false,
+            "step_count": 13,
+            "failure_count": 1,
+            "failed_steps": [
+                {
+                    "section": "browser",
+                    "name": "task_message_flow.ask",
+                    "status": null,
+                    "expected_failure": false,
+                    "expected_status": null,
+                    "diagnostic": null
+                }
+            ]
+        },
+        "agent": {
+            "name": "agent",
+            "ok": true,
+            "step_count": 17,
+            "failure_count": 0,
+            "failed_steps": []
+        },
+        "failure_count": 1,
+        "failed_steps": [
+            {
+                "section": "browser",
+                "name": "task_message_flow.ask",
+                "status": null,
+                "expected_failure": false,
+                "expected_status": null,
+                "diagnostic": null
+            }
+        ],
+        "rate_limit_telemetry": {
+            "rate_limit_modal_detected": false,
+            "conversation_history_429_seen": false,
+            "cooldown_wait_seconds_total": 0.0,
+            "cooldown_wait_count": 0,
+            "planned_cooldown_wait_seconds_total": 45.0,
+            "planned_cooldown_wait_count": 1,
+            "service_rate_limit_events": [],
+            "event_count": 0
+        },
+        "safety": {
+            "write_tools_blocked": true,
+            "model_has_execution_authority": false,
+            "source_or_artifact_mutation_allowed": false
+        },
+        "package_hygiene": {
+            "ok": true,
+            "status": "verified",
+            "zip_path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.164.zip",
+            "testzip": null,
+            "bad_entry_count": 0,
+            "wrapper_folder": false
+        }
+    },
+    "source": {
+        "bytes": 354264,
+        "json_object_count": 1,
+        "selected": {
+            "start_offset": 0,
+            "end_offset": 354263
+        }
+    }
+}
