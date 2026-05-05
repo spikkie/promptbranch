@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from promptbranch_test_report import build_test_report, parse_service_log
 
@@ -124,6 +125,42 @@ def test_build_test_status_reports_missing_full_suite_log(tmp_path):
     assert status["ok"] is False
     assert status["status"] == "no_full_suite_log_found"
     assert status["candidate_count"] == 0
+
+
+
+
+def test_build_test_status_ignores_report_and_status_derivative_logs(tmp_path):
+    from promptbranch_test_report import build_test_status, find_test_status_logs
+    import os
+
+    suite_log = tmp_path / "pb_test.full.v0.0.163.log"
+    report_log = tmp_path / "pb_test.full.v0.0.163.log.report"
+    status_log = tmp_path / "pb_test.full.v0.0.163.log.status"
+    trailing_dot_log = tmp_path / "pb_test-suite.full.v0.0.154.log."
+
+    suite_log.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
+    report_log.write_text("", encoding="utf-8")
+    status_log.write_text("", encoding="utf-8")
+    trailing_dot_log.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
+
+    os.utime(suite_log, (2000, 2000))
+    os.utime(report_log, (4000, 4000))
+    os.utime(status_log, (5000, 5000))
+    os.utime(trailing_dot_log, (1000, 1000))
+
+    candidates = find_test_status_logs(tmp_path)
+    candidate_names = [Path(item["path"]).name for item in candidates]
+
+    assert "pb_test.full.v0.0.163.log.status" not in candidate_names
+    assert "pb_test.full.v0.0.163.log.report" not in candidate_names
+    assert "pb_test.full.v0.0.163.log" in candidate_names
+    assert "pb_test-suite.full.v0.0.154.log." in candidate_names
+
+    status = build_test_status(path=tmp_path)
+
+    assert status["ok"] is True
+    assert status["status"] == "verified"
+    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.163.log")
 
 
 def test_build_test_status_does_not_hide_newest_invalid_full_suite_log(tmp_path):
