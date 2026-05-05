@@ -170,8 +170,33 @@ def _path_mtime_payload(path: Path) -> dict[str, Any]:
     }
 
 
+def _is_full_suite_log_candidate(path: Path) -> bool:
+    """Return True for primary full-suite log files.
+
+    `pb test status` is meant to summarize logs produced by commands such as::
+
+        pb test full --json 2>&1 | tee pb_test.full.v0.0.163.log
+
+    Operator-created derivatives such as `.log.report` and `.log.status` are
+    outputs of report/status commands, not full-suite evidence.  Treating them
+    as candidates can make a fresh redirected status file mask a valid full-suite
+    run.  A trailing dot after `.log` is accepted because an earlier operator run
+    accidentally produced `pb_test-suite.full.v0.0.154.log.` and that should
+    remain parseable.
+    """
+    name = path.name
+    allowed_prefixes = (
+        "pb_test.full",
+        "pb_test-suite.full",
+        "pb_test_suite.full",
+    )
+    if not name.startswith(allowed_prefixes):
+        return False
+    return name.endswith(".log") or name.endswith(".log.")
+
+
 def find_test_status_logs(path: str | Path = ".") -> list[dict[str, Any]]:
-    """Return candidate full-suite logs newest first.
+    """Return primary candidate full-suite logs newest first.
 
     This deliberately looks only for full-suite style log names so `pb test status`
     remains a lightweight "last accepted full validation" view instead of a loose
@@ -180,12 +205,9 @@ def find_test_status_logs(path: str | Path = ".") -> list[dict[str, Any]]:
     """
     root = Path(path).expanduser()
     patterns = (
-        "pb_test.full*.log",
-        "pb_test.full*.log.*",
-        "pb_test-suite.full*.log",
-        "pb_test-suite.full*.log.*",
-        "pb_test_suite.full*.log",
-        "pb_test_suite.full*.log.*",
+        "pb_test.full*.log*",
+        "pb_test-suite.full*.log*",
+        "pb_test_suite.full*.log*",
     )
     seen: set[Path] = set()
     candidates: list[Path] = []
@@ -194,7 +216,7 @@ def find_test_status_logs(path: str | Path = ".") -> list[dict[str, Any]]:
     elif root.is_dir():
         for pattern in patterns:
             for item in root.glob(pattern):
-                if item.is_file() and item not in seen:
+                if item.is_file() and item not in seen and _is_full_suite_log_candidate(item):
                     seen.add(item)
                     candidates.append(item)
     candidates.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0.0, reverse=True)
