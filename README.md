@@ -1,4 +1,4 @@
-# promptbranch v0.0.162
+# promptbranch v0.0.163
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -71,7 +71,7 @@ Build the image:
 Or directly:
 
 ```bash
-docker build -t promptbranch-service:0.0.162 .
+docker build -t promptbranch-service:0.0.163 .
 ```
 
 Run it:
@@ -86,7 +86,7 @@ docker run --rm -it \
   -v "$PWD/.pb_profile:/app/.pb_profile" \
   -v "$PWD/debug_artifacts:/app/debug_artifacts" \
   -v "$HOME/.config/chatgpt/password.txt:/run/secrets/chatgpt_password:ro" \
-  promptbranch-service:0.0.162
+  promptbranch-service:0.0.163
 ```
 
 Compose option:
@@ -274,7 +274,7 @@ There is also a runnable sample at `examples/promptbranch_service_client_example
 Preferred for command-line use:
 
 ```bash
-pipx install ./chatgpt_claudecode_workflow_v0.0.162.zip
+pipx install ./chatgpt_claudecode_workflow_v0.0.163.zip
 ```
 
 From an extracted checkout:
@@ -572,7 +572,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 This command is intentionally not autonomous. The model proposes; Promptbranch validates; only read-only tools may execute.
 
 
-## v0.0.162
+## v0.0.163
 
 - Made JSON-mode CLI output clean for machine consumers: when `--json` is requested and `--debug` is not explicitly set, debug logging is suppressed before command execution.
 - Changed normal CLI logging setup to avoid DEBUG/INFO noise unless debugging is explicitly enabled.

@@ -211,13 +211,21 @@ def build_test_status(
     """Build a lightweight status from the newest valid full-suite log.
 
     No tests are executed here. The command is intentionally read-only and relies
-    on a previously captured `pb test full --json` log.
+    on a previously captured `pb test full --json` log. When scanning a directory,
+    the newest candidate is authoritative: if it exists but is invalid, the
+    command returns ``latest_full_suite_log_invalid`` instead of silently falling
+    back to an older green run. Older valid runs are still reported under
+    ``last_valid`` for operator context.
     """
-    if log is not None:
+    explicit_log = log is not None
+    if explicit_log:
         candidates = [_path_mtime_payload(Path(log).expanduser())]
     else:
         candidates = find_test_status_logs(path)
     checked: list[dict[str, Any]] = []
+    first_checked: dict[str, Any] | None = None
+    first_valid: dict[str, Any] | None = None
+
     for candidate in candidates[:max_candidates]:
         candidate_path = candidate.get("path")
         if not candidate_path:
@@ -226,25 +234,52 @@ def build_test_status(
         suite = report.get("suite") if isinstance(report.get("suite"), dict) else {}
         profile = suite.get("profile") if isinstance(suite, dict) else None
         accepted = bool(report.get("suite")) and profile == "full"
-        checked.append({
+        checked_entry = {
             **candidate,
             "status": report.get("status"),
             "ok": report.get("ok"),
             "profile": profile,
             "accepted": accepted,
-        })
+        }
+        checked.append(checked_entry)
+        if first_checked is None:
+            first_checked = checked_entry
         if accepted:
-            return {
-                "ok": bool(report.get("ok")),
-                "action": "test_status",
-                "status": "verified" if report.get("ok") else "suite_failed",
-                "path": str(Path(path).expanduser()),
+            valid_payload = {
                 "selected_log": candidate,
-                "checked": checked,
                 "suite": suite,
                 "source": report.get("source"),
                 **({"service_log": report.get("service_log")} if isinstance(report.get("service_log"), dict) else {}),
             }
+            if first_valid is None:
+                first_valid = valid_payload
+            # The newest candidate is valid, so this is the authoritative status.
+            if first_checked is checked_entry or explicit_log:
+                return {
+                    "ok": bool(report.get("ok")),
+                    "action": "test_status",
+                    "status": "verified" if report.get("ok") else "suite_failed",
+                    "path": str(Path(path).expanduser()),
+                    "selected_log": candidate,
+                    "checked": checked,
+                    "suite": suite,
+                    "source": report.get("source"),
+                    **({"service_log": report.get("service_log")} if isinstance(report.get("service_log"), dict) else {}),
+                }
+            # A newer candidate was invalid. Do not hide that by returning ok=true.
+            break
+
+    if first_checked is not None and first_valid is not None and not first_checked.get("accepted"):
+        return {
+            "ok": False,
+            "action": "test_status",
+            "status": "latest_full_suite_log_invalid",
+            "path": str(Path(path).expanduser()),
+            "latest_log": first_checked,
+            "checked": checked,
+            "last_valid": first_valid,
+        }
+
     return {
         "ok": False,
         "action": "test_status",

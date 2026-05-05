@@ -333,7 +333,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.162
+## v0.0.163
 
 - Made JSON-mode CLI output clean for machine consumers: when `--json` is requested and `--debug` is not explicitly set, debug logging is suppressed before command execution.
 - Changed normal CLI logging setup to avoid DEBUG/INFO noise unless debugging is explicitly enabled.
