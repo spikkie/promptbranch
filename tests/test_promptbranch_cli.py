@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.170"
+    assert captured.out.strip() == "promptbranch 0.0.171"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.170"
+    assert payload["version"] == "0.0.171"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1514,6 +1514,55 @@ def test_phase3_src_sync_confirm_upload_with_transaction_id_executes_guarded_upl
     assert calls[0]["source_kind"] == "file"
     assert calls[0]["display_name"] == "repo_v1.2.3.zip"
 
+
+def test_phase3_src_sync_confirm_upload_failure_does_not_advance_registry_or_state(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.append(kwargs)
+            return {"ok": False, "action": "source_add", "status": "verification_failed"}
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.4\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    preflight_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    preflight_payload = json.loads(capsys.readouterr().out)
+    assert preflight_code == 2
+    transaction_id = preflight_payload["transaction_id"]
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--confirm-transaction-id", transaction_id, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "upload_failed"
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_source_updated"] is False
+    assert payload["upload_verification"]["registry_update_deferred_until_upload_verified"] is True
+    assert Path(payload["artifact"]["path"]).is_file()
+    assert not (profile / "promptbranch_artifacts.json").exists()
+    assert calls[0]["display_name"] == "repo_v1.2.4.zip"
+
 def test_phase3_src_sync_rejects_conflicting_upload_modes(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
@@ -1868,7 +1917,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.170",
+                "version": "v0.0.171",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
