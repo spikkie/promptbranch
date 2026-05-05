@@ -2181,7 +2181,95 @@ def _artifact_output_dir(args: argparse.Namespace, registry: ArtifactRegistry) -
 def _artifact_state_project_url(backend: Any) -> Optional[str]:
     snapshot = backend.state_snapshot()
     candidate = snapshot.get("resolved_project_home_url") if isinstance(snapshot, dict) else None
-    return candidate if isinstance(candidate, str) else None
+    if not isinstance(candidate, str) or candidate == DEFAULT_PROJECT_URL:
+        return None
+    return candidate
+
+
+def _artifact_registry_snapshot(registry: ArtifactRegistry) -> dict[str, Any]:
+    artifacts = registry.list()
+    return {
+        "path": str(registry.path),
+        "exists": registry.path.exists(),
+        "current": registry.current(),
+        "artifact_count": len(artifacts),
+        "filenames": [str(item.get("filename")) for item in artifacts if item.get("filename")],
+    }
+
+
+def _state_artifact_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        return {}
+    return {
+        "project_home_url": snapshot.get("resolved_project_home_url"),
+        "artifact_ref": snapshot.get("artifact_ref"),
+        "artifact_version": snapshot.get("artifact_version"),
+        "source_ref": snapshot.get("source_ref"),
+        "source_version": snapshot.get("source_version"),
+    }
+
+
+def _registry_contains_artifact(registry: ArtifactRegistry, *, path: str, filename: str, sha256: str) -> bool:
+    for item in registry.list():
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("path") or "") == path and str(item.get("filename") or "") == filename and str(item.get("sha256") or "") == sha256:
+            return True
+    return False
+
+
+def _local_source_sync_verification(
+    *,
+    record: Any,
+    registry: ArtifactRegistry,
+    before_registry: dict[str, Any],
+    before_state: dict[str, Any],
+    after_state: dict[str, Any],
+    project_url: Optional[str],
+) -> dict[str, Any]:
+    zip_check = verify_zip_artifact(record.path)
+    after_registry = _artifact_registry_snapshot(registry)
+    state_before = _state_artifact_summary(before_state)
+    state_after = _state_artifact_summary(after_state)
+    registry_contains = _registry_contains_artifact(
+        registry,
+        path=record.path,
+        filename=record.filename,
+        sha256=record.sha256,
+    )
+    state_artifact_updated = True
+    if project_url:
+        state_artifact_updated = (
+            state_after.get("artifact_ref") == record.filename
+            and state_after.get("artifact_version") == record.version
+        )
+    checks = {
+        "zip_exists": Path(record.path).is_file(),
+        "zip_crc_ok": bool(zip_check.get("ok")) and zip_check.get("testzip") is None,
+        "zip_sha256_matches_record": bool(Path(record.path).is_file()) and verify_zip_artifact(record.path).get("sha256") == record.sha256,
+        "registry_contains_artifact": registry_contains,
+        "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == record.filename,
+        "state_artifact_updated": state_artifact_updated,
+        "project_source_not_mutated": True,
+        "project_source_mutated": False,
+    }
+    required_checks = {key: value for key, value in checks.items() if key != "project_source_mutated"}
+    ok = all(bool(value) for value in required_checks.values())
+    return {
+        "ok": ok,
+        "status": "verified" if ok else "verification_failed",
+        "scope": "local_artifact_only",
+        "checks": checks,
+        "zip": zip_check,
+        "before_snapshot": {
+            "artifact_registry": before_registry,
+            "state": state_before,
+        },
+        "after_snapshot": {
+            "artifact_registry": after_registry,
+            "state": state_after,
+        },
+    }
 
 
 async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
@@ -2247,15 +2335,73 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                 print(f"warning={warnings[0]}")
         return 0
 
+    output_dir = _artifact_output_dir(args, registry)
+    upload_requested = not getattr(args, "no_upload", False)
+    try:
+        preflight_plan, planned_included = build_source_sync_preflight(
+            repo_path,
+            output_dir=output_dir,
+            filename=getattr(args, "filename", None),
+            profile_dir=registry.profile_dir,
+            project_url=project_url,
+            upload_requested=upload_requested,
+        )
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "action": "src_sync", "status": "preflight_failed", "error": str(exc)}, indent=2, ensure_ascii=False))
+        return 2
+
+    collateral = preflight_plan["preflight"]["collateral_checks"]
+    collision_keys = ("output_path_exists", "registry_path_collision", "registry_filename_collision")
+    collisions = {key: collateral.get(key) for key in collision_keys if collateral.get(key)}
+    if collisions and not getattr(args, "force", False):
+        payload = {
+            "ok": False,
+            "action": "src_sync",
+            "status": "local_artifact_collision",
+            "dry_run": False,
+            "no_upload": bool(getattr(args, "no_upload", False)),
+            "mutating_actions_executed": False,
+            "repo_path": str(repo_path),
+            "project_url": project_url,
+            "artifact": {**preflight_plan, "would_upload_source": bool(upload_requested)},
+            "included_count": len(planned_included),
+            "preflight": preflight_plan["preflight"],
+            "collisions": collisions,
+            "error": "local artifact collision detected; rerun with --force to overwrite/register this artifact",
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+
+    if upload_requested and not project_url:
+        payload = {
+            "ok": False,
+            "action": "src_sync",
+            "status": "no_workspace_selected",
+            "dry_run": False,
+            "no_upload": False,
+            "mutating_actions_executed": False,
+            "repo_path": str(repo_path),
+            "project_url": project_url,
+            "artifact": {**preflight_plan, "would_upload_source": True},
+            "included_count": len(planned_included),
+            "preflight": preflight_plan["preflight"],
+            "error": "no current workspace is selected; run `pb ws use <project>` or pass --no-upload",
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+
+    before_registry = _artifact_registry_snapshot(registry)
+    before_state = backend.state_snapshot()
+
     try:
         record, included = create_repo_snapshot(
             repo_path,
-            output_dir=_artifact_output_dir(args, registry),
+            output_dir=output_dir,
             filename=getattr(args, "filename", None),
             kind="source_snapshot",
         )
     except ValueError as exc:
-        print(json.dumps({"ok": False, "action": "src_sync", "error": str(exc)}, indent=2, ensure_ascii=False))
+        print(json.dumps({"ok": False, "action": "src_sync", "status": "package_failed", "error": str(exc), "preflight": preflight_plan["preflight"]}, indent=2, ensure_ascii=False))
         return 2
 
     upload_result: dict[str, Any] | None = None
@@ -2268,6 +2414,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                 "status": "no_workspace_selected",
                 "artifact": record.to_dict(),
                 "included_count": len(included),
+                "preflight": preflight_plan["preflight"],
                 "error": "no current workspace is selected; run `pb ws use <project>` or pass --no-upload",
             }
             print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -2297,12 +2444,29 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                 artifact_ref=record.filename,
                 artifact_version=record.version,
             )
+    after_state = backend.state_snapshot()
+    local_verification = _local_source_sync_verification(
+        record=record,
+        registry=registry,
+        before_registry=before_registry,
+        before_state=before_state,
+        after_state=after_state,
+        project_url=project_url,
+    )
+    no_upload = bool(getattr(args, "no_upload", False))
     payload = {
-        "ok": bool(getattr(args, "no_upload", False) or uploaded),
+        "ok": bool((no_upload and local_verification.get("ok")) or uploaded),
         "action": "src_sync",
-        "status": "uploaded" if uploaded else ("packaged" if getattr(args, "no_upload", False) else "upload_failed"),
+        "status": "verified_packaged" if no_upload and local_verification.get("ok") else ("uploaded" if uploaded else ("packaged_unverified" if no_upload else "upload_failed")),
+        "dry_run": False,
+        "no_upload": no_upload,
+        "mutating_actions_executed": True,
+        "project_source_mutated": bool(uploaded),
         "artifact": artifact_payload,
         "included_count": len(included),
+        "preflight": preflight_plan["preflight"],
+        "transaction_id": preflight_plan["preflight"]["transaction_id"],
+        "local_verification": local_verification,
         "upload_result": upload_result,
         "project_url": project_url,
     }
@@ -3213,6 +3377,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
     src_sync.add_argument("--filename", help="Override the generated artifact filename.")
     src_sync.add_argument("--no-upload", action="store_true", help="Only package and register the artifact locally; do not upload as a project source.")
+    src_sync.add_argument("--force", action="store_true", help="Allow local artifact overwrite/collision during --no-upload sync.")
     src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
     src_sync.add_argument("--keep-open", action="store_true")
