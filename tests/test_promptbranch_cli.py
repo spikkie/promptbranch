@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.167"
+    assert captured.out.strip() == "promptbranch 0.0.168"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.167"
+    assert payload["version"] == "0.0.168"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1396,10 +1396,77 @@ def test_phase3_src_sync_no_upload_packages_and_records_artifact(monkeypatch, ca
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert payload["status"] == "packaged"
+    assert payload["status"] == "verified_packaged"
+    assert payload["no_upload"] is True
+    assert payload["project_source_mutated"] is False
     assert payload["artifact"]["filename"] == "repo_v1.0.0.zip"
     assert Path(payload["artifact"]["path"]).is_file()
+    assert payload["local_verification"]["ok"] is True
+    assert payload["local_verification"]["checks"]["zip_exists"] is True
+    assert payload["local_verification"]["checks"]["registry_contains_artifact"] is True
+    assert payload["local_verification"]["checks"]["project_source_mutated"] is False
 
+
+
+def test_phase3_src_sync_no_upload_refuses_collision_without_force(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    artifact_dir = profile / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    existing = artifact_dir / "repo_v1.0.0.zip"
+    existing.write_bytes(b"old")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--no-upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["status"] == "local_artifact_collision"
+    assert payload["mutating_actions_executed"] is False
+    assert payload["collisions"]["output_path_exists"] is True
+    assert existing.read_bytes() == b"old"
+
+
+def test_phase3_src_sync_no_upload_force_overwrites_and_verifies(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    artifact_dir = profile / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    existing = artifact_dir / "repo_v1.0.0.zip"
+    existing.write_bytes(b"old")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "src", "sync", str(repo), "--no-upload", "--force", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "verified_packaged"
+    assert payload["local_verification"]["ok"] is True
+    assert existing.read_bytes() != b"old"
 
 def test_phase3_artifact_release_current_and_verify(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
@@ -1610,7 +1677,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.167",
+                "version": "v0.0.168",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
