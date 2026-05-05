@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, default_artifact_filename, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, default_artifact_filename, iter_repo_files, verify_zip_artifact
 
 
 def test_default_artifact_filename_prefers_version_file(tmp_path: Path) -> None:
@@ -73,3 +73,18 @@ def test_artifact_registry_round_trip_and_verify(tmp_path: Path) -> None:
     assert verify["ok"] is True
     assert verify["wrapper_folder"] is None
     assert verify["has_version_file"] is True
+
+
+def test_iter_repo_files_excludes_log_derivatives(tmp_path) -> None:
+    (tmp_path / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (tmp_path / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    (tmp_path / "pb_test.full.v1.log").write_text("log", encoding="utf-8")
+    (tmp_path / "pb_test.full.v1.log.report").write_text("report", encoding="utf-8")
+    (tmp_path / "pb_test.full.v1.import-smoke.json.log").write_text("jsonlog", encoding="utf-8")
+
+    names = [path.relative_to(tmp_path).as_posix() for path in iter_repo_files(tmp_path)]
+
+    assert "main.py" in names
+    assert "pb_test.full.v1.log" not in names
+    assert "pb_test.full.v1.log.report" not in names
+    assert "pb_test.full.v1.import-smoke.json.log" not in names
