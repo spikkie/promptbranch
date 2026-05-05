@@ -253,7 +253,7 @@ def test_source_version_consistency_detects_pyproject_drift(tmp_path: Path) -> N
 def test_package_import_metadata_checks_zip_versions(tmp_path: Path) -> None:
     bad_zip = tmp_path / "bad-version.zip"
     pyproject = """[project]
-version = "0.0.165"
+version = "0.0.166"
 
 [tool.setuptools]
 py-modules = ["promptbranch_version"]
@@ -272,12 +272,12 @@ py-modules = ["promptbranch_version"]
 
 
 def test_package_import_smoke_fails_on_runtime_version_drift(monkeypatch, tmp_path: Path) -> None:
-    (tmp_path / "VERSION").write_text("v0.0.165\n", encoding="utf-8")
+    (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text('[tool.setuptools]\npy-modules = ["promptbranch_version"]\n', encoding="utf-8")
 
     class Completed:
         returncode = 1
-        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":false,"expected_version":"0.0.165","observations":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}],"missing":[],"mismatches":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}]}}'
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":false,"expected_version":"0.0.166","observations":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}],"missing":[],"mismatches":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}]}}'
         stderr = ""
 
     monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
@@ -286,3 +286,28 @@ def test_package_import_smoke_fails_on_runtime_version_drift(monkeypatch, tmp_pa
 
     assert result["ok"] is False
     assert result["version_consistency"]["mismatches"][0]["name"] == "mcp server_info.version"
+
+
+def test_agent_profile_includes_src_sync_dry_run_plan(tmp_path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
+    (tmp_path / ".promptbranch" / "skills" / "repo-inspection" / "SKILL.md").write_text("""---
+name: repo-inspection
+description: Inspect repository.
+risk: read
+allowed_tools:
+  - filesystem.read
+  - git.status
+  - git.diff.summary
+---
+Read VERSION.
+""", encoding="utf-8")
+
+    result = suite._src_sync_dry_run_plan(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+
+    assert result["ok"] is True
+    assert result["status"] == "planned"
+    assert result["mutating_actions_executed"] is False
+    assert result["artifact"]["filename"].endswith("_v9.9.9.zip")
+    assert not (tmp_path / ".pb_profile" / "artifacts" / "repo_v9.9.9.zip").exists()

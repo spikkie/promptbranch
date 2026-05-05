@@ -29,6 +29,7 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
+from promptbranch_artifacts import ArtifactRegistry, plan_repo_snapshot
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 
 
@@ -519,6 +520,32 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "source_tree_masking_prevented": True,
     }
 
+
+
+def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None) -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    profile_base = Path(profile_dir).expanduser() if profile_dir else root / ".pb_profile"
+    registry = ArtifactRegistry(profile_base)
+    try:
+        plan, included = plan_repo_snapshot(root, output_dir=registry.artifact_dir, kind="source_snapshot")
+    except ValueError as exc:
+        return {"ok": False, "action": "src_sync_dry_run", "status": "plan_failed", "error": str(exc), "repo_path": str(root)}
+    return {
+        "ok": True,
+        "action": "src_sync_dry_run",
+        "status": "planned",
+        "repo_path": str(root),
+        "mutating_actions_executed": False,
+        "artifact": {**plan, "would_upload_source": False},
+        "included_count": len(included),
+        "transaction_plan": {
+            "would_package_repo_snapshot": True,
+            "would_update_artifact_registry": True,
+            "would_upload_project_source": False,
+            "required_settle_conditions": [],
+        },
+    }
+
 def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
     repo_path = Path(repo_path).expanduser().resolve()
     zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
@@ -587,6 +614,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("version_consistency", source_version_consistency(repo_path=root)))
     steps.append(_step("package_import_metadata", _package_import_metadata(package_zip, repo_path=root)))
     steps.append(_step("package_import_smoke", package_import_smoke(repo_path=root)))
+    steps.append(_step("src_sync_dry_run_plan", _src_sync_dry_run_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
 
     ok = all(bool(step.get("ok")) for step in steps)
