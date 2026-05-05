@@ -2558,23 +2558,38 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         )
         uploaded = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
 
-    artifact_payload = registry.add(record)
+    # Transaction rule: a live upload may write the local ZIP before the UI/API
+    # trigger, but the artifact registry and Promptbranch artifact/source state
+    # must not be advanced unless the project source upload verifies. Otherwise a
+    # failed ChatGPT source mutation would leave local state falsely claiming the
+    # new source is current. The no-upload path is intentionally local-only and
+    # remains verified via _local_source_sync_verification below.
+    artifact_payload: dict[str, Any] = record.to_dict()
+    registry_updated = False
+    state_artifact_updated = False
+    state_source_updated = False
     store = _state_store_from_args(args)
-    if project_url:
-        if uploaded:
-            store.remember_artifact(
-                project_url=project_url,
-                artifact_ref=record.filename,
-                artifact_version=record.version,
-                source_ref=record.filename,
-                source_version=record.version,
-            )
-        else:
-            store.remember_artifact(
-                project_url=project_url,
-                artifact_ref=record.filename,
-                artifact_version=record.version,
-            )
+    if no_upload_requested or uploaded:
+        artifact_payload = registry.add(record)
+        registry_updated = True
+        if project_url:
+            if uploaded:
+                store.remember_artifact(
+                    project_url=project_url,
+                    artifact_ref=record.filename,
+                    artifact_version=record.version,
+                    source_ref=record.filename,
+                    source_version=record.version,
+                )
+                state_artifact_updated = True
+                state_source_updated = True
+            else:
+                store.remember_artifact(
+                    project_url=project_url,
+                    artifact_ref=record.filename,
+                    artifact_version=record.version,
+                )
+                state_artifact_updated = True
     after_state = backend.state_snapshot()
     local_verification = _local_source_sync_verification(
         record=record,
@@ -2595,11 +2610,23 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         "confirm_upload": confirm_upload,
         "mutating_actions_executed": True,
         "project_source_mutated": bool(uploaded),
+        "local_artifact_written": True,
+        "artifact_registry_updated": registry_updated,
+        "state_artifact_updated": state_artifact_updated,
+        "state_source_updated": state_source_updated,
         "artifact": artifact_payload,
         "included_count": len(included),
         "preflight": preflight_plan["preflight"],
         "transaction_id": preflight_plan["preflight"]["transaction_id"],
         "local_verification": local_verification,
+        "upload_verification": {
+            "ok": bool(uploaded),
+            "status": "verified" if uploaded else ("not_requested" if not upload_requested else "upload_not_verified"),
+            "project_source_mutated": bool(uploaded),
+            "artifact_registry_updated_after_upload": registry_updated if upload_requested else False,
+            "state_source_updated_after_upload": state_source_updated if upload_requested else False,
+            "registry_update_deferred_until_upload_verified": bool(upload_requested and not uploaded),
+        },
         "upload_result": upload_result,
         "project_url": project_url,
     }
