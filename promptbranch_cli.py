@@ -61,7 +61,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
-CLI_VERSION = "0.0.161"
+CLI_VERSION = "0.0.162"
 COMMANDS = {
     "login-check",
     "ask",
@@ -699,10 +699,11 @@ def _env_flag(name: str, default: bool) -> bool:
 def _configure_logging(debug: bool) -> None:
     import logging
 
-    level = logging.DEBUG if debug else logging.INFO
+    level = logging.DEBUG if debug else logging.WARNING
     logging.basicConfig(
         level=level,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        force=True,
     )
 
 
@@ -3043,7 +3044,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-no-sandbox", action="store_true", help="Keep default no-sandbox args instead of filtering them.")
     parser.add_argument("--max-retries", type=int, default=int(os.getenv("CHATGPT_MAX_RETRIES", str(DEFAULT_MAX_RETRIES))))
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
-    parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", True))
+    parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", False))
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
     parser.add_argument(
         "--config",
@@ -3577,6 +3578,14 @@ def _max_retries_was_configured(argv: list[str]) -> bool:
             return True
     return False
 
+def _debug_option_was_provided(argv: list[str]) -> bool:
+    return any(token == "--debug" or token.startswith("--debug=") for token in argv)
+
+
+def _json_output_requested(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False))
+
+
 
 def _try_handle_help_command(parser: argparse.ArgumentParser, argv: list[str]) -> Optional[int]:
     if not argv or argv[0] != "help":
@@ -3697,7 +3706,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
     args.profile_dir = str(resolve_profile_dir(args.profile_dir))
-    if args.command == "test" and getattr(args, "test_command", None) == "report" and not any(token == "--debug" or token.startswith("--debug=") for token in normalized_argv):
+    debug_option_provided = _debug_option_was_provided(normalized_argv)
+    if _json_output_requested(args) and not debug_option_provided:
         args.debug = False
     if args.debug and not _max_retries_was_configured(normalized_argv):
         args.max_retries = 1

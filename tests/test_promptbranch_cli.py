@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.161"
+    assert captured.out.strip() == "promptbranch 0.0.162"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.161"
+    assert payload["version"] == "0.0.162"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1537,7 +1537,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.161",
+                "version": "v0.0.162",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -1560,3 +1560,37 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
     assert payload["suite"]["browser"]["step_count"] == 1
     assert payload["suite"]["agent"]["step_count"] == 1
     assert payload["suite"]["package_hygiene"]["status"] == "verified"
+
+def test_json_command_stdout_is_parseable_without_debug_noise(monkeypatch, capsys, tmp_path) -> None:
+    def fake_status(**kwargs):
+        return {"ok": True, "action": "test_status", "status": "verified"}
+
+    monkeypatch.setattr("promptbranch_cli.build_test_status", fake_status)
+    monkeypatch.setenv("CHATGPT_DEBUG", "1")
+
+    from promptbranch_cli import main
+
+    rc = main(["test", "status", "--json"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    payload = json.loads(captured.out)
+    assert payload["action"] == "test_status"
+    assert "Using selector" not in captured.out
+    assert "Using selector" not in captured.err
+
+
+def test_json_command_debug_flag_keeps_logging_on_stderr(monkeypatch, capsys) -> None:
+    def fake_status(**kwargs):
+        return {"ok": True, "action": "test_status", "status": "verified"}
+
+    monkeypatch.setattr("promptbranch_cli.build_test_status", fake_status)
+
+    from promptbranch_cli import main
+
+    rc = main(["--debug", "test", "status", "--json"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    payload = json.loads(captured.out)
+    assert payload["status"] == "verified"
+    assert captured.out.lstrip().startswith("{")
+
