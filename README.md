@@ -640,3 +640,11 @@ Direct calls:
 pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
+
+
+## v0.0.176
+
+- Added explicit `upload_ambiguous` classification for confirmed project-source uploads where the service/API result fails but source-list verification finds the expected uploaded ZIP afterward with no collateral source removal.
+- Ambiguous upload outcomes require operator review and do not advance the local artifact registry or Promptbranch source/artifact state.
+- Preserved transactional source-sync behavior: local ZIP creation may occur, but source/artifact state advances only after verified project-source upload.
+

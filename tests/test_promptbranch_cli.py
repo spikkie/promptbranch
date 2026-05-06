@@ -12,7 +12,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change
 from promptbranch_state import ConversationStateStore
 
 
@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.175"
+    assert captured.out.strip() == "promptbranch 0.0.176"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.175"
+    assert payload["version"] == "0.0.176"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1576,6 +1576,24 @@ def test_phase3_src_sync_confirm_upload_with_transaction_id_executes_guarded_upl
     assert calls[0]["source_kind"] == "file"
     assert calls[0]["display_name"] == "repo_v1.2.3.zip"
 
+
+
+
+def test_phase3_source_upload_verification_marks_service_error_with_expected_source_as_ambiguous() -> None:
+    payload = _verify_project_source_upload_change(
+        before_result={"ok": True, "action": "source_list", "sources": []},
+        after_result={"ok": True, "action": "source_list", "sources": [{"title": "repo_v1.2.8.zip"}]},
+        upload_result={"ok": False, "action": "source_add", "status": "service_error", "error": "504 gateway timeout"},
+        expected_filename="repo_v1.2.8.zip",
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "upload_ambiguous"
+    assert payload["operator_review_required"] is True
+    assert payload["ambiguity_reason"] == "upload_result_failed_but_expected_source_present_after"
+    assert payload["checks"]["upload_result_ok"] is False
+    assert payload["checks"]["expected_source_present_after"] is True
+    assert payload["collateral_change_detected"] is False
 
 def test_phase3_src_sync_confirm_upload_failure_does_not_advance_registry_or_state(monkeypatch, capsys, tmp_path) -> None:
     calls: list[dict[str, object]] = []
@@ -2162,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.175",
+                "version": "v0.0.176",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2220,6 +2238,70 @@ def test_json_command_debug_flag_keeps_logging_on_stderr(monkeypatch, capsys) ->
     assert captured.out.lstrip().startswith("{")
 
 
+
+
+
+def test_phase3_src_sync_confirm_upload_service_error_with_expected_source_is_ambiguous(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            if calls:
+                return {"ok": True, "action": "source_list", "sources": [{"title": "repo_v1.2.8.zip"}]}
+            return {"ok": True, "action": "source_list", "sources": []}
+
+        def add_project_source(self, **kwargs):
+            calls.append(kwargs)
+            raise RuntimeError("504 error for POST http://localhost:8000/v1/project-sources: Could not find the remove/delete action for the selected project source")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.8\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    preflight_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    preflight_payload = json.loads(capsys.readouterr().out)
+    assert preflight_code == 2
+    transaction_id = preflight_payload["transaction_id"]
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--confirm-transaction-id", transaction_id, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "upload_ambiguous"
+    assert payload["project_source_mutated"] is False
+    assert payload["project_source_mutation"] == "ambiguous"
+    assert payload["operator_review_required"] is True
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
+    assert payload["upload_verification"]["status"] == "upload_ambiguous"
+    assert payload["upload_verification"]["operator_review_required"] is True
+    assert payload["upload_verification"]["source_list_verification"]["status"] == "upload_ambiguous"
+    assert payload["upload_verification"]["source_list_verification"]["ambiguity_reason"] == "upload_result_failed_but_expected_source_present_after"
+    assert payload["upload_verification"]["source_list_verification"]["checks"]["expected_source_present_after"] is True
+    assert payload["upload_verification"]["source_list_verification"]["collateral_change_detected"] is False
+    assert Path(payload["artifact"]["path"]).is_file()
+    assert not (profile / "promptbranch_artifacts.json").exists()
+    assert calls[0]["display_name"] == "repo_v1.2.8.zip"
 
 def test_phase3_src_sync_confirm_upload_service_error_returns_structured_failure(monkeypatch, capsys, tmp_path) -> None:
     calls: list[dict[str, object]] = []

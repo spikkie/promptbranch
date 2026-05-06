@@ -334,13 +334,19 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.176
+
+- Added explicit `upload_ambiguous` classification for confirmed project-source uploads where the service/API result fails but source-list verification finds the expected uploaded ZIP afterward with no collateral source removal.
+- Ambiguous upload outcomes require operator review and do not advance the local artifact registry or Promptbranch source/artifact state.
+- Preserved transactional source-sync behavior: local ZIP creation may occur, but source/artifact state advances only after verified project-source upload.
+
 ## v0.0.175
 
 - Confirmed `pb src sync --upload --confirm-upload` now converts project-source service errors into structured `upload_failed` JSON instead of crashing with a traceback.
 - Failed live uploads still defer artifact registry and Promptbranch source-state updates until upload/source-list verification succeeds.
 - Updated release version references including the Docker Compose service image tag.
 
-## v0.0.175
+## v0.0.162
 
 - Made JSON-mode CLI output clean for machine consumers: when `--json` is requested and `--debug` is not explicitly set, debug logging is suppressed before command execution.
 - Changed normal CLI logging setup to avoid DEBUG/INFO noise unless debugging is explicitly enabled.
