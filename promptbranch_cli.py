@@ -2209,6 +2209,24 @@ def _state_artifact_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+
+def _src_sync_upload_confirm_command(repo_path: Path, transaction_id: str, *, force_required: bool = False) -> str:
+    parts = [
+        "pb",
+        "src",
+        "sync",
+        str(repo_path),
+        "--upload",
+        "--confirm-upload",
+        "--confirm-transaction-id",
+        transaction_id,
+    ]
+    if force_required:
+        parts.append("--force")
+    parts.append("--json")
+    return shlex.join(parts)
+
 def _registry_contains_artifact(registry: ArtifactRegistry, *, path: str, filename: str, sha256: str) -> bool:
     for item in registry.list():
         if not isinstance(item, dict):
@@ -2370,6 +2388,11 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "action": "src_sync", "status": "preflight_failed", "error": str(exc)}, indent=2, ensure_ascii=False))
         return 2
 
+    collateral = preflight_plan["preflight"]["collateral_checks"]
+    collision_keys = ("output_path_exists", "registry_path_collision", "registry_filename_collision")
+    collisions = {key: collateral.get(key) for key in collision_keys if collateral.get(key)}
+    upload_force_required = bool(upload_requested and collisions)
+
     if not no_upload_requested and not upload_requested:
         payload = {
             "ok": False,
@@ -2399,6 +2422,8 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         warnings: list[str] = []
         if not project_url:
             warnings.append("no current workspace is selected; confirmed upload would fail unless you run `pb ws use <project>` first")
+        if upload_force_required:
+            warnings.append("local artifact collision detected; confirmation command includes --force to overwrite/re-register the local package before upload")
         payload = {
             "ok": False,
             "action": "src_sync",
@@ -2421,7 +2446,13 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                 "confirm_flag": "--confirm-upload",
                 "confirm_transaction_id_flag": "--confirm-transaction-id",
                 "transaction_id": preflight_plan["preflight"]["transaction_id"],
-                "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --confirm-transaction-id {preflight_plan['preflight']['transaction_id']} --json",
+                "force_required": upload_force_required,
+                "force_reason": "local artifact collision must be intentionally overwritten before upload" if upload_force_required else None,
+                "confirm_command": _src_sync_upload_confirm_command(
+                    repo_path,
+                    preflight_plan["preflight"]["transaction_id"],
+                    force_required=upload_force_required,
+                ),
             },
             "warnings": warnings,
         }
@@ -2452,7 +2483,9 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
                     "reason": "confirmed upload requires the transaction id from a reviewed upload preflight",
                     "confirm_flag": "--confirm-upload",
                     "confirm_transaction_id_flag": "--confirm-transaction-id",
-                    "confirm_command": f"pb src sync {repo_path} --upload --confirm-upload --confirm-transaction-id {expected_transaction_id} --json",
+                    "force_required": upload_force_required,
+                    "force_reason": "local artifact collision must be intentionally overwritten before upload" if upload_force_required else None,
+                    "confirm_command": _src_sync_upload_confirm_command(repo_path, expected_transaction_id, force_required=upload_force_required),
                 },
                 "error": "confirmed upload requires --confirm-transaction-id from the upload preflight",
             }
@@ -2481,9 +2514,6 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
             return 2
 
-    collateral = preflight_plan["preflight"]["collateral_checks"]
-    collision_keys = ("output_path_exists", "registry_path_collision", "registry_filename_collision")
-    collisions = {key: collateral.get(key) for key in collision_keys if collateral.get(key)}
     if collisions and not getattr(args, "force", False):
         payload = {
             "ok": False,
@@ -2498,6 +2528,20 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             "included_count": len(planned_included),
             "preflight": preflight_plan["preflight"],
             "collisions": collisions,
+            "confirmation": ({
+                "required": True,
+                "reason": "confirmed upload also requires explicit --force because the local artifact path or registry entry already exists",
+                "confirm_flag": "--confirm-upload",
+                "confirm_transaction_id_flag": "--confirm-transaction-id",
+                "transaction_id": preflight_plan["preflight"]["transaction_id"],
+                "force_required": True,
+                "force_flag": "--force",
+                "confirm_command": _src_sync_upload_confirm_command(
+                    repo_path,
+                    preflight_plan["preflight"]["transaction_id"],
+                    force_required=True,
+                ),
+            } if upload_requested else None),
             "error": "local artifact collision detected; rerun with --force to overwrite/register this artifact",
         }
         print(json.dumps(payload, indent=2, ensure_ascii=False))
