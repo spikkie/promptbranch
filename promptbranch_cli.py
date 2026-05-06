@@ -2290,6 +2290,128 @@ def _local_source_sync_verification(
     }
 
 
+
+def _source_identity_values(source: dict[str, Any]) -> set[str]:
+    values: set[str] = set()
+    if not isinstance(source, dict):
+        return values
+    for key in (
+        "title",
+        "name",
+        "filename",
+        "display_name",
+        "source_ref",
+        "id",
+        "identity",
+        "text",
+        "label",
+    ):
+        value = source.get(key)
+        if isinstance(value, str) and value.strip():
+            values.add(value.strip())
+    return values
+
+
+def _source_stable_key(source: dict[str, Any]) -> str:
+    if not isinstance(source, dict):
+        return ""
+    for key in ("id", "source_id", "source_ref", "title", "name", "filename", "display_name", "identity", "text"):
+        value = source.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return json.dumps(source, sort_keys=True, ensure_ascii=False)
+
+
+def _source_matches_filename(source: dict[str, Any], filename: str) -> bool:
+    target = str(filename or "").strip()
+    if not target:
+        return False
+    target_lower = target.lower()
+    for value in _source_identity_values(source):
+        value_lower = value.lower()
+        if value_lower == target_lower:
+            return True
+        # Source cards sometimes render a filename plus type/subtitle in one text
+        # blob. Allow substring matching for the exact filename, but not for an
+        # empty or generic token.
+        if target_lower in value_lower:
+            return True
+    return False
+
+
+def _project_sources_snapshot_from_result(result: Any) -> dict[str, Any]:
+    sources, payload = _project_source_list_payload(result)
+    return {
+        "ok": bool(payload.get("ok")),
+        "status": payload.get("status"),
+        "count": len(sources),
+        "sources": sources,
+        "source_keys": [_source_stable_key(item) for item in sources],
+        "raw": payload,
+    }
+
+
+def _verify_project_source_upload_change(
+    *,
+    before_result: Any,
+    after_result: Any,
+    upload_result: Any,
+    expected_filename: str,
+) -> dict[str, Any]:
+    before = _project_sources_snapshot_from_result(before_result)
+    after = _project_sources_snapshot_from_result(after_result)
+    before_sources = before.get("sources") if isinstance(before.get("sources"), list) else []
+    after_sources = after.get("sources") if isinstance(after.get("sources"), list) else []
+    before_keys = {key for key in before.get("source_keys", []) if isinstance(key, str) and key}
+    after_keys = {key for key in after.get("source_keys", []) if isinstance(key, str) and key}
+
+    matched_before = [item for item in before_sources if isinstance(item, dict) and _source_matches_filename(item, expected_filename)]
+    matched_after = [item for item in after_sources if isinstance(item, dict) and _source_matches_filename(item, expected_filename)]
+    removed_keys = sorted(before_keys - after_keys)
+    added_keys = sorted(after_keys - before_keys)
+
+    upload_ok = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
+    checks = {
+        "upload_result_ok": upload_ok,
+        "before_source_list_ok": bool(before.get("ok")),
+        "after_source_list_ok": bool(after.get("ok")),
+        "expected_source_present_after": bool(matched_after),
+        "collateral_sources_removed": bool(removed_keys),
+    }
+    ok = (
+        checks["upload_result_ok"]
+        and checks["before_source_list_ok"]
+        and checks["after_source_list_ok"]
+        and checks["expected_source_present_after"]
+        and not checks["collateral_sources_removed"]
+    )
+    return {
+        "ok": ok,
+        "status": "verified" if ok else "source_upload_not_verified",
+        "expected_filename": expected_filename,
+        "checks": checks,
+        "before_snapshot": {
+            "ok": before.get("ok"),
+            "status": before.get("status"),
+            "count": before.get("count"),
+            "matching_expected_count": len(matched_before),
+            "source_keys": before.get("source_keys"),
+        },
+        "after_snapshot": {
+            "ok": after.get("ok"),
+            "status": after.get("status"),
+            "count": after.get("count"),
+            "matching_expected_count": len(matched_after),
+            "source_keys": after.get("source_keys"),
+        },
+        "matched_after": matched_after[:3],
+        "added_source_keys": added_keys,
+        "removed_source_keys": removed_keys,
+        "collateral_change_detected": bool(removed_keys),
+        "upload_result_status": upload_result.get("status") if isinstance(upload_result, dict) else None,
+    }
+
+
 async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     """Package a repo snapshot and optionally upload it as a project source."""
     registry = _artifact_registry_from_args(args)
@@ -2580,6 +2702,9 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         return 2
 
     upload_result: dict[str, Any] | None = None
+    upload_source_before_result: Any = None
+    upload_source_after_result: Any = None
+    source_upload_verification: dict[str, Any] | None = None
     uploaded = False
     if upload_requested:
         if not project_url:
@@ -2594,13 +2719,21 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             }
             print(json.dumps(payload, indent=2, ensure_ascii=False))
             return 2
+        upload_source_before_result = await backend.list_project_sources(keep_open=args.keep_open)
         upload_result = await backend.add_project_source(
             source_kind="file",
             file_path=record.path,
             display_name=record.filename,
             keep_open=args.keep_open,
         )
-        uploaded = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
+        upload_source_after_result = await backend.list_project_sources(keep_open=args.keep_open)
+        source_upload_verification = _verify_project_source_upload_change(
+            before_result=upload_source_before_result,
+            after_result=upload_source_after_result,
+            upload_result=upload_result,
+            expected_filename=record.filename,
+        )
+        uploaded = bool(source_upload_verification.get("ok"))
 
     # Transaction rule: a live upload may write the local ZIP before the UI/API
     # trigger, but the artifact registry and Promptbranch artifact/source state
@@ -2670,6 +2803,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             "artifact_registry_updated_after_upload": registry_updated if upload_requested else False,
             "state_source_updated_after_upload": state_source_updated if upload_requested else False,
             "registry_update_deferred_until_upload_verified": bool(upload_requested and not uploaded),
+            "source_list_verification": source_upload_verification,
         },
         "upload_result": upload_result,
         "project_url": project_url,
