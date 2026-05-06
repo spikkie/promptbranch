@@ -333,7 +333,14 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.174
+
+## v0.0.175
+
+- Confirmed `pb src sync --upload --confirm-upload` now converts project-source service errors into structured `upload_failed` JSON instead of crashing with a traceback.
+- Failed live uploads still defer artifact registry and Promptbranch source-state updates until upload/source-list verification succeeds.
+- Updated release version references including the Docker Compose service image tag.
+
+## v0.0.175
 
 - Made JSON-mode CLI output clean for machine consumers: when `--json` is requested and `--debug` is not explicitly set, debug logging is suppressed before command execution.
 - Changed normal CLI logging setup to avoid DEBUG/INFO noise unless debugging is explicitly enabled.
