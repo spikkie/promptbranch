@@ -227,7 +227,7 @@ def _is_full_suite_log_candidate(path: Path) -> bool:
 
     `pb test status` is meant to summarize logs produced by commands such as::
 
-        pb test full --json 2>&1 | tee pb_test.full.v0.0.163.log
+        pb test full --json 2>&1 | tee pb_test.full.v0.0.173.log
 
     Operator-created derivatives such as `.log.report` and `.log.status` are
     outputs of report/status commands, not full-suite evidence.  Treating them
