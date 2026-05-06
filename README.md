@@ -1,4 +1,4 @@
-# promptbranch v0.0.180
+# promptbranch v0.0.181
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,7 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.180
+## v0.0.181
+
+- Hardened project-source overwrite removal after live v0.0.180 still returned `overwrite_remove_failed`.
+- Treats source row option-button clicks as provisional: if a clicked candidate does not expose a Remove/Delete action, Promptbranch now tries alternate visible option buttons from the matched source card before failing.
+- Expanded source Remove/Delete action selectors for source/file-specific menu labels.
+- Preserved transactional safety: if no verified remove action is found, overwrite still fails safe with `overwrite_remove_failed` and no source/add state advancement.
+
 
 - Hardened the project-source overwrite removal path after the row options menu is opened: if selector-based Remove/Delete lookup fails, Promptbranch now searches the visible floating/menu DOM for source remove/delete actions.
 - Missing Remove/Delete menu actions are retried with refreshed source-row action lookup instead of failing after the first menu-open attempt.

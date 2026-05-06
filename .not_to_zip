@@ -52,3 +52,6 @@ chatgpt_claudecode_workflow_v*/
 debug_projects_popup_*/
 task_*.messages
 task_*_final.txt
+stdout.json
+stderr.txt
+task_show_*_messages.txt

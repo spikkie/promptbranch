@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.180"
+    assert init["result"]["serverInfo"]["version"] == "0.0.181"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None

@@ -858,6 +858,85 @@ def test_remove_project_source_non_exact_retries_with_anchored_candidates_only(t
     ]
 
 
+
+def test_remove_project_source_tries_alternate_row_option_buttons_when_first_menu_does_not_open(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"
+    page = FakePage()
+
+    wrong_options_button = FakeClickable()
+    correct_options_button = FakeClickable()
+    remove_button = FakeClickable()
+    confirm_button = FakeClickable()
+    matched_card = {
+        "identity": "architecture-process_0.1.29.zip File contents may not be accessible",
+        "title": "architecture-process_0.1.29.zip",
+        "key": "architecture-process_0.1.29.zip",
+        "text": "architecture-process_0.1.29.zip File contents may not be accessible",
+    }
+
+    async def fake_ensure_logged_in(*_args, **_kwargs):
+        return None
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_project_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot_project_source_cards(*_args, **_kwargs):
+        return [] if confirm_button.click_count > 0 else [matched_card]
+
+    async def fake_wait_for_project_source_action_button(_page, source_names, *, exact: bool, **_kwargs):
+        return wrong_options_button, matched_card, list(source_names)
+
+    async def fake_find_project_source_action_button_candidates_for_card(_page, _matched_card):
+        return [wrong_options_button, correct_options_button]
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == "project-source-remove-action":
+            return remove_button if correct_options_button.click_count > 0 else None
+        if label == "project-source-remove-confirm":
+            return confirm_button
+        raise AssertionError(f"unexpected locator label: {label}")
+
+    async def fake_find_project_source_remove_action(_page):
+        return remove_button if correct_options_button.click_count > 0 else None
+
+    async def fake_wait_for_source_absence(*_args, **_kwargs):
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project?tab=sources"
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._open_project_sources_tab = fake_open_project_sources_tab  # type: ignore[method-assign]
+    client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._wait_for_project_source_action_button = fake_wait_for_project_source_action_button  # type: ignore[method-assign]
+    client._find_project_source_action_button_candidates_for_card = fake_find_project_source_action_button_candidates_for_card  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._find_project_source_remove_action = fake_find_project_source_remove_action  # type: ignore[method-assign]
+    client._wait_for_source_absence = fake_wait_for_source_absence  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._remove_project_source_operation(
+            context=None,
+            page=page,
+            source_name="architecture-process_0.1.29.zip",
+            exact=False,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["removed_via_ui"] is True
+    assert wrong_options_button.click_count >= 1
+    assert correct_options_button.click_count >= 1
+    assert remove_button.click_count >= 1
+    assert confirm_button.click_count >= 1
+
 def test_remove_project_source_retries_options_click_with_force(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.project_url = "https://chatgpt.com/g/g-p-69e2157ad4548191871f994c48de3aca/project"

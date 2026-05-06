@@ -260,8 +260,22 @@ PROJECT_SOURCE_SAVE_BUTTON_SELECTORS = [
 PROJECT_SOURCE_REMOVE_ACTION_SELECTORS = [
     '[role="menuitem"]:has-text("Remove")',
     '[role="menuitem"]:has-text("Delete")',
+    '[role="menuitem"]:has-text("Remove source")',
+    '[role="menuitem"]:has-text("Delete source")',
+    '[role="menuitem"]:has-text("Remove file")',
+    '[role="menuitem"]:has-text("Delete file")',
+    '[role="menuitem"]:has-text("Remove from project")',
+    '[role="menuitem"]:has-text("Delete from project")',
+    '[data-testid*="remove" i]',
+    '[data-testid*="delete" i]',
     'button:has-text("Remove")',
     'button:has-text("Delete")',
+    'button:has-text("Remove source")',
+    'button:has-text("Delete source")',
+    'button:has-text("Remove file")',
+    'button:has-text("Delete file")',
+    'button:has-text("Remove from project")',
+    'button:has-text("Delete from project")',
 ]
 PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS = [
     '[role="dialog"] button:has-text("Remove")',
@@ -2732,28 +2746,71 @@ class ChatGPTBrowserClient:
 
         for remove_attempt in range(1, max_remove_attempts + 1):
             attempt_source_cards = await self._snapshot_project_source_cards(page)
-            await self._click_locator_with_fallback(
-                options_button,
-                label="project-source-remove-options",
-                timeout_ms=5_000,
-            )
-            remove_button = await self._wait_for_visible_locator(
-                page,
-                PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
-                label="project-source-remove-action",
-                total_timeout_ms=8_000,
-            )
+            option_candidates: list[Any] = []
+            if options_button is not None:
+                option_candidates.append(options_button)
+            try:
+                for candidate_button in await self._find_project_source_action_button_candidates_for_card(page, matched_card):
+                    if not any(candidate_button is existing for existing in option_candidates):
+                        option_candidates.append(candidate_button)
+            except Exception:
+                pass
+            if not option_candidates:
+                option_candidates = [options_button] if options_button is not None else []
+
+            remove_button = None
             remove_action_source = "selector"
-            if remove_button is None:
-                remove_button = await self._find_project_source_remove_action(page)
-                remove_action_source = "dom_fallback"
+            opened_option_candidate_count = len(option_candidates)
+            for option_index, option_candidate in enumerate(option_candidates, start=1):
+                if option_candidate is None:
+                    continue
+                await self._click_locator_with_fallback(
+                    option_candidate,
+                    label="project-source-remove-options",
+                    timeout_ms=5_000,
+                )
+                # A click is not enough evidence that the row menu opened. The live
+                # v0.0.180 failure showed a found row and a clicked options control,
+                # but no Remove/Delete menu item. Treat the click as provisional and
+                # try alternate row controls before declaring overwrite removal failed.
+                remove_button = await self._wait_for_visible_locator(
+                    page,
+                    PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
+                    label="project-source-remove-action",
+                    total_timeout_ms=3_000,
+                )
+                remove_action_source = f"selector:option_candidate_{option_index}"
+                if remove_button is None:
+                    remove_button = await self._find_project_source_remove_action(page)
+                    remove_action_source = f"dom_fallback:option_candidate_{option_index}"
+                if remove_button is not None:
+                    break
+                self._log(
+                    "project-source-remove",
+                    "source options candidate did not expose remove/delete action",
+                    attempt=remove_attempt,
+                    option_candidate_index=option_index,
+                    option_candidate_count=opened_option_candidate_count,
+                    source_candidates=match_candidates,
+                    matched_card=matched_card,
+                    current_url=await self._safe_page_url(page),
+                )
+                try:
+                    keyboard = getattr(page, "keyboard", None)
+                    if keyboard is not None:
+                        await keyboard.press("Escape")
+                except Exception:
+                    pass
+                await page.wait_for_timeout(250)
+
             if remove_button is None:
                 current_source_cards = await self._snapshot_project_source_cards(page)
                 self._log(
                     "project-source-remove",
-                    "remove/delete action was not visible after opening source options",
+                    "remove/delete action was not visible after trying source option candidates",
                     attempt=remove_attempt,
                     max_attempts=max_remove_attempts,
+                    option_candidate_count=opened_option_candidate_count,
                     source_candidates=match_candidates,
                     matched_card=matched_card,
                     current_source_count=len(current_source_cards),
@@ -2786,6 +2843,7 @@ class ChatGPTBrowserClient:
                 "clicking project source remove/delete action",
                 attempt=remove_attempt,
                 action_source=remove_action_source,
+                option_candidate_count=opened_option_candidate_count,
                 source_candidates=match_candidates,
                 current_url=await self._safe_page_url(page),
             )
@@ -7576,8 +7634,16 @@ class ChatGPTBrowserClient:
         page: Any,
         matched_card: Optional[dict[str, str]],
     ) -> Optional[Any]:
+        candidates = await self._find_project_source_action_button_candidates_for_card(page, matched_card)
+        return candidates[0] if candidates else None
+
+    async def _find_project_source_action_button_candidates_for_card(
+        self,
+        page: Any,
+        matched_card: Optional[dict[str, str]],
+    ) -> list[Any]:
         if not isinstance(matched_card, dict):
-            return None
+            return []
         container = None
         for candidate in (
             matched_card.get("key"),
@@ -7592,8 +7658,8 @@ class ChatGPTBrowserClient:
             if container is not None:
                 break
         if container is None:
-            return None
-        return await self._find_source_options_button(container)
+            return []
+        return await self._find_source_options_button_candidates(container)
 
     def _project_sources_url(self, project_url: Optional[str] = None) -> str:
         base_url = project_url or self._project_home_url()
@@ -7928,32 +7994,60 @@ class ChatGPTBrowserClient:
             return None
 
     async def _find_source_options_button(self, container: Any) -> Optional[Any]:
+        candidates = await self._find_source_options_button_candidates(container)
+        return candidates[0] if candidates else None
+
+    async def _find_source_options_button_candidates(self, container: Any) -> list[Any]:
         try:
             buttons = await container.query_selector_all('button,[role="button"]')
         except Exception:
-            return None
+            return []
 
-        visible_buttons = []
-        for button in buttons:
+        scored: list[tuple[int, int, Any]] = []
+        for index, button in enumerate(buttons):
             try:
                 if not await button.is_visible():
                     continue
-                visible_buttons.append(button)
             except Exception:
                 continue
-
-        for button in visible_buttons:
-            aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
-            data_testid = ((await button.get_attribute('data-testid')) or '').strip().lower()
-            has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            try:
+                aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
+            except Exception:
+                aria_label = ''
+            try:
+                data_testid = ((await button.get_attribute('data-testid')) or '').strip().lower()
+            except Exception:
+                data_testid = ''
+            try:
+                has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            except Exception:
+                has_popup = ''
+            try:
+                text = re.sub(r"\s+", " ", (await button.inner_text()) or '').strip().lower()
+            except Exception:
+                text = ''
+            score = 0
             if any(hint in aria_label for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
-                return button
+                score += 120
             if any(hint in data_testid for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
-                return button
+                score += 110
             if has_popup == 'menu':
-                return button
+                score += 90
+            if aria_label in {'more', 'more options', 'options', 'source actions'}:
+                score += 40
+            if text in {'', '…', '...', 'more', 'options'}:
+                score += 10
+            # Later icon buttons are often the per-row overflow menu after title/link controls.
+            scored.append((score, index, button))
 
-        return visible_buttons[-1] if visible_buttons else None
+        if not scored:
+            return []
+        scored.sort(key=lambda item: (-item[0], -item[1]))
+        candidates: list[Any] = []
+        for _score, _index, button in scored:
+            if not any(button is existing for existing in candidates):
+                candidates.append(button)
+        return candidates
 
     async def _find_project_sidebar_container(self, page: Any, *, project_url: Optional[str] = None) -> Optional[Any]:
         target_url = project_url or self._project_home_url()
