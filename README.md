@@ -1,4 +1,4 @@
-# promptbranch v0.0.164
+# promptbranch v0.0.178
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -640,6 +640,13 @@ Direct calls:
 pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
+
+
+## v0.0.178
+
+- Fixed release version consistency after the v0.0.177 upload test: `VERSION`, `pyproject.toml`, `promptbranch_version.PACKAGE_VERSION`, CLI/runtime, MCP server, service image tag, and tests now agree on `v0.0.178`.
+- No source-sync behavior changes were added; this is a narrow metadata/release-correctness patch.
+- Removed generated task transcript material from the release ZIP and preserved cache/log/temporary-file hygiene.
 
 
 ## v0.0.176
