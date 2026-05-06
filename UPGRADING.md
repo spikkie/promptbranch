@@ -334,6 +334,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.178
+
+- Fixed release version-surface drift found in v0.0.177 full validation.
+- All runtime/package/test version surfaces now target `v0.0.178`.
+- No source-sync upload behavior changed in this release.
+
+
 ## v0.0.176
 
 - Added explicit `upload_ambiguous` classification for confirmed project-source uploads where the service/API result fails but source-list verification finds the expected uploaded ZIP afterward with no collateral source removal.
