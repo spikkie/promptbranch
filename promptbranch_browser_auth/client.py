@@ -2743,8 +2743,52 @@ class ChatGPTBrowserClient:
                 label="project-source-remove-action",
                 total_timeout_ms=8_000,
             )
+            remove_action_source = "selector"
             if remove_button is None:
-                raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+                remove_button = await self._find_project_source_remove_action(page)
+                remove_action_source = "dom_fallback"
+            if remove_button is None:
+                current_source_cards = await self._snapshot_project_source_cards(page)
+                self._log(
+                    "project-source-remove",
+                    "remove/delete action was not visible after opening source options",
+                    attempt=remove_attempt,
+                    max_attempts=max_remove_attempts,
+                    source_candidates=match_candidates,
+                    matched_card=matched_card,
+                    current_source_count=len(current_source_cards),
+                    current_url=await self._safe_page_url(page),
+                )
+                try:
+                    keyboard = getattr(page, "keyboard", None)
+                    if keyboard is not None:
+                        await keyboard.press("Escape")
+                except Exception:
+                    pass
+                if remove_attempt >= max_remove_attempts:
+                    raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+                await page.wait_for_timeout(500)
+                options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
+                    page,
+                    match_candidates,
+                    exact=False,
+                    timeout_ms=8_000,
+                )
+                if options_button is None:
+                    if await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+                        source_removed = True
+                        removal_triggered = True
+                        break
+                    raise ResponseTimeoutError(f"Project source was not found during remove menu retry: {source_name}")
+                continue
+            self._log(
+                "project-source-remove",
+                "clicking project source remove/delete action",
+                attempt=remove_attempt,
+                action_source=remove_action_source,
+                source_candidates=match_candidates,
+                current_url=await self._safe_page_url(page),
+            )
             await self._click_locator_with_fallback(
                 remove_button,
                 label="project-source-remove-action",
@@ -7646,6 +7690,92 @@ class ChatGPTBrowserClient:
             current_url=await self._safe_page_url(page),
         )
         return None, last_matched_card, candidates
+
+    async def _find_project_source_remove_action(self, page: Any) -> Optional[Any]:
+        """Find a visible source remove/delete menu action using broad DOM fallback.
+
+        ChatGPT's project source menu markup changes over time. Some builds render
+        menu actions as role=menuitem; others render generic div/span/button items
+        inside a floating menu. This fallback is used only after the source row's
+        options button was clicked and selector-based lookup failed.
+        """
+
+        try:
+            handle = await page.evaluate_handle(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const normalizeLower = value => normalize(value).toLowerCase();
+                    const isVisible = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                    };
+                    const actionText = el => normalize(
+                        el.innerText ||
+                        el.textContent ||
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('title') ||
+                        el.getAttribute('data-testid') ||
+                        ''
+                    );
+                    const looksLikeMenuSurface = el => !!(
+                        el && el.closest && el.closest(
+                            '[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], [data-floating-ui-portal], [cmdk-list], [data-headlessui-portal], [role="dialog"]'
+                        )
+                    );
+                    const isRemoveCandidate = el => {
+                        if (!isVisible(el)) return false;
+                        const label = normalizeLower(actionText(el));
+                        if (!label) return false;
+                        if (label.includes('project') || label.includes('conversation') || label.includes('chat')) return false;
+                        if (label === 'remove' || label === 'delete') return true;
+                        if (label === 'remove source' || label === 'delete source') return true;
+                        if (label === 'remove file' || label === 'delete file') return true;
+                        if (label.includes('remove from project')) return true;
+                        if (label.includes('delete from project')) return true;
+                        if ((label.includes('remove') || label.includes('delete')) && (label.includes('source') || label.includes('file') || label.includes('document'))) return true;
+                        return false;
+                    };
+                    const selectors = [
+                        '[role="menuitem"]',
+                        '[role="option"]',
+                        '[cmdk-item]',
+                        '[data-radix-collection-item]',
+                        'button',
+                        '[role="button"]',
+                        'a',
+                        'div',
+                        'span'
+                    ];
+                    const nodes = Array.from(document.querySelectorAll(selectors.join(','))).filter(isVisible);
+                    const scored = [];
+                    for (const node of nodes) {
+                        if (!isRemoveCandidate(node)) continue;
+                        const label = normalizeLower(actionText(node));
+                        const role = normalizeLower(node.getAttribute('role') || '');
+                        const tag = normalizeLower(node.tagName || '');
+                        let score = 0;
+                        if (looksLikeMenuSurface(node)) score += 100;
+                        if (role === 'menuitem') score += 80;
+                        if (tag === 'button') score += 60;
+                        if (label === 'remove' || label === 'delete') score += 40;
+                        if (label.includes('source') || label.includes('file')) score += 20;
+                        scored.push({ node, score });
+                    }
+                    scored.sort((a, b) => b.score - a.score);
+                    return scored.length ? scored[0].node : null;
+                }
+                """
+            )
+        except Exception:
+            return None
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
 
     async def _find_project_source_container(self, page: Any, source_name: str, *, exact: bool) -> Optional[Any]:
         needle = re.sub(r"\s+", " ", (source_name or "")).strip()
