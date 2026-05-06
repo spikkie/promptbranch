@@ -2499,9 +2499,14 @@ class ChatGPTBrowserClient:
                 duplicate_detected = True
                 duplicate_notice = f"Project source already exists: {canonical_display_name or source_match_candidates[0]}"
                 if overwrite_existing:
+                    # Prefer the clean source title over the full card identity. File source
+                    # identities often include metadata such as "File contents may not be
+                    # accessible"; using that full text can select a brittle row/menu path
+                    # and fail to find the remove/delete action during overwrite.
                     overwrite_source_name = (
-                        self._preferred_source_card_identity(existing_source)
+                        self._normalize_source_match_text(existing_source.get("title"))
                         or canonical_display_name
+                        or self._preferred_source_card_identity(existing_source)
                         or source_match_candidates[0]
                     )
                     self._log(
@@ -2511,13 +2516,55 @@ class ChatGPTBrowserClient:
                         source_name=overwrite_source_name,
                         requested_name=canonical_display_name,
                     )
-                    overwrite_remove_result = await self._remove_project_source_operation(
-                        context=context,
-                        page=page,
-                        source_name=overwrite_source_name,
-                        exact=True,
-                        keep_open=False,
-                    )
+                    try:
+                        overwrite_remove_result = await self._remove_project_source_operation(
+                            context=context,
+                            page=page,
+                            source_name=overwrite_source_name,
+                            exact=True,
+                            keep_open=False,
+                        )
+                    except ResponseTimeoutError as exc:
+                        self._log(
+                            "project-source-add",
+                            "exact overwrite remove failed; retrying with title-anchored source lookup",
+                            project_url=project_home_url,
+                            source_name=overwrite_source_name,
+                            requested_name=canonical_display_name,
+                            error=str(exc),
+                        )
+                        await self._open_project_sources_tab(page)
+                        try:
+                            overwrite_remove_result = await self._remove_project_source_operation(
+                                context=context,
+                                page=page,
+                                source_name=overwrite_source_name,
+                                exact=False,
+                                keep_open=False,
+                            )
+                        except ResponseTimeoutError as retry_exc:
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "overwrite_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match": self._preferred_source_card_identity(existing_source) or overwrite_source_name,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else overwrite_source_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": True,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "overwrite_source_name": overwrite_source_name,
+                                "overwrite_remove_error": str(retry_exc),
+                                "overwrite_remove_initial_error": str(exc),
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "current_url": await self._safe_page_url(page),
+                            }
                     await self._open_project_sources_tab(page)
                     before_sources = await self._snapshot_project_source_cards(page)
                     matched_source = None

@@ -1,4 +1,4 @@
-# promptbranch v0.0.178
+# promptbranch v0.0.179
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -641,6 +641,11 @@ pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
+
+## v0.0.179
+
+- Hardened `pb src add <file>` overwrite handling for existing project sources whose card identity includes metadata such as `File contents may not be accessible`.
+- The overwrite path now removes by the clean source title first, retries with title-anchored lookup if exact removal cannot open the action menu, and returns structured `overwrite_remove_failed` JSON instead of a Python traceback when removal still cannot be verified.
 
 ## v0.0.178
 
