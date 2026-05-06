@@ -2408,11 +2408,22 @@ def _verify_project_source_upload_change(
         and checks["expected_source_present_after"]
         and not checks["collateral_sources_removed"]
     )
+    ambiguous = (
+        not checks["upload_result_ok"]
+        and checks["before_source_list_ok"]
+        and checks["after_source_list_ok"]
+        and checks["expected_source_present_after"]
+        and not checks["collateral_sources_removed"]
+    )
+    status = "verified" if ok else ("upload_ambiguous" if ambiguous else "source_upload_not_verified")
+    ambiguity_reason = "upload_result_failed_but_expected_source_present_after" if ambiguous else None
     return {
         "ok": ok,
-        "status": "verified" if ok else "source_upload_not_verified",
+        "status": status,
         "expected_filename": expected_filename,
         "checks": checks,
+        "operator_review_required": bool(ambiguous),
+        "ambiguity_reason": ambiguity_reason,
         "before_snapshot": {
             "ok": before.get("ok"),
             "status": before.get("status"),
@@ -2821,16 +2832,29 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         project_url=project_url,
     )
     no_upload = no_upload_requested
+    upload_ambiguous = bool(
+        upload_requested
+        and isinstance(source_upload_verification, dict)
+        and source_upload_verification.get("status") == "upload_ambiguous"
+    )
+    upload_status = (
+        "verified_packaged"
+        if no_upload and local_verification.get("ok")
+        else ("uploaded" if uploaded else ("packaged_unverified" if no_upload else ("upload_ambiguous" if upload_ambiguous else "upload_failed")))
+    )
+    project_source_mutation = "verified" if uploaded else ("ambiguous" if upload_ambiguous else ("not_requested" if not upload_requested else "not_verified"))
     payload = {
         "ok": bool((no_upload and local_verification.get("ok")) or uploaded),
         "action": "src_sync",
-        "status": "verified_packaged" if no_upload and local_verification.get("ok") else ("uploaded" if uploaded else ("packaged_unverified" if no_upload else "upload_failed")),
+        "status": upload_status,
         "dry_run": False,
         "no_upload": no_upload,
         "upload_requested": upload_requested,
         "confirm_upload": confirm_upload,
         "mutating_actions_executed": True,
         "project_source_mutated": bool(uploaded),
+        "project_source_mutation": project_source_mutation,
+        "operator_review_required": bool(upload_ambiguous),
         "local_artifact_written": True,
         "artifact_registry_updated": registry_updated,
         "state_artifact_updated": state_artifact_updated,
@@ -2842,8 +2866,10 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         "local_verification": local_verification,
         "upload_verification": {
             "ok": bool(uploaded),
-            "status": "verified" if uploaded else ("not_requested" if not upload_requested else "upload_not_verified"),
+            "status": "verified" if uploaded else ("not_requested" if not upload_requested else ("upload_ambiguous" if upload_ambiguous else "upload_not_verified")),
             "project_source_mutated": bool(uploaded),
+            "project_source_mutation": project_source_mutation,
+            "operator_review_required": bool(upload_ambiguous),
             "artifact_registry_updated_after_upload": registry_updated if upload_requested else False,
             "state_source_updated_after_upload": state_source_updated if upload_requested else False,
             "registry_update_deferred_until_upload_verified": bool(upload_requested and not uploaded),
