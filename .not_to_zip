@@ -54,4 +54,5 @@ task_*.messages
 task_*_final.txt
 stdout.json
 stderr.txt
+0
 task_show_*_messages.txt

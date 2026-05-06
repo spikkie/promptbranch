@@ -260,8 +260,22 @@ PROJECT_SOURCE_SAVE_BUTTON_SELECTORS = [
 PROJECT_SOURCE_REMOVE_ACTION_SELECTORS = [
     '[role="menuitem"]:has-text("Remove")',
     '[role="menuitem"]:has-text("Delete")',
+    '[role="menuitem"]:has-text("Remove source")',
+    '[role="menuitem"]:has-text("Delete source")',
+    '[role="menuitem"]:has-text("Remove file")',
+    '[role="menuitem"]:has-text("Delete file")',
+    '[role="menuitem"]:has-text("Remove from project")',
+    '[role="menuitem"]:has-text("Delete from project")',
+    '[data-testid*="remove" i]',
+    '[data-testid*="delete" i]',
     'button:has-text("Remove")',
     'button:has-text("Delete")',
+    'button:has-text("Remove source")',
+    'button:has-text("Delete source")',
+    'button:has-text("Remove file")',
+    'button:has-text("Delete file")',
+    'button:has-text("Remove from project")',
+    'button:has-text("Delete from project")',
 ]
 PROJECT_SOURCE_CONFIRM_REMOVE_SELECTORS = [
     '[role="dialog"] button:has-text("Remove")',
@@ -750,16 +764,74 @@ class ChatGPTBrowserClient:
         self,
         *,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         self._log(
             "chat-list",
             "starting list_project_chats",
             project_url=self.config.project_url,
             keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
         )
         return await self._run_with_context(
             operation_name="chat_list",
             operation=self._list_project_chats_operation,
+            keep_open=keep_open,
+            include_history_fallback=include_history_fallback,
+            # Lightweight task enumeration must not inherit a cooldown created
+            # by a previous global conversation-history detail scan.
+            respect_history_rate_limit_cooldown=include_history_fallback,
+        )
+
+    async def debug_project_chats(
+        self,
+        *,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "chat-list-debug",
+            "starting debug_project_chats",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
+        )
+        return await self._run_with_context(
+            operation_name="chat_list_debug",
+            operation=self._debug_project_chats_operation,
+            scroll_rounds=scroll_rounds,
+            wait_ms=wait_ms,
+            include_history=include_history,
+            history_max_pages=history_max_pages,
+            history_max_detail_probes=history_max_detail_probes,
+            manual_pause=manual_pause,
+            keep_open=keep_open,
+        )
+
+    async def list_project_sources(
+        self,
+        *,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "project-source-list",
+            "starting list_project_sources",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="project_source_list",
+            operation=self._list_project_sources_operation,
             keep_open=keep_open,
         )
 
@@ -985,9 +1057,13 @@ class ChatGPTBrowserClient:
         return removed
 
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
+        respect_history_rate_limit_cooldown = bool(kwargs.pop('respect_history_rate_limit_cooldown', True))
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
         self._clear_profile_singleton_locks()
-        await self._respect_rate_limit_cooldown()
+        if respect_history_rate_limit_cooldown:
+            await self._respect_rate_limit_cooldown()
+        else:
+            self._log('rate-limit', 'skipping persisted conversation history cooldown for non-history operation', operation=operation_name)
         await self._respect_context_spacing()
         playwright_module = await self._start_driver()
         async with playwright_module as p:
@@ -1141,10 +1217,11 @@ class ChatGPTBrowserClient:
         self._log("composer", "filling prompt", prompt_length=len(prompt))
         await input_locator.fill(prompt)
 
+
         upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
         if upload_paths:
             await self._upload_chat_attachments(page, upload_paths)
-			
+
         if file_path:
             self._log("upload", "upload requested", file_path=file_path)
             if not os.path.exists(file_path):
@@ -1458,7 +1535,14 @@ class ChatGPTBrowserClient:
         project_url: str,
         label: str,
     ) -> list[dict[str, Any]]:
-        """Return the currently-open project conversation as a task-list entry."""
+        """Return the currently-open project conversation as a task-list entry.
+
+        ChatGPT may make a just-created project conversation readable by direct
+        conversation endpoint before it appears in sidebar or history listing.
+        Treat the current project conversation as a current-page fallback so
+        `task list` remains useful immediately after `ask` without forcing
+        repeated global conversation-history reads.
+        """
         current_url = await self._safe_page_url(page)
         conversation_id = self._conversation_id_from_url(current_url)
         if not conversation_id:
@@ -1469,6 +1553,7 @@ class ChatGPTBrowserClient:
             return []
         if target_project_id and not current_project_id:
             return []
+
         conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url) or current_url
         title = '(current task)'
         create_time: Any = None
@@ -1484,6 +1569,7 @@ class ChatGPTBrowserClient:
                 update_time = payload.get('update_time') or payload.get('updateTime')
         except Exception as exc:
             self._log(label, 'current project conversation detail lookup failed; using URL-derived task entry', error=repr(exc), conversation_id=conversation_id)
+
         return [{
             'id': conversation_id,
             'title': title,
@@ -1499,6 +1585,7 @@ class ChatGPTBrowserClient:
         context: Any,
         page: Any,
         keep_open: bool = False,
+        include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_url = self._project_home_url_from_url(self.config.project_url)
@@ -1508,44 +1595,115 @@ class ChatGPTBrowserClient:
             raise RuntimeError('A project must be selected before listing chats')
         current_page_chats = await self._current_project_conversation_chat_entry(page, project_url=project_url, label='chat-list-current')
         await self._goto(page, project_url, label='chat-list-home')
-        await self._open_project_chats_tab(page)
+        chats_tab_active = await self._open_project_chats_tab(page)
         try:
             snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-snorlax')
         except Exception as exc:
             self._log('chat-list', 'snorlax project chat enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
             snorlax_chats = []
-        dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
-        chats = self._merge_project_chat_lists(snorlax_chats, dom_chats)
+        project_endpoint_diagnostics: list[dict[str, Any]] = []
+        self._last_project_conversations_endpoint_diagnostics = project_endpoint_diagnostics
+        try:
+            project_endpoint_chats = await self._collect_project_chats_via_project_conversations_endpoint(page, project_url=project_url, label='chat-list-project-endpoint')
+            project_endpoint_diagnostics = list(getattr(self, '_last_project_conversations_endpoint_diagnostics', []) or [])
+        except Exception as exc:
+            project_endpoint_diagnostics = list(getattr(self, '_last_project_conversations_endpoint_diagnostics', []) or [])
+            project_endpoint_diagnostics.append({'error': repr(exc), 'project_id': project_id})
+            self._log('chat-list', 'project conversations endpoint enumeration failed; continuing with DOM/history fallback sources', error=repr(exc), project_id=project_id)
+            project_endpoint_chats = []
+        if include_history_fallback is False and (snorlax_chats or project_endpoint_chats):
+            # Fast path for `pb task use <index>`: snorlax/project-endpoint
+            # rows are enough to resolve visible indexes, while DOM scrolling
+            # adds seconds and has not exposed deeper rows in live traces.
+            dom_chats = []
+            self._log(
+                'chat-list',
+                'skipping project chat DOM collection because caller requested lightweight project chat enumeration',
+                snorlax_count=len(snorlax_chats),
+                project_endpoint_count=len(project_endpoint_chats),
+            )
+        elif chats_tab_active is False:
+            self._log('chat-list', 'skipping project chat DOM collection because Chats tab is not active', current_url=await self._safe_page_url(page))
+            dom_chats = []
+        else:
+            dom_chats = await self._collect_project_chats_from_home_dom(page, project_url=project_url, label='chat-list-dom')
+        chats = self._merge_project_chat_lists(snorlax_chats, project_endpoint_chats, dom_chats)
         index_sources_found = bool(chats)
         if not chats and current_page_chats:
             chats = self._merge_project_chat_lists(current_page_chats, chats)
-            self._log('chat-list', 'using current project conversation as task-list fallback', current_page_count=len(current_page_chats), project_id=project_id)
-        history_chats: list[dict[str, Any]] = []
-        history_supplement_used = False
-        if index_sources_found:
-            history_supplement_used = True
             self._log(
                 'chat-list',
-                'supplementing indexed project chats with conversation history because DOM/snorlax may be partial',
-                snorlax_count=len(snorlax_chats),
-                dom_count=len(dom_chats),
-                retained_count=len(chats),
+                'using current project conversation as task-list fallback',
+                current_page_count=len(current_page_chats),
+                project_id=project_id,
             )
-        try:
-            history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-        except Exception as exc:
-            if chats:
+        history_chats: list[dict[str, Any]] = []
+        history_fallback_used = False
+        history_fallback_skipped = False
+        history_supplement_used = False
+        history_supplement_skipped_reason: Optional[str] = None
+        if include_history_fallback:
+            # Prefer the project-specific backend endpoint when it returns data.
+            # The older global conversation-history supplement is expensive,
+            # probes many conversation detail URLs, and can trigger 429s while
+            # still adding zero project tasks. Keep it only as a fallback when
+            # no project-endpoint rows were available.
+            if project_endpoint_chats:
+                history_fallback_skipped = True
+                history_supplement_skipped_reason = 'project_endpoint_available'
                 self._log(
                     'chat-list',
-                    'conversation history supplement failed; keeping indexed project chats',
-                    error=repr(exc),
+                    'skipping global conversation history because project endpoint returned task rows',
+                    project_endpoint_count=len(project_endpoint_chats),
+                    snorlax_count=len(snorlax_chats),
+                    dom_count=len(dom_chats),
                     retained_count=len(chats),
                 )
-                history_chats = []
             else:
-                raise
-        if history_chats:
-            chats = self._merge_project_chat_lists(chats, history_chats)
+                # Project chat DOM/snorlax sources may expose only the initially
+                # materialized batch. Supplement indexed results with the
+                # backend conversation-history scan only when the project-specific
+                # endpoint was unavailable or empty.
+                if index_sources_found:
+                    history_supplement_used = True
+                    self._log(
+                        'chat-list',
+                        'supplementing indexed project chats with conversation history because project endpoint was unavailable or empty',
+                        snorlax_count=len(snorlax_chats),
+                        project_endpoint_count=len(project_endpoint_chats),
+                        dom_count=len(dom_chats),
+                        retained_count=len(chats),
+                    )
+                else:
+                    history_fallback_used = True
+                try:
+                    history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+                except Exception as exc:
+                    if chats:
+                        self._log(
+                            'chat-list',
+                            'conversation history supplement failed; keeping indexed project chats',
+                            error=repr(exc),
+                            retained_count=len(chats),
+                        )
+                        history_chats = []
+                    else:
+                        raise
+                if history_chats:
+                    # Keep DOM/snorlax/current-page ordering first because it
+                    # matches the visible project UI, then append deeper history-only tasks.
+                    chats = self._merge_project_chat_lists(chats, history_chats)
+        else:
+            history_fallback_skipped = True
+            self._log(
+                'chat-list',
+                'skipping conversation history because caller requested lightweight project chat enumeration',
+                snorlax_count=len(snorlax_chats),
+                project_endpoint_count=len(project_endpoint_chats),
+                dom_count=len(dom_chats),
+                current_page_count=len(current_page_chats),
+                retained_count=len(chats),
+            )
         result = {
             'ok': True,
             'action': 'list_chats',
@@ -1554,18 +1712,330 @@ class ChatGPTBrowserClient:
             'project_slug': project_slug,
             'count': len(chats),
             'chats': chats,
+            'history_fallback_used': history_fallback_used,
+            'history_fallback_skipped': history_fallback_skipped,
             'history_supplement_used': history_supplement_used,
+            'history_supplement_skipped_reason': history_supplement_skipped_reason,
+            'include_history_fallback': include_history_fallback,
+            'chats_tab_active': chats_tab_active,
             'source_counts': {
                 'snorlax': len(snorlax_chats),
+                'project_endpoint': len(project_endpoint_chats),
                 'dom': len(dom_chats),
                 'current_page': len(current_page_chats),
-                'history': len(history_chats),
+                'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
+                'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
             },
+            'project_endpoint_diagnostics': project_endpoint_diagnostics,
             'current_url': await self._safe_page_url(page),
         }
-        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_supplement_used=history_supplement_used)
+        self._log('chat-list', 'chat enumeration completed', count=len(chats), project_id=project_id, history_count=len(history_chats), snorlax_count=len(snorlax_chats), project_endpoint_count=len(project_endpoint_chats), dom_count=len(dom_chats), current_page_count=len(current_page_chats), history_fallback_used=history_fallback_used, history_supplement_used=history_supplement_used)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat list completed. Press Enter to close the browser...')
+        return result
+
+    async def _debug_project_chats_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        scroll_rounds: int = 20,
+        wait_ms: int = 600,
+        include_history: bool = True,
+        history_max_pages: int = 5,
+        history_max_detail_probes: int = 80,
+        manual_pause: bool = False,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_url = self._project_home_url_from_url(self.config.project_url)
+        project_id = self._extract_project_id_from_url(project_url)
+        project_slug = self._project_slug_from_url(project_url)
+        prefix = self._project_conversation_path_prefix_from_url(project_url) or self._project_conversation_path_prefix()
+        if not project_id or not project_slug or not prefix:
+            raise RuntimeError('A project must be selected before debugging task list enumeration')
+
+        artifact_dir = self._artifact_dir / f"chat_list_debug_{self._timestamp_for_filename()}"
+        await self._ensure_dir(artifact_dir)
+
+        observed_requests: list[dict[str, Any]] = []
+        observed_responses: list[dict[str, Any]] = []
+        response_tasks: list[asyncio.Task[Any]] = []
+        loop = asyncio.get_running_loop()
+
+        def is_interesting_url(url: str) -> bool:
+            normalized = str(url or '')
+            return (
+                self._is_snorlax_sidebar_url(normalized)
+                or self._is_conversation_history_url(normalized)
+                or '/backend-api/conversation/' in normalized
+                or '/backend-api/gizmos/snorlax/sidebar' in normalized
+            )
+
+        def observe_request(req: Any) -> None:
+            try:
+                url = getattr(req, 'url', '') or ''
+                if not is_interesting_url(url):
+                    return
+                observed_requests.append({
+                    'method': getattr(req, 'method', None),
+                    'url': url,
+                    'resource_type': getattr(req, 'resource_type', None),
+                })
+            except Exception as exc:
+                self._log('chat-list-debug', 'failed to inspect debug request', error=repr(exc))
+
+        async def capture_response(resp: Any) -> None:
+            url = getattr(resp, 'url', '') or ''
+            if not is_interesting_url(url):
+                return
+            try:
+                headers = await resp.all_headers()
+            except Exception:
+                headers = {}
+            text = ''
+            json_summary: Any = None
+            try:
+                text = await resp.text()
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict):
+                        raw_items = parsed.get('items')
+                        raw_conversations = parsed.get('conversations')
+                        json_summary = {
+                            'type': 'dict',
+                            'keys': sorted(str(key) for key in parsed.keys())[:50],
+                            'items_count': len(raw_items) if isinstance(raw_items, list) else None,
+                            'conversations_count': len(raw_conversations) if isinstance(raw_conversations, list) else None,
+                            'cursor': parsed.get('cursor'),
+                        }
+                    elif isinstance(parsed, list):
+                        json_summary = {'type': 'list', 'count': len(parsed)}
+                except Exception:
+                    json_summary = None
+            except Exception as exc:
+                text = f'<failed to read body: {exc}>'
+            observed_responses.append({
+                'status': getattr(resp, 'status', None),
+                'url': url,
+                'content_type': headers.get('content-type') if isinstance(headers, dict) else None,
+                'json_summary': json_summary,
+                'body_preview': text[:4000],
+            })
+
+        def observe_response(resp: Any) -> None:
+            try:
+                url = getattr(resp, 'url', '') or ''
+                if not is_interesting_url(url):
+                    return
+                response_tasks.append(loop.create_task(capture_response(resp)))
+            except Exception as exc:
+                self._log('chat-list-debug', 'failed to schedule debug response capture', error=repr(exc))
+
+        if hasattr(context, 'on'):
+            context.on('request', observe_request)
+            context.on('response', observe_response)
+
+        async def capture(label: str, *, full: bool = False) -> dict[str, Any]:
+            safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", label).strip("-")[:80] or "item"
+            json_path = artifact_dir / f"{safe}.json"
+            screenshot_path = artifact_dir / f"{safe}.png"
+            html_path = artifact_dir / f"{safe}.html"
+            payload = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            payload['label'] = label
+            await self._write_json(json_path, payload)
+            if full:
+                try:
+                    await page.screenshot(path=str(screenshot_path), full_page=True)
+                except Exception as exc:
+                    payload['screenshot_error'] = repr(exc)
+                try:
+                    await self._write_text(html_path, await page.content())
+                except Exception as exc:
+                    payload['html_error'] = repr(exc)
+            return payload
+
+        await self._goto(page, project_url, label='chat-list-debug-home')
+        before_tab = await capture('01-before-open-chats-tab', full=True)
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open('Inspect project before Chats tab activation. Press Enter to continue...')
+
+        chats_tab_active = await self._open_project_chats_tab(page)
+        after_tab = await capture('02-after-open-chats-tab', full=True)
+        if manual_pause and self.config.is_headed:
+            await self._pause_for_keep_open('Inspect project after Chats tab activation. Press Enter to continue...')
+
+        def _debug_anchor_ids(payload: Any) -> list[str]:
+            if not isinstance(payload, dict):
+                return []
+            return [str(row.get('id') or '').strip() for row in payload.get('project_anchors', []) if isinstance(row, dict) and str(row.get('id') or '').strip()]
+
+        observed_dom_ids: set[str] = set(_debug_anchor_ids(before_tab)) | set(_debug_anchor_ids(after_tab))
+        scroll_rounds_payload: list[dict[str, Any]] = []
+        for round_index in range(max(1, scroll_rounds)):
+            before = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            move = await self._project_chat_debug_scroll_step(page, prefix=prefix)
+            await page.wait_for_timeout(max(0, wait_ms))
+            after = await self._project_chat_dom_debug_snapshot(page, prefix=prefix)
+            observed_dom_ids.update(_debug_anchor_ids(before))
+            observed_dom_ids.update(_debug_anchor_ids(after))
+            payload = {
+                'round': round_index + 1,
+                'before_project_anchor_count': before.get('project_anchor_count'),
+                'before_visible_project_anchor_count': before.get('visible_project_anchor_count'),
+                'after_project_anchor_count': after.get('project_anchor_count'),
+                'after_visible_project_anchor_count': after.get('visible_project_anchor_count'),
+                'moved': bool(move.get('moved')) if isinstance(move, dict) else bool(move),
+                'move': move,
+                'before_project_anchor_ids': [row.get('id') for row in before.get('project_anchors', []) if isinstance(row, dict)],
+                'after_project_anchor_ids': [row.get('id') for row in after.get('project_anchors', []) if isinstance(row, dict)],
+                'top_scrollables': after.get('scrollables', [])[:8],
+            }
+            scroll_rounds_payload.append(payload)
+            await self._write_json(artifact_dir / f"round-{round_index + 1:02d}.json", payload)
+            if not payload['moved'] and payload['after_project_anchor_count'] == payload['before_project_anchor_count']:
+                # Keep a few stagnant rounds in case the virtualized list is slow,
+                # but do not loop forever on a fixed DOM.
+                recent = scroll_rounds_payload[-4:]
+                if len(recent) >= 4 and all(not item.get('moved') for item in recent):
+                    break
+
+        final_dom = await capture('99-final-dom', full=True)
+
+        snorlax_chats: list[dict[str, Any]] = []
+        snorlax_error: Optional[str] = None
+        try:
+            snorlax_chats = await self._collect_project_chats_via_snorlax_sidebar(page, project_url=project_url, label='chat-list-debug-snorlax')
+        except Exception as exc:
+            snorlax_error = repr(exc)
+            self._log('chat-list-debug', 'snorlax diagnostic enumeration failed', error=snorlax_error)
+
+        history_chats: list[dict[str, Any]] = []
+        history_error: Optional[str] = None
+        if include_history:
+            try:
+                history_chats = await self._collect_all_project_chats(
+                    page,
+                    project_url=project_url,
+                    label='chat-list-debug-history',
+                    max_pages=history_max_pages,
+                    max_detail_probes=history_max_detail_probes,
+                )
+            except Exception as exc:
+                history_error = repr(exc)
+                self._log('chat-list-debug', 'history diagnostic enumeration failed', error=history_error)
+
+        observed_dom_ids.update(_debug_anchor_ids(final_dom))
+        final_dom_ids = [str(row.get('id') or '') for row in final_dom.get('project_anchors', []) if isinstance(row, dict)]
+        dom_ids = sorted(item for item in observed_dom_ids if item)
+        snorlax_ids = [str(chat.get('id') or '') for chat in snorlax_chats if isinstance(chat, dict)]
+        history_ids = [str(chat.get('id') or '') for chat in history_chats if isinstance(chat, dict)]
+        all_ids = sorted({item for item in [*dom_ids, *snorlax_ids, *history_ids] if item})
+
+        if response_tasks:
+            await asyncio.gather(*response_tasks, return_exceptions=True)
+
+        summary = {
+            'ok': True,
+            'action': 'debug_chats',
+            'artifact_dir': str(artifact_dir),
+            'project_url': project_url,
+            'project_id': project_id,
+            'project_slug': project_slug,
+            'prefix': prefix,
+            'chats_tab_active': chats_tab_active,
+            'current_url': await self._safe_page_url(page),
+            'counts': {
+                'before_tab_project_anchors': before_tab.get('project_anchor_count'),
+                'after_tab_project_anchors': after_tab.get('project_anchor_count'),
+                'final_dom_project_anchors': final_dom.get('project_anchor_count'),
+                'final_dom_visible_project_anchors': final_dom.get('visible_project_anchor_count'),
+                'observed_dom_unique_ids': len(dom_ids),
+                'snorlax': len(snorlax_chats),
+                'history': sum(1 for chat in history_chats if str(chat.get('source') or 'history') == 'history'),
+                'history_detail': sum(1 for chat in history_chats if str(chat.get('source') or '') == 'history_detail'),
+                'combined_unique_ids': len(all_ids),
+                'observed_requests': len(observed_requests),
+                'observed_responses': len(observed_responses),
+            },
+            'dom_project_anchor_ids': dom_ids,
+            'final_dom_project_anchor_ids': final_dom_ids,
+            'snorlax_ids': snorlax_ids,
+            'history_ids': history_ids,
+            'combined_unique_ids': all_ids,
+            'scroll_rounds': scroll_rounds_payload,
+            'final_scrollables': final_dom.get('scrollables', [])[:20],
+            'final_project_anchors': final_dom.get('project_anchors', []),
+            'snorlax_error': snorlax_error,
+            'history_error': history_error,
+            'include_history': include_history,
+            'history_max_pages': history_max_pages,
+            'history_max_detail_probes': history_max_detail_probes,
+            'network': {
+                'requests': observed_requests,
+                'responses': observed_responses,
+            },
+        }
+        await self._write_json(artifact_dir / 'network.json', summary['network'])
+        await self._write_json(artifact_dir / 'summary.json', summary)
+        self._log('chat-list-debug', 'debug_project_chats completed', artifact_dir=str(artifact_dir), counts=summary['counts'])
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Chat-list debug completed. Press Enter to close the browser...')
+        return summary
+
+    async def _list_project_sources_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        await self._goto(page, project_home_url, label="project-source-list-home")
+        await self._open_project_sources_tab(page)
+
+        deadline = asyncio.get_running_loop().time() + 12.0
+        source_cards: list[dict[str, str]] = []
+        empty_state_visible = False
+        while asyncio.get_running_loop().time() < deadline:
+            source_cards = await self._snapshot_project_source_cards(page)
+            empty_state_visible = await self._project_sources_empty_state_visible(page)
+            if source_cards or empty_state_visible:
+                break
+            await page.wait_for_timeout(350)
+
+        sources: list[dict[str, Any]] = []
+        for index, card in enumerate(source_cards, start=1):
+            title = self._normalize_source_match_text(card.get("title"))
+            subtitle = self._normalize_source_match_text(card.get("subtitle"))
+            identity = self._normalize_source_match_text(card.get("identity"))
+            text_value = self._normalize_source_match_text(card.get("text"))
+            key = self._normalize_source_match_text(card.get("key")) or (title or identity or text_value or f"source-{index}").lower()
+            sources.append(
+                {
+                    "index": index,
+                    "name": title or identity or text_value,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "identity": identity,
+                    "key": key,
+                    "text": text_value,
+                }
+            )
+
+        result = {
+            "ok": True,
+            "action": "list",
+            "project_url": project_home_url,
+            "count": len(sources),
+            "empty_state_visible": empty_state_visible,
+            "sources": sources,
+            "current_url": await self._safe_page_url(page),
+        }
+        self._log("project-source-list", "project source enumeration completed", **result)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open("Project source list completed. Press Enter to close the browser... ")
         return result
 
     async def _get_chat_operation(
@@ -2276,19 +2746,109 @@ class ChatGPTBrowserClient:
 
         for remove_attempt in range(1, max_remove_attempts + 1):
             attempt_source_cards = await self._snapshot_project_source_cards(page)
-            await self._click_locator_with_fallback(
-                options_button,
-                label="project-source-remove-options",
-                timeout_ms=5_000,
-            )
-            remove_button = await self._wait_for_visible_locator(
-                page,
-                PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
-                label="project-source-remove-action",
-                total_timeout_ms=8_000,
-            )
+            option_candidates: list[Any] = []
+            if options_button is not None:
+                option_candidates.append(options_button)
+            try:
+                for candidate_button in await self._find_project_source_action_button_candidates_for_card(page, matched_card):
+                    if not any(candidate_button is existing for existing in option_candidates):
+                        option_candidates.append(candidate_button)
+            except Exception:
+                pass
+            if not option_candidates:
+                option_candidates = [options_button] if options_button is not None else []
+
+            remove_button = await self._find_project_source_direct_remove_action_for_card(page, matched_card)
+            remove_action_source = "direct_card_button" if remove_button is not None else "selector"
+            opened_option_candidate_count = len(option_candidates)
+            for option_index, option_candidate in enumerate(option_candidates, start=1):
+                if remove_button is not None:
+                    break
+                if option_candidate is None:
+                    continue
+                await self._click_locator_with_fallback(
+                    option_candidate,
+                    label="project-source-remove-options",
+                    timeout_ms=5_000,
+                )
+                # A click is not enough evidence that the row menu opened. The live
+                # v0.0.180 failure showed a found row and a clicked options control,
+                # but no Remove/Delete menu item. Treat the click as provisional and
+                # try alternate row controls before declaring overwrite removal failed.
+                remove_button = await self._wait_for_visible_locator(
+                    page,
+                    PROJECT_SOURCE_REMOVE_ACTION_SELECTORS,
+                    label="project-source-remove-action",
+                    total_timeout_ms=3_000,
+                )
+                remove_action_source = f"selector:option_candidate_{option_index}"
+                if remove_button is None:
+                    remove_button = await self._find_project_source_remove_action(page)
+                    remove_action_source = f"dom_fallback:option_candidate_{option_index}"
+                if remove_button is not None:
+                    break
+                self._log(
+                    "project-source-remove",
+                    "source options candidate did not expose remove/delete action",
+                    attempt=remove_attempt,
+                    option_candidate_index=option_index,
+                    option_candidate_count=opened_option_candidate_count,
+                    source_candidates=match_candidates,
+                    matched_card=matched_card,
+                    current_url=await self._safe_page_url(page),
+                )
+                try:
+                    keyboard = getattr(page, "keyboard", None)
+                    if keyboard is not None:
+                        await keyboard.press("Escape")
+                except Exception:
+                    pass
+                await page.wait_for_timeout(250)
+
             if remove_button is None:
-                raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+                current_source_cards = await self._snapshot_project_source_cards(page)
+                self._log(
+                    "project-source-remove",
+                    "remove/delete action was not visible after trying source option candidates",
+                    attempt=remove_attempt,
+                    max_attempts=max_remove_attempts,
+                    option_candidate_count=opened_option_candidate_count,
+                    source_candidates=match_candidates,
+                    matched_card=matched_card,
+                    current_source_count=len(current_source_cards),
+                    current_url=await self._safe_page_url(page),
+                )
+                try:
+                    keyboard = getattr(page, "keyboard", None)
+                    if keyboard is not None:
+                        await keyboard.press("Escape")
+                except Exception:
+                    pass
+                if remove_attempt >= max_remove_attempts:
+                    raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+                await page.wait_for_timeout(500)
+                options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
+                    page,
+                    match_candidates,
+                    exact=False,
+                    timeout_ms=8_000,
+                )
+                if options_button is None:
+                    if await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
+                        source_removed = True
+                        removal_triggered = True
+                        break
+                    raise ResponseTimeoutError(f"Project source was not found during remove menu retry: {source_name}")
+                continue
+            self._log(
+                "project-source-remove",
+                "clicking project source remove/delete action",
+                attempt=remove_attempt,
+                action_source=remove_action_source,
+                option_candidate_count=opened_option_candidate_count,
+                source_candidates=match_candidates,
+                current_url=await self._safe_page_url(page),
+            )
             await self._click_locator_with_fallback(
                 remove_button,
                 label="project-source-remove-action",
@@ -3898,13 +4458,36 @@ class ChatGPTBrowserClient:
                 next_cursor=next_cursor,
                 used_authorization=response.get('used_authorization'),
             )
-            if found_project:
+            # Do not stop merely because the target project was found. Some
+            # ChatGPT project chat lists expose only the initially visible
+            # conversation batch plus a cursor for additional sidebar data.
+            # Continue while a fresh cursor exists so `pb task list` does not
+            # cap out at the first visible page.
+            if found_project and not next_cursor:
+                break
+            if collected and not found_project:
                 break
             if not next_cursor or next_cursor in seen_cursors:
                 break
             seen_cursors.add(next_cursor)
             cursor = next_cursor
         return collected
+
+    def _payload_shape_summary(self, payload: Any, *, max_depth: int = 3) -> Any:
+        """Return a compact, log-safe summary of a backend payload shape."""
+        def visit(value: Any, depth: int = 0) -> Any:
+            if depth >= max_depth:
+                if isinstance(value, dict):
+                    return {"type": "dict", "keys": list(value.keys())[:12]}
+                if isinstance(value, list):
+                    return {"type": "list", "len": len(value)}
+                return type(value).__name__
+            if isinstance(value, dict):
+                return {str(key): visit(item, depth + 1) for key, item in list(value.items())[:12]}
+            if isinstance(value, list):
+                return {"type": "list", "len": len(value), "sample": [visit(item, depth + 1) for item in value[:2]]}
+            return type(value).__name__
+        return visit(payload)
 
     def _pagination_cursor_from_payload(self, payload: Any) -> Optional[str]:
         if not isinstance(payload, dict):
@@ -4038,9 +4621,13 @@ class ChatGPTBrowserClient:
         if not project_id:
             return []
 
-        cursor: Optional[str] = '0'
+        # Do not send a synthetic cursor on the first request. Live
+        # v0.0.130 logs showed `cursor=0` returns HTTP 422.
+        cursor: Optional[str] = None
         seen_cursors: set[str] = set()
         collected: list[dict[str, Any]] = []
+        diagnostics: list[dict[str, Any]] = []
+        self._last_project_conversations_endpoint_diagnostics = diagnostics
         for page_index in range(max_pages):
             response = await self._fetch_project_conversations_page(
                 page,
@@ -4049,20 +4636,40 @@ class ChatGPTBrowserClient:
                 limit=limit,
             )
             status = response.get('status')
+            page_diag: dict[str, Any] = {
+                'page': page_index + 1,
+                'status': status,
+                'url': response.get('url'),
+                'cursor': cursor,
+                'used_authorization': response.get('used_authorization'),
+            }
             if status in (404, 405):
-                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                page_diag['body_preview'] = str(response.get('text') or '')[:300]
+                diagnostics.append(page_diag)
+                self._log(label, 'project conversations endpoint unavailable; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=page_diag['body_preview'])
                 break
             if status != 200:
+                page_diag['body_preview'] = str(response.get('text') or '')[:300]
+                page_diag['retained_count'] = len(collected)
+                diagnostics.append(page_diag)
                 if collected:
-                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'))
+                    self._log(label, 'stopping project conversations pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected), url=response.get('url'), body_preview=page_diag['body_preview'])
                     break
-                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'))
+                self._log(label, 'project conversations endpoint returned non-200; skipping source', page=page_index + 1, status=status, url=response.get('url'), body_preview=page_diag['body_preview'])
                 break
             page_chats, next_cursor = self._extract_project_chats_from_project_conversations_payload(
                 response.get('payload'),
                 project_url=project_url,
             )
             collected = self._merge_project_chat_lists(collected, page_chats)
+            page_diag.update({
+                'discovered_count': len(page_chats),
+                'total_count': len(collected),
+                'next_cursor': next_cursor,
+            })
+            if len(page_chats) == 0:
+                page_diag['payload_shape'] = self._payload_shape_summary(response.get('payload'))
+            diagnostics.append(page_diag)
             self._log(
                 label,
                 'collected project chats via project conversations endpoint',
@@ -4073,6 +4680,7 @@ class ChatGPTBrowserClient:
                 cursor=cursor,
                 next_cursor=next_cursor,
                 used_authorization=response.get('used_authorization'),
+                payload_shape=page_diag.get('payload_shape'),
             )
             if not next_cursor or next_cursor in seen_cursors:
                 break
@@ -4137,6 +4745,184 @@ class ChatGPTBrowserClient:
                 'update_time': item.get('update_time') or item.get('updateTime'),
             })
         return chats
+
+    def _looks_like_conversation_history_item(self, item: Any) -> bool:
+        if not isinstance(item, dict):
+            return False
+        conversation_id = str(item.get('id') or item.get('conversation_id') or item.get('conversationId') or '').strip()
+        if not conversation_id:
+            return False
+        # Avoid treating project/gizmo/source rows as conversations merely
+        # because they contain an id. Conversation rows almost always carry at
+        # least one of these fields in ChatGPT backend payloads.
+        for key in (
+            'title', 'create_time', 'createTime', 'update_time', 'updateTime',
+            'mapping', 'current_node', 'currentNode', 'conversation_id', 'conversationId',
+            'conversation_template_id', 'conversationTemplateId', 'gizmo_id', 'gizmoId',
+            'project_id', 'projectId',
+        ):
+            if key in item:
+                return True
+        return bool(re.match(r'^[0-9a-f]{8,}(?:-[0-9a-f]{4,}){3,}$', conversation_id, re.I))
+
+    def _conversation_history_items_from_payload(self, payload: Any) -> list[dict[str, Any]]:
+        """Extract conversation rows from known and nested ChatGPT payload shapes."""
+        found: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        def add(item: Any) -> None:
+            if not self._looks_like_conversation_history_item(item):
+                return
+            assert isinstance(item, dict)
+            conversation_id = str(item.get('id') or item.get('conversation_id') or item.get('conversationId') or '').strip()
+            if not conversation_id or conversation_id in seen_ids:
+                return
+            normalized = dict(item)
+            normalized.setdefault('id', conversation_id)
+            seen_ids.add(conversation_id)
+            found.append(normalized)
+
+        def visit(value: Any, depth: int = 0) -> None:
+            if depth > 8 or len(found) >= 500:
+                return
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, dict) and set(entry.keys()) <= {'node', 'cursor'} and isinstance(entry.get('node'), dict):
+                        add(entry.get('node'))
+                        visit(entry.get('node'), depth + 1)
+                    else:
+                        add(entry)
+                        if isinstance(entry, (dict, list)):
+                            visit(entry, depth + 1)
+                return
+            if not isinstance(value, dict):
+                return
+            add(value)
+            for key in (
+                'items', 'conversations', 'conversation_nodes', 'conversationNodes',
+                'nodes', 'edges', 'data', 'result', 'results', 'gizmo', 'project',
+            ):
+                if key in value:
+                    visit(value.get(key), depth + 1)
+
+        visit(payload)
+        return found
+
+    def _conversation_history_item_to_chat(
+        self,
+        item: dict[str, Any],
+        *,
+        project_url: str,
+        source: str = 'history',
+        detail_payload: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        conversation_id = str(item.get('id') or '').strip()
+        if not conversation_id:
+            return None
+        detail_payload = detail_payload if isinstance(detail_payload, dict) else {}
+        title = re.sub(r'\s+', ' ', str(detail_payload.get('title') or item.get('title') or '')).strip() or '(untitled)'
+        conversation_url = self._project_conversation_url_from_id(conversation_id, project_url=project_url)
+        if not conversation_url:
+            return None
+        return {
+            'id': conversation_id,
+            'title': title,
+            'conversation_url': conversation_url,
+            'create_time': detail_payload.get('create_time') or detail_payload.get('createTime') or item.get('create_time') or item.get('createTime'),
+            'update_time': detail_payload.get('update_time') or detail_payload.get('updateTime') or item.get('update_time') or item.get('updateTime'),
+            'source': source,
+        }
+
+    def _payload_references_project(
+        self,
+        payload: Any,
+        *,
+        project_id: str,
+        project_slug: Optional[str] = None,
+        project_url: Optional[str] = None,
+        max_depth: int = 8,
+    ) -> bool:
+        normalized_project_id = (project_id or '').strip().lower()
+        normalized_project_slug = (project_slug or '').strip().lower()
+        normalized_project_url = (project_url or '').strip().lower()
+        if not normalized_project_id and not normalized_project_slug and not normalized_project_url:
+            return False
+
+        def string_matches(value: str) -> bool:
+            candidate = value.strip().lower()
+            if not candidate:
+                return False
+            if normalized_project_id and self._project_ids_refer_to_same_project(candidate, normalized_project_id):
+                return True
+            if normalized_project_slug and self._project_ids_refer_to_same_project(candidate, normalized_project_slug):
+                return True
+            if normalized_project_slug and normalized_project_slug in candidate:
+                return True
+            if normalized_project_id and f'/g/{normalized_project_id}' in candidate:
+                return True
+            if normalized_project_url and normalized_project_url in candidate:
+                return True
+            return False
+
+        def visit(value: Any, depth: int = 0) -> bool:
+            if depth > max_depth:
+                return False
+            if isinstance(value, str):
+                return string_matches(value)
+            if isinstance(value, dict):
+                for key in (
+                    'conversation_template_id', 'conversationTemplateId',
+                    'gizmo_id', 'gizmoId', 'project_id', 'projectId',
+                    'conversation_template', 'conversationTemplate',
+                    'gizmo', 'project', 'short_url', 'shortUrl', 'slug', 'url',
+                ):
+                    if key in value and visit(value.get(key), depth + 1):
+                        return True
+                for key, item in value.items():
+                    if str(key).lower() in {'content', 'parts', 'text'} and depth > 3:
+                        if isinstance(item, str) and string_matches(item):
+                            return True
+                        continue
+                    if visit(item, depth + 1):
+                        return True
+                return False
+            if isinstance(value, list):
+                for item in value[:200]:
+                    if visit(item, depth + 1):
+                        return True
+            return False
+
+        return visit(payload)
+
+    async def _history_item_matches_project_via_detail(
+        self,
+        page: Any,
+        *,
+        item: dict[str, Any],
+        project_url: str,
+        project_id: str,
+    ) -> Optional[dict[str, Any]]:
+        conversation_id = str(item.get('id') or '').strip()
+        if not conversation_id:
+            return None
+        detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+        if detail.get('status') != 200 or not isinstance(detail.get('payload'), dict):
+            return None
+        payload = detail['payload']
+        project_slug = self._project_slug_from_url(project_url)
+        if not self._payload_references_project(
+            payload,
+            project_id=project_id,
+            project_slug=project_slug,
+            project_url=project_url,
+        ):
+            return None
+        return self._conversation_history_item_to_chat(
+            item,
+            project_url=project_url,
+            source='history_detail',
+            detail_payload=payload,
+        )
 
     async def _fetch_conversations_page(
         self,
@@ -4214,6 +5000,8 @@ class ChatGPTBrowserClient:
         label: str,
         limit: int = 100,
         max_pages: int = 25,
+        max_detail_probes: int = 160,
+        detail_probe_delay_ms: int = 120,
     ) -> list[dict[str, Any]]:
         project_id = self._extract_project_id_from_url(project_url)
         if not project_id:
@@ -4221,6 +5009,7 @@ class ChatGPTBrowserClient:
 
         collected: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        detail_probe_count = 0
         offset = 0
         for page_index in range(max_pages):
             response = await self._fetch_conversations_page(page, offset=offset, limit=limit)
@@ -4232,19 +5021,75 @@ class ChatGPTBrowserClient:
                     self._log(label, 'stopping conversation pagination after non-200 response and keeping collected chats', page=page_index + 1, status=status, retained_count=len(collected))
                     break
                 raise RuntimeError(f'conversation history returned unexpected status {status}')
-            page_chats = self._extract_project_chats_from_conversations_payload(response.get('payload'), project_id=project_id, project_url=project_url)
+
+            raw_payload = response.get('payload')
+            raw_items = self._conversation_history_items_from_payload(raw_payload)
+            direct_chats = self._extract_project_chats_from_conversations_payload(raw_payload, project_id=project_id, project_url=project_url)
+
             new_count = 0
-            for chat in page_chats:
+            direct_ids: set[str] = set()
+            for chat in direct_chats:
                 chat_id = str(chat.get('id') or '')
                 if not chat_id or chat_id in seen_ids:
                     continue
+                direct_ids.add(chat_id)
                 seen_ids.add(chat_id)
+                chat.setdefault('source', 'history')
                 collected.append(chat)
                 new_count += 1
-            self._log(label, 'collected project chats via conversation history', page=page_index + 1, offset=offset, limit=limit, status=status, discovered_count=new_count, total_count=len(collected), used_authorization=response.get('used_authorization'))
-            raw_payload = response.get('payload')
-            raw_items = raw_payload.get('items') if isinstance(raw_payload, dict) else raw_payload if isinstance(raw_payload, list) else []
-            item_count = len(raw_items) if isinstance(raw_items, list) else 0
+
+            detail_new_count = 0
+            # Some ChatGPT /backend-api/conversations payloads no longer carry
+            # project/gizmo ids in the list view.  In that case, a project can
+            # have tasks visible in the UI while the history source reports 0.
+            # Probe conversation details for unmatched history rows and classify
+            # by the richer detail payload before giving up.
+            if detail_probe_count < max_detail_probes:
+                for item in raw_items:
+                    conversation_id = str(item.get('id') or '').strip()
+                    if not conversation_id or conversation_id in seen_ids or conversation_id in direct_ids:
+                        continue
+                    if detail_probe_count >= max_detail_probes:
+                        break
+                    detail_probe_count += 1
+                    try:
+                        chat = await self._history_item_matches_project_via_detail(
+                            page,
+                            item=item,
+                            project_url=project_url,
+                            project_id=project_id,
+                        )
+                    except Exception as exc:
+                        self._log(label, 'conversation detail probe failed during project chat classification', conversation_id=conversation_id, error=repr(exc))
+                        chat = None
+                    if chat is None:
+                        if detail_probe_delay_ms > 0:
+                            await page.wait_for_timeout(detail_probe_delay_ms)
+                        continue
+                    chat_id = str(chat.get('id') or '')
+                    if not chat_id or chat_id in seen_ids:
+                        continue
+                    seen_ids.add(chat_id)
+                    collected.append(chat)
+                    detail_new_count += 1
+                    if detail_probe_delay_ms > 0:
+                        await page.wait_for_timeout(detail_probe_delay_ms)
+
+            item_count = len(raw_items)
+            self._log(
+                label,
+                'collected project chats via conversation history',
+                page=page_index + 1,
+                offset=offset,
+                limit=limit,
+                status=status,
+                discovered_count=new_count,
+                detail_discovered_count=detail_new_count,
+                detail_probe_count=detail_probe_count,
+                total_count=len(collected),
+                raw_item_count=item_count,
+                used_authorization=response.get('used_authorization'),
+            )
             if item_count < limit:
                 break
             offset += limit
@@ -5282,25 +6127,86 @@ class ChatGPTBrowserClient:
         return None
 
 
-    async def _open_project_chats_tab(self, page: Any) -> None:
+    async def _open_project_chats_tab(self, page: Any) -> bool:
+        """Open the project Chats tab and report whether it looked active."""
         tab = await self._wait_for_visible_locator(
             page,
             PROJECT_CHATS_TAB_SELECTORS,
             label="project-chats-tab",
             total_timeout_ms=7_500,
         )
-        if tab is None:
-            self._log("chat-list", "project chats tab not found; continuing with current surface", current_url=await self._safe_page_url(page))
-            return
-        try:
-            await self._click_locator_with_fallback(
-                tab,
-                label="project-chats-tab",
-                timeout_ms=5_000,
-            )
-            await page.wait_for_timeout(500)
-        except Exception as exc:
-            self._log("chat-list", "project chats tab click failed; continuing", error=repr(exc), current_url=await self._safe_page_url(page))
+        if tab is not None:
+            try:
+                await self._click_locator_with_fallback(
+                    tab,
+                    label="project-chats-tab",
+                    timeout_ms=5_000,
+                )
+                await page.wait_for_timeout(750)
+            except Exception as exc:
+                self._log("chat-list", "project chats tab locator click failed; trying JS fallback", error=repr(exc), current_url=await self._safe_page_url(page))
+
+        clicked = await page.evaluate(
+            r'''
+            () => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const elements = Array.from(main.querySelectorAll('button, a, [role="tab"], [role="button"], [tabindex]'));
+                const candidates = elements.filter(el => {
+                    if (!isVisible(el)) return false;
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    return text === 'chats' || text.startsWith('chats ');
+                });
+                const candidate = candidates[0];
+                if (!candidate) return { clicked: false, reason: 'not_found' };
+                candidate.click();
+                return { clicked: true, text: candidate.innerText || candidate.textContent || candidate.getAttribute('aria-label') || '' };
+            }
+            '''
+        )
+        if isinstance(clicked, dict) and clicked.get('clicked'):
+            await page.wait_for_timeout(750)
+
+        active = await page.evaluate(
+            r'''
+            () => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const tabs = Array.from(main.querySelectorAll('button, a, [role="tab"], [role="button"], [aria-selected], [data-state]'));
+                for (const el of tabs) {
+                    if (!isVisible(el)) continue;
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    if (text !== 'chats' && !text.startsWith('chats ')) continue;
+                    const ariaSelected = (el.getAttribute('aria-selected') || '').toLowerCase();
+                    const dataState = (el.getAttribute('data-state') || '').toLowerCase();
+                    const ariaCurrent = (el.getAttribute('aria-current') || '').toLowerCase();
+                    const cls = (el.className || '').toString().toLowerCase();
+                    if (ariaSelected === 'true' || dataState === 'active' || ariaCurrent === 'page' || cls.includes('selected') || cls.includes('active')) {
+                        return { active: true, text, reason: 'selected_marker' };
+                    }
+                    return { active: true, text, reason: 'visible_chats_tab' };
+                }
+                return { active: false, reason: 'not_found' };
+            }
+            '''
+        )
+        ok = bool(active.get('active')) if isinstance(active, dict) else False
+        self._log("chat-list", "project chats tab activation check", active=ok, clicked=clicked if isinstance(clicked, dict) else None, details=active if isinstance(active, dict) else None, current_url=await self._safe_page_url(page))
+        return ok
 
     def _merge_project_chat_lists(self, *sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
@@ -5506,6 +6412,239 @@ class ChatGPTBrowserClient:
             await page.wait_for_timeout(1_100)
         return collected
 
+    async def _project_chat_dom_debug_snapshot(self, page: Any, *, prefix: str) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            ({ prefix }) => {
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                const rectFor = el => {
+                    if (!el || !el.getBoundingClientRect) return null;
+                    const rect = el.getBoundingClientRect();
+                    return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), top: Math.round(rect.top), bottom: Math.round(rect.bottom) };
+                };
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const summarizeElement = el => {
+                    if (!el) return null;
+                    const style = el.getBoundingClientRect ? window.getComputedStyle(el) : null;
+                    return {
+                        tag: el.tagName || 'DOCUMENT',
+                        id: el.id || null,
+                        role: el.getAttribute ? el.getAttribute('role') : null,
+                        testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                        ariaLabel: el.getAttribute ? el.getAttribute('aria-label') : null,
+                        className: (el.className || '').toString().slice(0, 240),
+                        rect: rectFor(el),
+                        scrollTop: Math.round(el.scrollTop || 0),
+                        scrollHeight: Math.round(el.scrollHeight || 0),
+                        clientHeight: Math.round(el.clientHeight || 0),
+                        overflowY: style ? style.overflowY : null,
+                        textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 240),
+                    };
+                };
+                const scrollParentOf = el => {
+                    let node = el;
+                    for (let depth = 0; node && depth < 18; depth += 1) {
+                        if (!node.getBoundingClientRect) break;
+                        const style = window.getComputedStyle(node);
+                        const overflowY = (style?.overflowY || '').toLowerCase();
+                        if ((node.scrollHeight || 0) > (node.clientHeight || 0) + 24 || ['auto', 'scroll', 'overlay'].includes(overflowY)) {
+                            return summarizeElement(node);
+                        }
+                        node = node.parentElement;
+                    }
+                    return summarizeElement(document.scrollingElement || document.documentElement || document.body);
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const allChatAnchors = Array.from(document.querySelectorAll('a[href*="/c/"]'));
+                const projectAnchors = [];
+                const nonProjectAnchors = [];
+                for (const anchor of allChatAnchors) {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    if (!url) continue;
+                    const isProject = url.pathname.startsWith(prefix);
+                    const row = anchor.closest('li, article, [role="listitem"], [data-testid], a, div') || anchor;
+                    const text = normalize((row.innerText || row.textContent || anchor.getAttribute('aria-label') || ''));
+                    const lines = text.split('\n').map(normalize).filter(Boolean);
+                    const item = {
+                        id: url.pathname.split('/c/')[1]?.split(/[/?#]/)[0] || '',
+                        href: url.toString(),
+                        title: lines[0] || '(untitled)',
+                        preview: lines.slice(1).join(' ').slice(0, 400),
+                        visible: isVisible(anchor),
+                        inMain: main.contains(anchor),
+                        anchor: summarizeElement(anchor),
+                        row: summarizeElement(row),
+                        scrollParent: scrollParentOf(anchor),
+                    };
+                    if (isProject) projectAnchors.push(item);
+                    else nonProjectAnchors.push(item);
+                }
+                const tabCandidates = Array.from((main || document).querySelectorAll('button, a, [role="tab"], [role="button"], [aria-selected], [data-state]')).map(el => {
+                    const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                    return {
+                        text,
+                        visible: isVisible(el),
+                        ariaSelected: el.getAttribute('aria-selected'),
+                        dataState: el.getAttribute('data-state'),
+                        ariaCurrent: el.getAttribute('aria-current'),
+                        element: summarizeElement(el),
+                    };
+                }).filter(item => item.text.toLowerCase().includes('chat') || item.text.toLowerCase().includes('source')).slice(0, 30);
+                const scrollableCandidates = new Set([main, document.scrollingElement, document.documentElement, document.body]);
+                for (const anchor of allChatAnchors) {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    if (!url || !url.pathname.startsWith(prefix)) continue;
+                    let el = anchor;
+                    for (let depth = 0; el && depth < 18; depth += 1) {
+                        scrollableCandidates.add(el);
+                        el = el.parentElement;
+                    }
+                }
+                for (const el of Array.from(document.querySelectorAll('*'))) {
+                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '')).toLowerCase();
+                    if (attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) {
+                        scrollableCandidates.add(el);
+                    }
+                }
+                const scrollables = [];
+                for (const el of Array.from(scrollableCandidates)) {
+                    if (!el || !el.getBoundingClientRect) continue;
+                    const scrollHeight = el.scrollHeight || 0;
+                    const clientHeight = el.clientHeight || 0;
+                    if (scrollHeight <= clientHeight + 24) continue;
+                    const containsProjectAnchor = Array.from(el.querySelectorAll ? el.querySelectorAll('a[href*="/c/"]') : []).some(candidate => {
+                        const url = safeUrl(candidate.getAttribute('href') || candidate.href || '');
+                        return url && url.pathname.startsWith(prefix);
+                    });
+                    const summary = summarizeElement(el);
+                    summary.containsProjectAnchor = containsProjectAnchor;
+                    summary.visible = isVisible(el) || el === document.scrollingElement || el === document.documentElement || el === document.body;
+                    summary.remainingScroll = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0) - (el.scrollTop || 0), 0);
+                    scrollables.push(summary);
+                }
+                scrollables.sort((a, b) => (Number(b.containsProjectAnchor) - Number(a.containsProjectAnchor)) || ((b.remainingScroll || 0) - (a.remainingScroll || 0)) || ((b.scrollHeight || 0) - (a.scrollHeight || 0)));
+                const visibleProjectAnchorCount = projectAnchors.filter(item => item.visible).length;
+                return {
+                    url: window.location.href,
+                    title: document.title,
+                    prefix,
+                    viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: Math.round(window.scrollY || 0) },
+                    main: summarizeElement(main),
+                    body: summarizeElement(document.body),
+                    documentElement: summarizeElement(document.documentElement),
+                    chats_tab_candidates: tabCandidates,
+                    chats_tab_active_guess: tabCandidates.some(item => item.visible && item.text.toLowerCase().startsWith('chats')),
+                    all_chat_anchor_count: allChatAnchors.length,
+                    project_anchor_count: projectAnchors.length,
+                    visible_project_anchor_count: visibleProjectAnchorCount,
+                    non_project_chat_anchor_count: nonProjectAnchors.length,
+                    project_anchors: projectAnchors,
+                    non_project_anchors: nonProjectAnchors.slice(0, 25),
+                    scrollables: scrollables.slice(0, 40),
+                };
+            }
+            ''',
+            {'prefix': prefix},
+        )
+        return result if isinstance(result, dict) else {'error': 'unexpected project chat DOM debug snapshot shape'}
+
+    async def _project_chat_debug_scroll_step(self, page: Any, *, prefix: str) -> dict[str, Any]:
+        result = await page.evaluate(
+            r'''
+            ({ prefix }) => {
+                const safeUrl = href => { try { return new URL(href || '', window.location.origin); } catch (_err) { return null; } };
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const isVisibleish = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= -240 && rect.top <= window.innerHeight + 240;
+                };
+                const isScrollable = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    return (el.scrollHeight || 0) > (el.clientHeight || 0) + 16;
+                };
+                const main = document.querySelector('main, [role="main"]') || document.body;
+                const projectAnchors = Array.from(main.querySelectorAll('a[href*="/c/"]')).filter(anchor => {
+                    const url = safeUrl(anchor.getAttribute('href') || anchor.href || '');
+                    return url && url.pathname.startsWith(prefix);
+                });
+                const candidates = new Set();
+                for (const el of Array.from(main.querySelectorAll('[data-promptbranch-project-chat-scroller="1"]'))) {
+                    if (isScrollable(el)) candidates.add(el);
+                }
+                for (const anchor of projectAnchors) {
+                    let el = anchor;
+                    for (let depth = 0; el && depth < 18; depth += 1) {
+                        if (main.contains(el) && isScrollable(el)) candidates.add(el);
+                        if (el === main) break;
+                        el = el.parentElement;
+                    }
+                }
+                for (const el of Array.from(main.querySelectorAll('*'))) {
+                    const attrs = ((el.getAttribute('data-testid') || '') + ' ' + (el.getAttribute('class') || '') + ' ' + (el.getAttribute('role') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+                    if ((attrs.includes('scroll') || attrs.includes('overflow') || attrs.includes('virtuoso') || attrs.includes('list') || attrs.includes('tabpanel')) && isScrollable(el)) candidates.add(el);
+                }
+                const scored = [];
+                for (const el of Array.from(candidates)) {
+                    if (!el || !el.getBoundingClientRect || !main.contains(el)) continue;
+                    const remaining = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0) - (el.scrollTop || 0), 0);
+                    if (remaining <= 1 && projectAnchors.length === 0) continue;
+                    if (!isVisibleish(el) && el.getAttribute('data-promptbranch-project-chat-scroller') !== '1') continue;
+                    const containsProjectAnchor = projectAnchors.some(anchor => el === anchor || el.contains(anchor));
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    const overflowY = (style?.overflowY || '').toLowerCase();
+                    const marked = el.getAttribute('data-promptbranch-project-chat-scroller') === '1';
+                    const score = (marked ? 50000 : 0) + (containsProjectAnchor ? 25000 : 0) + (['auto', 'scroll', 'overlay'].includes(overflowY) ? 2500 : 0) + Math.min(remaining, 5000) + Math.min(rect.height || 0, 1600);
+                    scored.push({ el, score, containsProjectAnchor, remaining, marked });
+                }
+                scored.sort((a, b) => b.score - a.score);
+                const moves = [];
+                let moved = false;
+                const item = scored[0] || null;
+                if (!item) return { moved: false, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'no_project_scroller' };
+                const el = item.el;
+                try { el.setAttribute('data-promptbranch-project-chat-scroller', '1'); } catch (_err) {}
+                const before = Math.round(el.scrollTop || 0);
+                const maxTop = Math.max((el.scrollHeight || 0) - (el.clientHeight || 0), 0);
+                const remaining = Math.max(maxTop - before, 0);
+                const step = Math.min(Math.max((el.clientHeight || window.innerHeight || 700) * 0.28, 80), 260, remaining);
+                const target = Math.min(before + step, maxTop);
+                try { el.scrollTo({ top: target, behavior: 'instant' }); } catch (_err) { el.scrollTop = target; }
+                const after = Math.round(el.scrollTop || 0);
+                if (after > before + 1) {
+                    moved = true;
+                    moves.push({
+                        tag: el.tagName || 'DOCUMENT',
+                        role: el.getAttribute ? el.getAttribute('role') : null,
+                        testid: el.getAttribute ? el.getAttribute('data-testid') : null,
+                        className: (el.className || '').toString().slice(0, 180),
+                        reason: item.containsProjectAnchor ? 'focused_project_scroller_contains_anchor' : (item.marked ? 'focused_project_scroller_marked' : 'focused_project_scroller_candidate'),
+                        before,
+                        after,
+                        step: Math.round(step),
+                        remaining_before: Math.round(remaining),
+                        scrollHeight: Math.round(el.scrollHeight || 0),
+                        clientHeight: Math.round(el.clientHeight || 0),
+                        textPreview: normalize((el.innerText || el.textContent || '')).slice(0, 220),
+                    });
+                }
+                return { moved, moves, candidate_count: scored.length, project_anchor_count: projectAnchors.length, strategy: 'focused_project_scroller' };
+            }
+            ''',
+            {'prefix': prefix},
+        )
+        return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
+
     async def _open_project_sources_tab(self, page: Any) -> None:
         tab = await self._wait_for_visible_locator(
             page,
@@ -5572,6 +6711,19 @@ class ChatGPTBrowserClient:
                 self._log("click", "force locator click failed", label=label, error=repr(exc))
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-force-click-failure')
+
+        if page is not None:
+            try:
+                box = await locator.bounding_box()
+                if box:
+                    click_x = float(box.get("x", 0)) + (float(box.get("width", 0)) / 2.0)
+                    click_y = float(box.get("y", 0)) + (float(box.get("height", 0)) / 2.0)
+                    await page.mouse.click(click_x, click_y)
+                    return
+            except Exception as exc:
+                last_error = exc
+                self._log("click", "mouse coordinate click failed", label=label, error=repr(exc))
+                await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-coordinate-click-failure')
 
         if allow_evaluate:
             try:
@@ -6492,11 +7644,18 @@ class ChatGPTBrowserClient:
             "collateral_removed": collateral_removed,
         }
 
-    async def _find_project_source_action_button_for_card(
+    async def _find_project_source_direct_remove_action_for_card(
         self,
         page: Any,
         matched_card: Optional[dict[str, str]],
     ) -> Optional[Any]:
+        """Find a visible remove/delete control already scoped to the matched card.
+
+        Some ChatGPT source rows expose a direct icon button on hover instead of
+        a menu item. This helper only searches inside the narrowed source-card
+        container and rejects project/chat/conversation actions.
+        """
+
         if not isinstance(matched_card, dict):
             return None
         container = None
@@ -6510,11 +7669,110 @@ class ChatGPTBrowserClient:
             if not normalized:
                 continue
             container = await self._find_project_source_container(page, normalized, exact=True)
+            if container is None:
+                container = await self._find_project_source_container(page, normalized, exact=False)
             if container is not None:
                 break
         if container is None:
             return None
-        return await self._find_source_options_button(container)
+        try:
+            await container.hover(timeout=1_500)
+            await page.wait_for_timeout(150)
+        except Exception:
+            pass
+        try:
+            handle = await container.evaluate_handle(
+                r"""
+                (root) => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const lower = value => normalize(value).toLowerCase();
+                    const isVisible = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                    };
+                    const labelOf = el => normalize(
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('title') ||
+                        el.getAttribute('data-testid') ||
+                        el.innerText ||
+                        el.textContent ||
+                        ''
+                    );
+                    const nodes = Array.from(root.querySelectorAll('button,[role="button"],[aria-label],[title],[data-testid]')).filter(isVisible);
+                    const scored = [];
+                    for (const node of nodes) {
+                        const label = lower(labelOf(node));
+                        if (!label) continue;
+                        if (label.includes('project') || label.includes('conversation') || label.includes('chat')) continue;
+                        const mentionsRemove = label.includes('remove') || label.includes('delete') || label.includes('trash');
+                        if (!mentionsRemove) continue;
+                        let score = 100;
+                        if (label.includes('source') || label.includes('file') || label.includes('document')) score += 50;
+                        if ((node.getAttribute('role') || '').toLowerCase() === 'button') score += 10;
+                        if ((node.tagName || '').toLowerCase() === 'button') score += 10;
+                        scored.push({node, score});
+                    }
+                    scored.sort((a, b) => b.score - a.score);
+                    return scored.length ? scored[0].node : null;
+                }
+                """
+            )
+        except Exception:
+            return None
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
+    async def _find_project_source_action_button_for_card(
+        self,
+        page: Any,
+        matched_card: Optional[dict[str, str]],
+    ) -> Optional[Any]:
+        candidates = await self._find_project_source_action_button_candidates_for_card(page, matched_card)
+        return candidates[0] if candidates else None
+
+    async def _find_project_source_action_button_candidates_for_card(
+        self,
+        page: Any,
+        matched_card: Optional[dict[str, str]],
+    ) -> list[Any]:
+        if not isinstance(matched_card, dict):
+            return []
+        container = None
+        for candidate in (
+            matched_card.get("key"),
+            matched_card.get("title"),
+            matched_card.get("identity"),
+            matched_card.get("text"),
+        ):
+            normalized = self._normalize_source_match_text(candidate)
+            if not normalized:
+                continue
+            container = await self._find_project_source_container(page, normalized, exact=True)
+            if container is None:
+                container = await self._find_project_source_container(page, normalized, exact=False)
+            if container is not None:
+                break
+        if container is None:
+            return []
+        try:
+            await container.hover(timeout=1_500)
+            await page.wait_for_timeout(150)
+        except Exception:
+            pass
+        candidates = await self._find_source_options_button_candidates(container)
+        self._log(
+            "project-source-remove",
+            "source card option candidates discovered",
+            candidate_count=len(candidates),
+            matched_card=matched_card,
+            current_url=await self._safe_page_url(page),
+        )
+        return candidates
 
     def _project_sources_url(self, project_url: Optional[str] = None) -> str:
         base_url = project_url or self._project_home_url()
@@ -6612,30 +7870,165 @@ class ChatGPTBrowserClient:
         )
         return None, last_matched_card, candidates
 
+    async def _find_project_source_remove_action(self, page: Any) -> Optional[Any]:
+        """Find a visible source remove/delete menu action using broad DOM fallback.
+
+        ChatGPT's project source menu markup changes over time. Some builds render
+        menu actions as role=menuitem; others render generic div/span/button items
+        inside a floating menu. This fallback is used only after the source row's
+        options button was clicked and selector-based lookup failed.
+        """
+
+        try:
+            handle = await page.evaluate_handle(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const normalizeLower = value => normalize(value).toLowerCase();
+                    const isVisible = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                    };
+                    const actionText = el => normalize(
+                        el.innerText ||
+                        el.textContent ||
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('title') ||
+                        el.getAttribute('data-testid') ||
+                        ''
+                    );
+                    const looksLikeMenuSurface = el => !!(
+                        el && el.closest && el.closest(
+                            '[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], [data-floating-ui-portal], [cmdk-list], [data-headlessui-portal], [role="dialog"]'
+                        )
+                    );
+                    const isRemoveCandidate = el => {
+                        if (!isVisible(el)) return false;
+                        const label = normalizeLower(actionText(el));
+                        if (!label) return false;
+                        if (label.includes('project') || label.includes('conversation') || label.includes('chat')) return false;
+                        if (label === 'remove' || label === 'delete') return true;
+                        if (label === 'remove source' || label === 'delete source') return true;
+                        if (label === 'remove file' || label === 'delete file') return true;
+                        if (label.includes('remove from project')) return true;
+                        if (label.includes('delete from project')) return true;
+                        if ((label.includes('remove') || label.includes('delete')) && (label.includes('source') || label.includes('file') || label.includes('document'))) return true;
+                        return false;
+                    };
+                    const selectors = [
+                        '[role="menuitem"]',
+                        '[role="option"]',
+                        '[cmdk-item]',
+                        '[data-radix-collection-item]',
+                        'button',
+                        '[role="button"]',
+                        'a',
+                        'div',
+                        'span'
+                    ];
+                    const nodes = Array.from(document.querySelectorAll(selectors.join(','))).filter(isVisible);
+                    const scored = [];
+                    for (const node of nodes) {
+                        if (!isRemoveCandidate(node)) continue;
+                        const label = normalizeLower(actionText(node));
+                        const role = normalizeLower(node.getAttribute('role') || '');
+                        const tag = normalizeLower(node.tagName || '');
+                        let score = 0;
+                        if (looksLikeMenuSurface(node)) score += 100;
+                        if (role === 'menuitem') score += 80;
+                        if (tag === 'button') score += 60;
+                        if (label === 'remove' || label === 'delete') score += 40;
+                        if (label.includes('source') || label.includes('file')) score += 20;
+                        scored.push({ node, score });
+                    }
+                    scored.sort((a, b) => b.score - a.score);
+                    return scored.length ? scored[0].node : null;
+                }
+                """
+            )
+        except Exception:
+            return None
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
     async def _find_project_source_container(self, page: Any, source_name: str, *, exact: bool) -> Optional[Any]:
         needle = re.sub(r"\s+", " ", (source_name or "")).strip()
         if not needle:
             return None
         handle = await page.evaluate_handle(
-            """
+            r"""
             ({ needle, exact }) => {
-                const normalize = value => (value || '').replace(/\\s+/g, ' ').trim();
-                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *'));
-                for (const el of nodes) {
-                    if (!isVisible(el)) continue;
-                    const text = normalize(el.textContent);
-                    if (!text) continue;
-                    const matched = exact ? text === needle : text.includes(needle);
-                    if (!matched) continue;
-                    let current = el;
-                    while (current && current !== document.body) {
-                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
-                        if (buttons.length) return current;
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const matchedText = text => exact ? text === needle : text.includes(needle);
+                const hasActionControl = el => Array.from(
+                    el.querySelectorAll('button,[role="button"],[aria-haspopup="menu"],[data-testid*="more" i],[data-testid*="option" i],[data-testid*="menu" i]')
+                ).some(isVisible);
+                const isGlobalContainer = el => {
+                    const tag = (el.tagName || '').toLowerCase();
+                    if (tag === 'body' || tag === 'main') return true;
+                    const role = (el.getAttribute('role') || '').toLowerCase();
+                    if (role === 'main' || role === 'tabpanel') return true;
+                    return false;
+                };
+                const sourceLike = el => {
+                    const role = (el.getAttribute('role') || '').toLowerCase();
+                    const testid = (el.getAttribute('data-testid') || '').toLowerCase();
+                    const cls = (el.getAttribute('class') || '').toLowerCase();
+                    const tag = (el.tagName || '').toLowerCase();
+                    return (
+                        role === 'listitem' || tag === 'li' || tag === 'article' ||
+                        testid.includes('source') || testid.includes('file') || testid.includes('knowledge') ||
+                        cls.includes('source') || cls.includes('file')
+                    );
+                };
+                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *')).filter(el => {
+                    if (!isVisible(el)) return false;
+                    const text = normalize(el.textContent || '');
+                    return text && matchedText(text);
+                });
+                let best = null;
+                let bestScore = -Infinity;
+                for (const node of nodes) {
+                    let current = node;
+                    let depth = 0;
+                    while (current && current !== document.body && depth < 10) {
+                        if (isVisible(current)) {
+                            const text = normalize(current.textContent || '');
+                            if (text && matchedText(text) && hasActionControl(current)) {
+                                const rect = current.getBoundingClientRect();
+                                const area = Math.max(1, rect.width * rect.height);
+                                let score = 1000;
+                                score -= Math.min(area / 120, 450);
+                                score -= Math.min(text.length / 4, 350);
+                                score -= depth * 25;
+                                if (sourceLike(current)) score += 260;
+                                if (current.closest('[role="listitem"],li,article,[data-testid*="source" i],[data-testid*="file" i]') === current) score += 120;
+                                if (isGlobalContainer(current)) score -= 900;
+                                if (area > (window.innerWidth * window.innerHeight * 0.70)) score -= 700;
+                                if (text.length > 1400) score -= 500;
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    best = current;
+                                }
+                            }
+                        }
                         current = current.parentElement;
+                        depth += 1;
                     }
                 }
-                return null;
+                return best;
             }
             """,
             {"needle": needle, "exact": exact},
@@ -6763,32 +8156,60 @@ class ChatGPTBrowserClient:
             return None
 
     async def _find_source_options_button(self, container: Any) -> Optional[Any]:
+        candidates = await self._find_source_options_button_candidates(container)
+        return candidates[0] if candidates else None
+
+    async def _find_source_options_button_candidates(self, container: Any) -> list[Any]:
         try:
             buttons = await container.query_selector_all('button,[role="button"]')
         except Exception:
-            return None
+            return []
 
-        visible_buttons = []
-        for button in buttons:
+        scored: list[tuple[int, int, Any]] = []
+        for index, button in enumerate(buttons):
             try:
                 if not await button.is_visible():
                     continue
-                visible_buttons.append(button)
             except Exception:
                 continue
-
-        for button in visible_buttons:
-            aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
-            data_testid = ((await button.get_attribute('data-testid')) or '').strip().lower()
-            has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            try:
+                aria_label = ((await button.get_attribute('aria-label')) or '').strip().lower()
+            except Exception:
+                aria_label = ''
+            try:
+                data_testid = ((await button.get_attribute('data-testid')) or '').strip().lower()
+            except Exception:
+                data_testid = ''
+            try:
+                has_popup = ((await button.get_attribute('aria-haspopup')) or '').strip().lower()
+            except Exception:
+                has_popup = ''
+            try:
+                text = re.sub(r"\s+", " ", (await button.inner_text()) or '').strip().lower()
+            except Exception:
+                text = ''
+            score = 0
             if any(hint in aria_label for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
-                return button
+                score += 120
             if any(hint in data_testid for hint in PROJECT_SOURCE_OPTIONS_ARIA_HINTS):
-                return button
+                score += 110
             if has_popup == 'menu':
-                return button
+                score += 90
+            if aria_label in {'more', 'more options', 'options', 'source actions'}:
+                score += 40
+            if text in {'', '…', '...', 'more', 'options'}:
+                score += 10
+            # Later icon buttons are often the per-row overflow menu after title/link controls.
+            scored.append((score, index, button))
 
-        return visible_buttons[-1] if visible_buttons else None
+        if not scored:
+            return []
+        scored.sort(key=lambda item: (-item[0], -item[1]))
+        candidates: list[Any] = []
+        for _score, _index, button in scored:
+            if not any(button is existing for existing in candidates):
+                candidates.append(button)
+        return candidates
 
     async def _find_project_sidebar_container(self, page: Any, *, project_url: Optional[str] = None) -> Optional[Any]:
         target_url = project_url or self._project_home_url()

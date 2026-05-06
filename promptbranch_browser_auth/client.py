@@ -2758,10 +2758,12 @@ class ChatGPTBrowserClient:
             if not option_candidates:
                 option_candidates = [options_button] if options_button is not None else []
 
-            remove_button = None
-            remove_action_source = "selector"
+            remove_button = await self._find_project_source_direct_remove_action_for_card(page, matched_card)
+            remove_action_source = "direct_card_button" if remove_button is not None else "selector"
             opened_option_candidate_count = len(option_candidates)
             for option_index, option_candidate in enumerate(option_candidates, start=1):
+                if remove_button is not None:
+                    break
                 if option_candidate is None:
                     continue
                 await self._click_locator_with_fallback(
@@ -6710,6 +6712,19 @@ class ChatGPTBrowserClient:
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-force-click-failure')
 
+        if page is not None:
+            try:
+                box = await locator.bounding_box()
+                if box:
+                    click_x = float(box.get("x", 0)) + (float(box.get("width", 0)) / 2.0)
+                    click_y = float(box.get("y", 0)) + (float(box.get("height", 0)) / 2.0)
+                    await page.mouse.click(click_x, click_y)
+                    return
+            except Exception as exc:
+                last_error = exc
+                self._log("click", "mouse coordinate click failed", label=label, error=repr(exc))
+                await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-coordinate-click-failure')
+
         if allow_evaluate:
             try:
                 await locator.evaluate("(el) => el.click()")
@@ -7629,6 +7644,89 @@ class ChatGPTBrowserClient:
             "collateral_removed": collateral_removed,
         }
 
+    async def _find_project_source_direct_remove_action_for_card(
+        self,
+        page: Any,
+        matched_card: Optional[dict[str, str]],
+    ) -> Optional[Any]:
+        """Find a visible remove/delete control already scoped to the matched card.
+
+        Some ChatGPT source rows expose a direct icon button on hover instead of
+        a menu item. This helper only searches inside the narrowed source-card
+        container and rejects project/chat/conversation actions.
+        """
+
+        if not isinstance(matched_card, dict):
+            return None
+        container = None
+        for candidate in (
+            matched_card.get("key"),
+            matched_card.get("title"),
+            matched_card.get("identity"),
+            matched_card.get("text"),
+        ):
+            normalized = self._normalize_source_match_text(candidate)
+            if not normalized:
+                continue
+            container = await self._find_project_source_container(page, normalized, exact=True)
+            if container is None:
+                container = await self._find_project_source_container(page, normalized, exact=False)
+            if container is not None:
+                break
+        if container is None:
+            return None
+        try:
+            await container.hover(timeout=1_500)
+            await page.wait_for_timeout(150)
+        except Exception:
+            pass
+        try:
+            handle = await container.evaluate_handle(
+                r"""
+                (root) => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const lower = value => normalize(value).toLowerCase();
+                    const isVisible = el => {
+                        if (!el || !el.getBoundingClientRect) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                    };
+                    const labelOf = el => normalize(
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('title') ||
+                        el.getAttribute('data-testid') ||
+                        el.innerText ||
+                        el.textContent ||
+                        ''
+                    );
+                    const nodes = Array.from(root.querySelectorAll('button,[role="button"],[aria-label],[title],[data-testid]')).filter(isVisible);
+                    const scored = [];
+                    for (const node of nodes) {
+                        const label = lower(labelOf(node));
+                        if (!label) continue;
+                        if (label.includes('project') || label.includes('conversation') || label.includes('chat')) continue;
+                        const mentionsRemove = label.includes('remove') || label.includes('delete') || label.includes('trash');
+                        if (!mentionsRemove) continue;
+                        let score = 100;
+                        if (label.includes('source') || label.includes('file') || label.includes('document')) score += 50;
+                        if ((node.getAttribute('role') || '').toLowerCase() === 'button') score += 10;
+                        if ((node.tagName || '').toLowerCase() === 'button') score += 10;
+                        scored.push({node, score});
+                    }
+                    scored.sort((a, b) => b.score - a.score);
+                    return scored.length ? scored[0].node : null;
+                }
+                """
+            )
+        except Exception:
+            return None
+        try:
+            return handle.as_element()
+        except Exception:
+            return None
+
     async def _find_project_source_action_button_for_card(
         self,
         page: Any,
@@ -7655,11 +7753,26 @@ class ChatGPTBrowserClient:
             if not normalized:
                 continue
             container = await self._find_project_source_container(page, normalized, exact=True)
+            if container is None:
+                container = await self._find_project_source_container(page, normalized, exact=False)
             if container is not None:
                 break
         if container is None:
             return []
-        return await self._find_source_options_button_candidates(container)
+        try:
+            await container.hover(timeout=1_500)
+            await page.wait_for_timeout(150)
+        except Exception:
+            pass
+        candidates = await self._find_source_options_button_candidates(container)
+        self._log(
+            "project-source-remove",
+            "source card option candidates discovered",
+            candidate_count=len(candidates),
+            matched_card=matched_card,
+            current_url=await self._safe_page_url(page),
+        )
+        return candidates
 
     def _project_sources_url(self, project_url: Optional[str] = None) -> str:
         base_url = project_url or self._project_home_url()
@@ -7848,25 +7961,74 @@ class ChatGPTBrowserClient:
         if not needle:
             return None
         handle = await page.evaluate_handle(
-            """
+            r"""
             ({ needle, exact }) => {
-                const normalize = value => (value || '').replace(/\\s+/g, ' ').trim();
-                const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *'));
-                for (const el of nodes) {
-                    if (!isVisible(el)) continue;
-                    const text = normalize(el.textContent);
-                    if (!text) continue;
-                    const matched = exact ? text === needle : text.includes(needle);
-                    if (!matched) continue;
-                    let current = el;
-                    while (current && current !== document.body) {
-                        const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(isVisible);
-                        if (buttons.length) return current;
+                const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                const isVisible = el => {
+                    if (!el || !el.getBoundingClientRect) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+                };
+                const matchedText = text => exact ? text === needle : text.includes(needle);
+                const hasActionControl = el => Array.from(
+                    el.querySelectorAll('button,[role="button"],[aria-haspopup="menu"],[data-testid*="more" i],[data-testid*="option" i],[data-testid*="menu" i]')
+                ).some(isVisible);
+                const isGlobalContainer = el => {
+                    const tag = (el.tagName || '').toLowerCase();
+                    if (tag === 'body' || tag === 'main') return true;
+                    const role = (el.getAttribute('role') || '').toLowerCase();
+                    if (role === 'main' || role === 'tabpanel') return true;
+                    return false;
+                };
+                const sourceLike = el => {
+                    const role = (el.getAttribute('role') || '').toLowerCase();
+                    const testid = (el.getAttribute('data-testid') || '').toLowerCase();
+                    const cls = (el.getAttribute('class') || '').toLowerCase();
+                    const tag = (el.tagName || '').toLowerCase();
+                    return (
+                        role === 'listitem' || tag === 'li' || tag === 'article' ||
+                        testid.includes('source') || testid.includes('file') || testid.includes('knowledge') ||
+                        cls.includes('source') || cls.includes('file')
+                    );
+                };
+                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *')).filter(el => {
+                    if (!isVisible(el)) return false;
+                    const text = normalize(el.textContent || '');
+                    return text && matchedText(text);
+                });
+                let best = null;
+                let bestScore = -Infinity;
+                for (const node of nodes) {
+                    let current = node;
+                    let depth = 0;
+                    while (current && current !== document.body && depth < 10) {
+                        if (isVisible(current)) {
+                            const text = normalize(current.textContent || '');
+                            if (text && matchedText(text) && hasActionControl(current)) {
+                                const rect = current.getBoundingClientRect();
+                                const area = Math.max(1, rect.width * rect.height);
+                                let score = 1000;
+                                score -= Math.min(area / 120, 450);
+                                score -= Math.min(text.length / 4, 350);
+                                score -= depth * 25;
+                                if (sourceLike(current)) score += 260;
+                                if (current.closest('[role="listitem"],li,article,[data-testid*="source" i],[data-testid*="file" i]') === current) score += 120;
+                                if (isGlobalContainer(current)) score -= 900;
+                                if (area > (window.innerWidth * window.innerHeight * 0.70)) score -= 700;
+                                if (text.length > 1400) score -= 500;
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    best = current;
+                                }
+                            }
+                        }
                         current = current.parentElement;
+                        depth += 1;
                     }
                 }
-                return null;
+                return best;
             }
             """,
             {"needle": needle, "exact": exact},
