@@ -334,12 +334,11 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.179
+## v0.0.180
 
-- Hardened `pb src add <file>` overwrite handling for existing project sources whose card identity includes metadata such as `File contents may not be accessible`.
-- Exact overwrite removal now uses the clean source title before metadata-heavy identity text, then retries with title-anchored lookup if the remove/delete action menu is not found.
-- `pb src add` now emits structured JSON with `status: overwrite_remove_failed` instead of a Python traceback if the browser service still cannot verify removal.
-
+- Hardened the project-source overwrite removal path after the row options menu is opened: if selector-based Remove/Delete lookup fails, Promptbranch now searches the visible floating/menu DOM for source remove/delete actions.
+- Missing Remove/Delete menu actions are retried with refreshed source-row action lookup instead of failing after the first menu-open attempt.
+- The overwrite transaction remains guarded: the new upload does not start unless existing-source removal is verified; otherwise `overwrite_remove_failed` remains the structured safe failure.
 
 ## v0.0.176
 
