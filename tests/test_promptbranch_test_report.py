@@ -14,7 +14,7 @@ def _suite_payload(ok: bool = True) -> dict:
         "browser": {"ok": ok, "steps": [{"name": "browser_step", "ok": ok, "status": "verified" if ok else "failed"}]},
         "agent": {
             "ok": True,
-            "version": "v0.0.181",
+            "version": "v0.0.182",
             "steps": [
                 {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "zip_path": "release.zip", "bad_entries": [], "wrapper_folder": False}}
             ],
@@ -94,10 +94,10 @@ def test_promptbranch_test_report_is_declared_as_installable_module():
 
 def test_build_test_status_selects_latest_valid_full_suite_log(tmp_path):
     old = tmp_path / "pb_test.full.v0.0.160.log"
-    new = tmp_path / "pb_test.full.v0.0.181.log"
+    new = tmp_path / "pb_test.full.v0.0.182.log"
     old.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
     payload = _suite_payload()
-    payload["agent"]["version"] = "v0.0.181"
+    payload["agent"]["version"] = "v0.0.182"
     new.write_text("noise\n" + json.dumps(payload, indent=2), encoding="utf-8")
 
     import os
@@ -111,8 +111,8 @@ def test_build_test_status_selects_latest_valid_full_suite_log(tmp_path):
     assert status["ok"] is True
     assert status["action"] == "test_status"
     assert status["status"] == "verified"
-    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.181.log")
-    assert status["suite"]["version"] == "v0.0.181"
+    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.182.log")
+    assert status["suite"]["version"] == "v0.0.182"
     assert status["suite"]["profile"] == "full"
     assert status["suite"]["package_hygiene"]["ok"] is True
 
@@ -133,9 +133,9 @@ def test_build_test_status_ignores_report_and_status_derivative_logs(tmp_path):
     from promptbranch_test_report import build_test_status, find_test_status_logs
     import os
 
-    suite_log = tmp_path / "pb_test.full.v0.0.181.log"
-    report_log = tmp_path / "pb_test.full.v0.0.181.log.report"
-    status_log = tmp_path / "pb_test.full.v0.0.181.log.status"
+    suite_log = tmp_path / "pb_test.full.v0.0.182.log"
+    report_log = tmp_path / "pb_test.full.v0.0.182.log.report"
+    status_log = tmp_path / "pb_test.full.v0.0.182.log.status"
     trailing_dot_log = tmp_path / "pb_test-suite.full.v0.0.154.log."
 
     suite_log.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
@@ -151,16 +151,16 @@ def test_build_test_status_ignores_report_and_status_derivative_logs(tmp_path):
     candidates = find_test_status_logs(tmp_path)
     candidate_names = [Path(item["path"]).name for item in candidates]
 
-    assert "pb_test.full.v0.0.181.log.status" not in candidate_names
-    assert "pb_test.full.v0.0.181.log.report" not in candidate_names
-    assert "pb_test.full.v0.0.181.log" in candidate_names
+    assert "pb_test.full.v0.0.182.log.status" not in candidate_names
+    assert "pb_test.full.v0.0.182.log.report" not in candidate_names
+    assert "pb_test.full.v0.0.182.log" in candidate_names
     assert "pb_test-suite.full.v0.0.154.log." in candidate_names
 
     status = build_test_status(path=tmp_path)
 
     assert status["ok"] is True
     assert status["status"] == "verified"
-    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.181.log")
+    assert status["selected_log"]["path"].endswith("pb_test.full.v0.0.182.log")
 
 
 def test_build_test_status_does_not_hide_newest_invalid_full_suite_log(tmp_path):
@@ -168,7 +168,7 @@ def test_build_test_status_does_not_hide_newest_invalid_full_suite_log(tmp_path)
     import os
 
     old = tmp_path / "pb_test.full.v0.0.162.log"
-    new = tmp_path / "pb_test.full.v0.0.181.log"
+    new = tmp_path / "pb_test.full.v0.0.182.log"
     old.write_text(json.dumps(_suite_payload(), indent=2), encoding="utf-8")
     new.write_text("not json\n", encoding="utf-8")
     os.utime(old, (1000, 1000))
@@ -178,7 +178,7 @@ def test_build_test_status_does_not_hide_newest_invalid_full_suite_log(tmp_path)
 
     assert status["ok"] is False
     assert status["status"] == "latest_full_suite_log_invalid"
-    assert status["latest_log"]["path"].endswith("pb_test.full.v0.0.181.log")
+    assert status["latest_log"]["path"].endswith("pb_test.full.v0.0.182.log")
     assert status["latest_log"]["accepted"] is False
     assert status["last_valid"]["selected_log"]["path"].endswith("pb_test.full.v0.0.162.log")
     assert status["last_valid"]["suite"]["profile"] == "full"

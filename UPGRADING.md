@@ -334,7 +334,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.181
+## v0.0.182
 
 - Hardened project-source overwrite removal after live v0.0.180 still returned `overwrite_remove_failed`.
 - Treats source row option-button clicks as provisional: if a clicked candidate does not expose a Remove/Delete action, Promptbranch now tries alternate visible option buttons from the matched source card before failing.

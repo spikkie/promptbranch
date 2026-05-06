@@ -1,4 +1,4 @@
-# promptbranch v0.0.181
+# promptbranch v0.0.182
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,7 +642,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.181
+## v0.0.182
 
 - Hardened project-source overwrite removal after live v0.0.180 still returned `overwrite_remove_failed`.
 - Treats source row option-button clicks as provisional: if a clicked candidate does not expose a Remove/Delete action, Promptbranch now tries alternate visible option buttons from the matched source card before failing.
