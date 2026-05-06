@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.171"
+    assert captured.out.strip() == "promptbranch 0.0.172"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.171"
+    assert payload["version"] == "0.0.172"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1679,6 +1679,84 @@ def test_phase3_src_sync_no_upload_refuses_collision_without_force(monkeypatch, 
     assert existing.read_bytes() == b"old"
 
 
+
+def test_phase3_src_sync_upload_preflight_collision_confirm_command_includes_force(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    artifact_dir = profile / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    existing = artifact_dir / "repo_v1.0.0.zip"
+    existing.write_bytes(b"old")
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["status"] == "upload_confirmation_required"
+    assert payload["confirmation"]["force_required"] is True
+    assert "--force" in payload["confirmation"]["confirm_command"]
+    assert any("local artifact collision" in warning for warning in payload["warnings"])
+    assert existing.read_bytes() == b"old"
+
+
+def test_phase3_src_sync_confirm_upload_collision_returns_force_confirmation(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.0.0\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    artifact_dir = profile / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    existing = artifact_dir / "repo_v1.0.0.zip"
+    existing.write_bytes(b"old")
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    preflight_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    preflight_payload = json.loads(capsys.readouterr().out)
+    assert preflight_code == 2
+    transaction_id = preflight_payload["transaction_id"]
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--confirm-upload", "--confirm-transaction-id", transaction_id, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["status"] == "local_artifact_collision"
+    assert payload["mutating_actions_executed"] is False
+    assert payload["confirmation"]["force_required"] is True
+    assert "--force" in payload["confirmation"]["confirm_command"]
+    assert existing.read_bytes() == b"old"
+
 def test_phase3_src_sync_no_upload_force_overwrites_and_verifies(monkeypatch, capsys, tmp_path) -> None:
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
@@ -1917,7 +1995,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.171",
+                "version": "v0.0.172",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
