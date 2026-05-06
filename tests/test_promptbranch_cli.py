@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.178"
+    assert captured.out.strip() == "promptbranch 0.0.179"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.178"
+    assert payload["version"] == "0.0.179"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.178",
+                "version": "v0.0.179",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2240,6 +2240,31 @@ def test_json_command_debug_flag_keeps_logging_on_stderr(monkeypatch, capsys) ->
 
 
 
+
+
+def test_src_add_service_error_returns_structured_json_without_traceback(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            raise RuntimeError("504 error for POST http://localhost:8000/v1/project-sources: Could not find the remove/delete action for the selected project source")
+
+    file_path = tmp_path / "architecture-process_0.1.29.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "add", str(file_path)])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "overwrite_remove_failed"
+    assert payload["project_source_mutated"] is False
+    assert payload["operator_review_required"] is True
+    assert "Traceback" not in captured.out
+    assert "Traceback" not in captured.err
 
 def test_phase3_src_sync_confirm_upload_service_error_with_expected_source_is_ambiguous(monkeypatch, capsys, tmp_path) -> None:
     calls: list[dict[str, object]] = []

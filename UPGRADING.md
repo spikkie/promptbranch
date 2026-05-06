@@ -334,11 +334,11 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.178
+## v0.0.179
 
-- Fixed release version-surface drift found in v0.0.177 full validation.
-- All runtime/package/test version surfaces now target `v0.0.178`.
-- No source-sync upload behavior changed in this release.
+- Hardened `pb src add <file>` overwrite handling for existing project sources whose card identity includes metadata such as `File contents may not be accessible`.
+- Exact overwrite removal now uses the clean source title before metadata-heavy identity text, then retries with title-anchored lookup if the remove/delete action menu is not found.
+- `pb src add` now emits structured JSON with `status: overwrite_remove_failed` instead of a Python traceback if the browser service still cannot verify removal.
 
 
 ## v0.0.176

@@ -1616,6 +1616,35 @@ async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int
     return 0
 
 
+def _project_source_add_exception_payload(
+    exc: Exception,
+    *,
+    source_kind: str,
+    file_path: Optional[str],
+    display_name: Optional[str],
+    overwrite_existing: bool,
+) -> dict[str, Any]:
+    error_text = str(exc)
+    status = "source_add_failed"
+    if "remove/delete action" in error_text:
+        status = "overwrite_remove_failed"
+    elif "already exists" in error_text.lower():
+        status = "source_already_exists"
+    return {
+        "ok": False,
+        "action": "source_add",
+        "status": status,
+        "source_kind": source_kind,
+        "file_path": file_path,
+        "display_name": display_name,
+        "overwrite_existing": overwrite_existing,
+        "project_source_mutated": False,
+        "persistence_verified": False,
+        "operator_review_required": status == "overwrite_remove_failed",
+        "error": error_text,
+    }
+
+
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
     source_kind = args.type or "file"
     value = args.value
@@ -1639,16 +1668,26 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
     elif source_kind == "file" and file_path and not display_name:
         display_name = Path(file_path).name
 
-    result = await backend.add_project_source(
-        source_kind=source_kind,
-        value=value,
-        file_path=file_path,
-        display_name=display_name,
-        keep_open=args.keep_open,
-        overwrite_existing=not getattr(args, "no_overwrite", False),
-    )
+    overwrite_existing = not getattr(args, "no_overwrite", False)
+    try:
+        result = await backend.add_project_source(
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=args.keep_open,
+            overwrite_existing=overwrite_existing,
+        )
+    except Exception as exc:
+        result = _project_source_add_exception_payload(
+            exc,
+            source_kind=source_kind,
+            file_path=file_path,
+            display_name=display_name,
+            overwrite_existing=overwrite_existing,
+        )
     print(json.dumps(result, indent=2, ensure_ascii=False))
-    return 0
+    return 0 if result.get("ok") else 1
 
 
 async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Namespace) -> int:

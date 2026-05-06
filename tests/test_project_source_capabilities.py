@@ -654,6 +654,148 @@ def test_add_project_source_operation_short_circuits_existing_duplicate_file(bro
 
 
 
+
+def test_add_project_source_operation_overwrite_uses_clean_title_and_retries_anchor_lookup(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+    calls: dict[str, object] = {"remove_attempts": [], "added": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{
+            "identity": "architecture-process_0.1.29.zip File contents may not be accessible",
+            "title": "architecture-process_0.1.29.zip",
+            "text": "architecture-process_0.1.29.zip File contents may not be accessible",
+        }]
+
+    async def fake_remove(*_args, **kwargs):
+        calls["remove_attempts"].append({"source_name": kwargs["source_name"], "exact": kwargs["exact"]})
+        assert kwargs["source_name"] == "architecture-process_0.1.29.zip"
+        if kwargs["exact"] is True:
+            raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+        return {"ok": True, "removed_via_ui": True, "source_match": "architecture-process_0.1.29.zip"}
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "architecture-process_0.1.29.zip", "title": "architecture-process_0.1.29.zip", "text": "architecture-process_0.1.29.zip"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return None
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        return {"identity": "architecture-process_0.1.29.zip", "title": "architecture-process_0.1.29.zip", "text": "architecture-process_0.1.29.zip"}
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": False}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "architecture-process_0.1.29.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert calls["remove_attempts"] == [
+        {"source_name": "architecture-process_0.1.29.zip", "exact": True},
+        {"source_name": "architecture-process_0.1.29.zip", "exact": False},
+    ]
+    assert calls["added"] is True
+    assert result["ok"] is True
+    assert result["overwritten"] is True
+    assert result["removed_existing"] is True
+
+
+def test_add_project_source_operation_returns_structured_overwrite_failure(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{
+            "identity": "architecture-process_0.1.29.zip File contents may not be accessible",
+            "title": "architecture-process_0.1.29.zip",
+            "text": "architecture-process_0.1.29.zip File contents may not be accessible",
+        }]
+
+    async def fake_remove(*_args, **_kwargs):
+        raise ResponseTimeoutError("Could not find the remove/delete action for the selected project source")
+
+    async def fail_add_file_source(*_args, **_kwargs) -> None:
+        raise AssertionError("upload must not start when overwrite removal cannot be verified")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fail_add_file_source  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    file_path = tmp_path / "architecture-process_0.1.29.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "overwrite_remove_failed"
+    assert result["already_exists"] is True
+    assert result["added"] is False
+    assert result["operator_review_required"] is True
+    assert result["overwrite_source_name"] == "architecture-process_0.1.29.zip"
+    assert "remove/delete action" in result["overwrite_remove_error"]
+
 def test_add_project_source_operation_overwrites_duplicate_file_by_default(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
     snapshots = [
