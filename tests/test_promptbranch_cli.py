@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.180"
+    assert captured.out.strip() == "promptbranch 0.0.181"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.180"
+    assert payload["version"] == "0.0.181"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.180",
+                "version": "v0.0.181",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
