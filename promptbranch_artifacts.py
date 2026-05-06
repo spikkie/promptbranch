@@ -296,6 +296,49 @@ def _all_repo_file_candidates(root: Path) -> list[Path]:
     return candidates
 
 
+def repo_manifest_fingerprint(root: Path, included_paths: Iterable[str]) -> dict[str, Any]:
+    """Return a content-bound, deterministic fingerprint for a planned repo snapshot.
+
+    Upload confirmation tokens must become stale if the operator changes a file
+    after reviewing the preflight.  Counting files is not enough: content can
+    change without changing the file set.  This manifest hashes each included
+    file path, size, and SHA-256 in stable order, without writing artifacts.
+    """
+    digest = hashlib.sha256()
+    file_count = 0
+    total_size = 0
+    sample: list[dict[str, Any]] = []
+    for rel in sorted(str(path).strip("/") for path in included_paths):
+        if not rel:
+            continue
+        path = root / rel
+        try:
+            stat = path.stat()
+            file_sha = sha256_file(path)
+        except OSError as exc:
+            file_sha = f"error:{type(exc).__name__}:{exc}"
+            size = None
+        else:
+            size = int(stat.st_size)
+            total_size += size
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(size).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(file_sha.encode("ascii", errors="replace"))
+        digest.update(b"\n")
+        file_count += 1
+        if len(sample) < 10:
+            sample.append({"path": rel, "size_bytes": size, "sha256": file_sha})
+    return {
+        "algorithm": "sha256-path-size-content-v1",
+        "sha256": digest.hexdigest(),
+        "file_count": file_count,
+        "total_size_bytes": total_size,
+        "sample": sample,
+    }
+
+
 def git_worktree_snapshot(repo_path: str | Path) -> dict[str, Any]:
     """Return a small read-only git/worktree snapshot for transaction preflights."""
     root = Path(repo_path).resolve()
@@ -369,6 +412,7 @@ def build_source_sync_preflight(
     candidates = _all_repo_file_candidates(root)
     included_set = set(included)
     excluded = [path.relative_to(root).as_posix() for path in candidates if path.relative_to(root).as_posix() not in included_set]
+    manifest_fingerprint = repo_manifest_fingerprint(root, included)
     out_path = Path(plan["path"])
     registry_payload: dict[str, Any] = {"path": None, "exists": False, "current": None, "artifact_count": 0}
     registry_path_collision = False
@@ -411,6 +455,8 @@ def build_source_sync_preflight(
             "artifact_path": str(out_path),
             "version": version,
             "included_count": len(included),
+            "repo_manifest_fingerprint": manifest_fingerprint.get("sha256"),
+            "git_short_sha": (git_worktree_snapshot(root).get("short_sha") if root.is_dir() else None),
             "project_url": project_url,
             "upload_requested": bool(upload_requested),
         },
@@ -430,6 +476,7 @@ def build_source_sync_preflight(
                 "path": str(root),
                 "version": version,
                 "git": git_worktree_snapshot(root),
+                "content_fingerprint": manifest_fingerprint,
                 "candidate_file_count": len(candidates),
                 "included_count": len(included),
                 "excluded_count": len(excluded),

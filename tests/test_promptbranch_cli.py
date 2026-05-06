@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.172"
+    assert captured.out.strip() == "promptbranch 0.0.173"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.172"
+    assert payload["version"] == "0.0.173"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1468,6 +1468,63 @@ def test_phase3_src_sync_confirm_upload_rejects_transaction_id_mismatch(monkeypa
     assert payload["project_source_mutated"] is False
     assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
 
+
+
+
+def test_phase3_src_sync_upload_transaction_id_changes_when_repo_content_changes(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    source = repo / "main.py"
+    source.write_text("print('before')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    first_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    first = json.loads(capsys.readouterr().out)
+    assert first_code == 2
+    first_transaction_id = first["transaction_id"]
+    first_fingerprint = first["preflight"]["before_snapshot"]["repo"]["content_fingerprint"]["sha256"]
+
+    source.write_text("print('after')\n", encoding="utf-8")
+
+    second_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--json",
+    ])
+    second = json.loads(capsys.readouterr().out)
+    assert second_code == 2
+    assert second["transaction_id"] != first_transaction_id
+    assert second["preflight"]["before_snapshot"]["repo"]["content_fingerprint"]["sha256"] != first_fingerprint
+
+    stale_confirm_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "src", "sync", str(repo), "--upload", "--confirm-upload",
+        "--confirm-transaction-id", first_transaction_id, "--json",
+    ])
+    stale = json.loads(capsys.readouterr().out)
+    assert stale_confirm_code == 2
+    assert stale["status"] == "upload_transaction_id_mismatch"
+    assert stale["provided_transaction_id"] == first_transaction_id
+    assert stale["transaction_id"] == second["transaction_id"]
+    assert stale["mutating_actions_executed"] is False
+    assert stale["project_source_mutated"] is False
+    assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
 
 def test_phase3_src_sync_confirm_upload_with_transaction_id_executes_guarded_upload(monkeypatch, capsys, tmp_path) -> None:
     calls: list[dict[str, object]] = []
@@ -1995,7 +2052,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.172",
+                "version": "v0.0.173",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
