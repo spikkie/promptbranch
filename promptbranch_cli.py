@@ -2339,6 +2339,29 @@ def _source_matches_filename(source: dict[str, Any], filename: str) -> bool:
     return False
 
 
+
+def _operation_error_payload(operation: str, exc: Exception) -> dict[str, Any]:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    response_text = None
+    if response is not None:
+        try:
+            response_text = getattr(response, "text", None)
+        except Exception:
+            response_text = None
+    payload: dict[str, Any] = {
+        "ok": False,
+        "action": operation,
+        "status": "service_error",
+        "exception_type": type(exc).__name__,
+        "error": str(exc),
+    }
+    if status_code is not None:
+        payload["http_status_code"] = status_code
+    if response_text:
+        payload["response_text"] = str(response_text)[:2000]
+    return payload
+
 def _project_sources_snapshot_from_result(result: Any) -> dict[str, Any]:
     sources, payload = _project_source_list_payload(result)
     return {
@@ -2719,14 +2742,35 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             }
             print(json.dumps(payload, indent=2, ensure_ascii=False))
             return 2
-        upload_source_before_result = await backend.list_project_sources(keep_open=args.keep_open)
-        upload_result = await backend.add_project_source(
-            source_kind="file",
-            file_path=record.path,
-            display_name=record.filename,
-            keep_open=args.keep_open,
-        )
-        upload_source_after_result = await backend.list_project_sources(keep_open=args.keep_open)
+        try:
+            upload_source_before_result = await backend.list_project_sources(keep_open=args.keep_open)
+        except Exception as exc:
+            upload_source_before_result = _operation_error_payload("source_list_before_upload", exc)
+
+        before_sources_snapshot = _project_sources_snapshot_from_result(upload_source_before_result)
+        if not before_sources_snapshot.get("ok"):
+            upload_result = {
+                "ok": False,
+                "action": "source_add",
+                "status": "before_source_list_unavailable",
+                "error": "project source list before upload was not readable; upload was not attempted",
+            }
+            upload_source_after_result = upload_source_before_result
+        else:
+            try:
+                upload_result = await backend.add_project_source(
+                    source_kind="file",
+                    file_path=record.path,
+                    display_name=record.filename,
+                    keep_open=args.keep_open,
+                )
+            except Exception as exc:
+                upload_result = _operation_error_payload("source_add", exc)
+            try:
+                upload_source_after_result = await backend.list_project_sources(keep_open=args.keep_open)
+            except Exception as exc:
+                upload_source_after_result = _operation_error_payload("source_list_after_upload", exc)
+
         source_upload_verification = _verify_project_source_upload_change(
             before_result=upload_source_before_result,
             after_result=upload_source_after_result,
