@@ -53,12 +53,12 @@ packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 usage() {
   cat <<USAGE
 Usage:
-  $(basename "$0") --version v0.0.185 [options]
-  $(basename "$0") v0.0.185 [options]
+  $(basename "$0") --version v0.0.188 [options]
+  $(basename "$0") v0.0.188 [options]
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.185, 0.0.185, or ${project_name}_v0.0.185.zip.
+                              Accepts v0.0.188, 0.0.188, or ${project_name}_v0.0.188.zip.
       --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
@@ -84,7 +84,7 @@ Version precedence:
   CLI argument > PB_RELEASE_VERSION > VERSION file
 
 Typical use:
-  $(basename "$0") --version v0.0.185
+  $(basename "$0") --version v0.0.188
 USAGE
 }
 
@@ -207,7 +207,7 @@ if [[ -z "${version_arg}" ]]; then
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.185, 0.0.185, or ${project_name}_v0.0.185.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.188, 0.0.188, or ${project_name}_v0.0.188.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"

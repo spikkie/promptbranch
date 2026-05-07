@@ -1,4 +1,4 @@
-# promptbranch v0.0.187
+# promptbranch v0.0.188
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,18 +642,14 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.187
+## v0.0.188
 
-- Excluded `.promptbranch-service-start.*.pid` local service PID files from release/source snapshots.
-- Hardened `pb artifact release --sync-source --upload` preflight so only the top-level `confirmation.confirm_command` is executable. Nested `source_sync.confirmation.confirm_command` is redacted and diagnostic-only.
-- Preserved artifact-release wrapper mapping so a delegated successful source sync returns top-level `status: uploaded`.
-
-
-- Added canonical `pb artifact release --sync-source` workflow for MVP-E release/source transactions.
-- `pb artifact release --sync-source --upload --json` now produces a reviewed upload preflight with an artifact-release confirmation command.
-- `pb artifact release --sync-source --no-upload --json` packages through the verified source-sync engine and reports status `packaged`.
-- Confirmed upload reports release-level statuses from a constrained vocabulary: `planned`, `packaged`, `uploaded`, `upload_ambiguous`, or `failed`.
-- Artifact registry and Promptbranch artifact/source state still advance only after verified packaging or verified project-source upload; ambiguous/failed uploads remain non-advancing.
+- Hardened the canonical `pb artifact release --sync-source --upload` confirmation UX: only top-level `confirmation.confirm_command` is executable.
+- Redacted nested delegated `source_sync.confirmation.confirm_command` diagnostics to prevent operators from running `pb src sync` instead of the artifact-release wrapper.
+- Propagated `--force` into the top-level artifact-release confirmation command when local artifact collisions require explicit overwrite confirmation.
+- Preserved release-level status mapping for delegated source-sync results: `uploaded`, `upload_ambiguous`, and `failed` remain explicit.
+- Excluded `.promptbranch-service-start.*.pid` from source/release snapshots and `.not_to_zip`.
+- Made `chatgpt_claudecode_workflow_release_control.sh` skip full tests by default; use `--run-tests` to opt in.
 
 ## v0.0.184
 

@@ -2301,14 +2301,22 @@ def _artifact_release_status_from_source_sync(status: str | None) -> str:
 
 
 def _redact_source_sync_payload_for_artifact_release(payload: dict[str, Any]) -> dict[str, Any]:
-    """Return a diagnostic copy of src_sync payload without executable delegated confirms."""
+    """Return diagnostic src_sync payload without executable delegated confirm commands.
+
+    The artifact-release workflow intentionally exposes only one executable
+    confirmation command at the top level: ``confirmation.confirm_command``.
+    Nested src_sync details are retained for diagnostics, but their delegated
+    confirmation commands are redacted to avoid operator confusion.
+    """
 
     redacted = copy.deepcopy(payload)
     confirmation = redacted.get("confirmation")
-    if isinstance(confirmation, dict) and confirmation.get("confirm_command"):
-        confirmation.pop("confirm_command", None)
-        confirmation["confirm_command_redacted"] = True
-        confirmation["confirm_command_redacted_reason"] = "use top-level artifact_release confirmation.confirm_command exactly"
+    if isinstance(confirmation, dict):
+        if confirmation.get("confirm_command"):
+            confirmation.pop("confirm_command", None)
+            confirmation["confirm_command_redacted"] = True
+            confirmation["confirm_command_redacted_reason"] = "use top-level artifact_release confirmation.confirm_command exactly"
+        confirmation.pop("source_sync_confirm_command", None)
     return redacted
 
 
@@ -2339,6 +2347,7 @@ def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *
             ),
             "operator_instruction": "Run this top-level artifact release confirm command exactly.",
         }
+        rewritten["confirmation"].pop("source_sync_confirm_command", None)
     next_commands = payload.get("next_commands")
     if isinstance(next_commands, dict):
         rewritten["next_commands"] = {
