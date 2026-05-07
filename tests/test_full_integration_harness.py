@@ -76,6 +76,30 @@ def test_resolve_step_selection_expands_aliases_and_forces_login_and_capabilitie
     )
 
 
+
+
+def test_resolve_step_selection_supports_source_overwrite_file_alias() -> None:
+    selection = resolve_step_selection(
+        only_values=["source_overwrite_file"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert selection.enabled_steps == (
+        "login_check",
+        "project_source_capabilities",
+        "project_source_overwrite_file",
+    )
+
+
+def test_resolve_step_selection_source_add_includes_overwrite_regression() -> None:
+    selection = resolve_step_selection(
+        only_values=["source_add"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert "project_source_add_file" in selection.enabled_steps
+    assert "project_source_overwrite_file" in selection.enabled_steps
+
 def test_resolve_step_selection_skips_cleanup_when_keep_project_enabled() -> None:
     selection = resolve_step_selection(
         only_values=[],

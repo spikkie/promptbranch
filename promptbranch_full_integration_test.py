@@ -39,6 +39,7 @@ CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "project_source_add_link",
     "project_source_add_text",
     "project_source_add_file",
+    "project_source_overwrite_file",
     "ask_question",
     "task_message_flow",
     "project_source_remove_link",
@@ -71,6 +72,7 @@ STEP_ALIASES: dict[str, tuple[str, ...]] = {
     "source_add_link": ("project_source_add_link",),
     "source_add_text": ("project_source_add_text",),
     "source_add_file": ("project_source_add_file",),
+    "source_overwrite_file": ("project_source_overwrite_file",),
     "source_remove_link": ("project_source_remove_link",),
     "source_remove_text": ("project_source_remove_text",),
     "source_remove_file": ("project_source_remove_file",),
@@ -78,6 +80,7 @@ STEP_ALIASES: dict[str, tuple[str, ...]] = {
         "project_source_add_link",
         "project_source_add_text",
         "project_source_add_file",
+        "project_source_overwrite_file",
     ),
     "source_remove": (
         "project_source_remove_link",
@@ -96,6 +99,7 @@ SOURCE_FLOW_STEPS = {
     "project_source_add_link",
     "project_source_add_text",
     "project_source_add_file",
+    "project_source_overwrite_file",
     "project_source_remove_link",
     "project_source_remove_text",
     "project_source_remove_file",
@@ -1376,6 +1380,28 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             )
             _require(file_add.get("ok") is True, f"file source add failed: {file_add}")
             file_source_match = str(file_add.get("source_match") or file_source_match)
+
+        if should_run("project_source_overwrite_file"):
+            file_overwrite = await _run_step(
+                steps,
+                "project_source_overwrite_file",
+                project_service.add_project_source(
+                    source_kind="file",
+                    file_path=str(file_source_path),
+                    display_name=None,
+                    keep_open=args.keep_open,
+                ),
+                step_delay_seconds=args.step_delay_seconds,
+            )
+            _require(file_overwrite.get("ok") is True, f"file source overwrite failed: {file_overwrite}")
+            _require(file_overwrite.get("already_exists") is True, f"file source overwrite did not detect an existing source: {file_overwrite}")
+            _require(file_overwrite.get("overwritten") is True, f"file source overwrite did not report overwritten=true: {file_overwrite}")
+            _require(file_overwrite.get("removed_existing") is True, f"file source overwrite did not verify removal before re-upload: {file_overwrite}")
+            _require(file_overwrite.get("persistence_verified") is True, f"file source overwrite did not verify persistence: {file_overwrite}")
+            overwrite_remove_result = file_overwrite.get("overwrite_remove_result")
+            if isinstance(overwrite_remove_result, dict):
+                remove_results.append(overwrite_remove_result)
+            file_source_match = str(file_overwrite.get("source_match") or file_source_match)
 
         if should_run("ask_question"):
             ask_result = await _run_step(

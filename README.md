@@ -1,4 +1,4 @@
-# promptbranch v0.0.182
+# promptbranch v0.0.183
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,17 +642,12 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.182
+## v0.0.183
 
-- Hardened project-source overwrite removal after live v0.0.180 still returned `overwrite_remove_failed`.
-- Treats source row option-button clicks as provisional: if a clicked candidate does not expose a Remove/Delete action, Promptbranch now tries alternate visible option buttons from the matched source card before failing.
-- Expanded source Remove/Delete action selectors for source/file-specific menu labels.
-- Preserved transactional safety: if no verified remove action is found, overwrite still fails safe with `overwrite_remove_failed` and no source/add state advancement.
-
-
-- Hardened the project-source overwrite removal path after the row options menu is opened: if selector-based Remove/Delete lookup fails, Promptbranch now searches the visible floating/menu DOM for source remove/delete actions.
-- Missing Remove/Delete menu actions are retried with refreshed source-row action lookup instead of failing after the first menu-open attempt.
-- The overwrite transaction remains guarded: the new upload does not start unless existing-source removal is verified; otherwise `overwrite_remove_failed` remains the structured safe failure.
+- Added `project_source_overwrite_file` to the browser/full integration flow so duplicate file-source overwrite is now covered by the live regression suite.
+- Added `source_overwrite_file` as a step selector and included overwrite coverage in the `source_add` selector.
+- The overwrite regression asserts existing-source detection, verified removal, replacement upload, and persistence verification.
+- No source-upload semantics were weakened: replacement upload still starts only after existing-source removal is verified.
 
 ## v0.0.178
 
