@@ -3100,6 +3100,17 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
             }
             exit_code = 1
         payload = _rewrite_source_sync_payload_for_artifact_release(source_payload, repo_path=repo_path)
+        if getattr(args, "print_confirm_command", False):
+            confirmation = payload.get("confirmation") if isinstance(payload.get("confirmation"), dict) else None
+            confirm_command = str(confirmation.get("confirm_command") or "") if confirmation else ""
+            if confirm_command:
+                print(confirm_command)
+                return 0
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print("ERROR: confirmation.confirm_command is not available for this artifact release result")
+            return exit_code if exit_code else 2
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
@@ -3993,6 +4004,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_release.add_argument("--confirm-upload", action="store_true", help="With --sync-source, confirm a reviewed live source upload.")
     artifact_release.add_argument("--confirm-transaction-id", help="Transaction id from a reviewed --upload preflight.")
     artifact_release.add_argument("--force", action="store_true", help="Allow local artifact overwrite/collision during sync-source release.")
+    artifact_release.add_argument("--print-confirm-command", "--confirm-command-only", dest="print_confirm_command", action="store_true", help="Print only the top-level confirmation.confirm_command when available. Useful for shell command substitution.")
     artifact_release.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan release/source transaction without packaging, registering, or uploading.")
     artifact_release.add_argument("--keep-open", action="store_true")
     artifact_release.add_argument("--json", action="store_true")
