@@ -1,4 +1,4 @@
-# promptbranch v0.0.188
+# promptbranch v0.0.189
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -641,6 +641,12 @@ pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
+
+## v0.0.189
+
+- Added `pb artifact release --print-confirm-command` with `--confirm-command-only` as an alias. It prints only the top-level artifact-release confirmation command, making shell command substitution possible without `jq`.
+- Kept nested `source_sync` confirmation diagnostics redacted so operators continue to run the artifact-release wrapper, not delegated `pb src sync` commands.
+- Added regression coverage for command-only preflight output, including the local-collision `--force` case.
 
 ## v0.0.188
 

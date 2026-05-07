@@ -334,6 +334,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.189
+
+- Added `pb artifact release --print-confirm-command` with `--confirm-command-only` as an alias. It prints only the top-level artifact-release confirmation command, making shell command substitution possible without `jq`.
+- Kept nested `source_sync` confirmation diagnostics redacted so operators continue to run the artifact-release wrapper, not delegated `pb src sync` commands.
+- Added regression coverage for command-only preflight output, including the local-collision `--force` case.
+
 ## v0.0.188
 
 - Hardened the canonical `pb artifact release --sync-source --upload` confirmation UX: only top-level `confirmation.confirm_command` is executable.

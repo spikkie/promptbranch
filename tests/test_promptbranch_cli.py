@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.188"
+    assert captured.out.strip() == "promptbranch 0.0.189"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.188"
+    assert payload["version"] == "0.0.189"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.188",
+                "version": "v0.0.189",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2629,3 +2629,71 @@ def test_v188_artifact_release_wrapper_maps_ambiguous_without_advancing_state() 
     assert rewritten["operator_review_required"] is True
     assert rewritten["artifact_registry_updated"] is False
     assert rewritten["state_source_updated"] is False
+
+
+def test_v189_artifact_release_print_confirm_command_outputs_only_top_level_command(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.9\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--upload", "--print-confirm-command",
+    ])
+
+    output = capsys.readouterr().out.strip()
+    assert exit_code == 0
+    assert output.startswith("pb artifact release ")
+    assert "--sync-source" in output
+    assert "--confirm-upload" in output
+    assert "--confirm-transaction-id" in output
+    assert "pb src sync" not in output
+    assert "{" not in output
+
+
+def test_v189_artifact_release_print_confirm_command_includes_force_when_required(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.10\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    first_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--no-upload", "--json",
+    ])
+    _ = capsys.readouterr()
+    assert first_code == 0
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--upload", "--print-confirm-command",
+    ])
+
+    output = capsys.readouterr().out.strip()
+    assert exit_code == 0
+    assert output.startswith("pb artifact release ")
+    assert "--force" in output
+    assert "pb src sync" not in output

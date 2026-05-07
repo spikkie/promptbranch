@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.188" in out
+    assert "0.0.189" in out
     assert "promptbranch" in out
 
 
@@ -456,3 +456,27 @@ def test_parser_accepts_test_status_command() -> None:
     assert args.log == 'pb_test.full.log'
     assert args.service_log == 'service.log'
     assert args.json is True
+
+
+def test_parser_accepts_artifact_release_print_confirm_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "artifact", "release", ".", "--sync-source", "--upload", "--print-confirm-command"
+    ])
+
+    assert args.command == "artifact"
+    assert args.artifact_command == "release"
+    assert args.sync_source is True
+    assert args.upload is True
+    assert args.print_confirm_command is True
+
+
+def test_parser_accepts_artifact_release_confirm_command_only_alias() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "artifact", "release", ".", "--sync-source", "--upload", "--confirm-command-only"
+    ])
+
+    assert args.command == "artifact"
+    assert args.artifact_command == "release"
+    assert args.print_confirm_command is True
