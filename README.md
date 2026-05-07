@@ -1,4 +1,4 @@
-# promptbranch v0.0.185
+# promptbranch v0.0.186
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,13 +642,20 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.186
+
+- Reduced operator ambiguity in `pb artifact release --sync-source --upload --json`: `confirmation.confirm_command` is the only top-level command operators should run.
+- Kept the delegated `pb src sync` confirmation command inside the nested `source_sync` payload for diagnostics only.
+- Added focused regression coverage that confirmed artifact-release uploads map delegated `src_sync` success back to top-level `artifact_release` status `uploaded`.
+- Preserved the validated `src_sync` upload engine and state-advancement gates.
+
 ## v0.0.185
 
 - Added canonical `pb artifact release --sync-source` workflow for MVP-E release/source transactions.
-- `pb artifact release --sync-source --upload --json` now produces a reviewed upload preflight with an artifact-release confirmation command.
+- `pb artifact release --sync-source --upload --json` produces a reviewed upload preflight with an artifact-release confirmation command.
 - `pb artifact release --sync-source --no-upload --json` packages through the verified source-sync engine and reports status `packaged`.
 - Confirmed upload reports release-level statuses from a constrained vocabulary: `planned`, `packaged`, `uploaded`, `upload_ambiguous`, or `failed`.
-- Artifact registry and Promptbranch artifact/source state still advance only after verified packaging or verified project-source upload; ambiguous/failed uploads remain non-advancing.
+- Artifact registry and Promptbranch artifact/source state advance only after verified packaging or verified project-source upload; ambiguous/failed uploads remain non-advancing.
 
 ## v0.0.184
 
