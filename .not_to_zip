@@ -23,11 +23,12 @@ coverage/
 *.zip
 *.tar.gz
 
-# Logs
+# Logs and local runtime process markers
 *.log
 *.log.*
 *.json.log
 *.log*
+.promptbranch-service-start.*.pid
 
 # Kubernetes render output
 helm-chart/charts/

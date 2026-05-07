@@ -27,6 +27,7 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     "*.log",
     "*.log.*",
     "*.json.log",
+    ".promptbranch-service-start.*.pid",
     ".pytest_cache/",
     ".mypy_cache/",
     ".ruff_cache/",
