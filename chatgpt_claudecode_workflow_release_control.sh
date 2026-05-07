@@ -9,18 +9,16 @@ set -Eeuo pipefail
 #   2. PB_RELEASE_VERSION environment variable
 #   3. VERSION file in the repo root
 #
-# Version examples accepted:
-#   v0.0.185
-#   0.0.185
-#   chatgpt_claudecode_workflow_v0.0.185.zip
+# This script uses real commands instead of shell aliases:
+#   bc      -> bcompare
+#   ga .    -> git add .
+#   gcm ... -> git commit -m ...
+#   gp      -> git push
+#   zip_it  -> ~/scripts/zip_with_not_to_zip.sh, with Python fallback
+#   pbsa    -> promptbranch src add ...
 #
-# This script intentionally uses real commands instead of shell aliases:
-#   bc   -> bcompare
-#   ga   -> git add .
-#   gcm  -> git commit -m ...
-#   gp   -> git push
-#   zip_it -> ~/scripts/zip_with_not_to_zip.sh, with a Python fallback
-#   pbsa -> promptbranch src add ...
+# Important fix: ./run_chatgpt_service.sh is started DETACHED by default so this
+# workflow does not hang forever on a foreground service process.
 
 project_name="chatgpt_claudecode_workflow"
 repo_root="$(pwd)"
@@ -42,6 +40,12 @@ skip_service=0
 skip_tests=0
 skip_docker_logs=0
 keep_workdir=0
+
+# detached prevents the release-control script from being captured by a long-running service.
+service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
+service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
+test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
+workflow_rc=0
 
 default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
 packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
@@ -66,6 +70,10 @@ Options:
       --skip-install          Skip pipx reinstall from generated ZIP.
       --skip-chown            Skip chown of .pb_profile.
       --skip-service          Skip ./run_chatgpt_service.sh.
+      --service-mode MODE     detached or foreground. Default: detached.
+                              detached mode starts ./run_chatgpt_service.sh with nohup and continues.
+      --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
+      --test-timeout SEC      Max seconds for pb test full. Default: 3600.
       --skip-tests            Skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
@@ -110,33 +118,25 @@ while [[ $# -gt 0 ]]; do
       version_arg="$2"
       shift 2
       ;;
-    --version=*)
-      version_arg="${1#*=}"
-      shift
-      ;;
+    --version=*) version_arg="${1#*=}"; shift ;;
     --downloads-dir)
       [[ $# -ge 2 ]] || fail "--downloads-dir requires a value"
       downloads_dir="$2"
       shift 2
       ;;
-    --downloads-dir=*)
-      downloads_dir="${1#*=}"
-      shift
-      ;;
+    --downloads-dir=*) downloads_dir="${1#*=}"; shift ;;
     --container-id)
       [[ $# -ge 2 ]] || fail "--container-id requires a value"
       container_id="$2"
       shift 2
       ;;
-    --container-id=*)
-      container_id="${1#*=}"
-      shift
-      ;;
+    --container-id=*) container_id="${1#*=}"; shift ;;
     --owner)
       [[ $# -ge 2 ]] || fail "--owner requires USER or USER:GROUP"
-      owner_user="${2%%:*}"
-      owner_group="${2#*:}"
-      [[ "${owner_group}" != "${2}" ]] || owner_group="${owner_user}"
+      owner_value="$2"
+      owner_user="${owner_value%%:*}"
+      owner_group="${owner_value#*:}"
+      [[ "${owner_group}" != "${owner_value}" ]] || owner_group="${owner_user}"
       shift 2
       ;;
     --owner=*)
@@ -151,10 +151,7 @@ while [[ $# -gt 0 ]]; do
       packager="$2"
       shift 2
       ;;
-    --packager=*)
-      packager="${1#*=}"
-      shift
-      ;;
+    --packager=*) packager="${1#*=}"; shift ;;
     --skip-compare) skip_compare=1; shift ;;
     --skip-commit) skip_commit=1; shift ;;
     --no-push) skip_push=1; shift ;;
@@ -162,6 +159,24 @@ while [[ $# -gt 0 ]]; do
     --skip-install) skip_install=1; shift ;;
     --skip-chown) skip_chown=1; shift ;;
     --skip-service) skip_service=1; shift ;;
+    --service-mode)
+      [[ $# -ge 2 ]] || fail "--service-mode requires detached or foreground"
+      service_mode="$2"
+      shift 2
+      ;;
+    --service-mode=*) service_mode="${1#*=}"; shift ;;
+    --service-timeout)
+      [[ $# -ge 2 ]] || fail "--service-timeout requires seconds"
+      service_timeout_seconds="$2"
+      shift 2
+      ;;
+    --service-timeout=*) service_timeout_seconds="${1#*=}"; shift ;;
+    --test-timeout)
+      [[ $# -ge 2 ]] || fail "--test-timeout requires seconds"
+      test_timeout_seconds="$2"
+      shift 2
+      ;;
+    --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-docker-logs) skip_docker_logs=1; shift ;;
     --keep-workdir) keep_workdir=1; shift ;;
@@ -178,6 +193,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${service_mode}" in
+  detached|foreground) ;;
+  *) fail "--service-mode must be detached or foreground; got ${service_mode}" ;;
+esac
+[[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
+[[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
+
 if [[ -z "${version_arg}" ]]; then
   [[ -f "${version_file}" ]] || fail "VERSION file not found and no --version supplied: ${version_file}"
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
@@ -191,17 +213,19 @@ work_dir="${work_parent}/${project_name}_${ver}"
 full_log="pb_test.full.${ver}.log"
 report_json="pb_test.full.${ver}.report.json"
 service_log="promptbranch-service:${ver_plain}.log"
+service_start_log="promptbranch-service-start:${ver_plain}.log"
+service_pid_file=".promptbranch-service-start.${ver_plain}.pid"
 
-if [[ ! -f "${download_zip}" ]]; then
-  fail "Download ZIP not found: ${download_zip}"
-fi
+[[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
 
 need_cmd unzip
 need_cmd git
 need_cmd python3
 need_cmd pipx
 need_cmd promptbranch
-
+if [[ ${skip_tests} -eq 0 || ${skip_service} -eq 0 ]]; then
+  need_cmd timeout
+fi
 if [[ ${skip_compare} -eq 0 ]]; then
   need_cmd bcompare
 fi
@@ -215,6 +239,9 @@ printf 'version:        %s\n' "${ver}"
 printf 'artifact_zip:   %s\n' "${artifact_zip}"
 printf 'download_zip:   %s\n' "${download_zip}"
 printf 'work_dir:       %s\n' "${work_dir}"
+printf 'service_mode:   %s\n' "${service_mode}"
+printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
+printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf '\n'
 
 # Import downloaded baseline ZIP into a temporary directory and visually compare it to the repo.
@@ -387,16 +414,84 @@ if [[ ${skip_chown} -eq 0 && -d "${repo_root}/.pb_profile" ]]; then
   sudo chown -R "${owner_user}:${owner_group}" "${repo_root}/.pb_profile/"
 fi
 
+wait_for_promptbranch_service() {
+  local deadline=$((SECONDS + service_timeout_seconds))
+  local detected=""
+  echo "Waiting up to ${service_timeout_seconds}s for Promptbranch service to be observable..."
+  while (( SECONDS < deadline )); do
+    if command -v docker >/dev/null 2>&1; then
+      detected="$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk '/promptbranch|chatgpt/ {print $1; exit}' || true)"
+      if [[ -n "${detected}" ]]; then
+        container_id="${container_id:-${detected}}"
+        echo "Detected service container: ${container_id}"
+        return 0
+      fi
+    fi
+    # Service may run without a recognizable Docker name. Probe the common local port gently.
+    if python3 - <<'PY' >/dev/null 2>&1
+import urllib.request
+for path in ("/healthz", "/health", "/"):
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8000" + path, timeout=1.0) as response:
+            if response.status < 500:
+                raise SystemExit(0)
+    except Exception:
+        pass
+raise SystemExit(1)
+PY
+    then
+      echo "Promptbranch service responded on http://127.0.0.1:8000"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "WARN: service readiness was not confirmed within ${service_timeout_seconds}s; continuing." >&2
+  echo "WARN: inspect ${service_start_log} if later commands fail." >&2
+  return 0
+}
+
 # Start/restart ChatGPT service using repo script.
 if [[ ${skip_service} -eq 0 ]]; then
   [[ -x "./run_chatgpt_service.sh" ]] || fail "service script not executable: ./run_chatgpt_service.sh"
-  ./run_chatgpt_service.sh
+  if [[ "${service_mode}" == "detached" ]]; then
+    echo "Starting ./run_chatgpt_service.sh detached; output -> ${service_start_log}"
+    rm -f "${service_pid_file}"
+    nohup ./run_chatgpt_service.sh >"${service_start_log}" 2>&1 &
+    service_pid=$!
+    echo "${service_pid}" > "${service_pid_file}"
+    disown "${service_pid}" 2>/dev/null || true
+    echo "Service start process PID: ${service_pid}"
+    echo "PID file: ${service_pid_file}"
+    wait_for_promptbranch_service
+  else
+    echo "Running ./run_chatgpt_service.sh in foreground with ${service_timeout_seconds}s timeout."
+    if ! timeout --foreground "${service_timeout_seconds}" ./run_chatgpt_service.sh; then
+      echo "WARN: service foreground command exited non-zero or timed out." >&2
+      workflow_rc=1
+    fi
+  fi
 fi
 
-# Run full suite and parsed report.
+# Run full suite and parsed report. Always try to create a report, even if the suite fails.
 if [[ ${skip_tests} -eq 0 ]]; then
-  pb test full --json 2>&1 | tee "${full_log}"
+  echo "Running pb test full with ${test_timeout_seconds}s timeout..."
+  set +e
+  timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
+  test_rc=${PIPESTATUS[0]}
+  set -e
+  if [[ ${test_rc} -ne 0 ]]; then
+    echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
+    workflow_rc=${test_rc}
+  fi
+
+  set +e
   pb test report "${full_log}" --json | python3 -m json.tool | tee "${report_json}"
+  report_rc=$?
+  set -e
+  if [[ ${report_rc} -ne 0 ]]; then
+    echo "WARN: pb test report exited with ${report_rc}." >&2
+    workflow_rc=${report_rc}
+  fi
 fi
 
 # Capture service logs.
@@ -420,4 +515,9 @@ artifact:      ${artifact_zip}
 full_log:      ${full_log}
 report_json:   ${report_json}
 service_log:   ${service_log}
+service_start: ${service_start_log}
+service_pid:   ${service_pid_file}
+exit_code:     ${workflow_rc}
 DONE
+
+exit "${workflow_rc}"
