@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.184"
+    assert captured.out.strip() == "promptbranch 0.0.185"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.184"
+    assert payload["version"] == "0.0.185"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.184",
+                "version": "v0.0.185",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2382,3 +2382,143 @@ def test_phase3_src_sync_confirm_upload_service_error_returns_structured_failure
     assert Path(payload["artifact"]["path"]).is_file()
     assert not (profile / "promptbranch_artifacts.json").exists()
     assert calls[0]["display_name"] == "repo_v1.2.7.zip"
+
+
+def test_v185_parser_accepts_artifact_release_source_sync_transaction_flags() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "artifact", "release", ".", "--sync-source", "--upload", "--confirm-upload",
+        "--confirm-transaction-id", "abc123", "--force", "--json",
+    ])
+
+    assert args.command == "artifact"
+    assert args.artifact_command == "release"
+    assert args.sync_source is True
+    assert args.upload is True
+    assert args.confirm_upload is True
+    assert args.confirm_transaction_id == "abc123"
+    assert args.force is True
+    assert args.json is True
+
+
+def test_v185_artifact_release_source_sync_upload_preflight_uses_artifact_confirm_command(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["action"] == "artifact_release"
+    assert payload["status"] == "planned"
+    assert payload["source_sync_status"] == "upload_confirmation_required"
+    assert payload["release_workflow"] == "artifact_release_source_sync_v1"
+    assert payload["mutating_actions_executed"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["confirmation"]["required"] is True
+    assert "pb artifact release" in payload["confirmation"]["confirm_command"]
+    assert "--sync-source" in payload["confirmation"]["confirm_command"]
+    assert "--confirm-upload" in payload["confirmation"]["confirm_command"]
+    assert "pb src sync" in payload["confirmation"]["source_sync_confirm_command"]
+    assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
+
+
+def test_v185_artifact_release_source_sync_no_upload_packages_with_clear_status(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.4\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "artifact", "release", str(repo), "--sync-source", "--no-upload", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "artifact_release"
+    assert payload["status"] == "packaged"
+    assert payload["source_sync_status"] == "verified_packaged"
+    assert payload["artifact_registry_updated"] is True
+    assert payload["state_source_updated"] is False
+    assert payload["project_source_mutated"] is False
+    assert Path(payload["artifact"]["path"]).is_file()
+    assert payload["source_sync"]["local_verification"]["status"] == "verified"
+
+
+def test_v185_artifact_release_source_sync_confirm_upload_advances_state_only_after_verified_upload(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            if calls:
+                return {"ok": True, "action": "source_list", "sources": [{"title": "repo_v1.2.5.zip"}]}
+            return {"ok": True, "action": "source_list", "sources": []}
+
+        def add_project_source(self, **kwargs):
+            calls.append(kwargs)
+            return {"ok": True, "action": "source_add", "status": "verified"}
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.5\n", encoding="utf-8")
+    (repo / "main.py").write_text("print('ok')\n", encoding="utf-8")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    preflight_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--upload", "--json",
+    ])
+    preflight = json.loads(capsys.readouterr().out)
+    assert preflight_code == 2
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "--project-url", project_url,
+        "artifact", "release", str(repo), "--sync-source", "--upload", "--confirm-upload",
+        "--confirm-transaction-id", preflight["transaction_id"], "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "artifact_release"
+    assert payload["status"] == "uploaded"
+    assert payload["source_sync_status"] == "uploaded"
+    assert payload["project_source_mutated"] is True
+    assert payload["artifact_registry_updated"] is True
+    assert payload["state_artifact_updated"] is True
+    assert payload["state_source_updated"] is True
+    assert payload["upload_verification"]["status"] == "verified"
+    assert calls[0]["display_name"] == "repo_v1.2.5.zip"

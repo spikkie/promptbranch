@@ -10,9 +10,9 @@ set -Eeuo pipefail
 #   3. VERSION file in the repo root
 #
 # Version examples accepted:
-#   v0.0.184
-#   0.0.184
-#   chatgpt_claudecode_workflow_v0.0.184.zip
+#   v0.0.185
+#   0.0.185
+#   chatgpt_claudecode_workflow_v0.0.185.zip
 #
 # This script intentionally uses real commands instead of shell aliases:
 #   bc   -> bcompare
@@ -49,12 +49,12 @@ packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 usage() {
   cat <<USAGE
 Usage:
-  $(basename "$0") --version v0.0.184 [options]
-  $(basename "$0") v0.0.184 [options]
+  $(basename "$0") --version v0.0.185 [options]
+  $(basename "$0") v0.0.185 [options]
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.184, 0.0.184, or ${project_name}_v0.0.184.zip.
+                              Accepts v0.0.185, 0.0.185, or ${project_name}_v0.0.185.zip.
       --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
@@ -75,7 +75,7 @@ Version precedence:
   CLI argument > PB_RELEASE_VERSION > VERSION file
 
 Typical use:
-  $(basename "$0") --version v0.0.184
+  $(basename "$0") --version v0.0.185
 USAGE
 }
 
@@ -183,7 +183,7 @@ if [[ -z "${version_arg}" ]]; then
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.184, 0.0.184, or ${project_name}_v0.0.184.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.185, 0.0.185, or ${project_name}_v0.0.185.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"
