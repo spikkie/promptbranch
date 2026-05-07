@@ -105,3 +105,5 @@ ollama_mcp_verification_harness/
 ollama_mcp_verification_harness_v2.zip
 ollama_mcp_verification_harness_v2/
 
+# promptbranch services pid
+.promptbranch-service-start.*.pid
