@@ -1,4 +1,4 @@
-# promptbranch v0.0.183
+# promptbranch v0.0.184
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,7 +642,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.183
+## v0.0.184
 
 - Added `project_source_overwrite_file` to the browser/full integration flow so duplicate file-source overwrite is now covered by the live regression suite.
 - Added `source_overwrite_file` as a step selector and included overwrite coverage in the `source_add` selector.
