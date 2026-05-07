@@ -2322,7 +2322,9 @@ def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *
                 str(payload.get("transaction_id")),
                 force_required=force_required,
             ),
-            "source_sync_confirm_command": confirmation.get("confirm_command"),
+            "canonical_action": "artifact_release_confirm_upload",
+            "delegated_action": "src_sync_confirm_upload",
+            "operator_instruction": "Run confirmation.confirm_command exactly; the delegated src_sync command remains only inside source_sync for diagnostics.",
         }
     next_commands = payload.get("next_commands")
     if isinstance(next_commands, dict):

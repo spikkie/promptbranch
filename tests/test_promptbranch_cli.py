@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.185"
+    assert captured.out.strip() == "promptbranch 0.0.186"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.185"
+    assert payload["version"] == "0.0.186"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.185",
+                "version": "v0.0.186",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2434,7 +2434,11 @@ def test_v185_artifact_release_source_sync_upload_preflight_uses_artifact_confir
     assert "pb artifact release" in payload["confirmation"]["confirm_command"]
     assert "--sync-source" in payload["confirmation"]["confirm_command"]
     assert "--confirm-upload" in payload["confirmation"]["confirm_command"]
-    assert "pb src sync" in payload["confirmation"]["source_sync_confirm_command"]
+    assert payload["confirmation"]["canonical_action"] == "artifact_release_confirm_upload"
+    assert payload["confirmation"]["delegated_action"] == "src_sync_confirm_upload"
+    assert "source_sync_confirm_command" not in payload["confirmation"]
+    assert "pb src sync" in payload["source_sync"]["confirmation"]["confirm_command"]
+    assert "Run confirmation.confirm_command exactly" in payload["confirmation"]["operator_instruction"]
     assert not (profile / "artifacts" / "repo_v1.2.3.zip").exists()
 
 
@@ -2516,6 +2520,9 @@ def test_v185_artifact_release_source_sync_confirm_upload_advances_state_only_af
     assert payload["action"] == "artifact_release"
     assert payload["status"] == "uploaded"
     assert payload["source_sync_status"] == "uploaded"
+    assert payload["source_sync_action"] == "src_sync"
+    assert payload["release_workflow"] == "artifact_release_source_sync_v1"
+    assert payload["source_sync"]["status"] == "uploaded"
     assert payload["project_source_mutated"] is True
     assert payload["artifact_registry_updated"] is True
     assert payload["state_artifact_updated"] is True
