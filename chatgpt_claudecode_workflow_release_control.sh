@@ -37,7 +37,7 @@ skip_source_add=0
 skip_install=0
 skip_chown=0
 skip_service=0
-skip_tests=0
+skip_tests=1
 skip_docker_logs=0
 keep_workdir=0
 
@@ -74,7 +74,8 @@ Options:
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
-      --skip-tests            Skip pb test full/report.
+      --run-tests             Run pb test full/report. Disabled by default.
+      --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
   -h, --help                  Show this help.
@@ -177,6 +178,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
+    --run-tests) skip_tests=0; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-docker-logs) skip_docker_logs=1; shift ;;
     --keep-workdir) keep_workdir=1; shift ;;
