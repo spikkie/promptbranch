@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import io
 import os
 import re
 import shlex
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
@@ -2266,6 +2268,71 @@ def _src_sync_upload_confirm_command(repo_path: Path, transaction_id: str, *, fo
     parts.append("--json")
     return shlex.join(parts)
 
+
+def _artifact_release_upload_confirm_command(repo_path: Path, transaction_id: str, *, force_required: bool = False) -> str:
+    parts = [
+        "pb",
+        "artifact",
+        "release",
+        str(repo_path),
+        "--sync-source",
+        "--upload",
+        "--confirm-upload",
+        "--confirm-transaction-id",
+        transaction_id,
+    ]
+    if force_required:
+        parts.append("--force")
+    parts.append("--json")
+    return shlex.join(parts)
+
+
+def _artifact_release_status_from_source_sync(status: str | None) -> str:
+    if status in {"planned", "upload_confirmation_required", "sync_mode_required"}:
+        return "planned"
+    if status == "verified_packaged":
+        return "packaged"
+    if status == "uploaded":
+        return "uploaded"
+    if status == "upload_ambiguous":
+        return "upload_ambiguous"
+    return "failed"
+
+
+def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *, repo_path: Path) -> dict[str, Any]:
+    source_status = str(payload.get("status") or "")
+    release_status = _artifact_release_status_from_source_sync(source_status)
+    rewritten = {
+        **payload,
+        "action": "artifact_release",
+        "status": release_status,
+        "release_workflow": "artifact_release_source_sync_v1",
+        "source_sync_status": source_status,
+        "source_sync_action": payload.get("action"),
+        "status_vocabulary": ["planned", "packaged", "uploaded", "upload_ambiguous", "failed"],
+        "source_sync": payload,
+    }
+    confirmation = payload.get("confirmation")
+    if isinstance(confirmation, dict) and payload.get("transaction_id"):
+        force_required = bool((confirmation.get("force_required") is True) or ("--force" in str(confirmation.get("confirm_command") or "")))
+        rewritten["confirmation"] = {
+            **confirmation,
+            "confirm_command": _artifact_release_upload_confirm_command(
+                repo_path,
+                str(payload.get("transaction_id")),
+                force_required=force_required,
+            ),
+            "source_sync_confirm_command": confirmation.get("confirm_command"),
+        }
+    next_commands = payload.get("next_commands")
+    if isinstance(next_commands, dict):
+        rewritten["next_commands"] = {
+            **next_commands,
+            "artifact_local_package": f"pb artifact release {shlex.quote(str(repo_path))} --sync-source --no-upload --json",
+            "artifact_upload_preflight": f"pb artifact release {shlex.quote(str(repo_path))} --sync-source --upload --json",
+        }
+    return rewritten
+
 def _registry_contains_artifact(registry: ArtifactRegistry, *, path: str, filename: str, sha256: str) -> bool:
     for item in registry.list():
         if not isinstance(item, dict):
@@ -2768,7 +2835,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             repo_path,
             output_dir=output_dir,
             filename=getattr(args, "filename", None),
-            kind="source_snapshot",
+            kind=getattr(args, "artifact_kind", "source_snapshot"),
         )
     except ValueError as exc:
         print(json.dumps({"ok": False, "action": "src_sync", "status": "package_failed", "error": str(exc), "preflight": preflight_plan["preflight"]}, indent=2, ensure_ascii=False))
@@ -2976,6 +3043,50 @@ async def cmd_artifact_list(backend: Any, args: argparse.Namespace) -> int:
 async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     repo_path = Path(args.path).expanduser().resolve()
+    sync_source = bool(
+        getattr(args, "sync_source", False)
+        or getattr(args, "no_upload", False)
+        or getattr(args, "upload", False)
+        or getattr(args, "confirm_upload", False)
+        or getattr(args, "dry_run", False)
+    )
+    if sync_source:
+        source_args = argparse.Namespace(**vars(args))
+        source_args.no_upload = bool(getattr(args, "no_upload", False))
+        source_args.upload = bool(getattr(args, "upload", False))
+        source_args.confirm_upload = bool(getattr(args, "confirm_upload", False))
+        source_args.confirm_transaction_id = getattr(args, "confirm_transaction_id", None)
+        source_args.force = bool(getattr(args, "force", False))
+        source_args.dry_run = bool(getattr(args, "dry_run", False))
+        source_args.keep_open = bool(getattr(args, "keep_open", False))
+        source_args.artifact_kind = "release"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            exit_code = await cmd_src_sync(backend, source_args)
+        raw = buffer.getvalue().strip()
+        try:
+            source_payload = json.loads(raw) if raw else {"ok": False, "status": "empty_source_sync_payload"}
+        except json.JSONDecodeError as exc:
+            source_payload = {
+                "ok": False,
+                "action": "src_sync",
+                "status": "source_sync_payload_parse_failed",
+                "error": str(exc),
+                "raw_output": raw[:4000],
+            }
+            exit_code = 1
+        payload = _rewrite_source_sync_payload_for_artifact_release(source_payload, repo_path=repo_path)
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            artifact = payload.get("artifact") if isinstance(payload.get("artifact"), dict) else {}
+            if artifact.get("path"):
+                print(f"artifact={artifact.get('path')}")
+            confirmation = payload.get("confirmation") if isinstance(payload.get("confirmation"), dict) else None
+            if confirmation and confirmation.get("confirm_command"):
+                print(f"confirm_command={confirmation.get('confirm_command')}")
+        return exit_code
     try:
         record, included = create_repo_snapshot(
             repo_path,
@@ -2984,7 +3095,7 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
             kind="release",
         )
     except ValueError as exc:
-        print(json.dumps({"ok": False, "action": "artifact_release", "error": str(exc)}, indent=2, ensure_ascii=False))
+        print(json.dumps({"ok": False, "action": "artifact_release", "status": "failed", "error": str(exc)}, indent=2, ensure_ascii=False))
         return 2
     artifact_payload = registry.add(record)
     project_url = _artifact_state_project_url(backend)
@@ -2998,10 +3109,16 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
     payload = {
         "ok": bool(verify.get("ok")),
         "action": "artifact_release",
+        "status": "packaged" if verify.get("ok") else "failed",
+        "release_workflow": "artifact_release_local_v1",
         "artifact": artifact_payload,
         "included_count": len(included),
         "verify": verify,
         "project_url": project_url,
+        "artifact_registry_updated": True,
+        "state_artifact_updated": bool(project_url),
+        "state_source_updated": False,
+        "project_source_mutated": False,
     }
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -3009,6 +3126,7 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
         print(f"artifact={record.path}")
         print(f"file_count={record.file_count}")
         print(f"sha256={record.sha256}")
+        print(f"status={payload['status']}")
         print(f"verified={payload['ok']}")
     return 0 if payload["ok"] else 1
 
@@ -3841,10 +3959,18 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
     artifact_list.add_argument("--json", action="store_true")
 
-    artifact_release = artifact_subparsers.add_parser("release", help="Create a local release ZIP from a repo path.")
+    artifact_release = artifact_subparsers.add_parser("release", help="Create a release ZIP from a repo path, optionally through the source-sync transaction workflow.")
     artifact_release.add_argument("path", nargs="?", default=".", help="Repo path to package. Defaults to the current directory.")
     artifact_release.add_argument("--output-dir", help="Directory for the generated ZIP. Defaults to .pb_profile/artifacts.")
     artifact_release.add_argument("--filename", help="Override the generated artifact filename.")
+    artifact_release.add_argument("--sync-source", action="store_true", help="Use the canonical artifact release -> source sync transaction workflow.")
+    artifact_release.add_argument("--no-upload", action="store_true", help="With --sync-source, package and register locally without uploading as a project source.")
+    artifact_release.add_argument("--upload", action="store_true", help="With --sync-source, run live upload preflight. Requires --confirm-upload to execute.")
+    artifact_release.add_argument("--confirm-upload", action="store_true", help="With --sync-source, confirm a reviewed live source upload.")
+    artifact_release.add_argument("--confirm-transaction-id", help="Transaction id from a reviewed --upload preflight.")
+    artifact_release.add_argument("--force", action="store_true", help="Allow local artifact overwrite/collision during sync-source release.")
+    artifact_release.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan release/source transaction without packaging, registering, or uploading.")
+    artifact_release.add_argument("--keep-open", action="store_true")
     artifact_release.add_argument("--json", action="store_true")
 
     artifact_verify = artifact_subparsers.add_parser("verify", help="Verify ZIP layout and integrity.")

@@ -1,4 +1,4 @@
-# promptbranch v0.0.184
+# promptbranch v0.0.185
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,12 +642,19 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.185
+
+- Added canonical `pb artifact release --sync-source` workflow for MVP-E release/source transactions.
+- `pb artifact release --sync-source --upload --json` now produces a reviewed upload preflight with an artifact-release confirmation command.
+- `pb artifact release --sync-source --no-upload --json` packages through the verified source-sync engine and reports status `packaged`.
+- Confirmed upload reports release-level statuses from a constrained vocabulary: `planned`, `packaged`, `uploaded`, `upload_ambiguous`, or `failed`.
+- Artifact registry and Promptbranch artifact/source state still advance only after verified packaging or verified project-source upload; ambiguous/failed uploads remain non-advancing.
+
 ## v0.0.184
 
-- Added `project_source_overwrite_file` to the browser/full integration flow so duplicate file-source overwrite is now covered by the live regression suite.
-- Added `source_overwrite_file` as a step selector and included overwrite coverage in the `source_add` selector.
-- The overwrite regression asserts existing-source detection, verified removal, replacement upload, and persistence verification.
-- No source-upload semantics were weakened: replacement upload still starts only after existing-source removal is verified.
+- Fixed the live overwrite-regression timing edge where the Sources surface was restored but a stale dialog locator could still appear visible.
+- Kept the early-refresh safety rule intact by accepting only a guarded soft-close condition with visible Add button, stable URL, non-empty source cards, and no empty state.
+- Preserved duplicate file-source overwrite coverage in the full browser suite.
 
 ## v0.0.178
 
