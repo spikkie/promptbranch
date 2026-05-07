@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import asyncio
 import json
 import io
@@ -2299,9 +2300,22 @@ def _artifact_release_status_from_source_sync(status: str | None) -> str:
     return "failed"
 
 
+def _redact_source_sync_payload_for_artifact_release(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a diagnostic copy of src_sync payload without executable delegated confirms."""
+
+    redacted = copy.deepcopy(payload)
+    confirmation = redacted.get("confirmation")
+    if isinstance(confirmation, dict) and confirmation.get("confirm_command"):
+        confirmation.pop("confirm_command", None)
+        confirmation["confirm_command_redacted"] = True
+        confirmation["confirm_command_redacted_reason"] = "use top-level artifact_release confirmation.confirm_command exactly"
+    return redacted
+
+
 def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *, repo_path: Path) -> dict[str, Any]:
     source_status = str(payload.get("status") or "")
     release_status = _artifact_release_status_from_source_sync(source_status)
+    source_sync_diagnostics = _redact_source_sync_payload_for_artifact_release(payload)
     rewritten = {
         **payload,
         "action": "artifact_release",
@@ -2310,7 +2324,8 @@ def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *
         "source_sync_status": source_status,
         "source_sync_action": payload.get("action"),
         "status_vocabulary": ["planned", "packaged", "uploaded", "upload_ambiguous", "failed"],
-        "source_sync": payload,
+        "operator_instruction": "Run confirmation.confirm_command exactly; nested source_sync payload is diagnostic only.",
+        "source_sync": source_sync_diagnostics,
     }
     confirmation = payload.get("confirmation")
     if isinstance(confirmation, dict) and payload.get("transaction_id"):
@@ -2322,9 +2337,7 @@ def _rewrite_source_sync_payload_for_artifact_release(payload: dict[str, Any], *
                 str(payload.get("transaction_id")),
                 force_required=force_required,
             ),
-            "canonical_action": "artifact_release_confirm_upload",
-            "delegated_action": "src_sync_confirm_upload",
-            "operator_instruction": "Run confirmation.confirm_command exactly; the delegated src_sync command remains only inside source_sync for diagnostics.",
+            "operator_instruction": "Run this top-level artifact release confirm command exactly.",
         }
     next_commands = payload.get("next_commands")
     if isinstance(next_commands, dict):
