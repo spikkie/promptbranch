@@ -27,7 +27,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "old.zip").write_bytes(b"zip")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}", encoding="utf-8")
-    (repo / ".promptbranch-service-start.0.0.186.pid").write_text("12345\n", encoding="utf-8")
+    (repo / ".promptbranch-service-start.0.0.188.pid").write_text("12345\n", encoding="utf-8")
     (repo / ".pytest_cache" / "v" / "cache").mkdir(parents=True)
     (repo / ".pytest_cache" / "v" / "cache" / "nodeids").write_text("[]", encoding="utf-8")
     (repo / "__pycache__").mkdir()
@@ -47,7 +47,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     assert ".env" not in included
     assert "old.zip" not in included
     assert ".pb_profile/state.json" not in included
-    assert ".promptbranch-service-start.0.0.186.pid" not in included
+    assert ".promptbranch-service-start.0.0.188.pid" not in included
     assert not any(".pytest_cache" in item for item in included)
     assert not any("__pycache__" in item for item in included)
     assert not any(item.endswith(".pyc") for item in included)
@@ -56,7 +56,6 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
         names = archive.namelist()
         assert sorted(names) == sorted(included)
         assert not any(".pytest_cache" in name or "__pycache__" in name or name.endswith(".pyc") for name in names)
-        assert not any(name.startswith(".promptbranch-service-start.") and name.endswith(".pid") for name in names)
 
 
 def test_artifact_registry_round_trip_and_verify(tmp_path: Path) -> None:

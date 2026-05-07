@@ -606,7 +606,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.187"
+    assert captured.out.strip() == "promptbranch 0.0.188"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1055,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.187"
+    assert payload["version"] == "0.0.188"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2180,7 +2180,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.187",
+                "version": "v0.0.188",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
@@ -2529,7 +2529,8 @@ def test_v185_artifact_release_source_sync_confirm_upload_advances_state_only_af
     assert calls[0]["display_name"] == "repo_v1.2.5.zip"
 
 
-def test_v187_artifact_release_redacts_nested_source_sync_confirm_command() -> None:
+
+def test_v188_artifact_release_redacts_nested_source_sync_confirm_command() -> None:
     from promptbranch_cli import _rewrite_source_sync_payload_for_artifact_release
 
     payload = {
@@ -2555,7 +2556,32 @@ def test_v187_artifact_release_redacts_nested_source_sync_confirm_command() -> N
     assert rewritten["source_sync"]["confirmation"]["confirm_command_redacted"] is True
 
 
-def test_v187_artifact_release_wrapper_maps_success_to_top_level_uploaded() -> None:
+def test_v188_artifact_release_confirm_command_includes_force_when_source_sync_requires_force() -> None:
+    from promptbranch_cli import _rewrite_source_sync_payload_for_artifact_release
+
+    payload = {
+        "ok": False,
+        "action": "src_sync",
+        "status": "upload_confirmation_required",
+        "transaction_id": "tx-force",
+        "confirmation": {
+            "required": True,
+            "force_required": True,
+            "confirm_command": "pb src sync /repo --upload --confirm-upload --confirm-transaction-id tx-force --force --json",
+        },
+    }
+
+    rewritten = _rewrite_source_sync_payload_for_artifact_release(payload, repo_path=Path("/repo"))
+
+    command = rewritten["confirmation"]["confirm_command"]
+    assert command.startswith("pb artifact release")
+    assert "--force" in command
+    assert "pb src sync" not in command
+    assert "confirm_command" not in rewritten["source_sync"]["confirmation"]
+    assert rewritten["source_sync"]["confirmation"]["confirm_command_redacted"] is True
+
+
+def test_v188_artifact_release_wrapper_maps_success_to_top_level_uploaded() -> None:
     from promptbranch_cli import _rewrite_source_sync_payload_for_artifact_release
 
     payload = {
@@ -2579,3 +2605,27 @@ def test_v187_artifact_release_wrapper_maps_success_to_top_level_uploaded() -> N
     assert rewritten["state_artifact_updated"] is True
     assert rewritten["state_source_updated"] is True
     assert rewritten["source_sync"]["status"] == "uploaded"
+
+
+def test_v188_artifact_release_wrapper_maps_ambiguous_without_advancing_state() -> None:
+    from promptbranch_cli import _rewrite_source_sync_payload_for_artifact_release
+
+    payload = {
+        "ok": False,
+        "action": "src_sync",
+        "status": "upload_ambiguous",
+        "operator_review_required": True,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "upload_verification": {"ok": False, "status": "upload_ambiguous"},
+    }
+
+    rewritten = _rewrite_source_sync_payload_for_artifact_release(payload, repo_path=Path("/repo"))
+
+    assert rewritten["action"] == "artifact_release"
+    assert rewritten["status"] == "upload_ambiguous"
+    assert rewritten["source_sync_status"] == "upload_ambiguous"
+    assert rewritten["operator_review_required"] is True
+    assert rewritten["artifact_registry_updated"] is False
+    assert rewritten["state_source_updated"] is False
