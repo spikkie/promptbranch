@@ -334,7 +334,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.183
+## v0.0.184
 
 - Added `project_source_overwrite_file` to the browser/full integration flow so duplicate file-source overwrite is now covered by the live regression suite.
 - Added `source_overwrite_file` as a step selector and included overwrite coverage in the `source_add` selector.

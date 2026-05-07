@@ -7471,10 +7471,27 @@ class ChatGPTBrowserClient:
                 page,
                 source_name=expected_source_name,
             )
-            settled_now = not dialog_visible and sources_surface_ready and url_stable
+            # Normally the add dialog must disappear before persistence checks start.
+            # In live v0.0.183 overwrite testing, the replacement file had already
+            # produced source cards and the Add button was visible again, but a stale
+            # dialog selector still matched. Treat that surface-restored state as a
+            # soft close only when at least one source card is visible and the empty
+            # state is gone; this avoids reintroducing the earlier early-refresh race
+            # while not blocking on a false-positive dialog locator.
+            source_cards_visible = bool(source_cards)
+            dialog_soft_closed = (
+                not dialog_visible
+                or (add_button_visible and source_cards_visible and not empty_state_visible)
+            )
+            dialog_false_positive_possible = bool(
+                dialog_visible and add_button_visible and source_cards_visible and not empty_state_visible
+            )
+            settled_now = dialog_soft_closed and sources_surface_ready and url_stable
             last_state = {
                 "source_kind": source_kind,
                 "dialog_visible": dialog_visible,
+                "dialog_soft_closed": dialog_soft_closed,
+                "dialog_false_positive_possible": dialog_false_positive_possible,
                 "add_button_visible": add_button_visible,
                 "source_card_count": len(source_cards),
                 "empty_state_visible": empty_state_visible,
@@ -7508,6 +7525,8 @@ class ChatGPTBrowserClient:
             f"add_button_visible={last_state.get('add_button_visible')}, "
             f"source_card_count={last_state.get('source_card_count')}, "
             f"empty_state_visible={last_state.get('empty_state_visible')}, "
+            f"dialog_soft_closed={last_state.get('dialog_soft_closed')}, "
+            f"dialog_false_positive_possible={last_state.get('dialog_false_positive_possible')}, "
             f"url_stable={last_state.get('url_stable')})"
         )
 

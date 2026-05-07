@@ -541,6 +541,69 @@ def test_build_source_match_candidates_for_file_uses_basename(browser_client: Ch
     assert candidates == ["candlecast-src-0.19.5.82.2.zip"]
 
 
+
+def test_wait_for_project_source_post_save_settle_accepts_restored_surface_with_stale_dialog(browser_client: ChatGPTBrowserClient) -> None:
+    class _SettlingPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+
+    page = _SettlingPage()
+    current_state = {
+        "dialog_visible": True,
+        "add_button_visible": True,
+        "source_cards": [
+            {"identity": "existing.txt Document"},
+            {"identity": "replacement.txt Document"},
+        ],
+        "empty_state_visible": False,
+        "url": "https://chatgpt.com/g/g-p-123/project?tab=sources",
+    }
+
+    async def fake_find_visible_locator(*_args, label: str, **_kwargs):
+        if "post-save-dialog" in label:
+            return object() if current_state["dialog_visible"] else None
+        if "post-save-add-button" in label:
+            return object() if current_state["add_button_visible"] else None
+        raise AssertionError(f"unexpected label: {label}")
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return current_state["source_cards"]
+
+    async def fake_empty_state(*_args, **_kwargs):
+        return current_state["empty_state_visible"]
+
+    async def fake_safe_page_url(*_args, **_kwargs):
+        return current_state["url"]
+
+    async def fake_duplicate_notice(*_args, **_kwargs):
+        return None
+
+    browser_client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._find_project_source_duplicate_notice = fake_duplicate_notice  # type: ignore[method-assign]
+
+    settled = asyncio.run(
+        browser_client._wait_for_project_source_post_save_settle(
+            page,
+            source_kind="file",
+            poll_interval_ms=10,
+            required_observations=2,
+        )
+    )
+
+    assert settled["dialog_visible"] is True
+    assert settled["dialog_soft_closed"] is True
+    assert settled["dialog_false_positive_possible"] is True
+    assert settled["add_button_visible"] is True
+    assert settled["source_card_count"] == 2
+    assert settled["url_stable"] is True
+    assert page.wait_calls == [10, 10]
+
 def test_wait_for_project_source_post_save_settle_stops_on_duplicate_notice(browser_client: ChatGPTBrowserClient) -> None:
     class _DuplicatePage:
         def __init__(self) -> None:
