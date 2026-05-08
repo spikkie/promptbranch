@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import zipfile
 import pytest
 from pathlib import Path
 
@@ -12,7 +14,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt
 from promptbranch_state import ConversationStateStore
 
 
@@ -606,7 +608,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.190"
+    assert captured.out.strip() == "promptbranch 0.0.191"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1055,7 +1057,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.190"
+    assert payload["version"] == "0.0.191"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1300,6 +1302,12 @@ def test_phase3_parser_accepts_src_sync_and_artifact_commands() -> None:
     assert current_args.command == "artifact"
     assert current_args.artifact_command == "current"
 
+    adopt_args = parser.parse_args(["artifact", "adopt", "chatgpt_claudecode_workflow_v1.2.3.zip", "--from-project-source", "--json"])
+    assert adopt_args.command == "artifact"
+    assert adopt_args.artifact_command == "adopt"
+    assert adopt_args.artifact == "chatgpt_claudecode_workflow_v1.2.3.zip"
+    assert adopt_args.from_project_source is True
+
     release_args = parser.parse_args(["artifact", "release", ".", "--filename", "demo.zip", "--json"])
     assert release_args.command == "artifact"
     assert release_args.artifact_command == "release"
@@ -1311,6 +1319,115 @@ def test_phase3_parser_accepts_src_sync_and_artifact_commands() -> None:
     assert verify_args.path == "demo.zip"
 
 
+
+
+class _FakeArtifactAdoptBackend:
+    def __init__(self, profile: Path, project_url: str, sources: list[dict[str, object]]) -> None:
+        self.store = ConversationStateStore(profile)
+        self.project_url = project_url
+        self.sources = sources
+        self.list_calls = 0
+        self.store.remember_project(project_url, project_name="Demo")
+
+    def state_snapshot(self) -> dict[str, object]:
+        return self.store.snapshot(self.project_url)
+
+    async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, object]:
+        self.list_calls += 1
+        return {"ok": True, "status": "verified", "sources": self.sources}
+
+
+def _write_test_release_zip(path: Path, version: str) -> None:
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("VERSION", version + "\n")
+        archive.writestr("README.md", "demo\n")
+
+
+def test_artifact_adopt_existing_project_source_updates_registry_and_state(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "v1.2.3")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=True,
+        local_path=str(zip_path),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "adopted"
+    assert payload["source_verified"] is True
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is True
+    assert payload["state_artifact_updated"] is True
+    assert payload["state_source_updated"] is True
+    assert payload["artifact_ref"] == filename
+    assert payload["artifact_version"] == "v1.2.3"
+    assert payload["source_ref"] == filename
+    assert payload["source_version"] == "v1.2.3"
+    assert payload["checks"]["registry_current_matches_artifact"] is True
+    assert payload["after_snapshot"]["state"]["artifact_ref"] == filename
+    registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    assert registry_payload["artifacts"][0]["filename"] == filename
+
+
+def test_artifact_adopt_requires_exactly_one_project_source(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "v1.2.3")
+    profile = tmp_path / "profile"
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=True,
+        local_path=str(zip_path),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "project_source_match_count_invalid"
+    assert payload["artifact_registry_updated"] if "artifact_registry_updated" in payload else True
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_artifact_adopt_rejects_zip_version_mismatch(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "v1.2.4")
+    profile = tmp_path / "profile"
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename}])
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=True,
+        local_path=str(zip_path),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "version_mismatch"
+    assert payload["zip_version"] == "v1.2.4"
+    assert not (profile / "promptbranch_artifacts.json").exists()
 
 
 def test_phase3_src_sync_dry_run_does_not_package_or_record_artifact(monkeypatch, capsys, tmp_path) -> None:
@@ -2180,7 +2297,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.190",
+                "version": "v0.0.191",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],

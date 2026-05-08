@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.190" in out
+    assert "0.0.191" in out
     assert "promptbranch" in out
 
 
@@ -313,6 +313,14 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert upload_sync.upload is True
     assert upload_sync.confirm_upload is True
     assert upload_sync.confirm_transaction_id == "abc123"
+
+    artifact_adopt = parser.parse_args(["artifact", "adopt", "release.zip", "--from-project-source", "--local-path", "./release.zip", "--json"])
+    assert artifact_adopt.command == "artifact"
+    assert artifact_adopt.artifact_command == "adopt"
+    assert artifact_adopt.artifact == "release.zip"
+    assert artifact_adopt.from_project_source is True
+    assert artifact_adopt.local_path == "./release.zip"
+    assert artifact_adopt.json is True
 
     artifact_verify = parser.parse_args(["artifact", "verify", "release.zip", "--json"])
     assert artifact_verify.command == "artifact"
