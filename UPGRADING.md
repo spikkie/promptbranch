@@ -334,6 +334,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.191
+
+- Added `pb artifact adopt <zip> --from-project-source --json`.
+- Use this when a release ZIP was already added manually to Project Sources, but local `pb state` / `pb artifact current` still point at an older baseline.
+- The command verifies Project Source presence and the local ZIP before advancing the artifact registry and source/artifact state.
+- It does not upload, remove, overwrite, or otherwise mutate Project Sources.
+
 ## v0.0.190
 
 - Hardened artifact/release hygiene after v0.0.189 exposed that task transcript exports such as `task_*_message.txt` could be included in a release ZIP.

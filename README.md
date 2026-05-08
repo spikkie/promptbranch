@@ -1,4 +1,4 @@
-# promptbranch v0.0.190
+# promptbranch v0.0.191
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -641,6 +641,12 @@ pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
+
+## v0.0.191
+
+- Added `pb artifact adopt <zip> --from-project-source --json` to adopt an already-present Project Source ZIP as the current local artifact/source baseline.
+- Adoption verifies the ZIP exists exactly once in Project Sources and verifies the matching local ZIP before updating the local artifact registry and Promptbranch state.
+- Adoption does not upload, remove, overwrite, or mutate Project Sources; it updates local registry/state only after verification.
 
 ## v0.0.190
 

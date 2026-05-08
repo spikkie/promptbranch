@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import sys
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -16,7 +17,7 @@ from typing import Any, Optional, Protocol
 from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, plan_repo_snapshot, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -3017,6 +3018,58 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
         print(f"status={payload['status']}")
     return 0 if payload["ok"] else 1
 
+
+def _artifact_version_from_filename(filename: str) -> str | None:
+    value = Path(str(filename or "")).name
+    match = re.search(r"_(v?\d+\.\d+\.\d+(?:\.\d+)?)\.zip$", value)
+    if not match:
+        return None
+    version = match.group(1)
+    return version if valid_version_text(version) else None
+
+
+def _read_zip_version_file(path: str | Path) -> str | None:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if "VERSION" not in archive.namelist():
+                return None
+            value = archive.read("VERSION").decode("utf-8", errors="replace").strip()
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return None
+    return value if valid_version_text(value) else None
+
+
+def _resolve_adopt_local_zip(artifact_name: str, *, local_path: str | None, registry: ArtifactRegistry) -> Path | None:
+    candidates: list[Path] = []
+    if local_path:
+        candidates.append(Path(local_path).expanduser())
+    raw = Path(artifact_name).expanduser()
+    candidates.append(raw)
+    if not raw.is_absolute():
+        candidates.append(Path.cwd() / raw)
+        candidates.append(registry.artifact_dir / raw.name)
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate.absolute()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    sources, payload = _project_source_list_payload(result)
+    matched = [item for item in sources if isinstance(item, dict) and _source_matches_filename(item, filename)]
+    payload["matching_expected_count"] = len(matched)
+    payload["matching_expected"] = matched[:5]
+    return matched, payload
+
+
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     snapshot = backend.state_snapshot()
@@ -3062,6 +3115,191 @@ async def cmd_artifact_list(backend: Any, args: argparse.Namespace) -> int:
         for idx, item in enumerate(artifacts, start=1):
             print(f"{idx:>3}. {item.get('filename')}\t{item.get('version') or ''}\t{item.get('path')}")
     return 0
+
+
+
+async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
+    """Adopt an already-present Project Source ZIP as the local current baseline."""
+
+    registry = _artifact_registry_from_args(args)
+    requested = str(getattr(args, "artifact", "") or "").strip()
+    filename = Path(requested).name
+    project_url = _artifact_state_project_url(backend)
+    before_state = backend.state_snapshot()
+    before_registry = _artifact_registry_snapshot(registry)
+
+    base_payload: dict[str, Any] = {
+        "ok": False,
+        "action": "artifact_adopt",
+        "artifact_ref": filename,
+        "source_ref": filename,
+        "project_url": project_url,
+        "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "before_snapshot": {
+            "artifact_registry": before_registry,
+            "state": _state_artifact_summary(before_state),
+        },
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            if payload.get("error"):
+                print(f"error={payload.get('error')}")
+            if payload.get("artifact_ref"):
+                print(f"artifact_ref={payload.get('artifact_ref')}")
+        return code
+
+    if not requested or filename != requested and (Path(requested).name != filename):
+        payload = {**base_payload, "status": "invalid_artifact_argument", "error": "artifact filename or path is required"}
+        return emit(payload, 2)
+    if not filename.endswith(".zip"):
+        payload = {**base_payload, "status": "invalid_artifact_filename", "error": "artifact must be a .zip file"}
+        return emit(payload, 2)
+    filename_version = _artifact_version_from_filename(filename)
+    if not filename_version:
+        payload = {**base_payload, "status": "invalid_artifact_filename", "error": "artifact filename must end with _vX.Y.Z.zip or _vX.Y.Z.N.zip"}
+        return emit(payload, 2)
+    if not getattr(args, "from_project_source", False):
+        payload = {**base_payload, "status": "project_source_verification_required", "artifact_version": filename_version, "source_version": filename_version, "error": "adopt requires --from-project-source so local state advances only after Project Source verification"}
+        return emit(payload, 2)
+    if not project_url:
+        payload = {**base_payload, "status": "workspace_not_selected", "artifact_version": filename_version, "source_version": filename_version, "error": "select a workspace before adopting a Project Source artifact"}
+        return emit(payload, 2)
+
+    source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+    matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
+    if not bool(source_payload.get("ok")):
+        payload = {**base_payload, "status": "source_list_unavailable", "artifact_version": filename_version, "source_version": filename_version, "source_list": source_payload, "error": "could not verify Project Sources"}
+        return emit(payload, 1)
+    if len(matched_sources) != 1:
+        payload = {
+            **base_payload,
+            "status": "project_source_match_count_invalid",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "source_list": source_payload,
+            "source_verified": False,
+            "matching_expected_count": len(matched_sources),
+            "error": f"expected exactly one matching Project Source named {filename}, found {len(matched_sources)}",
+        }
+        return emit(payload, 1)
+
+    local_zip = _resolve_adopt_local_zip(filename if not Path(requested).is_file() else requested, local_path=getattr(args, "local_path", None), registry=registry)
+    if local_zip is None:
+        payload = {
+            **base_payload,
+            "status": "local_artifact_not_found",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "source_verified": True,
+            "source_list": source_payload,
+            "matched_source": matched_sources[0],
+            "error": "matching Project Source exists, but no local ZIP was found to verify/register; pass the ZIP path or --local-path",
+        }
+        return emit(payload, 1)
+    if local_zip.name != filename:
+        payload = {
+            **base_payload,
+            "status": "local_artifact_filename_mismatch",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "local_path": str(local_zip),
+            "error": f"local ZIP filename {local_zip.name} does not match requested artifact {filename}",
+        }
+        return emit(payload, 1)
+
+    zip_check = verify_zip_artifact(local_zip)
+    zip_version = _read_zip_version_file(local_zip)
+    if not bool(zip_check.get("ok")):
+        payload = {
+            **base_payload,
+            "status": "local_artifact_verification_failed",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "source_verified": True,
+            "local_path": str(local_zip),
+            "zip": zip_check,
+            "error": "local ZIP failed artifact verification",
+        }
+        return emit(payload, 1)
+    if zip_version != filename_version:
+        payload = {
+            **base_payload,
+            "status": "version_mismatch",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "zip_version": zip_version,
+            "local_path": str(local_zip),
+            "zip": zip_check,
+            "error": "filename version and ZIP VERSION differ",
+        }
+        return emit(payload, 1)
+
+    record = ArtifactRecord(
+        path=str(local_zip),
+        filename=filename,
+        kind="adopted_release",
+        version=filename_version,
+        repo_path=None,
+        sha256=str(zip_check.get("sha256") or ""),
+        size_bytes=int(zip_check.get("size_bytes") or local_zip.stat().st_size),
+        file_count=int(zip_check.get("entry_count") or 0),
+        created_at=utc_now(),
+        source_ref=filename,
+        project_url=project_url,
+    )
+    artifact_payload = registry.add(record)
+    _state_store_from_args(args).remember_artifact(
+        project_url=project_url,
+        artifact_ref=filename,
+        artifact_version=filename_version,
+        source_ref=filename,
+        source_version=filename_version,
+    )
+    after_state = backend.state_snapshot()
+    after_registry = _artifact_registry_snapshot(registry)
+    checks = {
+        "source_verified": len(matched_sources) == 1,
+        "zip_verified": bool(zip_check.get("ok")),
+        "zip_version_matches_filename": zip_version == filename_version,
+        "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename,
+        "state_artifact_updated": _state_artifact_summary(after_state).get("artifact_ref") == filename and _state_artifact_summary(after_state).get("artifact_version") == filename_version,
+        "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == filename and _state_artifact_summary(after_state).get("source_version") == filename_version,
+        "project_source_mutated": False,
+    }
+    ok = all(value for key, value in checks.items() if key != "project_source_mutated")
+    payload = {
+        **base_payload,
+        "ok": ok,
+        "status": "adopted" if ok else "adoption_verification_failed",
+        "artifact_ref": filename,
+        "artifact_version": filename_version,
+        "source_ref": filename,
+        "source_version": filename_version,
+        "source_verified": True,
+        "artifact_registry_updated": True,
+        "state_artifact_updated": bool(checks["state_artifact_updated"]),
+        "state_source_updated": bool(checks["state_source_updated"]),
+        "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "mutating_actions_executed": True,
+        "mutated_local_state_only": True,
+        "local_artifact": artifact_payload,
+        "local_path": str(local_zip),
+        "zip": zip_check,
+        "source_list": source_payload,
+        "matched_source": matched_sources[0],
+        "checks": checks,
+        "after_snapshot": {
+            "artifact_registry": after_registry,
+            "state": _state_artifact_summary(after_state),
+        },
+    }
+    return emit(payload, 0 if ok else 1)
 
 
 async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
@@ -3193,6 +3431,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_current(backend, args)
     if args.artifact_command == "list":
         return await cmd_artifact_list(backend, args)
+    if args.artifact_command == "adopt":
+        return await cmd_artifact_adopt(backend, args)
     if args.artifact_command == "release":
         return await cmd_artifact_release(backend, args)
     if args.artifact_command == "verify":
@@ -3993,6 +4233,13 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
     artifact_list.add_argument("--json", action="store_true")
+
+    artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.191.zip.")
+    artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
+    artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
+    artifact_adopt.add_argument("--keep-open", action="store_true")
+    artifact_adopt.add_argument("--json", action="store_true")
 
     artifact_release = artifact_subparsers.add_parser("release", help="Create a release ZIP from a repo path, optionally through the source-sync transaction workflow.")
     artifact_release.add_argument("path", nargs="?", default=".", help="Repo path to package. Defaults to the current directory.")
