@@ -3070,22 +3070,60 @@ def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list
     return matched, payload
 
 
-async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
-    registry = _artifact_registry_from_args(args)
+def _artifact_current_payload(backend: Any, registry: ArtifactRegistry) -> dict[str, Any]:
     snapshot = backend.state_snapshot()
-    payload = {
+    state = {
+        "artifact_ref": snapshot.get("artifact_ref"),
+        "artifact_version": snapshot.get("artifact_version"),
+        "source_ref": snapshot.get("source_ref"),
+        "source_version": snapshot.get("source_version"),
+        "project_home_url": snapshot.get("resolved_project_home_url"),
+    }
+    registry_current = registry.current()
+    registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
+    registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
+    state_artifact_ref = str(state.get("artifact_ref") or "")
+    state_artifact_version = str(state.get("artifact_version") or "")
+    state_source_ref = str(state.get("source_ref") or "")
+    state_source_version = str(state.get("source_version") or "")
+    runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
+    registry_matches_state = bool(registry_current) and registry_filename == state_artifact_ref and registry_version == state_artifact_version
+    state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and state_artifact_ref == state_source_ref and state_artifact_version == state_source_version
+    code_matches_adopted_source = runtime_version == state_source_version
+    return {
         "ok": True,
         "action": "artifact_current",
-        "state": {
-            "artifact_ref": snapshot.get("artifact_ref"),
-            "artifact_version": snapshot.get("artifact_version"),
-            "source_ref": snapshot.get("source_ref"),
-            "source_version": snapshot.get("source_version"),
-            "project_home_url": snapshot.get("resolved_project_home_url"),
+        "runtime": {
+            "package_version": CLI_VERSION,
+            "version": runtime_version,
         },
-        "registry_current": registry.current(),
+        "state": state,
+        "registry_current": registry_current,
+        "baseline_roles": {
+            "runtime_code_version": runtime_version,
+            "adopted_artifact_ref": state_artifact_ref or None,
+            "adopted_artifact_version": state_artifact_version or None,
+            "adopted_source_ref": state_source_ref or None,
+            "adopted_source_version": state_source_version or None,
+            "registry_current_ref": registry_filename or None,
+            "registry_current_version": registry_version or None,
+            "registry_current_kind": (registry_current or {}).get("kind") if registry_current else None,
+            "code_matches_adopted_source": code_matches_adopted_source,
+            "note": "runtime code release may intentionally differ from the adopted Project Source baseline",
+        },
+        "consistency": {
+            "registry_current_matches_state_artifact": registry_matches_state,
+            "state_source_matches_state_artifact": state_source_matches_artifact,
+            "code_version_matches_state_source": code_matches_adopted_source,
+            "project_home_url_present": bool(state.get("project_home_url")),
+        },
         "registry_file": str(registry.path),
     }
+
+
+async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
+    registry = _artifact_registry_from_args(args)
+    payload = _artifact_current_payload(backend, registry)
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -3094,6 +3132,9 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
         print(f"artifact_version={state.get('artifact_version') or 'none'}")
         current = payload.get("registry_current") or {}
         print(f"registry_current={current.get('filename') or 'none'}")
+        roles = payload.get("baseline_roles") or {}
+        print(f"runtime_code_version={roles.get('runtime_code_version') or 'none'}")
+        print(f"code_matches_adopted_source={roles.get('code_matches_adopted_source')}")
     return 0
 
 
@@ -4235,7 +4276,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.191.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.192.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")

@@ -334,6 +334,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.192
+
+- Clarified `pb artifact current` output by adding runtime code version, baseline roles, and consistency checks.
+- Keeps adopted Project Source/artifact baseline separate from the installed/runtime code release so intentional states like runtime v0.0.192 with adopted source v0.0.190 are visible instead of ambiguous.
+- No Project Source upload, removal, overwrite, or release behavior changed.
+
 ## v0.0.191
 
 - Added `pb artifact adopt <zip> --from-project-source --json`.

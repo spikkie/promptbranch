@@ -27,7 +27,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "old.zip").write_bytes(b"zip")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}", encoding="utf-8")
-    (repo / ".promptbranch-service-start.0.0.191.pid").write_text("12345\n", encoding="utf-8")
+    (repo / ".promptbranch-service-start.0.0.192.pid").write_text("12345\n", encoding="utf-8")
     (repo / "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt").write_text("transcript", encoding="utf-8")
     (repo / "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt").write_text("transcript", encoding="utf-8")
     (repo / "session_20260508_004724.log").write_text("session", encoding="utf-8")
@@ -52,7 +52,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     assert ".env" not in included
     assert "old.zip" not in included
     assert ".pb_profile/state.json" not in included
-    assert ".promptbranch-service-start.0.0.191.pid" not in included
+    assert ".promptbranch-service-start.0.0.192.pid" not in included
     assert "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt" not in included
     assert "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt" not in included
     assert "session_20260508_004724.log" not in included

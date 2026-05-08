@@ -608,7 +608,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.191"
+    assert captured.out.strip() == "promptbranch 0.0.192"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1057,7 +1057,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.191"
+    assert payload["version"] == "0.0.192"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2119,6 +2119,15 @@ def test_phase3_artifact_release_current_and_verify(monkeypatch, capsys, tmp_pat
     current_payload = json.loads(capsys.readouterr().out)
     assert current_code == 0
     assert current_payload["registry_current"]["path"] == artifact_path
+    assert current_payload["runtime"]["version"].startswith("v0.0.")
+    assert current_payload["baseline_roles"]["adopted_artifact_ref"] is None
+    assert current_payload["baseline_roles"]["adopted_source_ref"] is None
+    assert current_payload["baseline_roles"]["registry_current_ref"] == Path(artifact_path).name
+    assert current_payload["baseline_roles"]["registry_current_version"] == "v1.0.0"
+    assert current_payload["baseline_roles"]["code_matches_adopted_source"] is False
+    assert current_payload["consistency"]["registry_current_matches_state_artifact"] is False
+    assert current_payload["consistency"]["state_source_matches_state_artifact"] is False
+    assert current_payload["consistency"]["code_version_matches_state_source"] is False
 
     verify_code = main([
         "--service-base-url", "http://localhost:8000",
@@ -2297,7 +2306,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.191",
+                "version": "v0.0.192",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],
