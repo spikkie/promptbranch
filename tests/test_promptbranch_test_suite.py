@@ -332,3 +332,20 @@ def test_agent_profile_includes_src_sync_upload_preflight_plan(tmp_path) -> None
     assert result["confirmation"]["confirm_transaction_id_flag"] == "--confirm-transaction-id"
     assert result["transaction_id"] in result["confirmation"]["confirm_command"]
     assert not (tmp_path / ".pb_profile" / "artifacts" / "repo_v9.9.9.zip").exists()
+
+
+def test_package_hygiene_flags_generated_transcript(tmp_path: Path) -> None:
+    from promptbranch_test_suite import _package_hygiene
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    zip_path = repo / "chatgpt_claudecode_workflow_v0.0.190.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("VERSION", "v0.0.190\n")
+        archive.writestr("task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt", "transcript")
+
+    payload = _package_hygiene(str(zip_path), repo_path=repo)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "failed"
+    assert payload["bad_entries"] == ["task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt"]

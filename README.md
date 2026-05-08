@@ -1,4 +1,4 @@
-# promptbranch v0.0.189
+# promptbranch v0.0.190
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -641,6 +641,12 @@ pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
+
+## v0.0.190
+
+- Hardened artifact/release hygiene after v0.0.189 exposed that task transcript exports such as `task_*_message.txt` could be included in a release ZIP.
+- Added default excludes and verification checks for task/session transcript exports, stdout/stderr capture files, nested archives, log derivatives, and Python/cache artifacts.
+- Extended `pb test full` package hygiene so generated transcript files fail validation instead of silently passing.
 
 ## v0.0.189
 

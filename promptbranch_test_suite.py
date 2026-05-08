@@ -29,7 +29,7 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
-from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot
+from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 
 
@@ -615,10 +615,8 @@ def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[
     try:
         with zipfile.ZipFile(zip_path) as archive:
             testzip = archive.testzip()
-            for name in archive.namelist():
-                parts = [part for part in name.split("/") if part]
-                if ".pytest_cache" in parts or "__pycache__" in parts or name.endswith((".pyc", ".pyo")):
-                    bad_entries.append(name)
+            names = archive.namelist()
+            bad_entries = release_entry_hygiene_violations(names)
             wrapper_folder = False
             top_levels = {parts[0] for parts in ([part for part in item.split("/") if part] for item in archive.namelist()) if parts}
             if len(top_levels) == 1 and not any(name in archive.namelist() for name in ("VERSION", "README.md")):

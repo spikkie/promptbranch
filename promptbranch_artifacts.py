@@ -41,6 +41,37 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     ".env",
     ".env.*",
     ".DS_Store",
+    "debug_projects_popup_*/",
+    "task_*.messages",
+    "task_*_message.txt",
+    "task_show_*_messages.txt",
+    "task_*_final.txt",
+    "session_*.log",
+    "stdout.json",
+    "stderr.txt",
+)
+
+DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    "*.zip",
+    "*.tar.gz",
+    "*.log",
+    "*.log.*",
+    "*.json.log",
+    ".promptbranch-service-start.*.pid",
+    "debug_projects_popup_*/",
+    "task_*.messages",
+    "task_*_message.txt",
+    "task_show_*_messages.txt",
+    "task_*_final.txt",
+    "session_*.log",
+    "stdout.json",
+    "stderr.txt",
 )
 
 
@@ -144,6 +175,27 @@ def should_exclude(root: Path, path: Path, patterns: Iterable[str]) -> bool:
         if any(_matches_pattern(candidate, pattern, is_dir=candidate_is_dir) for pattern in patterns):
             return True
     return False
+
+
+def release_entry_hygiene_violations(names: Iterable[str]) -> list[str]:
+    """Return generated/local entries that must not appear in release ZIPs."""
+
+    bad: list[str] = []
+    for name in names:
+        rel = str(name or "").strip("/")
+        if not rel:
+            continue
+        parts = rel.split("/")
+        matched = False
+        for idx in range(1, len(parts) + 1):
+            candidate = "/".join(parts[:idx])
+            candidate_is_dir = idx < len(parts)
+            if any(_matches_pattern(candidate, pattern, is_dir=candidate_is_dir) for pattern in DISALLOWED_RELEASE_ENTRY_PATTERNS):
+                matched = True
+                break
+        if matched or any(_matches_pattern(rel, pattern, is_dir=False) for pattern in DISALLOWED_RELEASE_ENTRY_PATTERNS):
+            bad.append(name)
+    return sorted(set(bad))
 
 
 def iter_repo_files(repo_path: str | Path) -> list[Path]:
@@ -562,12 +614,13 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
     except zipfile.BadZipFile:
         return {"ok": False, "error": "bad_zip", "path": str(zip_path)}
     unsafe = [name for name in names if name.startswith("/") or ".." in Path(name).parts]
+    hygiene_violations = release_entry_hygiene_violations(names)
     top_levels = {name.split("/", 1)[0] for name in names if name and not name.endswith("/")}
     wrapper_folder = None
     if len(top_levels) == 1 and not any("/" not in name.rstrip("/") for name in names if name and not name.endswith("/")):
         wrapper_folder = next(iter(top_levels))
     return {
-        "ok": bad is None and not unsafe and wrapper_folder is None,
+        "ok": bad is None and not unsafe and wrapper_folder is None and not hygiene_violations,
         "path": str(zip_path),
         "filename": zip_path.name,
         "sha256": sha256_file(zip_path),
@@ -576,5 +629,7 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
         "has_version_file": "VERSION" in names,
         "bad_entry": bad,
         "unsafe_entries": unsafe,
+        "hygiene_violations": hygiene_violations,
+        "hygiene_violation_count": len(hygiene_violations),
         "wrapper_folder": wrapper_folder,
     }
