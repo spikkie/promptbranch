@@ -642,6 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.195
+
+- Added `chatgpt_claudecode_workflow_release_control.sh --tests-only` / `--run-tests-only` for running only the logged `pb test full` + `pb test report` block.
+- `--tests-only` skips baseline import/compare, git commit/push, packaging, Project Source add, pipx install, service start, ownership repair, and docker log capture.
+- The release-control script now explicitly checks that `pb` is available before running the test block.
+- This keeps the normal release workflow unchanged while providing a safe validation-only path after install/adopt.
+
 ## v0.0.194
 
 - Updated `chatgpt_claudecode_workflow_release_control.sh --run-tests` to wrap the full-test/report block with `startlog`/`stoplog` when those commands are available.
