@@ -41,6 +41,8 @@ skip_tests=1
 skip_docker_logs=0
 keep_workdir=0
 tests_only=0
+adopt_current=0
+adopt_if_green=0
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -54,12 +56,12 @@ packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 usage() {
   cat <<USAGE
 Usage:
-  $(basename "$0") --version v0.0.195 [options]
-  $(basename "$0") v0.0.195 [options]
+  $(basename "$0") --version v0.0.196 [options]
+  $(basename "$0") v0.0.196 [options]
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.195, 0.0.195, or ${project_name}_v0.0.195.zip.
+                              Accepts v0.0.196, 0.0.196, or ${project_name}_v0.0.196.zip.
       --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
@@ -81,6 +83,12 @@ Options:
       --tests-only            Run only the logged pb test full/report block for the selected
                               version. Implies --run-tests and skips import/compare,
                               commit, packaging, source add, install, service, and docker logs.
+      --adopt-current         Adopt the selected local ZIP as the current Project Source/artifact
+                              baseline after verifying the ZIP and Project Source. Skips release
+                              import/compare, commit, packaging, source add, install, service,
+                              and docker logs.
+      --adopt-if-green        With --run-tests/--tests-only, adopt the selected ZIP only when
+                              pb test report is ok:true, status:verified, and failure_count:0.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
@@ -90,8 +98,10 @@ Version precedence:
   CLI argument > PB_RELEASE_VERSION > VERSION file
 
 Typical use:
-  $(basename "$0") --version v0.0.195
+  $(basename "$0") --version v0.0.196
   $(basename "$0") --tests-only
+  $(basename "$0") --tests-only --adopt-if-green
+  $(basename "$0") --adopt-current
 USAGE
 }
 
@@ -199,6 +209,23 @@ while [[ $# -gt 0 ]]; do
       skip_docker_logs=1
       shift
       ;;
+    --adopt-current)
+      adopt_current=1
+      skip_compare=1
+      skip_commit=1
+      skip_push=1
+      skip_source_add=1
+      skip_install=1
+      skip_chown=1
+      skip_service=1
+      skip_docker_logs=1
+      shift
+      ;;
+    --adopt-if-green)
+      adopt_if_green=1
+      adopt_current=1
+      shift
+      ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-docker-logs) skip_docker_logs=1; shift ;;
     --keep-workdir) keep_workdir=1; shift ;;
@@ -221,13 +248,16 @@ case "${service_mode}" in
 esac
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
+if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
+  fail "--adopt-if-green requires --run-tests or --tests-only"
+fi
 
 if [[ -z "${version_arg}" ]]; then
   [[ -f "${version_file}" ]] || fail "VERSION file not found and no --version supplied: ${version_file}"
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.195, 0.0.195, or ${project_name}_v0.0.195.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.196, 0.0.196, or ${project_name}_v0.0.196.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"
@@ -240,16 +270,16 @@ service_log="promptbranch-service:${ver_plain}.log"
 service_start_log="promptbranch-service-start:${ver_plain}.log"
 service_pid_file=".promptbranch-service-start.${ver_plain}.pid"
 
-if [[ ${tests_only} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
 fi
 
 need_cmd python3
 need_cmd promptbranch
-if [[ ${skip_tests} -eq 0 ]]; then
+if [[ ${skip_tests} -eq 0 || ${adopt_current} -eq 1 ]]; then
   need_cmd pb
 fi
-if [[ ${tests_only} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   need_cmd unzip
   need_cmd git
   need_cmd pipx
@@ -274,9 +304,11 @@ printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
+printf 'adopt_current:  %s\n' "${adopt_current}"
+printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf '\n'
 
-if [[ ${tests_only} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   # Import downloaded baseline ZIP into a temporary directory and visually compare it to the repo.
   rm -rf "${work_dir}"
   mkdir -p "${work_dir}"
@@ -293,11 +325,11 @@ if [[ ${skip_compare} -eq 0 ]]; then
   bcompare "${work_dir}" "${repo_root}" || true
 fi
 
-if [[ ${tests_only} -eq 0 && ${keep_workdir} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${keep_workdir} -eq 0 ]]; then
   rm -rf "${work_dir}"
 fi
 
-if [[ ${tests_only} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
 # Commit current working tree with the release ZIP name as commit message.
 if [[ ${skip_commit} -eq 0 ]]; then
   git add .
@@ -451,6 +483,168 @@ fi
 fi
 
 
+
+json_file_is_ok_true() {
+  local path="$1"
+  python3 - "$path" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit(f"invalid JSON in {path}: no JSON object found")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True:
+    raise SystemExit(f"{path}: ok is not true")
+INNERPY
+}
+
+report_is_green() {
+  local path="$1"
+  python3 - "$path" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit(f"invalid test report JSON in {path}: no JSON object found")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True:
+    raise SystemExit(f"test report is not ok:true in {path}")
+if payload.get("status") != "verified":
+    raise SystemExit(f"test report status is not verified in {path}: {payload.get('status')!r}")
+if int(payload.get("failure_count") or 0) != 0:
+    raise SystemExit(f"test report failure_count is not 0 in {path}: {payload.get('failure_count')!r}")
+INNERPY
+}
+
+verify_source_list_mentions_artifact() {
+  local src_list_json="$1"
+  python3 - "$src_list_json" "${artifact_zip}" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+expected = sys.argv[2]
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit(f"invalid source list JSON in {path}: no JSON object found")
+payload = json.loads(raw[idx:])
+
+def source_objects(obj):
+    if isinstance(obj, dict):
+        keys = {"name", "filename", "file_name", "title", "source_name"}
+        if any(obj.get(key) == expected for key in keys):
+            yield obj
+        for value in obj.values():
+            yield from source_objects(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from source_objects(item)
+
+matches = list(source_objects(payload))
+if len(matches) != 1:
+    raise SystemExit(f"expected exactly one Project Source named {expected}, found {len(matches)}")
+INNERPY
+}
+
+verify_current_matches_version() {
+  local current_json="$1"
+  python3 - "$current_json" "${ver}" "${artifact_zip}" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+expected_version = sys.argv[2]
+expected_artifact = sys.argv[3]
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit(f"invalid artifact current JSON in {path}: no JSON object found")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True:
+    raise SystemExit("artifact current did not return ok:true")
+runtime = payload.get("runtime") or {}
+state = payload.get("state") or {}
+registry = payload.get("registry_current") or {}
+for key, value in {
+    "runtime.version": runtime.get("version"),
+    "state.artifact_version": state.get("artifact_version"),
+    "state.source_version": state.get("source_version"),
+    "registry_current.version": registry.get("version"),
+}.items():
+    if value != expected_version:
+        raise SystemExit(f"{key} mismatch: expected {expected_version}, got {value!r}")
+for key, value in {
+    "state.artifact_ref": state.get("artifact_ref"),
+    "state.source_ref": state.get("source_ref"),
+    "registry_current.filename": registry.get("filename"),
+}.items():
+    if value != expected_artifact:
+        raise SystemExit(f"{key} mismatch: expected {expected_artifact}, got {value!r}")
+consistency = payload.get("consistency") or {}
+for key in ("registry_current_matches_state_artifact", "state_source_matches_state_artifact", "code_version_matches_state_source"):
+    if consistency.get(key) is not True:
+        raise SystemExit(f"consistency.{key} is not true")
+INNERPY
+}
+
+adopt_current_artifact() {
+  local local_zip="${repo_root}/${artifact_zip}"
+  local verify_json="pb_artifact_verify.${ver}.json"
+  local src_list_json="pb_src_list.before_adopt.${ver}.json"
+  local adopt_json="pb_artifact_adopt.${ver}.json"
+  local current_json="pb_artifact_current.${ver}.json"
+
+  echo "== Adopt current Project Source artifact =="
+  echo "artifact: ${artifact_zip}"
+  echo "local_zip: ${local_zip}"
+
+  [[ -f "${local_zip}" ]] || fail "local ZIP not found for adoption: ${local_zip}"
+
+  echo "+ pb artifact verify ${local_zip} --json"
+  pb artifact verify "${local_zip}" --json | tee "${verify_json}"
+  json_file_is_ok_true "${verify_json}"
+
+  echo "+ pb src list --json"
+  pb src list --json | tee "${src_list_json}"
+  json_file_is_ok_true "${src_list_json}"
+  verify_source_list_mentions_artifact "${src_list_json}"
+
+  echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --json"
+  pb artifact adopt "${artifact_zip}" --from-project-source --local-path "${local_zip}" --json | tee "${adopt_json}"
+  python3 - "${adopt_json}" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit("artifact adopt output did not contain JSON")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True:
+    raise SystemExit("artifact adopt did not return ok:true")
+if payload.get("status") != "adopted":
+    raise SystemExit(f"artifact adopt status is not adopted: {payload.get('status')!r}")
+for key in ("source_verified", "artifact_registry_updated", "state_artifact_updated", "state_source_updated"):
+    if payload.get(key) is not True:
+        raise SystemExit(f"artifact adopt field {key} is not true")
+if payload.get("project_source_mutated") is not False:
+    raise SystemExit("artifact adopt unexpectedly mutated Project Sources")
+INNERPY
+
+  echo "+ pb artifact current --json"
+  pb artifact current --json | tee "${current_json}"
+  verify_current_matches_version "${current_json}"
+  echo "Adopt verified: ${artifact_zip}"
+}
+
 start_test_session_log() {
   # Prefer operator-defined startlog/stoplog when available. In non-interactive
   # script contexts these shell functions often are not exported, so keep a
@@ -569,7 +763,21 @@ if [[ ${skip_tests} -eq 0 ]]; then
   fi
 
   set -e
+
+  if [[ ${adopt_if_green} -eq 1 ]]; then
+    if [[ ${test_rc} -ne 0 || ${report_rc} -ne 0 ]]; then
+      echo "WARN: skipping adopt because test/report command failed." >&2
+    else
+      report_is_green "${report_json}"
+      adopt_current_artifact
+    fi
+  fi
+
   stop_test_session_log
+fi
+
+if [[ ${skip_tests} -eq 1 && ${adopt_current} -eq 1 ]]; then
+  adopt_current_artifact
 fi
 
 # Capture service logs.
@@ -592,6 +800,8 @@ version:       ${ver}
 artifact:      ${artifact_zip}
 full_log:      ${full_log}
 report_json:   ${report_json}
+adopt_current: ${adopt_current}
+adopt_if_green: ${adopt_if_green}
 test_session:  ${test_session_log}
 service_log:   ${service_log}
 service_start: ${service_start_log}
