@@ -642,12 +642,17 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.196
+
+- Added guarded release-control adoption automation: `--adopt-current` verifies the local ZIP, confirms exactly one matching Project Source, runs `pb artifact adopt`, and verifies `pb artifact current` alignment.
+- Added `--tests-only --adopt-if-green` so full test/report can adopt the selected ZIP only when the report is `ok:true`, `status:verified`, and `failure_count:0`.
+- Kept plain `--tests-only` validation-only; it does not mutate artifact/source baseline state unless `--adopt-if-green` is explicitly supplied.
+
 ## v0.0.195
 
-- Added `chatgpt_claudecode_workflow_release_control.sh --tests-only` / `--run-tests-only` for running only the logged `pb test full` + `pb test report` block.
-- `--tests-only` skips baseline import/compare, git commit/push, packaging, Project Source add, pipx install, service start, ownership repair, and docker log capture.
-- The release-control script now explicitly checks that `pb` is available before running the test block.
-- This keeps the normal release workflow unchanged while providing a safe validation-only path after install/adopt.
+- Added `chatgpt_claudecode_workflow_release_control.sh --tests-only` as a validation-only mode.
+- `--tests-only` runs only the logged `pb test full` plus `pb test report` block and skips release import/compare, commit, packaging, Project Source add, install, service startup, chown, and docker log capture.
+- Added `--run-tests-only` as an alias for the same test-only behavior.
 
 ## v0.0.194
 

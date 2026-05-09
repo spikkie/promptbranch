@@ -339,9 +339,9 @@ def test_package_hygiene_flags_generated_transcript(tmp_path: Path) -> None:
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    zip_path = repo / "chatgpt_claudecode_workflow_v0.0.195.zip"
+    zip_path = repo / "chatgpt_claudecode_workflow_v0.0.196.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("VERSION", "v0.0.195\n")
+        archive.writestr("VERSION", "v0.0.196\n")
         archive.writestr("task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt", "transcript")
 
     payload = _package_hygiene(str(zip_path), repo_path=repo)

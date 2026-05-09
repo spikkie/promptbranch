@@ -101,3 +101,86 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     assert "pb test full --json" in call_text
     assert "pb test report pb_test.full.v9.9.9.log --json" in call_text
     assert "promptbranch src add" not in call_text
+
+
+def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version: str = "v9.9.9") -> None:
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (fake_bin / "promptbranch").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        f"artifact='{artifact}'\n"
+        f"version='{version}'\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'\"$version\"'\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact verify\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_verify\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"src list\" ]]; then echo '{\"ok\": true, \"sources\": [{\"filename\": \"'\"$artifact\"'\"}]}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact adopt\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_adopt\", \"status\": \"adopted\", \"source_verified\": true, \"project_source_mutated\": false, \"artifact_registry_updated\": true, \"state_artifact_updated\": true, \"state_source_updated\": true}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact current\" ]]; then echo '{\"ok\": true, \"runtime\": {\"version\": \"'\"$version\"'\"}, \"state\": {\"artifact_ref\": \"'\"$artifact\"'\", \"artifact_version\": \"'\"$version\"'\", \"source_ref\": \"'\"$artifact\"'\", \"source_version\": \"'\"$version\"'\"}, \"registry_current\": {\"filename\": \"'\"$artifact\"'\", \"version\": \"'\"$version\"'\"}, \"consistency\": {\"registry_current_matches_state_artifact\": true, \"state_source_matches_state_artifact\": true, \"code_version_matches_state_source\": true}}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+
+def test_release_control_adopt_current_verifies_and_adopts_without_running_tests(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    (repo / artifact).write_bytes(b"fake zip; pb artifact verify is mocked")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [str(script), "--adopt-current", "--version", version],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "adopt_current:  1" in result.stdout
+    assert "Adopt verified" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "pb artifact verify" in call_text
+    assert "pb src list --json" in call_text
+    assert f"pb artifact adopt {artifact} --from-project-source --local-path {repo / artifact} --json" in call_text
+    assert "pb artifact current --json" in call_text
+    assert "pb test full" not in call_text
+    assert "promptbranch src add" not in call_text
+
+
+
+def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert "--adopt-if-green" in text
+    assert 'report_is_green "${report_json}"' in text
+    assert "adopt_current_artifact" in text
+    assert "--adopt-if-green requires --run-tests or --tests-only" in text
+    assert "--tests-only = no baseline mutation" not in text  # behavior is enforced by explicit flag checks, not prose
