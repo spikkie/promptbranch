@@ -40,6 +40,7 @@ skip_service=0
 skip_tests=1
 skip_docker_logs=0
 keep_workdir=0
+tests_only=0
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -53,12 +54,12 @@ packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 usage() {
   cat <<USAGE
 Usage:
-  $(basename "$0") --version v0.0.190 [options]
-  $(basename "$0") v0.0.190 [options]
+  $(basename "$0") --version v0.0.195 [options]
+  $(basename "$0") v0.0.195 [options]
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.190, 0.0.190, or ${project_name}_v0.0.190.zip.
+                              Accepts v0.0.195, 0.0.195, or ${project_name}_v0.0.195.zip.
       --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
@@ -77,6 +78,9 @@ Options:
       --run-tests             Run pb test full/report. Disabled by default.
                               The test block is wrapped in startlog/stoplog when available,
                               or an internal tee-based session log fallback otherwise.
+      --tests-only            Run only the logged pb test full/report block for the selected
+                              version. Implies --run-tests and skips import/compare,
+                              commit, packaging, source add, install, service, and docker logs.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
@@ -86,7 +90,8 @@ Version precedence:
   CLI argument > PB_RELEASE_VERSION > VERSION file
 
 Typical use:
-  $(basename "$0") --version v0.0.190
+  $(basename "$0") --version v0.0.195
+  $(basename "$0") --tests-only
 USAGE
 }
 
@@ -181,6 +186,19 @@ while [[ $# -gt 0 ]]; do
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
     --run-tests) skip_tests=0; shift ;;
+    --tests-only|--run-tests-only)
+      tests_only=1
+      skip_tests=0
+      skip_compare=1
+      skip_commit=1
+      skip_push=1
+      skip_source_add=1
+      skip_install=1
+      skip_chown=1
+      skip_service=1
+      skip_docker_logs=1
+      shift
+      ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-docker-logs) skip_docker_logs=1; shift ;;
     --keep-workdir) keep_workdir=1; shift ;;
@@ -209,7 +227,7 @@ if [[ -z "${version_arg}" ]]; then
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.190, 0.0.190, or ${project_name}_v0.0.190.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.195, 0.0.195, or ${project_name}_v0.0.195.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"
@@ -222,13 +240,20 @@ service_log="promptbranch-service:${ver_plain}.log"
 service_start_log="promptbranch-service-start:${ver_plain}.log"
 service_pid_file=".promptbranch-service-start.${ver_plain}.pid"
 
-[[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
+if [[ ${tests_only} -eq 0 ]]; then
+  [[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
+fi
 
-need_cmd unzip
-need_cmd git
 need_cmd python3
-need_cmd pipx
 need_cmd promptbranch
+if [[ ${skip_tests} -eq 0 ]]; then
+  need_cmd pb
+fi
+if [[ ${tests_only} -eq 0 ]]; then
+  need_cmd unzip
+  need_cmd git
+  need_cmd pipx
+fi
 if [[ ${skip_tests} -eq 0 || ${skip_service} -eq 0 ]]; then
   need_cmd timeout
 fi
@@ -248,27 +273,31 @@ printf 'work_dir:       %s\n' "${work_dir}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
+printf 'tests_only:     %s\n' "${tests_only}"
 printf '\n'
 
-# Import downloaded baseline ZIP into a temporary directory and visually compare it to the repo.
-rm -rf "${work_dir}"
-mkdir -p "${work_dir}"
-cp "${download_zip}" "${work_dir}/${artifact_zip}"
-(
-  cd "${work_dir}"
-  unzip -q "${artifact_zip}"
-  rm -f "${artifact_zip}"
-)
+if [[ ${tests_only} -eq 0 ]]; then
+  # Import downloaded baseline ZIP into a temporary directory and visually compare it to the repo.
+  rm -rf "${work_dir}"
+  mkdir -p "${work_dir}"
+  cp "${download_zip}" "${work_dir}/${artifact_zip}"
+  (
+    cd "${work_dir}"
+    unzip -q "${artifact_zip}"
+    rm -f "${artifact_zip}"
+  )
+fi
 
 if [[ ${skip_compare} -eq 0 ]]; then
   # Beyond Compare may return non-zero for differences; differences are the point here.
   bcompare "${work_dir}" "${repo_root}" || true
 fi
 
-if [[ ${keep_workdir} -eq 0 ]]; then
+if [[ ${tests_only} -eq 0 && ${keep_workdir} -eq 0 ]]; then
   rm -rf "${work_dir}"
 fi
 
+if [[ ${tests_only} -eq 0 ]]; then
 # Commit current working tree with the release ZIP name as commit message.
 if [[ ${skip_commit} -eq 0 ]]; then
   git add .
@@ -418,6 +447,7 @@ fi
 # Restore ownership of Promptbranch profile if needed.
 if [[ ${skip_chown} -eq 0 && -d "${repo_root}/.pb_profile" ]]; then
   sudo chown -R "${owner_user}:${owner_group}" "${repo_root}/.pb_profile/"
+fi
 fi
 
 
