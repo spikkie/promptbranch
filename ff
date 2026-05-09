@@ -1,0 +1,1 @@
+± |main ✓| → startlog; pb test full --json 2>&1 | tee pb_test.full.v0.0.193.log; pb test report pb_test.full.v0.0.193.log --json; stoplog

@@ -75,6 +75,8 @@ Options:
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
       --run-tests             Run pb test full/report. Disabled by default.
+                              The test block is wrapped in startlog/stoplog when available,
+                              or an internal tee-based session log fallback otherwise.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
@@ -214,6 +216,8 @@ download_zip="${downloads_dir}/${artifact_zip}"
 work_dir="${work_parent}/${project_name}_${ver}"
 full_log="pb_test.full.${ver}.log"
 report_json="pb_test.full.${ver}.report.json"
+test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG:-session_$(date +%Y%m%d_%H%M%S).log}"
+test_session_logging_mode="none"
 service_log="promptbranch-service:${ver_plain}.log"
 service_start_log="promptbranch-service-start:${ver_plain}.log"
 service_pid_file=".promptbranch-service-start.${ver_plain}.pid"
@@ -416,6 +420,43 @@ if [[ ${skip_chown} -eq 0 && -d "${repo_root}/.pb_profile" ]]; then
   sudo chown -R "${owner_user}:${owner_group}" "${repo_root}/.pb_profile/"
 fi
 
+
+start_test_session_log() {
+  # Prefer operator-defined startlog/stoplog when available. In non-interactive
+  # script contexts these shell functions often are not exported, so keep a
+  # deterministic built-in fallback that mirrors: startlog; ...; stoplog.
+  if command -v startlog >/dev/null 2>&1 && command -v stoplog >/dev/null 2>&1; then
+    startlog "${test_session_log}"
+    test_session_logging_mode="external"
+    return 0
+  fi
+
+  exec 3>&1
+  exec 4>&2
+  exec > >(tee -a "${test_session_log}") 2>&1
+  test_session_logging_mode="internal"
+  echo "Logging started: ${repo_root}/${test_session_log}"
+  echo "Run completed test logging will restore normal stdout/stderr automatically."
+}
+
+stop_test_session_log() {
+  case "${test_session_logging_mode}" in
+    external)
+      stoplog || true
+      ;;
+    internal)
+      echo "Logging stopped: ${repo_root}/${test_session_log}"
+      exec 1>&3
+      exec 2>&4
+      exec 3>&-
+      exec 4>&-
+      ;;
+    none|*)
+      ;;
+  esac
+  test_session_logging_mode="none"
+}
+
 wait_for_promptbranch_service() {
   local deadline=$((SECONDS + service_timeout_seconds))
   local detected=""
@@ -476,24 +517,29 @@ fi
 
 # Run full suite and parsed report. Always try to create a report, even if the suite fails.
 if [[ ${skip_tests} -eq 0 ]]; then
-  echo "Running pb test full with ${test_timeout_seconds}s timeout..."
+  start_test_session_log
+  test_rc=0
+  report_rc=0
   set +e
+
+  echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
   timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
   test_rc=${PIPESTATUS[0]}
-  set -e
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
     workflow_rc=${test_rc}
   fi
 
-  set +e
-  pb test report "${full_log}" --json | python3 -m json.tool | tee "${report_json}"
-  report_rc=$?
-  set -e
+  echo "+ pb test report ${full_log} --json"
+  pb test report "${full_log}" --json | tee "${report_json}"
+  report_rc=${PIPESTATUS[0]}
   if [[ ${report_rc} -ne 0 ]]; then
     echo "WARN: pb test report exited with ${report_rc}." >&2
     workflow_rc=${report_rc}
   fi
+
+  set -e
+  stop_test_session_log
 fi
 
 # Capture service logs.
@@ -516,6 +562,7 @@ version:       ${ver}
 artifact:      ${artifact_zip}
 full_log:      ${full_log}
 report_json:   ${report_json}
+test_session:  ${test_session_log}
 service_log:   ${service_log}
 service_start: ${service_start_log}
 service_pid:   ${service_pid_file}
