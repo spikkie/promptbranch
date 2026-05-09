@@ -52,6 +52,7 @@ chatgpt_claudecode_workflow_v*/
 # Local debug popup probes and chat/task transcript exports
 debug_projects_popup_*/
 task_*.messages
+task_*.messages.txt
 task_*_message.txt
 task_*_final.txt
 stdout.json

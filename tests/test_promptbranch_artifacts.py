@@ -27,9 +27,10 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "old.zip").write_bytes(b"zip")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}", encoding="utf-8")
-    (repo / ".promptbranch-service-start.0.0.192.pid").write_text("12345\n", encoding="utf-8")
+    (repo / ".promptbranch-service-start.0.0.193.pid").write_text("12345\n", encoding="utf-8")
     (repo / "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt").write_text("transcript", encoding="utf-8")
     (repo / "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt").write_text("transcript", encoding="utf-8")
+    (repo / "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt").write_text("transcript", encoding="utf-8")
     (repo / "session_20260508_004724.log").write_text("session", encoding="utf-8")
     (repo / "stdout.json").write_text("{}", encoding="utf-8")
     (repo / "stderr.txt").write_text("err", encoding="utf-8")
@@ -52,9 +53,10 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     assert ".env" not in included
     assert "old.zip" not in included
     assert ".pb_profile/state.json" not in included
-    assert ".promptbranch-service-start.0.0.192.pid" not in included
+    assert ".promptbranch-service-start.0.0.193.pid" not in included
     assert "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt" not in included
     assert "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt" not in included
+    assert "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt" not in included
     assert "session_20260508_004724.log" not in included
     assert "stdout.json" not in included
     assert "stderr.txt" not in included
@@ -108,6 +110,7 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
         "src/app.py",
         "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt",
         "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt",
+        "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt",
         "session_20260508_004724.log",
         "nested/release.zip",
         "pkg/__pycache__/module.cpython-312.pyc",
@@ -121,6 +124,7 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
     assert "src/app.py" not in bad
     assert "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt" in bad
     assert "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt" in bad
+    assert "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt" in bad
     assert "session_20260508_004724.log" in bad
     assert "nested/release.zip" in bad
     assert "pkg/__pycache__/module.cpython-312.pyc" in bad
@@ -139,3 +143,16 @@ def test_verify_zip_artifact_rejects_generated_task_transcript(tmp_path: Path) -
     assert payload["ok"] is False
     assert payload["hygiene_violation_count"] == 1
     assert payload["hygiene_violations"] == ["task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt"]
+
+
+def test_verify_zip_artifact_rejects_task_messages_txt_transcript(tmp_path: Path) -> None:
+    zip_path = tmp_path / "bad-messages-txt.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("VERSION", "v0.1.0\n")
+        archive.writestr("task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt", "transcript")
+
+    payload = verify_zip_artifact(zip_path)
+
+    assert payload["ok"] is False
+    assert payload["hygiene_violation_count"] == 1
+    assert payload["hygiene_violations"] == ["task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt"]
