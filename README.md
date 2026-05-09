@@ -1,4 +1,4 @@
-# promptbranch v0.0.193
+# promptbranch v0.0.194
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,11 +642,17 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.194
+
+- Updated `chatgpt_claudecode_workflow_release_control.sh --run-tests` to wrap the full-test/report block with `startlog`/`stoplog` when those commands are available.
+- Added an internal tee-based session-log fallback so release-control test logging still works in non-interactive script contexts where shell functions are unavailable.
+- The test block now records the full suite log, report JSON, and session log path in the final release-control summary.
+
 ## v0.0.193
 
-- Clarified `pb artifact current` output by adding runtime code version, baseline roles, and consistency checks.
-- Keeps adopted Project Source/artifact baseline separate from the installed/runtime code release so intentional states like runtime v0.0.193 with adopted source v0.0.190 are visible instead of ambiguous.
-- No Project Source upload, removal, overwrite, or release behavior changed.
+- Hardened release/package hygiene for task transcript exports using the `task_*.messages.txt` pattern.
+- Removed generated task transcript exports from the release artifact surface.
+- Kept the change narrow: no Project Source upload, removal, overwrite, or release behavior changed.
 
 ## v0.0.191
 
