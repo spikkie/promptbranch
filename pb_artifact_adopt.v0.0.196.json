@@ -1,0 +1,395 @@
+{
+  "ok": true,
+  "action": "artifact_adopt",
+  "artifact_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+  "source_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+  "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project",
+  "project_source_mutated": false,
+  "project_source_mutation": "not_requested",
+  "before_snapshot": {
+    "artifact_registry": {
+      "path": "/home/spikkie/git/chatgpt_claudecode_workflow/.pb_profile/promptbranch_artifacts.json",
+      "exists": true,
+      "current": {
+        "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.195.zip",
+        "filename": "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "kind": "adopted_release",
+        "version": "v0.0.195",
+        "repo_path": null,
+        "sha256": "88872aa2db8f6c10cd88807c10848af77245ac7b32249d60598011fe6bc72a93",
+        "size_bytes": 515862,
+        "file_count": 180,
+        "created_at": "2026-05-09T17:16:54.617805Z",
+        "source_ref": "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project"
+      },
+      "artifact_count": 18,
+      "filenames": [
+        "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "chatgpt_claudecode_workflow_v0.0.194.zip",
+        "chatgpt_claudecode_workflow_v0.0.192.zip",
+        "chatgpt_claudecode_workflow_v0.0.190.zip",
+        "chatgpt_claudecode_workflow_v0.0.189.zip",
+        "chatgpt_claudecode_workflow_v0.0.188.zip",
+        "chatgpt_claudecode_workflow_v0.0.187.zip",
+        "chatgpt_claudecode_workflow_v0.0.186.zip",
+        "chatgpt_claudecode_workflow_v0.0.185.zip",
+        "chatgpt_claudecode_workflow_v0.0.177.zip",
+        "chatgpt_claudecode_workflow_v0.0.174.zip",
+        "chatgpt_claudecode_workflow_v0.0.173.zip",
+        "chatgpt_claudecode_workflow_v0.0.172.zip",
+        "chatgpt_claudecode_workflow_v0.0.171.zip",
+        "chatgpt_claudecode_workflow_v0.0.170.zip",
+        "chatgpt_claudecode_workflow_v0.0.169.zip",
+        "chatgpt_claudecode_workflow_v0.0.168.zip",
+        "chatgpt_claudecode_workflow_v0.0.118.zip"
+      ]
+    },
+    "state": {
+      "project_home_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project",
+      "artifact_ref": "chatgpt_claudecode_workflow_v0.0.195.zip",
+      "artifact_version": "v0.0.195",
+      "source_ref": "chatgpt_claudecode_workflow_v0.0.195.zip",
+      "source_version": "v0.0.195"
+    }
+  },
+  "status": "adopted",
+  "artifact_version": "v0.0.196",
+  "source_version": "v0.0.196",
+  "source_verified": true,
+  "artifact_registry_updated": true,
+  "state_artifact_updated": true,
+  "state_source_updated": true,
+  "mutating_actions_executed": true,
+  "mutated_local_state_only": true,
+  "local_artifact": {
+    "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.196.zip",
+    "filename": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "kind": "adopted_release",
+    "version": "v0.0.196",
+    "repo_path": null,
+    "sha256": "bb80f0e453ffbc8519cda6daeb9c21003fd7bf6914c11a1692aa771d5c9ba744",
+    "size_bytes": 519253,
+    "file_count": 181,
+    "created_at": "2026-05-09T18:30:14.669334Z",
+    "source_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project"
+  },
+  "local_path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.196.zip",
+  "zip": {
+    "ok": true,
+    "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.196.zip",
+    "filename": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "sha256": "bb80f0e453ffbc8519cda6daeb9c21003fd7bf6914c11a1692aa771d5c9ba744",
+    "size_bytes": 519253,
+    "entry_count": 181,
+    "has_version_file": true,
+    "bad_entry": null,
+    "unsafe_entries": [],
+    "hygiene_violations": [],
+    "hygiene_violation_count": 0,
+    "wrapper_folder": null
+  },
+  "source_list": {
+    "ok": true,
+    "action": "list",
+    "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project",
+    "count": 23,
+    "empty_state_visible": false,
+    "sources": [
+      {
+        "index": 1,
+        "name": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible"
+      },
+      {
+        "index": 2,
+        "name": "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.195.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.195.zip File contents may not be accessible"
+      },
+      {
+        "index": 3,
+        "name": "chatgpt_claudecode_workflow_v0.0.194.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.194.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.194.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.194.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.194.zip File contents may not be accessible"
+      },
+      {
+        "index": 4,
+        "name": "chatgpt_claudecode_workflow_v0.0.193.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.193.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.193.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.193.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.193.zip File contents may not be accessible"
+      },
+      {
+        "index": 5,
+        "name": "chatgpt_claudecode_workflow_v0.0.192.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.192.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.192.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.192.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.192.zip File contents may not be accessible"
+      },
+      {
+        "index": 6,
+        "name": "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt",
+        "title": "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt",
+        "subtitle": "Document · May 9, 2026",
+        "identity": "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt Document",
+        "key": "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt",
+        "text": "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt Document · May 9, 2026"
+      },
+      {
+        "index": 7,
+        "name": "chatgpt_claudecode_workflow_v0.0.191.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.191.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.191.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.191.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.191.zip File contents may not be accessible"
+      },
+      {
+        "index": 8,
+        "name": "chatgpt_claudecode_workflow_v0.0.190.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.190.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.190.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.190.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.190.zip File contents may not be accessible"
+      },
+      {
+        "index": 9,
+        "name": "chatgpt_claudecode_workflow_v0.0.189.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.189.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.189.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.189.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.189.zip File contents may not be accessible"
+      },
+      {
+        "index": 10,
+        "name": "chatgpt_claudecode_workflow_v0.0.188.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.188.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.188.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.188.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.188.zip File contents may not be accessible"
+      },
+      {
+        "index": 11,
+        "name": "chatgpt_claudecode_workflow_v0.0.187.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.187.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.187.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.187.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.187.zip File contents may not be accessible"
+      },
+      {
+        "index": 12,
+        "name": "chatgpt_claudecode_workflow_v0.0.186.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.186.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.186.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.186.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.186.zip File contents may not be accessible"
+      },
+      {
+        "index": 13,
+        "name": "chatgpt_claudecode_workflow_v0.0.185.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.185.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.185.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.185.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.185.zip File contents may not be accessible"
+      },
+      {
+        "index": 14,
+        "name": "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt",
+        "title": "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt",
+        "subtitle": "Document · May 6, 2026",
+        "identity": "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt Document",
+        "key": "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt",
+        "text": "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt Document · May 6, 2026"
+      },
+      {
+        "index": 15,
+        "name": "chatgpt_claudecode_workflow_v0.0.175.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.175.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.175.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.175.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.175.zip File contents may not be accessible"
+      },
+      {
+        "index": 16,
+        "name": "promptbranch_previous_chat_summary_task_69eb3185-7780-8394-aa7c-5d4c2e53b590_updated-2026-05-03.md",
+        "title": "promptbranch_previous_chat_summary_task_69eb3185-7780-8394-aa7c-5d4c2e53b590_updated-2026-05-03.md",
+        "subtitle": "File · May 3, 2026",
+        "identity": "promptbranch_previous_chat_summary_task_69eb3185-7780-8394-aa7c-5d4c2e53b590_updated-2026-05-03.md File",
+        "key": "promptbranch_previous_chat_summary_task_69eb3185-7780-8394-aa7c-5d4c2e53b590_updated-2026-05-03.md",
+        "text": "promptbranch_previous_chat_summary_task_69eb3185-7780-8394-aa7c-5d4c2e53b590_updated-2026-05-03.md File · May 3, 2026"
+      },
+      {
+        "index": 17,
+        "name": "promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md",
+        "title": "promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md",
+        "subtitle": "File · May 3, 2026",
+        "identity": "promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md File",
+        "key": "promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md",
+        "text": "promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md File · May 3, 2026"
+      },
+      {
+        "index": 18,
+        "name": "promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md",
+        "title": "promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md",
+        "subtitle": "File · May 3, 2026",
+        "identity": "promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md File",
+        "key": "promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md",
+        "text": "promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md File · May 3, 2026"
+      },
+      {
+        "index": 19,
+        "name": "Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt",
+        "title": "Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt",
+        "subtitle": "Document · May 3, 2026",
+        "identity": "Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt Document",
+        "key": "promptbranch-as-claude-code-shell-operating-model.updated-2026-05-03.txt",
+        "text": "Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt Document · May 3, 2026"
+      },
+      {
+        "index": 20,
+        "name": "Promptbranch-as-Claude-Code-Shell-Operating-Model.txt",
+        "title": "Promptbranch-as-Claude-Code-Shell-Operating-Model.txt",
+        "subtitle": "Document · May 3, 2026",
+        "identity": "Promptbranch-as-Claude-Code-Shell-Operating-Model.txt Document",
+        "key": "promptbranch-as-claude-code-shell-operating-model.txt",
+        "text": "Promptbranch-as-Claude-Code-Shell-Operating-Model.txt Document · May 3, 2026"
+      },
+      {
+        "index": 21,
+        "name": "Test script for chatgpt-cli.txt",
+        "title": "Test script for chatgpt-cli.txt",
+        "subtitle": "Apr 23, 2026",
+        "identity": "Test script for chatgpt-cli.txt Apr 23, 2026",
+        "key": "test script for chatgpt-cli.txt",
+        "text": "Test script for chatgpt-cli.txt Apr 23, 2026"
+      },
+      {
+        "index": 22,
+        "name": "ChatGPT project workflow strategy",
+        "title": "ChatGPT project workflow strategy",
+        "subtitle": "Apr 23, 2026",
+        "identity": "ChatGPT project workflow strategy Apr 23, 2026",
+        "key": "chatgpt project workflow strategy",
+        "text": "ChatGPT project workflow strategy Apr 23, 2026"
+      },
+      {
+        "index": 23,
+        "name": "Early refresh aborting save",
+        "title": "Early refresh aborting save",
+        "subtitle": "Apr 21, 2026",
+        "identity": "Early refresh aborting save Apr 21, 2026",
+        "key": "early refresh aborting save",
+        "text": "Early refresh aborting save Apr 21, 2026"
+      }
+    ],
+    "current_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project?tab=sources",
+    "rate_limit_telemetry": {
+      "rate_limit_modal_detected": false,
+      "conversation_history_429_seen": false,
+      "cooldown_wait_seconds_total": 0.0,
+      "cooldown_wait_count": 0,
+      "service_rate_limit_events": []
+    },
+    "matching_expected_count": 1,
+    "matching_expected": [
+      {
+        "index": 1,
+        "name": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "title": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "subtitle": "File contents may not be accessible",
+        "identity": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible",
+        "key": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "text": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible"
+      }
+    ]
+  },
+  "matched_source": {
+    "index": 1,
+    "name": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "title": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "subtitle": "File contents may not be accessible",
+    "identity": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible",
+    "key": "chatgpt_claudecode_workflow_v0.0.196.zip",
+    "text": "chatgpt_claudecode_workflow_v0.0.196.zip File contents may not be accessible"
+  },
+  "checks": {
+    "source_verified": true,
+    "zip_verified": true,
+    "zip_version_matches_filename": true,
+    "registry_current_matches_artifact": true,
+    "state_artifact_updated": true,
+    "state_source_updated": true,
+    "project_source_mutated": false
+  },
+  "after_snapshot": {
+    "artifact_registry": {
+      "path": "/home/spikkie/git/chatgpt_claudecode_workflow/.pb_profile/promptbranch_artifacts.json",
+      "exists": true,
+      "current": {
+        "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.196.zip",
+        "filename": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "kind": "adopted_release",
+        "version": "v0.0.196",
+        "repo_path": null,
+        "sha256": "bb80f0e453ffbc8519cda6daeb9c21003fd7bf6914c11a1692aa771d5c9ba744",
+        "size_bytes": 519253,
+        "file_count": 181,
+        "created_at": "2026-05-09T18:30:14.669334Z",
+        "source_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project"
+      },
+      "artifact_count": 19,
+      "filenames": [
+        "chatgpt_claudecode_workflow_v0.0.196.zip",
+        "chatgpt_claudecode_workflow_v0.0.195.zip",
+        "chatgpt_claudecode_workflow_v0.0.194.zip",
+        "chatgpt_claudecode_workflow_v0.0.192.zip",
+        "chatgpt_claudecode_workflow_v0.0.190.zip",
+        "chatgpt_claudecode_workflow_v0.0.189.zip",
+        "chatgpt_claudecode_workflow_v0.0.188.zip",
+        "chatgpt_claudecode_workflow_v0.0.187.zip",
+        "chatgpt_claudecode_workflow_v0.0.186.zip",
+        "chatgpt_claudecode_workflow_v0.0.185.zip",
+        "chatgpt_claudecode_workflow_v0.0.177.zip",
+        "chatgpt_claudecode_workflow_v0.0.174.zip",
+        "chatgpt_claudecode_workflow_v0.0.173.zip",
+        "chatgpt_claudecode_workflow_v0.0.172.zip",
+        "chatgpt_claudecode_workflow_v0.0.171.zip",
+        "chatgpt_claudecode_workflow_v0.0.170.zip",
+        "chatgpt_claudecode_workflow_v0.0.169.zip",
+        "chatgpt_claudecode_workflow_v0.0.168.zip",
+        "chatgpt_claudecode_workflow_v0.0.118.zip"
+      ]
+    },
+    "state": {
+      "project_home_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project",
+      "artifact_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+      "artifact_version": "v0.0.196",
+      "source_ref": "chatgpt_claudecode_workflow_v0.0.196.zip",
+      "source_version": "v0.0.196"
+    }
+  }
+}

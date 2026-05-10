@@ -34,6 +34,12 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "session_20260508_004724.log").write_text("session", encoding="utf-8")
     (repo / "stdout.json").write_text("{}", encoding="utf-8")
     (repo / "stderr.txt").write_text("err", encoding="utf-8")
+    (repo / "pb_artifact_adopt.v0.0.196.json").write_text("{}", encoding="utf-8")
+    (repo / "pb_artifact_current.v0.0.196.json").write_text("{}", encoding="utf-8")
+    (repo / "pb_artifact_verify.v0.0.196.json").write_text("{}", encoding="utf-8")
+    (repo / "pb_src_list.before_adopt.v0.0.196.json").write_text("{}", encoding="utf-8")
+    (repo / "pb_test.full.v0.0.196.report.json").write_text("{}", encoding="utf-8")
+    (repo / "promptbranch-project-list.json").write_text("{}", encoding="utf-8")
     (repo / ".pytest_cache" / "v" / "cache").mkdir(parents=True)
     (repo / ".pytest_cache" / "v" / "cache" / "nodeids").write_text("[]", encoding="utf-8")
     (repo / "__pycache__").mkdir()
@@ -60,6 +66,12 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     assert "session_20260508_004724.log" not in included
     assert "stdout.json" not in included
     assert "stderr.txt" not in included
+    assert "pb_artifact_adopt.v0.0.196.json" not in included
+    assert "pb_artifact_current.v0.0.196.json" not in included
+    assert "pb_artifact_verify.v0.0.196.json" not in included
+    assert "pb_src_list.before_adopt.v0.0.196.json" not in included
+    assert "pb_test.full.v0.0.196.report.json" not in included
+    assert "promptbranch-project-list.json" not in included
     assert not any(".pytest_cache" in item for item in included)
     assert not any("__pycache__" in item for item in included)
     assert not any(item.endswith(".pyc") for item in included)
@@ -116,6 +128,10 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
         "pkg/__pycache__/module.cpython-312.pyc",
         "stdout.json",
         "stderr.txt",
+        "pb_artifact_adopt.v0.0.196.json",
+        "pb_src_list.before_adopt.v0.0.196.json",
+        "pb_test.full.v0.0.196.report.json",
+        "promptbranch-project-list.json",
     ]
 
     bad = release_entry_hygiene_violations(names)
@@ -130,6 +146,10 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
     assert "pkg/__pycache__/module.cpython-312.pyc" in bad
     assert "stdout.json" in bad
     assert "stderr.txt" in bad
+    assert "pb_artifact_adopt.v0.0.196.json" in bad
+    assert "pb_src_list.before_adopt.v0.0.196.json" in bad
+    assert "pb_test.full.v0.0.196.report.json" in bad
+    assert "promptbranch-project-list.json" in bad
 
 
 def test_verify_zip_artifact_rejects_generated_task_transcript(tmp_path: Path) -> None:

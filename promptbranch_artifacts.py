@@ -50,6 +50,9 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     "session_*.log",
     "stdout.json",
     "stderr.txt",
+    "pb_*.json",
+    "pb_*.report.json",
+    "promptbranch-project-list.json",
 )
 
 DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
@@ -74,6 +77,9 @@ DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
     "session_*.log",
     "stdout.json",
     "stderr.txt",
+    "pb_*.json",
+    "pb_*.report.json",
+    "promptbranch-project-list.json",
 )
 
 
