@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/ask.request.schema.json",
+  "title": "Promptbranch Ask Request",
+  "type": "object",
+  "required": ["schema", "schema_version", "request_id", "workspace", "task", "artifact", "intent", "constraints", "expected_reply"],
+  "properties": {
+    "schema": {"const": "promptbranch.ask.request"},
+    "schema_version": {"const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string"},
+    "workspace": {"type": "object"},
+    "task": {"type": "object"},
+    "artifact": {
+      "type": "object",
+      "required": ["repo", "current_baseline", "current_version"],
+      "properties": {
+        "repo": {"type": "string"},
+        "current_baseline": {"type": "string"},
+        "current_version": {"type": "string"},
+        "target_version": {"type": "string"},
+        "release_type": {"type": "string", "enum": ["normal", "repair", "analysis"]}
+      },
+      "additionalProperties": true
+    },
+    "intent": {"type": "object"},
+    "constraints": {"type": "object"},
+    "expected_reply": {"type": "object"}
+  },
+  "additionalProperties": true
+}

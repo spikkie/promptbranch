@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/artifact.candidate.schema.json",
+  "title": "Promptbranch Artifact Candidate",
+  "type": "object",
+  "required": ["kind", "filename", "version", "role", "download"],
+  "properties": {
+    "kind": {"type": "string", "enum": ["zip"]},
+    "filename": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$"},
+    "role": {"type": "string", "enum": ["candidate_release", "repair_candidate", "diagnostic_artifact"]},
+    "download": {
+      "type": "object",
+      "required": ["available"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "url": {"type": ["string", "null"]},
+        "link_text": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

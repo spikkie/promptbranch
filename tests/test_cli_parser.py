@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.200" in out
+    assert "0.0.201" in out
     assert "promptbranch" in out
 
 
@@ -298,6 +298,13 @@ def test_phase2_parser_accepts_task_message_commands() -> None:
     assert answer_args.task_message_command == "answer"
     assert answer_args.id_or_index == "abc"
     assert answer_args.target == "Current chat"
+
+    parse_args = parser.parse_args(["task", "answer", "parse", "--latest", "--json"])
+    assert parse_args.command == "task"
+    assert parse_args.task_command == "answer"
+    assert parse_args.task_answer_command == "parse"
+    assert parse_args.latest is True
+    assert parse_args.json is True
 
 
 def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:

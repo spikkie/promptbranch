@@ -334,7 +334,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.200
+## v0.0.201
 
 - Added explicit release-control log pruning with `--prune-release-logs`.
 - Added `--release-log-keep N` / `PROMPTBRANCH_RELEASE_LOG_KEEP` to retain a bounded number of version log directories when pruning.

@@ -642,7 +642,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.200
+## v0.0.201
 
 - Added explicit release-control log pruning with `--prune-release-logs`.
 - Added `--release-log-keep N` / `PROMPTBRANCH_RELEASE_LOG_KEEP` to retain a bounded number of version log directories when pruning.

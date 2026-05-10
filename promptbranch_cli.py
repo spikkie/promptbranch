@@ -50,6 +50,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
+from promptbranch_ask_protocol import parse_promptbranch_reply
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -1518,6 +1519,106 @@ async def cmd_task_message_answer(backend: Any, args: argparse.Namespace) -> int
     return 0
 
 
+
+def _resolve_task_answer(message: dict[str, Any], *, answer_index: str | None = None, answer_id: str | None = None) -> dict[str, Any]:
+    answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+    if not answers:
+        raise ValueError("selected message has no assistant answers")
+
+    if answer_id:
+        target = str(answer_id).strip()
+        exact = [item for item in answers if str(item.get("id") or "") == target]
+        if len(exact) == 1:
+            return exact[0]
+        prefix = [item for item in answers if str(item.get("id") or "").startswith(target)]
+        if len(prefix) == 1:
+            return prefix[0]
+        if len(prefix) > 1:
+            raise ValueError(f"multiple answers matched id prefix: {target}")
+        raise ValueError(f"answer not found: {target}")
+
+    target = str(answer_index or "latest").strip().lower()
+    if target in {"last", "latest"}:
+        return answers[-1]
+    if target.isdigit():
+        index = int(target)
+        if 1 <= index <= len(answers):
+            return answers[index - 1]
+        raise ValueError(f"answer index out of range: {target}")
+    raise ValueError(f"invalid answer index: {answer_index}")
+
+
+def _render_task_answer_parse_result(result: dict[str, Any]) -> str:
+    lines = [
+        f"status={result.get('status')}",
+        f"ok={str(bool(result.get('ok'))).lower()}",
+        f"message_id={((result.get('message') or {}) if isinstance(result.get('message'), dict) else {}).get('id') or 'none'}",
+        f"answer_id={((result.get('answer') or {}) if isinstance(result.get('answer'), dict) else {}).get('id') or 'none'}",
+        f"artifact_candidate_count={result.get('artifact_candidate_count') or 0}",
+    ]
+    candidates = result.get("artifact_candidates") if isinstance(result.get("artifact_candidates"), list) else []
+    for candidate in candidates:
+        lines.append(
+            f"- {candidate.get('filename') or '(missing filename)'}\t"
+            f"version={candidate.get('version') or 'unknown'}\t"
+            f"role={candidate.get('role') or 'unknown'}\t"
+            f"status={candidate.get('status') or 'unknown'}"
+        )
+    detail = result.get("detail")
+    if detail:
+        lines.append(f"detail={detail}")
+    errors = result.get("validation_errors")
+    if errors:
+        lines.append("validation_errors=" + ",".join(str(item) for item in errors))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
+    try:
+        payload = await _fetch_task_messages_payload(backend, args, getattr(args, "target", None))
+        message_selector = "latest" if getattr(args, "latest", False) or not getattr(args, "id_or_index", None) else args.id_or_index
+        message = _resolve_task_message(payload["messages"], message_selector)
+        answer = _resolve_task_answer(
+            message,
+            answer_index=getattr(args, "answer_index", None),
+            answer_id=getattr(args, "answer_id", None),
+        )
+    except ValueError as exc:
+        result = {
+            "ok": False,
+            "action": "task_answer_parse",
+            "status": "answer_selection_failed",
+            "error": str(exc),
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
+    result = {
+        **parsed,
+        "action": "task_answer_parse",
+        "project_url": payload.get("project_url"),
+        "conversation_url": payload.get("conversation_url"),
+        "conversation_id": payload.get("conversation_id"),
+        "title": payload.get("title"),
+        "message": {key: value for key, value in message.items() if key != "answers"},
+        "answer": {key: value for key, value in answer.items() if key != "text"},
+        "answer_text_length": len(str(answer.get("text") or "")),
+        "automation_performed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(_render_task_answer_parse_result(result), end="")
+    return 0 if result.get("ok") else 1
+
+
 async def cmd_chat_summarize(backend: Any, args: argparse.Namespace) -> int:
     try:
         selected = await _resolve_chat_target(backend, args, args.target, keep_open=args.keep_open)
@@ -1778,7 +1879,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
     return {
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
-        "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "--json", "--keep-open", "--deep-history", "--task"],
+        "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
@@ -2209,6 +2310,10 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
         if args.task_message_command == "answer":
             return await cmd_task_message_answer(backend, args)
         raise RuntimeError(f"Unknown task message command: {args.task_message_command}")
+    if args.task_command == "answer":
+        if args.task_answer_command == "parse":
+            return await cmd_task_answer_parse(backend, args)
+        raise RuntimeError(f"Unknown task answer command: {args.task_answer_command}")
     raise RuntimeError(f"Unknown task command: {args.task_command}")
 
 
@@ -4232,6 +4337,17 @@ def make_parser() -> argparse.ArgumentParser:
     task_message_answer.add_argument("--json", action="store_true", help="Emit answer payload as JSON.")
     task_message_answer.add_argument("--keep-open", action="store_true")
 
+    task_answer = task_subparsers.add_parser("answer", help="Parse assistant answers as Promptbranch protocol data.")
+    task_answer_subparsers = task_answer.add_subparsers(dest="task_answer_command", required=True)
+    task_answer_parse = task_answer_subparsers.add_parser("parse", help="Parse one assistant answer for a Promptbranch reply envelope.")
+    task_answer_parse.add_argument("id_or_index", nargs="?", help="User message index/id. Defaults to latest when --latest is used or no selector is provided.")
+    task_answer_parse.add_argument("--latest", action="store_true", help="Parse the latest assistant answer on the latest user message.")
+    task_answer_parse.add_argument("--answer-index", help="Assistant answer index for the selected user message. Defaults to latest.")
+    task_answer_parse.add_argument("--answer-id", help="Assistant answer exact id or unique id prefix.")
+    task_answer_parse.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    task_answer_parse.add_argument("--json", action="store_true", help="Emit parsed protocol reply as JSON.")
+    task_answer_parse.add_argument("--keep-open", action="store_true")
+
     src = subparsers.add_parser("src", help="Source commands for the active workspace.")
     src_subparsers = src.add_subparsers(dest="src_command", required=True)
 
@@ -4276,7 +4392,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.200.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.201.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
