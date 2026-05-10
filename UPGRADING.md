@@ -334,6 +334,19 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.198.1
+
+- Repair release for `v0.0.198`; no slice or line advanced.
+- Hardened `chatgpt_claudecode_workflow_release_control.sh` after a reported Bash parse failure near inline Python in the Project Source verification path.
+- Reworked the source-list verification and local service health-probe inline Python to use `python3 -c`, reducing heredoc parsing sensitivity.
+- Updated release-control version normalization to accept numeric repair versions such as `v0.0.198.1`.
+
+## v0.0.198
+
+- Made release-control Docker log capture best-effort: missing/stale containers now emit a warning and do not make the final operator output look like a failed release.
+- Clarified guarded adoption flags: `--adopt-if-green` is now supported only with `--tests-only`. Use `--run-tests` for the full release workflow, then `--adopt-current` as a separate explicit step.
+- Added regression coverage for stale Docker container IDs and for rejecting `--run-tests --adopt-if-green`.
+
 ## v0.0.197
 
 - Added guarded release-control adoption automation: `--adopt-current` verifies the local ZIP, confirms exactly one matching Project Source, runs `pb artifact adopt`, and verifies `pb artifact current` alignment.
