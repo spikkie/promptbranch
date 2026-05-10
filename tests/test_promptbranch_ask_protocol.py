@@ -74,3 +74,13 @@ def test_protocol_schema_and_examples_are_valid_json() -> None:
     for rel in paths:
         parsed = json.loads(Path(rel).read_text())
         assert isinstance(parsed, dict)
+
+
+def test_ask_protocol_module_is_declared_for_setuptools_install() -> None:
+    import tomllib
+
+    data = tomllib.loads(Path("pyproject.toml").read_text())
+    modules = data["tool"]["setuptools"]["py-modules"]
+    assert "promptbranch_ask_protocol" in modules
+    package_data = data["tool"]["setuptools"]["package-data"]
+    assert "promptbranch_protocol" in package_data
