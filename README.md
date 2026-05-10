@@ -642,7 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.201.1.1
+## v0.0.202
+
+- Added MVP-F1 artifact-candidate intake: `pb artifact intake --from-last-answer --json` parses the latest Promptbranch reply envelope and classifies ZIP candidates.
+- Added expected artifact/version/repo checks with explicit statuses for missing, ambiguous, wrong filename, wrong version, and wrong project candidates.
+- Kept intake read-only: no ZIP download, no migration, no adoption, no Project Source mutation.
+
+## v0.0.200
 
 - Added explicit release-control log pruning with `--prune-release-logs`.
 - Added `--release-log-keep N` / `PROMPTBRANCH_RELEASE_LOG_KEEP` to retain a bounded number of version log directories when pruning.

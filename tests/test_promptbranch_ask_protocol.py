@@ -6,8 +6,11 @@ from pathlib import Path
 from promptbranch_ask_protocol import (
     BEGIN_REPLY_MARKER,
     END_REPLY_MARKER,
+    classify_artifact_candidates,
     extract_reply_blocks,
     parse_promptbranch_reply,
+    repo_prefix_from_artifact_filename,
+    version_from_artifact_filename,
 )
 
 
@@ -35,6 +38,52 @@ def test_parse_promptbranch_reply_returns_artifact_candidates() -> None:
     assert candidate["status"] == "candidate_found"
     assert candidate["filename"] == "chatgpt_claudecode_workflow_v0.0.201.zip"
     assert candidate["download"]["available"] is True
+
+
+
+
+def test_version_and_repo_prefix_are_extracted_from_artifact_filename() -> None:
+    filename = "chatgpt_claudecode_workflow_v0.0.202.zip"
+
+    assert version_from_artifact_filename(filename) == "v0.0.202"
+    assert repo_prefix_from_artifact_filename(filename) == "chatgpt_claudecode_workflow"
+
+
+def test_classify_artifact_candidates_selects_expected_zip() -> None:
+    parsed = parse_promptbranch_reply(_valid_reply_text())
+
+    payload = classify_artifact_candidates(
+        parsed["artifact_candidates"],
+        expected_filename="chatgpt_claudecode_workflow_v0.0.201.zip",
+        expected_version="v0.0.201",
+        expected_repo="chatgpt_claudecode_workflow",
+    )
+
+    assert payload["ok"] is True
+    assert payload["status"] == "candidate_selected"
+    assert payload["selected_candidate"]["filename"] == "chatgpt_claudecode_workflow_v0.0.201.zip"
+    assert payload["download_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+
+
+def test_classify_artifact_candidates_reports_missing_ambiguous_and_wrong_version() -> None:
+    assert classify_artifact_candidates([])["status"] == "artifact_candidate_missing"
+
+    ambiguous = classify_artifact_candidates([
+        {"filename": "repo_v0.0.1.zip", "version": "v0.0.1"},
+        {"filename": "repo_v0.0.2.zip", "version": "v0.0.2"},
+    ])
+    assert ambiguous["ok"] is False
+    assert ambiguous["status"] == "artifact_candidate_ambiguous"
+
+    wrong = classify_artifact_candidates(
+        [{"filename": "repo_v0.0.1.zip", "version": "v0.0.1"}],
+        expected_version="v0.0.2",
+    )
+    assert wrong["ok"] is False
+    assert wrong["status"] == "artifact_wrong_version"
+    assert wrong["artifact_candidates"][0]["status"] == "artifact_wrong_version"
 
 
 def test_parse_promptbranch_reply_reports_missing_block() -> None:
