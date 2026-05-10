@@ -53,6 +53,7 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     "pb_*.json",
     "pb_*.report.json",
     "promptbranch-project-list.json",
+    "release_logs/",
 )
 
 DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
@@ -80,6 +81,7 @@ DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
     "pb_*.json",
     "pb_*.report.json",
     "promptbranch-project-list.json",
+    "release_logs/",
 )
 
 

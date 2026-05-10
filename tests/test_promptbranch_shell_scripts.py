@@ -278,6 +278,88 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
 
 
 
+
+def test_release_control_prunes_old_release_logs_only_when_requested(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+
+    release_root = repo / ".pb_profile" / "release_logs"
+    old1 = release_root / "v0.0.190"
+    old2 = release_root / "v0.0.191"
+    current = release_root / version
+    old1.mkdir(parents=True)
+    old2.mkdir(parents=True)
+    (old1 / "old.log").write_text("old1\n", encoding="utf-8")
+    (old2 / "old.log").write_text("old2\n", encoding="utf-8")
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-prune.log"
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--tests-only",
+            "--version", version,
+            "--prune-release-logs",
+            "--release-log-keep", "1",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert current.is_dir()
+    assert (current / "pb_test.full.v9.9.9.log").is_file()
+    assert not old1.exists()
+    assert not old2.exists()
+    assert "Release log pruning completed" in result.stdout
+    assert "log_prune:     keep=1" in result.stdout
+
+
+def test_release_control_does_not_prune_release_logs_by_default(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+
+    release_root = repo / ".pb_profile" / "release_logs"
+    old = release_root / "v0.0.190"
+    old.mkdir(parents=True)
+    (old / "old.log").write_text("old\n", encoding="utf-8")
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-no-prune.log"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--version", version],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert old.is_dir()
+    assert "log_prune:     skipped" in result.stdout
+
 def test_release_control_writes_generated_logs_under_pb_profile() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
@@ -288,6 +370,9 @@ def test_release_control_writes_generated_logs_under_pb_profile() -> None:
     assert 'service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"' in text
     assert 'service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")' in text
     assert 'service_start: $(summary_value "${service_summary_active}" "${service_start_log}")' in text
+    assert "--prune-release-logs" in text
+    assert "--release-log-keep" in text
+    assert 'log_prune:     $(summary_value "${prune_summary_active}" "keep=${release_log_keep}")' in text
 
 def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"

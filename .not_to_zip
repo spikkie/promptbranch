@@ -66,3 +66,6 @@ pb_*.json
 pb_*.report.json
 promptbranch-project-list.json
 
+
+# Optional custom release-control log root
+release_logs/

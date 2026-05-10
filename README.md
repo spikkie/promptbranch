@@ -642,6 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.200
+
+- Added explicit release-control log pruning with `--prune-release-logs`.
+- Added `--release-log-keep N` / `PROMPTBRANCH_RELEASE_LOG_KEEP` to retain a bounded number of version log directories when pruning.
+- Pruning is opt-in; default behavior preserves all `.pb_profile/release_logs/<version>/` diagnostics.
+- The current release log directory is always retained during pruning.
+
 ## v0.0.199
 
 - Moved release-control generated logs and JSON audit artifacts under `.pb_profile/release_logs/<version>/` instead of writing them into the repository root.

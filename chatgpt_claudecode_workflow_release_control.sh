@@ -30,6 +30,8 @@ owner_user="${PROMPTBRANCH_OWNER_USER:-${SUDO_USER:-${USER}}}"
 owner_group="${PROMPTBRANCH_OWNER_GROUP:-${owner_user}}"
 version_arg="${PB_RELEASE_VERSION:-}"
 release_log_root_arg="${PROMPTBRANCH_RELEASE_LOG_DIR:-}"
+release_log_keep="${PROMPTBRANCH_RELEASE_LOG_KEEP:-12}"
+prune_release_logs=0
 
 skip_compare=0
 skip_commit=0
@@ -96,6 +98,9 @@ Options:
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --release-log-dir DIR    Directory root for release-control logs. Default: .pb_profile/release_logs.
+      --release-log-keep N     Number of version log directories to keep when pruning. Default: 12.
+      --prune-release-logs     After the workflow, prune old release log directories under the
+                              release log root. The current version directory is always kept.
       --keep-workdir          Keep temporary extracted comparison directory.
   -h, --help                  Show this help.
 
@@ -155,6 +160,13 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --release-log-dir=*) release_log_root_arg="${1#*=}"; shift ;;
+    --release-log-keep)
+      [[ $# -ge 2 ]] || fail "--release-log-keep requires an integer value"
+      release_log_keep="$2"
+      shift 2
+      ;;
+    --release-log-keep=*) release_log_keep="${1#*=}"; shift ;;
+    --prune-release-logs) prune_release_logs=1; shift ;;
     --container-id)
       [[ $# -ge 2 ]] || fail "--container-id requires a value"
       container_id="$2"
@@ -259,6 +271,10 @@ case "${service_mode}" in
 esac
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
+[[ "${release_log_keep}" =~ ^[0-9]+$ ]] || fail "--release-log-keep must be an integer number of version directories"
+if (( release_log_keep < 1 )); then
+  fail "--release-log-keep must be at least 1 so the current release log directory is retained"
+fi
 if [[ ${adopt_if_green} -eq 1 && ${tests_only} -eq 0 ]]; then
   fail "--adopt-if-green is only supported with --tests-only. Use --tests-only --adopt-if-green for guarded adoption, or run --run-tests and then --adopt-current as a separate explicit step."
 fi
@@ -325,6 +341,8 @@ printf 'artifact_zip:   %s\n' "${artifact_zip}"
 printf 'download_zip:   %s\n' "${download_zip}"
 printf 'work_dir:       %s\n' "${work_dir}"
 printf 'release_logs:   %s\n' "${release_log_dir}"
+printf 'log_prune:      %s\n' "${prune_release_logs}"
+printf 'log_keep:       %s\n' "${release_log_keep}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
@@ -851,9 +869,69 @@ capture_docker_logs_best_effort() {
   return 0
 }
 
+prune_release_logs_best_effort() {
+  # Explicit opt-in cleanup only. Logs are diagnostic evidence, so never prune
+  # unless the operator asked for it. The current version directory is always
+  # retained, even when it is older than other directories.
+  python3 - "${release_log_root}" "${release_log_dir}" "${release_log_keep}" <<'INNERPY'
+from __future__ import annotations
+
+from pathlib import Path
+import shutil
+import sys
+
+root = Path(sys.argv[1]).expanduser().resolve()
+current = Path(sys.argv[2]).expanduser().resolve()
+keep = int(sys.argv[3])
+if keep < 1:
+    raise SystemExit("release_log_keep must be >= 1")
+if not root.exists():
+    print(f"Release log pruning skipped: root does not exist: {root}")
+    raise SystemExit(0)
+if not root.is_dir():
+    print(f"WARN: release log root is not a directory; skipping prune: {root}", file=sys.stderr)
+    raise SystemExit(0)
+try:
+    current.relative_to(root)
+except ValueError:
+    print(f"WARN: current release log dir is outside release log root; skipping prune: {current}", file=sys.stderr)
+    raise SystemExit(0)
+entries = [path for path in root.iterdir() if path.is_dir()]
+entries.sort(key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
+kept: list[Path] = []
+removed: list[Path] = []
+if current.exists():
+    kept.append(current)
+for path in entries:
+    if path == current:
+        continue
+    if len(kept) < keep:
+        kept.append(path)
+    else:
+        removed.append(path)
+for path in removed:
+    shutil.rmtree(path)
+print("Release log pruning completed:")
+print(f"  root:    {root}")
+print(f"  keep:    {keep}")
+print(f"  kept:    {len(kept)}")
+print(f"  removed: {len(removed)}")
+if removed:
+    print("  removed_dirs:")
+    for path in removed:
+        print(f"    {path}")
+INNERPY
+}
+
 # Capture service logs as a best-effort diagnostic only.
 if [[ ${skip_docker_logs} -eq 0 ]]; then
   capture_docker_logs_best_effort
+fi
+
+prune_summary_active=0
+if [[ ${prune_release_logs} -eq 1 ]]; then
+  prune_release_logs_best_effort
+  prune_summary_active=1
 fi
 
 summary_value() {
@@ -887,6 +965,7 @@ Release workflow completed.
 version:       ${ver}
 artifact:      ${artifact_zip}
 release_logs:  ${release_log_dir}
+log_prune:     $(summary_value "${prune_summary_active}" "keep=${release_log_keep}")
 full_log:      $(summary_value "${tests_summary_active}" "${full_log}")
 report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
 adopt_current: ${adopt_current}
