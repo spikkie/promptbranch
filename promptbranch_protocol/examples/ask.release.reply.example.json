@@ -1,0 +1,45 @@
+{
+  "schema": "promptbranch.ask.reply",
+  "schema_version": "1.0",
+  "request_id": "req_20260510_001",
+  "correlation_id": "corr_20260510_001",
+  "status": "completed",
+  "result_type": "release_candidate",
+  "summary": "Implemented ask/reply protocol schema and answer parsing.",
+  "baseline": {
+    "input_artifact": "chatgpt_claudecode_workflow_v0.0.200.zip",
+    "input_version": "v0.0.200",
+    "output_artifact": "chatgpt_claudecode_workflow_v0.0.201.zip",
+    "output_version": "v0.0.201",
+    "release_type": "normal"
+  },
+  "changes": [
+    {
+      "path": "promptbranch_protocol/schemas/ask.request.schema.json",
+      "kind": "added",
+      "summary": "Defines the ask request envelope."
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "zip",
+      "filename": "chatgpt_claudecode_workflow_v0.0.201.zip",
+      "version": "v0.0.201",
+      "role": "candidate_release",
+      "download": {
+        "available": true,
+        "link_text": "chatgpt_claudecode_workflow_v0.0.201.zip",
+        "url": null
+      }
+    }
+  ],
+  "validation": {
+    "claimed": ["bash -n shell scripts", "py_compile OK", "focused tests passed", "ZIP hygiene passed"],
+    "not_claimed": ["full browser suite", "local adoption"]
+  },
+  "next_step": {
+    "operator_action": "download_verify_test_adopt",
+    "recommended_command": "pb artifact intake --from-last-answer --download --verify --migrate --json"
+  },
+  "confidence": "medium"
+}

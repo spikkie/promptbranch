@@ -1,0 +1,39 @@
+{
+  "schema": "promptbranch.ask.request",
+  "schema_version": "1.0",
+  "request_id": "req_20260510_001",
+  "correlation_id": "corr_20260510_001",
+  "workspace": {
+    "project_name": "Claude Code workflow in ChatGPT",
+    "project_home_url": "https://chatgpt.com/..."
+  },
+  "task": {
+    "conversation_id": "current",
+    "turn_policy": "assistant_may_return_one_protocol_reply"
+  },
+  "artifact": {
+    "repo": "chatgpt_claudecode_workflow",
+    "current_baseline": "chatgpt_claudecode_workflow_v0.0.200.zip",
+    "current_version": "v0.0.200",
+    "target_version": "v0.0.201",
+    "release_type": "normal"
+  },
+  "intent": {
+    "kind": "software_release_request",
+    "summary": "Implement ask/reply protocol first slice."
+  },
+  "constraints": {
+    "preserve_baseline": true,
+    "zip_root_must_be_repo_contents": true,
+    "no_patch_files": true,
+    "no_wrapper_folder": true,
+    "no_cache_files": true,
+    "no_nested_zips": true,
+    "no_auto_adopt": true
+  },
+  "expected_reply": {
+    "schema": "promptbranch.ask.reply",
+    "schema_version": "1.0",
+    "required_sections": ["status", "summary", "baseline", "changes", "artifacts", "validation", "next_step"]
+  }
+}
