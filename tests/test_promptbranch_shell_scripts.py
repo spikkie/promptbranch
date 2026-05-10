@@ -93,13 +93,18 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
 
     assert "tests_only:     1" in result.stdout
     assert "Download ZIP not found" not in result.stdout + result.stderr
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.9"
     assert not (repo / "chatgpt_claudecode_workflow_v9.9.9.zip").exists()
-    assert (repo / "pb_test.full.v9.9.9.log").is_file()
-    assert (repo / "pb_test.full.v9.9.9.report.json").is_file()
-    assert (repo / "release-control-tests-only.log").is_file()
+    assert (log_dir / "pb_test.full.v9.9.9.log").is_file()
+    assert (log_dir / "pb_test.full.v9.9.9.report.json").is_file()
+    assert (log_dir / "release-control-tests-only.log").is_file()
+    assert "release_logs:" in result.stdout
+    assert "service_log:   skipped" in result.stdout
+    assert "service_start: skipped" in result.stdout
+    assert "service_pid:   skipped" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
     assert "pb test full --json" in call_text
-    assert "pb test report pb_test.full.v9.9.9.log --json" in call_text
+    assert f"pb test report {log_dir / 'pb_test.full.v9.9.9.log'} --json" in call_text
     assert "promptbranch src add" not in call_text
 
 
@@ -263,11 +268,26 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
 
     assert "WARN: docker container no longer exists; skipping docker logs: deadbeef" in result.stderr
     assert "Release workflow completed." in result.stdout
+    assert "release_logs:" in result.stdout
+    assert ".pb_profile/release_logs/v9.9.9/promptbranch-service.9.9.9.log" in result.stdout
+    assert "service_start: skipped" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
     assert "docker ps" in call_text
     assert "docker inspect deadbeef" in call_text
     assert "docker logs" not in call_text
 
+
+
+def test_release_control_writes_generated_logs_under_pb_profile() -> None:
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert 'release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"' in text
+    assert 'release_log_dir="${release_log_root}/${ver}"' in text
+    assert 'full_log="${release_log_dir}/pb_test.full.${ver}.log"' in text
+    assert 'service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"' in text
+    assert 'service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")' in text
+    assert 'service_start: $(summary_value "${service_summary_active}" "${service_start_log}")' in text
 
 def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"

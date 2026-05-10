@@ -642,6 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.199
+
+- Moved release-control generated logs and JSON audit artifacts under `.pb_profile/release_logs/<version>/` instead of writing them into the repository root.
+- Added `--release-log-dir DIR` to override the release-control log root when needed.
+- Made the final release-control summary conditional: skipped test/service/docker-log stages now print `skipped` instead of computed paths.
+- Kept `--tests-only` and `--adopt-current` free of service startup and Docker log capture side effects.
+
 ## v0.0.198.2
 
 - Repair release for `v0.0.198.1`; no slice or line advanced.

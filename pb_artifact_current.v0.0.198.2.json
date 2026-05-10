@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "action": "artifact_current",
+  "runtime": {
+    "package_version": "0.0.198.2",
+    "version": "v0.0.198.2"
+  },
+  "state": {
+    "artifact_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "artifact_version": "v0.0.198.2",
+    "source_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "source_version": "v0.0.198.2",
+    "project_home_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project"
+  },
+  "registry_current": {
+    "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "filename": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "kind": "adopted_release",
+    "version": "v0.0.198.2",
+    "repo_path": null,
+    "sha256": "c000005deb57c499e799f0ca86c24acd15b7b5605bc6feb1e5a913991393b101",
+    "size_bytes": 510820,
+    "file_count": 179,
+    "created_at": "2026-05-10T13:13:48.596217Z",
+    "source_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "project_url": "https://chatgpt.com/g/g-p-69cfcf67dbd48191b31a044c99656f9b-claude-code-workflow-in-chatgpt/project"
+  },
+  "baseline_roles": {
+    "runtime_code_version": "v0.0.198.2",
+    "adopted_artifact_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "adopted_artifact_version": "v0.0.198.2",
+    "adopted_source_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "adopted_source_version": "v0.0.198.2",
+    "registry_current_ref": "chatgpt_claudecode_workflow_v0.0.198.2.zip",
+    "registry_current_version": "v0.0.198.2",
+    "registry_current_kind": "adopted_release",
+    "code_matches_adopted_source": true,
+    "note": "runtime code release may intentionally differ from the adopted Project Source baseline"
+  },
+  "consistency": {
+    "registry_current_matches_state_artifact": true,
+    "state_source_matches_state_artifact": true,
+    "code_version_matches_state_source": true,
+    "project_home_url_present": true
+  },
+  "registry_file": "/home/spikkie/git/chatgpt_claudecode_workflow/.pb_profile/promptbranch_artifacts.json"
+}
