@@ -175,6 +175,100 @@ def test_release_control_adopt_current_verifies_and_adopts_without_running_tests
 
 
 
+def test_release_control_rejects_run_tests_adopt_if_green_without_tests_only(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version="v9.9.9")
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [str(script), "--run-tests", "--adopt-if-green", "--version", "v9.9.9"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "--adopt-if-green is only supported with --tests-only" in result.stderr
+    assert not calls.exists()
+
+
+def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    import zipfile
+
+    with zipfile.ZipFile(downloads / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+    (fake_bin / "pipx").write_text("#!/usr/bin/env bash\necho pipx \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "pipx").chmod(0o755)
+    (fake_bin / "git").write_text("#!/usr/bin/env bash\necho git \"$@\" >> \"$PB_FAKE_CALL_LOG\"\nexit 0\n", encoding="utf-8")
+    (fake_bin / "git").chmod(0o755)
+    (fake_bin / "docker").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo docker \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1\" == \"ps\" ]]; then echo 'deadbeef promptbranch-service promptbranch'; exit 0; fi\n"
+        "if [[ \"$1\" == \"inspect\" ]]; then exit 1; fi\n"
+        "if [[ \"$1\" == \"logs\" ]]; then echo should-not-call-logs >&2; exit 9; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "docker").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-docker-missing.log"
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version", version,
+            "--downloads-dir", str(downloads),
+            "--skip-compare",
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--run-tests",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "WARN: docker container no longer exists; skipping docker logs: deadbeef" in result.stderr
+    assert "Release workflow completed." in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "docker ps" in call_text
+    assert "docker inspect deadbeef" in call_text
+    assert "docker logs" not in call_text
+
+
 def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
@@ -182,5 +276,37 @@ def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
     assert "--adopt-if-green" in text
     assert 'report_is_green "${report_json}"' in text
     assert "adopt_current_artifact" in text
-    assert "--adopt-if-green requires --run-tests or --tests-only" in text
+    assert "--adopt-if-green is only supported with --tests-only" in text
     assert "--tests-only = no baseline mutation" not in text  # behavior is enforced by explicit flag checks, not prose
+
+
+def test_release_control_accepts_numeric_repair_version_for_adopt_current(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9.1"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    (repo / artifact).write_bytes(b"fake zip; pb artifact verify is mocked")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [str(script), "--adopt-current", "--version", version],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "version:        v9.9.9.1" in result.stdout
+    assert "Adopt verified" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert f"pb artifact adopt {artifact}" in call_text

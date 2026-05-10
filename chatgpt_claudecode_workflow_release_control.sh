@@ -61,7 +61,7 @@ Usage:
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.196, 0.0.196, or ${project_name}_v0.0.196.zip.
+                              Accepts v0.0.196, v0.0.196.1, 0.0.196, 0.0.196.1, or ${project_name}_v0.0.196.zip.
       --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
@@ -80,6 +80,8 @@ Options:
       --run-tests             Run pb test full/report. Disabled by default.
                               The test block is wrapped in startlog/stoplog when available,
                               or an internal tee-based session log fallback otherwise.
+                              Does not imply adoption. Use --tests-only --adopt-if-green for
+                              guarded adoption of an already uploaded Project Source ZIP.
       --tests-only            Run only the logged pb test full/report block for the selected
                               version. Implies --run-tests and skips import/compare,
                               commit, packaging, source add, install, service, and docker logs.
@@ -87,8 +89,9 @@ Options:
                               baseline after verifying the ZIP and Project Source. Skips release
                               import/compare, commit, packaging, source add, install, service,
                               and docker logs.
-      --adopt-if-green        With --run-tests/--tests-only, adopt the selected ZIP only when
-                              pb test report is ok:true, status:verified, and failure_count:0.
+      --adopt-if-green        With --tests-only, adopt the selected ZIP only when pb test report
+                              is ok:true, status:verified, and failure_count:0. Not valid with
+                              the full --run-tests release workflow.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --keep-workdir          Keep temporary extracted comparison directory.
@@ -102,6 +105,7 @@ Typical use:
   $(basename "$0") --tests-only
   $(basename "$0") --tests-only --adopt-if-green
   $(basename "$0") --adopt-current
+  $(basename "$0") --run-tests --skip-docker-logs
 USAGE
 }
 
@@ -121,7 +125,7 @@ normalize_version() {
   raw="${raw#${project_name}_}"
   raw="${raw#${project_name}}"
   raw="${raw#_}"
-  if [[ "${raw}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  if [[ "${raw}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     raw="${raw#v}"
     printf 'v%s\n' "${raw}"
     return 0
@@ -223,7 +227,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --adopt-if-green)
       adopt_if_green=1
-      adopt_current=1
       shift
       ;;
     --skip-tests) skip_tests=1; shift ;;
@@ -248,8 +251,11 @@ case "${service_mode}" in
 esac
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
+if [[ ${adopt_if_green} -eq 1 && ${tests_only} -eq 0 ]]; then
+  fail "--adopt-if-green is only supported with --tests-only. Use --tests-only --adopt-if-green for guarded adoption, or run --run-tests and then --adopt-current as a separate explicit step."
+fi
 if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
-  fail "--adopt-if-green requires --run-tests or --tests-only"
+  fail "--adopt-if-green requires --tests-only to run the full test/report block"
 fi
 
 if [[ -z "${version_arg}" ]]; then
@@ -257,7 +263,7 @@ if [[ -z "${version_arg}" ]]; then
   version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.196, 0.0.196, or ${project_name}_v0.0.196.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.196, v0.0.196.1, 0.0.196, 0.0.196.1, or ${project_name}_v0.0.196.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"
@@ -524,7 +530,7 @@ INNERPY
 
 verify_source_list_mentions_artifact() {
   local src_list_json="$1"
-  python3 - "$src_list_json" "${artifact_zip}" <<'INNERPY'
+  python3 -c '
 import json
 import sys
 from pathlib import Path
@@ -550,7 +556,7 @@ def source_objects(obj):
 matches = list(source_objects(payload))
 if len(matches) != 1:
     raise SystemExit(f"expected exactly one Project Source named {expected}, found {len(matches)}")
-INNERPY
+' "$src_list_json" "${artifact_zip}"
 }
 
 verify_current_matches_version() {
@@ -695,9 +701,9 @@ wait_for_promptbranch_service() {
       fi
     fi
     # Service may run without a recognizable Docker name. Probe the common local port gently.
-    if python3 - <<'PY' >/dev/null 2>&1
+    if python3 -c '
 import urllib.request
-for path in ("/healthz", "/health", "/"):
+for path in ["/healthz", "/health", "/"]:
     try:
         with urllib.request.urlopen("http://127.0.0.1:8000" + path, timeout=1.0) as response:
             if response.status < 500:
@@ -705,7 +711,7 @@ for path in ("/healthz", "/health", "/"):
     except Exception:
         pass
 raise SystemExit(1)
-PY
+' >/dev/null 2>&1
     then
       echo "Promptbranch service responded on http://127.0.0.1:8000"
       return 0
@@ -780,17 +786,34 @@ if [[ ${skip_tests} -eq 1 && ${adopt_current} -eq 1 ]]; then
   adopt_current_artifact
 fi
 
-# Capture service logs.
-if [[ ${skip_docker_logs} -eq 0 ]]; then
+capture_docker_logs_best_effort() {
   if [[ -z "${container_id}" ]]; then
-    container_id="$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk '/promptbranch|chatgpt/ {print $1; exit}')"
+    container_id="$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk '/promptbranch|chatgpt/ {print $1; exit}' || true)"
   fi
   if [[ -z "${container_id}" ]]; then
     echo "WARN: no promptbranch/chatgpt docker container auto-detected; skipping docker logs" >&2
-  else
-    docker logs "${container_id}" > "${service_log}"
-    echo "Service log written: ${service_log}"
+    return 0
   fi
+  if ! docker inspect "${container_id}" >/dev/null 2>&1; then
+    echo "WARN: docker container no longer exists; skipping docker logs: ${container_id}" >&2
+    return 0
+  fi
+  if docker logs "${container_id}" > "${service_log}" 2>"${service_log}.stderr"; then
+    if [[ ! -s "${service_log}.stderr" ]]; then
+      rm -f "${service_log}.stderr"
+    else
+      echo "WARN: docker logs wrote stderr; see ${service_log}.stderr" >&2
+    fi
+    echo "Service log written: ${service_log}"
+    return 0
+  fi
+  echo "WARN: docker logs failed for ${container_id}; continuing without failing release control. See ${service_log}.stderr if present." >&2
+  return 0
+}
+
+# Capture service logs as a best-effort diagnostic only.
+if [[ ${skip_docker_logs} -eq 0 ]]; then
+  capture_docker_logs_best_effort
 fi
 
 cat <<DONE
