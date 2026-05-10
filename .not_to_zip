@@ -62,3 +62,8 @@ task_show_*_messages.txt
 
 # Promptbranch service start PID files
 .promptbranch-service-start.*.pid
+# Promptbranch release-control/test audit artifacts
+pb_*.json
+pb_*.report.json
+promptbranch-project-list.json
+

@@ -334,7 +334,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.196
+## v0.0.197
 
 - Added guarded release-control adoption automation: `--adopt-current` verifies the local ZIP, confirms exactly one matching Project Source, runs `pb artifact adopt`, and verifies `pb artifact current` alignment.
 - Added `--tests-only --adopt-if-green` so full test/report can adopt the selected ZIP only when the report is `ok:true`, `status:verified`, and `failure_count:0`.

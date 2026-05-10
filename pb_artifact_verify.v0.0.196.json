@@ -1,0 +1,15 @@
+{
+  "action": "artifact_verify",
+  "ok": true,
+  "path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.196.zip",
+  "filename": "chatgpt_claudecode_workflow_v0.0.196.zip",
+  "sha256": "bb80f0e453ffbc8519cda6daeb9c21003fd7bf6914c11a1692aa771d5c9ba744",
+  "size_bytes": 519253,
+  "entry_count": 181,
+  "has_version_file": true,
+  "bad_entry": null,
+  "unsafe_entries": [],
+  "hygiene_violations": [],
+  "hygiene_violation_count": 0,
+  "wrapper_folder": null
+}
