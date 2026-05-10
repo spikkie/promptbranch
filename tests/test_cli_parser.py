@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.201" in out
+    assert "0.0.202" in out
     assert "promptbranch" in out
 
 
@@ -334,6 +334,17 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_verify.artifact_command == "verify"
     assert artifact_verify.path == "release.zip"
     assert artifact_verify.json is True
+
+    artifact_intake = parser.parse_args([
+        "artifact", "intake", "--from-last-answer", "--expect-artifact", "release.zip", "--expect-version", "v0.0.202", "--expect-repo", "repo", "--json"
+    ])
+    assert artifact_intake.command == "artifact"
+    assert artifact_intake.artifact_command == "intake"
+    assert artifact_intake.from_last_answer is True
+    assert artifact_intake.expect_artifact == "release.zip"
+    assert artifact_intake.expect_version == "v0.0.202"
+    assert artifact_intake.expect_repo == "repo"
+    assert artifact_intake.json is True
 
 
 def test_parser_accepts_strict_task_visibility_escape_hatch() -> None:

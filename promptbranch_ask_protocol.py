@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -145,6 +146,154 @@ def _validate_reply_object(reply: dict[str, Any]) -> list[str]:
         errors.append("next_step_not_object")
     return errors
 
+
+
+_VERSION_RE = re.compile(r"v?\d+\.\d+\.\d+(?:\.\d+)?")
+
+
+def version_from_artifact_filename(filename: str | None) -> str | None:
+    """Extract a canonical version token from an artifact ZIP filename."""
+
+    if not filename:
+        return None
+    match = _VERSION_RE.search(str(filename))
+    if not match:
+        return None
+    value = match.group(0)
+    return value if value.startswith("v") else f"v{value}"
+
+
+def repo_prefix_from_artifact_filename(filename: str | None, *, version: str | None = None) -> str | None:
+    """Infer the project/repo artifact prefix before the version token."""
+
+    if not filename:
+        return None
+    name = str(filename)
+    if name.endswith(".zip"):
+        name = name[:-4]
+    token = version or version_from_artifact_filename(filename)
+    if token:
+        for candidate in (token, token.removeprefix("v")):
+            idx = name.find(candidate)
+            if idx > 0:
+                prefix = name[:idx].rstrip("_.-")
+                return prefix or None
+    return None
+
+
+def _candidate_with_classification(
+    candidate: dict[str, Any],
+    *,
+    expected_filename: str | None = None,
+    expected_version: str | None = None,
+    expected_repo: str | None = None,
+) -> dict[str, Any]:
+    classified = dict(candidate)
+    filename = str(classified.get("filename") or "")
+    declared_version = classified.get("version")
+    filename_version = version_from_artifact_filename(filename)
+    expected_version_norm = version_from_artifact_filename(expected_version) or expected_version
+    repo_prefix = repo_prefix_from_artifact_filename(filename, version=filename_version)
+    issues: list[str] = []
+
+    if not filename:
+        issues.append("artifact_filename_missing")
+    if filename and not filename.endswith(".zip"):
+        issues.append("artifact_not_zip")
+    if declared_version and filename_version and str(declared_version) != filename_version:
+        issues.append("artifact_declared_version_mismatch")
+    if expected_filename and filename != expected_filename:
+        issues.append("artifact_wrong_filename")
+    if expected_version_norm and filename_version != expected_version_norm:
+        issues.append("artifact_wrong_version")
+    if expected_repo and repo_prefix != expected_repo:
+        issues.append("artifact_wrong_project")
+
+    classified["filename_version"] = filename_version
+    classified["repo_prefix"] = repo_prefix
+    classified["expected_filename"] = expected_filename
+    classified["expected_version"] = expected_version_norm
+    classified["expected_repo"] = expected_repo
+    classified["classification_errors"] = issues
+    if issues:
+        classified["valid"] = False
+        classified["status"] = issues[0]
+    elif filename:
+        classified["valid"] = True
+        classified["status"] = "candidate_found"
+    return classified
+
+
+def classify_artifact_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    expected_filename: str | None = None,
+    expected_version: str | None = None,
+    expected_repo: str | None = None,
+) -> dict[str, Any]:
+    """Classify parsed reply artifacts without downloading or mutating state."""
+
+    classified = [
+        _candidate_with_classification(
+            item,
+            expected_filename=expected_filename,
+            expected_version=expected_version,
+            expected_repo=expected_repo,
+        )
+        for item in candidates
+        if isinstance(item, dict)
+    ]
+    zip_candidates = [item for item in classified if str(item.get("filename") or "").endswith(".zip")]
+    valid_zip_candidates = [item for item in zip_candidates if item.get("valid")]
+
+    if not zip_candidates:
+        status = "artifact_candidate_missing"
+        selected = None
+        ok = False
+    elif expected_filename:
+        matches = [item for item in valid_zip_candidates if item.get("filename") == expected_filename]
+        if len(matches) == 1:
+            status = "candidate_selected"
+            selected = matches[0]
+            ok = True
+        elif len(matches) > 1:
+            status = "artifact_candidate_ambiguous"
+            selected = None
+            ok = False
+        else:
+            status = "artifact_wrong_filename"
+            selected = None
+            ok = False
+    elif len(valid_zip_candidates) == 1:
+        status = "candidate_selected"
+        selected = valid_zip_candidates[0]
+        ok = True
+    elif len(valid_zip_candidates) > 1:
+        status = "artifact_candidate_ambiguous"
+        selected = None
+        ok = False
+    else:
+        errors = zip_candidates[0].get("classification_errors") if len(zip_candidates) == 1 and isinstance(zip_candidates[0], dict) else None
+        status = str(errors[0]) if isinstance(errors, list) and errors else "artifact_candidate_invalid"
+        selected = None
+        ok = False
+
+    return {
+        "ok": ok,
+        "status": status,
+        "artifact_candidate_count": len(classified),
+        "zip_candidate_count": len(zip_candidates),
+        "valid_zip_candidate_count": len(valid_zip_candidates),
+        "selected_candidate": selected,
+        "artifact_candidates": classified,
+        "expected_filename": expected_filename,
+        "expected_version": version_from_artifact_filename(expected_version) or expected_version,
+        "expected_repo": expected_repo,
+        "automation_performed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
 
 def parse_promptbranch_reply(text: str) -> dict[str, Any]:
     """Parse and validate one Promptbranch reply envelope from assistant text.

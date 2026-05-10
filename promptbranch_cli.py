@@ -50,7 +50,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
-from promptbranch_ask_protocol import parse_promptbranch_reply
+from promptbranch_ask_protocol import classify_artifact_candidates, parse_promptbranch_reply
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -1616,6 +1616,130 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(_render_task_answer_parse_result(result), end="")
+    return 0 if result.get("ok") else 1
+
+
+def _artifact_intake_from_parsed_answer(
+    parsed: dict[str, Any],
+    *,
+    expected_filename: str | None = None,
+    expected_version: str | None = None,
+    expected_repo: str | None = None,
+) -> dict[str, Any]:
+    candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
+    classification = classify_artifact_candidates(
+        candidates,
+        expected_filename=expected_filename,
+        expected_version=expected_version,
+        expected_repo=expected_repo,
+    )
+    parse_ok = bool(parsed.get("ok"))
+    status = classification.get("status") if parse_ok else parsed.get("status")
+    return {
+        **classification,
+        "ok": bool(parse_ok and classification.get("ok")),
+        "action": "artifact_intake",
+        "status": status,
+        "reply_parse_status": parsed.get("status"),
+        "reply_parse_ok": parse_ok,
+        "reply_request_id": parsed.get("request_id"),
+        "reply_correlation_id": parsed.get("correlation_id"),
+        "reply_status": parsed.get("reply_status"),
+        "result_type": parsed.get("result_type"),
+        "baseline": parsed.get("baseline"),
+        "validation": parsed.get("validation"),
+        "next_step": parsed.get("next_step"),
+        "intake_stage": "candidate_extraction",
+        "operator_instruction": "No artifact was downloaded or migrated. Use a later explicit download/verify/migrate intake step after candidate selection is valid.",
+    }
+
+
+def _render_artifact_intake_result(result: dict[str, Any]) -> str:
+    lines = [
+        f"status={result.get('status')}",
+        f"ok={str(bool(result.get('ok'))).lower()}",
+        f"reply_parse_status={result.get('reply_parse_status')}",
+        f"artifact_candidate_count={result.get('artifact_candidate_count') or 0}",
+        f"zip_candidate_count={result.get('zip_candidate_count') or 0}",
+        f"valid_zip_candidate_count={result.get('valid_zip_candidate_count') or 0}",
+    ]
+    selected = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
+    if selected:
+        lines.append(f"selected={selected.get('filename')} version={selected.get('filename_version') or selected.get('version')}")
+    candidates = result.get("artifact_candidates") if isinstance(result.get("artifact_candidates"), list) else []
+    for candidate in candidates:
+        errors = candidate.get("classification_errors") if isinstance(candidate.get("classification_errors"), list) else []
+        lines.append(
+            f"- {candidate.get('filename') or '(missing filename)'}\t"
+            f"version={candidate.get('filename_version') or candidate.get('version') or 'unknown'}\t"
+            f"repo={candidate.get('repo_prefix') or 'unknown'}\t"
+            f"status={candidate.get('status') or 'unknown'}\t"
+            f"errors={','.join(str(item) for item in errors) if errors else 'none'}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
+    if not getattr(args, "from_last_answer", False):
+        payload = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "intake_source_required",
+            "error": "v0.0.202 supports --from-last-answer only",
+            "automation_performed": False,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print("error: v0.0.202 supports --from-last-answer only", file=sys.stderr)
+        return 1
+    try:
+        task_target = getattr(args, "target", None)
+        payload = await _fetch_task_messages_payload(backend, args, task_target)
+        message = _resolve_task_message(payload["messages"], "latest")
+        answer = _resolve_task_answer(message, answer_index="latest")
+    except ValueError as exc:
+        result = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "answer_selection_failed",
+            "error": str(exc),
+            "automation_performed": False,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
+    result = _artifact_intake_from_parsed_answer(
+        parsed,
+        expected_filename=getattr(args, "expect_artifact", None),
+        expected_version=getattr(args, "expect_version", None),
+        expected_repo=getattr(args, "expect_repo", None),
+    )
+    result.update(
+        {
+            "project_url": payload.get("project_url"),
+            "conversation_url": payload.get("conversation_url"),
+            "conversation_id": payload.get("conversation_id"),
+            "title": payload.get("title"),
+            "message": {key: value for key, value in message.items() if key != "answers"},
+            "answer": {key: value for key, value in answer.items() if key != "text"},
+            "answer_text_length": len(str(answer.get("text") or "")),
+        }
+    )
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(_render_artifact_intake_result(result), end="")
     return 0 if result.get("ok") else 1
 
 
@@ -3583,6 +3707,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_release(backend, args)
     if args.artifact_command == "verify":
         return await cmd_artifact_verify(backend, args)
+    if args.artifact_command == "intake":
+        return await cmd_artifact_intake(backend, args)
     raise RuntimeError(f"Unknown artifact command: {args.artifact_command}")
 
 
@@ -4392,7 +4518,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.201.1.1.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.202.1.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -4416,6 +4542,16 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify = artifact_subparsers.add_parser("verify", help="Verify ZIP layout and integrity.")
     artifact_verify.add_argument("path", nargs="?", help="ZIP path. Defaults to the latest registered artifact.")
     artifact_verify.add_argument("--json", action="store_true")
+
+
+    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; no download or migration in v0.0.202.")
+    artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
+    artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.202 or 0.0.202.")
+    artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
+    artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction as JSON.")
+    artifact_intake.add_argument("--keep-open", action="store_true")
 
     agent = subparsers.add_parser("agent", help="Read-only MCP/Ollama planning scaffold commands.")
     agent_subparsers = agent.add_subparsers(dest="agent_command", required=True)
