@@ -310,3 +310,73 @@ def test_release_control_accepts_numeric_repair_version_for_adopt_current(tmp_pa
     assert "Adopt verified" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
     assert f"pb artifact adopt {artifact}" in call_text
+
+def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9.1"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    import zipfile
+
+    with zipfile.ZipFile(downloads / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+    (fake_bin / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo git \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"rev-parse --short HEAD\" ]]; then echo abc1234; exit 0; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "git").chmod(0o755)
+    packager = tmp_path / "legacy-packager.sh"
+    packager.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'INNERPY'\n"
+        "import zipfile\n"
+        "with zipfile.ZipFile('chatgpt_claudecode_workflow-abc1234.zip', 'w') as archive:\n"
+        "    archive.writestr('VERSION', 'v9.9.9.1\\n')\n"
+        "INNERPY\n",
+        encoding="utf-8",
+    )
+    packager.chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version", version,
+            "--downloads-dir", str(downloads),
+            "--packager", str(packager),
+            "--skip-compare",
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--skip-docker-logs",
+            "--skip-tests",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "ZIP verified" in result.stdout
+    assert (repo / artifact).is_file()
+    assert not (repo / "chatgpt_claudecode_workflow-abc1234.zip").exists()
+    with zipfile.ZipFile(repo / artifact) as archive:
+        assert archive.read("VERSION").decode("utf-8").strip() == version
