@@ -1,0 +1,284 @@
+{
+  "ok": false,
+  "action": "test_report",
+  "status": "suite_failed",
+  "log_path": "pb_test.full.v0.0.198.2.log",
+  "source": {
+    "bytes": 472156,
+    "json_object_count": 1,
+    "selected": {
+      "start_offset": 0,
+      "end_offset": 472152
+    }
+  },
+  "suite": {
+    "ok": false,
+    "action": "test_suite",
+    "profile": "full",
+    "version": "v0.0.198.2",
+    "browser": {
+      "name": "browser",
+      "ok": true,
+      "step_count": 21,
+      "failure_count": 0,
+      "failed_steps": []
+    },
+    "agent": {
+      "name": "agent",
+      "ok": false,
+      "step_count": 20,
+      "failure_count": 4,
+      "failed_steps": [
+        {
+          "section": "agent",
+          "name": "version_consistency",
+          "status": "failed",
+          "expected_failure": false,
+          "expected_status": null,
+          "diagnostic": null
+        },
+        {
+          "section": "agent",
+          "name": "package_import_metadata",
+          "status": "failed",
+          "expected_failure": false,
+          "expected_status": null,
+          "diagnostic": null
+        },
+        {
+          "section": "agent",
+          "name": "package_import_smoke",
+          "status": "failed",
+          "expected_failure": false,
+          "expected_status": null,
+          "diagnostic": null
+        },
+        {
+          "section": "agent",
+          "name": "package_hygiene",
+          "status": "failed",
+          "expected_failure": false,
+          "expected_status": null,
+          "diagnostic": null
+        }
+      ]
+    },
+    "failure_count": 4,
+    "failed_steps": [
+      {
+        "section": "agent",
+        "name": "version_consistency",
+        "status": "failed",
+        "expected_failure": false,
+        "expected_status": null,
+        "diagnostic": null
+      },
+      {
+        "section": "agent",
+        "name": "package_import_metadata",
+        "status": "failed",
+        "expected_failure": false,
+        "expected_status": null,
+        "diagnostic": null
+      },
+      {
+        "section": "agent",
+        "name": "package_import_smoke",
+        "status": "failed",
+        "expected_failure": false,
+        "expected_status": null,
+        "diagnostic": null
+      },
+      {
+        "section": "agent",
+        "name": "package_hygiene",
+        "status": "failed",
+        "expected_failure": false,
+        "expected_status": null,
+        "diagnostic": null
+      }
+    ],
+    "rate_limit_telemetry": {
+      "rate_limit_modal_detected": false,
+      "conversation_history_429_seen": false,
+      "cooldown_wait_seconds_total": 0.0,
+      "cooldown_wait_count": 0,
+      "planned_cooldown_wait_seconds_total": 90.0,
+      "planned_cooldown_wait_count": 2,
+      "service_rate_limit_events": [],
+      "event_count": 0
+    },
+    "safety": {
+      "write_tools_blocked": true,
+      "model_has_execution_authority": false,
+      "source_or_artifact_mutation_allowed": false
+    },
+    "package_hygiene": {
+      "ok": false,
+      "status": "failed",
+      "zip_path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.99.zip",
+      "testzip": null,
+      "bad_entry_count": 15,
+      "wrapper_folder": false
+    },
+    "version_consistency": {
+      "ok": false,
+      "sources": {
+        "source": {
+          "ok": false,
+          "action": "version_consistency",
+          "status": "failed",
+          "repo_path": "/home/spikkie/git/chatgpt_claudecode_workflow",
+          "expected_version": "0.0.198.2",
+          "expected_version_tag": "v0.0.198.2",
+          "observations": [
+            {
+              "name": "VERSION",
+              "value": "v0.0.198.2",
+              "normalized": "0.0.198.2"
+            },
+            {
+              "name": "pyproject.project.version",
+              "value": "0.0.198.2",
+              "normalized": "0.0.198.2"
+            },
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            }
+          ],
+          "missing": [],
+          "mismatches": [
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            }
+          ]
+        },
+        "package_metadata": {
+          "ok": false,
+          "expected_version": "0.0.99",
+          "expected_version_tag": "v0.0.99",
+          "observations": [
+            {
+              "name": "zip.VERSION",
+              "value": "v0.0.99",
+              "normalized": "0.0.99"
+            },
+            {
+              "name": "zip.pyproject.project.version",
+              "value": "0.0.98",
+              "normalized": "0.0.98"
+            },
+            {
+              "name": "zip.promptbranch_version.PACKAGE_VERSION",
+              "value": null,
+              "normalized": null
+            }
+          ],
+          "missing": [
+            "zip.promptbranch_version.PACKAGE_VERSION"
+          ],
+          "mismatches": [
+            {
+              "name": "zip.pyproject.project.version",
+              "value": "0.0.98",
+              "normalized": "0.0.98"
+            }
+          ]
+        },
+        "installed_runtime": {
+          "ok": false,
+          "expected_version": "0.0.198.2",
+          "observations": [
+            {
+              "name": "installed_distribution.promptbranch",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_version.VERSION_TAG",
+              "value": "v0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_cli.CLI_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch version output",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_mcp.MCP_SERVER_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "mcp server_info.version",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_container_api.SERVICE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            }
+          ],
+          "missing": [],
+          "mismatches": [
+            {
+              "name": "installed_distribution.promptbranch",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_version.VERSION_TAG",
+              "value": "v0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_cli.CLI_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch version output",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_mcp.MCP_SERVER_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "mcp server_info.version",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            },
+            {
+              "name": "promptbranch_container_api.SERVICE_VERSION",
+              "value": "0.0.197",
+              "normalized": "0.0.197"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -642,6 +642,12 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.198.2
+
+- Repair release for `v0.0.198.1`; no slice or line advanced.
+- Fixed release-control packaging normalization when a legacy packager falls back to `chatgpt_claudecode_workflow-<git-sha>.zip` for numeric repair versions.
+- Added regression coverage proving `v0.0.198.2` repair-version packaging is renamed to the canonical `chatgpt_claudecode_workflow_v0.0.198.2.zip` before verification.
+
 ## v0.0.198.1
 
 - Repair release for `v0.0.198`; no slice or line advanced.

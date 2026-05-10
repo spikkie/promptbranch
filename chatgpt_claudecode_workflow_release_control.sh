@@ -444,7 +444,28 @@ do
   fi
 done
 
-[[ -f "${artifact_zip}" ]] || fail "could not find packaging output for version ${ver}; expected ${artifact_zip} or source_* variants"
+# Some legacy packagers only understand three-component VERSION values. When
+# VERSION is a numeric repair release such as v0.0.198.1, they may fall back to a
+# git-hash artifact name like chatgpt_claudecode_workflow-f8f6bf5.zip. Accept
+# that transport filename only when it matches the current git HEAD hash; the
+# canonical ZIP verification below still validates the embedded VERSION before
+# the artifact is used.
+if [[ ! -f "${artifact_zip}" ]]; then
+  current_git_short="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  if [[ -n "${current_git_short}" ]]; then
+    for candidate in \
+      "${project_name}-${current_git_short}.zip" \
+      "${project_name}_${current_git_short}.zip"
+    do
+      if [[ -f "${candidate}" ]]; then
+        mv -f "${candidate}" "${artifact_zip}"
+        break
+      fi
+    done
+  fi
+fi
+
+[[ -f "${artifact_zip}" ]] || fail "could not find packaging output for version ${ver}; expected ${artifact_zip}, source_* variants, or ${project_name}-<current-git-sha>.zip"
 
 # Verify ZIP hygiene before using it.
 python3 - "${artifact_zip}" "${ver}" <<'PY'
