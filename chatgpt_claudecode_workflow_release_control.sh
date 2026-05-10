@@ -29,6 +29,7 @@ container_id="${PROMPTBRANCH_CONTAINER_ID:-}"
 owner_user="${PROMPTBRANCH_OWNER_USER:-${SUDO_USER:-${USER}}}"
 owner_group="${PROMPTBRANCH_OWNER_GROUP:-${owner_user}}"
 version_arg="${PB_RELEASE_VERSION:-}"
+release_log_root_arg="${PROMPTBRANCH_RELEASE_LOG_DIR:-}"
 
 skip_compare=0
 skip_commit=0
@@ -94,6 +95,7 @@ Options:
                               the full --run-tests release workflow.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
+      --release-log-dir DIR    Directory root for release-control logs. Default: .pb_profile/release_logs.
       --keep-workdir          Keep temporary extracted comparison directory.
   -h, --help                  Show this help.
 
@@ -147,6 +149,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --downloads-dir=*) downloads_dir="${1#*=}"; shift ;;
+    --release-log-dir)
+      [[ $# -ge 2 ]] || fail "--release-log-dir requires a value"
+      release_log_root_arg="$2"
+      shift 2
+      ;;
+    --release-log-dir=*) release_log_root_arg="${1#*=}"; shift ;;
     --container-id)
       [[ $# -ge 2 ]] || fail "--container-id requires a value"
       container_id="$2"
@@ -268,13 +276,23 @@ ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
 download_zip="${downloads_dir}/${artifact_zip}"
 work_dir="${work_parent}/${project_name}_${ver}"
-full_log="pb_test.full.${ver}.log"
-report_json="pb_test.full.${ver}.report.json"
-test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG:-session_$(date +%Y%m%d_%H%M%S).log}"
+release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"
+release_log_dir="${release_log_root}/${ver}"
+mkdir -p "${release_log_dir}"
+full_log="${release_log_dir}/pb_test.full.${ver}.log"
+report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
+if [[ -n "${PROMPTBRANCH_TEST_SESSION_LOG:-}" ]]; then
+  case "${PROMPTBRANCH_TEST_SESSION_LOG}" in
+    /*) test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
+    *) test_session_log="${release_log_dir}/${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
+  esac
+else
+  test_session_log="${release_log_dir}/session_$(date +%Y%m%d_%H%M%S).log"
+fi
 test_session_logging_mode="none"
-service_log="promptbranch-service:${ver_plain}.log"
-service_start_log="promptbranch-service-start:${ver_plain}.log"
-service_pid_file=".promptbranch-service-start.${ver_plain}.pid"
+service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"
+service_start_log="${release_log_dir}/promptbranch-service-start.${ver_plain}.log"
+service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid"
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
@@ -306,6 +324,7 @@ printf 'version:        %s\n' "${ver}"
 printf 'artifact_zip:   %s\n' "${artifact_zip}"
 printf 'download_zip:   %s\n' "${download_zip}"
 printf 'work_dir:       %s\n' "${work_dir}"
+printf 'release_logs:   %s\n' "${release_log_dir}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
@@ -623,10 +642,10 @@ INNERPY
 
 adopt_current_artifact() {
   local local_zip="${repo_root}/${artifact_zip}"
-  local verify_json="pb_artifact_verify.${ver}.json"
-  local src_list_json="pb_src_list.before_adopt.${ver}.json"
-  local adopt_json="pb_artifact_adopt.${ver}.json"
-  local current_json="pb_artifact_current.${ver}.json"
+  local verify_json="${release_log_dir}/pb_artifact_verify.${ver}.json"
+  local src_list_json="${release_log_dir}/pb_src_list.before_adopt.${ver}.json"
+  local adopt_json="${release_log_dir}/pb_artifact_adopt.${ver}.json"
+  local current_json="${release_log_dir}/pb_artifact_current.${ver}.json"
 
   echo "== Adopt current Project Source artifact =="
   echo "artifact: ${artifact_zip}"
@@ -686,7 +705,7 @@ start_test_session_log() {
   exec 4>&2
   exec > >(tee -a "${test_session_log}") 2>&1
   test_session_logging_mode="internal"
-  echo "Logging started: ${repo_root}/${test_session_log}"
+  echo "Logging started: ${test_session_log}"
   echo "Run completed test logging will restore normal stdout/stderr automatically."
 }
 
@@ -696,7 +715,7 @@ stop_test_session_log() {
       stoplog || true
       ;;
     internal)
-      echo "Logging stopped: ${repo_root}/${test_session_log}"
+      echo "Logging stopped: ${test_session_log}"
       exec 1>&3
       exec 2>&4
       exec 3>&-
@@ -740,7 +759,7 @@ raise SystemExit(1)
     sleep 2
   done
   echo "WARN: service readiness was not confirmed within ${service_timeout_seconds}s; continuing." >&2
-  echo "WARN: inspect ${service_start_log} if later commands fail." >&2
+  echo "WARN: inspect service_start_log=${service_start_log} if later commands fail." >&2
   return 0
 }
 
@@ -837,19 +856,45 @@ if [[ ${skip_docker_logs} -eq 0 ]]; then
   capture_docker_logs_best_effort
 fi
 
+summary_value() {
+  local active="$1"
+  local value="$2"
+  if [[ "${active}" -eq 1 ]]; then
+    printf '%s
+' "${value}"
+  else
+    printf 'skipped
+'
+  fi
+}
+
+tests_summary_active=0
+service_summary_active=0
+docker_log_summary_active=0
+if [[ ${skip_tests} -eq 0 ]]; then
+  tests_summary_active=1
+fi
+if [[ ${skip_service} -eq 0 ]]; then
+  service_summary_active=1
+fi
+if [[ ${skip_docker_logs} -eq 0 ]]; then
+  docker_log_summary_active=1
+fi
+
 cat <<DONE
 
 Release workflow completed.
 version:       ${ver}
 artifact:      ${artifact_zip}
-full_log:      ${full_log}
-report_json:   ${report_json}
+release_logs:  ${release_log_dir}
+full_log:      $(summary_value "${tests_summary_active}" "${full_log}")
+report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
 adopt_current: ${adopt_current}
 adopt_if_green: ${adopt_if_green}
-test_session:  ${test_session_log}
-service_log:   ${service_log}
-service_start: ${service_start_log}
-service_pid:   ${service_pid_file}
+test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")
+service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")
+service_start: $(summary_value "${service_summary_active}" "${service_start_log}")
+service_pid:   $(summary_value "${service_summary_active}" "${service_pid_file}")
 exit_code:     ${workflow_rc}
 DONE
 

@@ -57,7 +57,6 @@ task_*_message.txt
 task_*_final.txt
 stdout.json
 stderr.txt
-0
 task_show_*_messages.txt
 
 # Promptbranch service start PID files
