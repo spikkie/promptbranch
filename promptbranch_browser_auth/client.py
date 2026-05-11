@@ -2461,6 +2461,61 @@ class ChatGPTBrowserClient:
             await self._pause_for_keep_open("Project source capabilities discovered. Press Enter to close the browser... ")
         return result
 
+    async def _find_existing_file_source_for_overwrite(
+        self,
+        page: Any,
+        *,
+        source_match_candidates: list[str],
+        initial_sources: list[dict[str, str]],
+        project_url: str,
+        timeout_ms: int = 4_000,
+    ) -> Optional[dict[str, str]]:
+        """Find an existing file source before overwrite using a bounded settle probe.
+
+        The Sources tab can briefly report an empty or stale card list immediately
+        after a prior upload. A single snapshot is therefore not authoritative for
+        overwrite detection. This probe first checks the supplied snapshot, then
+        waits briefly for the expected source card to appear without refreshing or
+        mutating state. If no card appears, callers should proceed with the normal
+        add path.
+        """
+
+        existing_source = self._match_source_card(
+            initial_sources,
+            source_match_candidates,
+            exact_safe=True,
+        )
+        if existing_source is not None:
+            return existing_source
+
+        self._log(
+            "project-source-add",
+            "initial file overwrite snapshot did not find existing source; probing briefly before upload",
+            project_url=project_url,
+            source_match_candidates=source_match_candidates,
+            initial_source_count=len(initial_sources),
+            timeout_ms=timeout_ms,
+        )
+        try:
+            return await self._wait_for_source_presence(
+                page,
+                source_match_candidates=source_match_candidates,
+                before_sources=None,
+                accept_single_new_card=False,
+                timeout_ms=timeout_ms,
+            )
+        except ResponseTimeoutError as exc:
+            self._log(
+                "project-source-add",
+                "no existing file source detected during bounded overwrite preflight; continuing with add",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                timeout_ms=timeout_ms,
+                error=str(exc),
+            )
+            return None
+
+
     async def _add_project_source_operation(
         self,
         *,
@@ -2503,10 +2558,11 @@ class ChatGPTBrowserClient:
                 display_name=canonical_display_name,
                 file_path=file_path,
             )
-            existing_source = self._match_source_card(
-                before_sources,
-                source_match_candidates,
-                exact_safe=True,
+            existing_source = await self._find_existing_file_source_for_overwrite(
+                page,
+                source_match_candidates=source_match_candidates,
+                initial_sources=before_sources,
+                project_url=project_home_url,
             )
             if existing_source is not None:
                 matched_source = existing_source

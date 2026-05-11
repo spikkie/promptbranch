@@ -927,7 +927,7 @@ Acceptance:
 Recommended release:
 
 ```text
-v0.0.203
+v0.0.203.1
 ```
 
 ---

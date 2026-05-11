@@ -642,7 +642,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
-## v0.0.203
+## v0.0.203.1
 
 - Added explicit `pb artifact intake --from-last-answer --download` for MVP-F2.
 - Downloads the selected reply artifact candidate into `.pb_profile/artifact_inbox/` and records filename, size, SHA-256, answer/request metadata, and `intake.json`.
