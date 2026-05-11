@@ -642,6 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.204
+
+- Added MVP-F3 artifact-inbox ZIP verification: `pb artifact intake --from-last-answer --verify --json`.
+- Verification checks the selected candidate ZIP already stored under `.pb_profile/artifact_inbox/`, including ZIP integrity, `VERSION`, filename/version consistency, wrapper-folder detection, and release hygiene violations.
+- `--download --verify` downloads into the artifact inbox and then verifies in place.
+- Migration, adoption, and Project Source mutation remain intentionally disabled for artifact intake.
+
 ## v0.0.203.1
 
 - Added explicit `pb artifact intake --from-last-answer --download` for MVP-F2.
