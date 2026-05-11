@@ -334,6 +334,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.203
+
+- Added explicit `pb artifact intake --from-last-answer --download` for MVP-F2.
+- Downloads the selected reply artifact candidate into `.pb_profile/artifact_inbox/` and records filename, size, SHA-256, answer/request metadata, and `intake.json`.
+- Does not verify ZIP contents, migrate the candidate to repo root, adopt artifacts, mutate Project Sources, or advance artifact/source state.
+- Keeps candidate extraction available without `--download`; download requires a selected candidate with a concrete `download.url`.
+
 ## v0.0.202
 
 - Added MVP-F1 artifact-candidate intake: `pb artifact intake --from-last-answer --json` parses the latest Promptbranch reply envelope and classifies ZIP candidates.
