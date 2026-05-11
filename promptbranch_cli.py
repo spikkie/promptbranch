@@ -3,12 +3,15 @@ from __future__ import annotations
 import argparse
 import copy
 import asyncio
+import hashlib
 import json
 import io
 import os
 import re
 import shlex
 import sys
+import urllib.parse
+import urllib.request
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -1654,6 +1657,212 @@ def _artifact_intake_from_parsed_answer(
     }
 
 
+
+
+def _safe_artifact_inbox_component(value: Any, *, fallback: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._-")
+    return text[:96] or fallback
+
+
+def _selected_candidate_download_url(candidate: dict[str, Any]) -> str | None:
+    download = candidate.get("download") if isinstance(candidate.get("download"), dict) else {}
+    url = download.get("url") or candidate.get("url") or candidate.get("download_url")
+    if not url:
+        link_text = download.get("link_text")
+        if isinstance(link_text, str) and urllib.parse.urlparse(link_text.strip()).scheme in {"file", "http", "https"}:
+            url = link_text.strip()
+    if isinstance(url, str) and url.strip():
+        return url.strip()
+    return None
+
+
+def _safe_artifact_filename(filename: Any) -> str | None:
+    name = Path(str(filename or "")).name
+    if not name or name in {".", ".."}:
+        return None
+    if name != str(filename or ""):
+        return None
+    if not name.endswith(".zip"):
+        return None
+    return name
+
+
+def _artifact_inbox_dir(*, profile_dir: str | Path, conversation_id: Any, answer_id: Any, request_id: Any) -> Path:
+    root = Path(profile_dir).expanduser().resolve() / "artifact_inbox"
+    conversation_component = _safe_artifact_inbox_component(conversation_id, fallback="conversation_unknown")
+    answer_component = _safe_artifact_inbox_component(answer_id, fallback="answer_unknown")
+    request_component = _safe_artifact_inbox_component(request_id, fallback="request_unknown")
+    return root / conversation_component / answer_component / request_component
+
+
+def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: float) -> None:
+    parsed = urllib.parse.urlparse(url)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+    if parsed.scheme in {"", "file"}:
+        source = Path(urllib.request.url2pathname(parsed.path if parsed.scheme == "file" else url)).expanduser()
+        if not source.is_file():
+            raise FileNotFoundError(str(source))
+        with source.open("rb") as src, tmp_path.open("wb") as dst:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                dst.write(chunk)
+    elif parsed.scheme in {"http", "https"}:
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.203"})
+        with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                dst.write(chunk)
+    else:
+        raise ValueError(f"unsupported download URL scheme: {parsed.scheme}")
+    tmp_path.replace(target_path)
+
+
+def _artifact_file_metadata(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as fh:
+        while True:
+            chunk = fh.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+    return {
+        "path": str(path),
+        "filename": path.name,
+        "size_bytes": size,
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _download_selected_artifact_candidate(
+    result: dict[str, Any],
+    *,
+    profile_dir: str | Path,
+    conversation_id: Any,
+    answer_id: Any,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    if result.get("status") != "candidate_selected" or not isinstance(result.get("selected_candidate"), dict):
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_candidate_not_selected",
+            "download_performed": False,
+            "download_error": "a single valid candidate must be selected before download",
+            "intake_stage": "candidate_extraction",
+        }
+    candidate = dict(result["selected_candidate"])
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    if not filename:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_wrong_filename",
+            "download_performed": False,
+            "download_error": "selected candidate filename must be a basename ending in .zip",
+            "intake_stage": "candidate_extraction",
+        }
+    url = _selected_candidate_download_url(candidate)
+    if not url:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_url_missing",
+            "download_performed": False,
+            "download_error": "selected candidate has no download.url",
+            "intake_stage": "download_requested",
+        }
+    inbox_dir = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=result.get("reply_request_id"),
+    )
+    target_path = inbox_dir / filename
+    overwritten = target_path.exists()
+    try:
+        _copy_or_download_to_path(url, target_path, timeout_seconds=timeout_seconds)
+        metadata = _artifact_file_metadata(target_path)
+    except Exception as exc:  # noqa: BLE001 - report explicit operator-facing download failure
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_failed",
+            "download_performed": False,
+            "download_error": str(exc),
+            "download_url": url,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "download_requested",
+        }
+    if metadata["size_bytes"] <= 0:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_empty",
+            "download_performed": True,
+            "download": metadata,
+            "download_url": url,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "downloaded",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+    intake_record = {
+        "schema": "promptbranch.artifact.intake.download",
+        "schema_version": "1.0",
+        "status": "downloaded",
+        "candidate": candidate,
+        "download": metadata,
+        "download_url": url,
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "created_at": utc_now(),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    try:
+        (inbox_dir / "intake.json").write_text(json.dumps(intake_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_metadata_failed",
+            "download_performed": True,
+            "download": metadata,
+            "download_error": str(exc),
+            "download_url": url,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "downloaded",
+        }
+    return {
+        **result,
+        "ok": True,
+        "status": "downloaded",
+        "intake_stage": "downloaded",
+        "download_performed": True,
+        "download": metadata,
+        "download_url": url,
+        "download_overwrote_existing": overwritten,
+        "artifact_inbox_dir": str(inbox_dir),
+        "intake_record_path": str(inbox_dir / "intake.json"),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "operator_instruction": "Artifact was downloaded to .pb_profile/artifact_inbox only. ZIP verification, migration, and adoption were not performed.",
+    }
+
 def _render_artifact_intake_result(result: dict[str, Any]) -> str:
     lines = [
         f"status={result.get('status')}",
@@ -1666,6 +1875,11 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
     selected = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
     if selected:
         lines.append(f"selected={selected.get('filename')} version={selected.get('filename_version') or selected.get('version')}")
+    if result.get("download_performed"):
+        download = result.get("download") if isinstance(result.get("download"), dict) else {}
+        lines.append(f"downloaded={download.get('path')} size={download.get('size_bytes')} sha256={download.get('sha256')}")
+    if result.get("download_error"):
+        lines.append(f"download_error={result.get('download_error')}")
     candidates = result.get("artifact_candidates") if isinstance(result.get("artifact_candidates"), list) else []
     for candidate in candidates:
         errors = candidate.get("classification_errors") if isinstance(candidate.get("classification_errors"), list) else []
@@ -1685,7 +1899,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.202 supports --from-last-answer only",
+            "error": "v0.0.203 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -1694,7 +1908,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.202 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.203 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -1736,6 +1950,14 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "answer_text_length": len(str(answer.get("text") or "")),
         }
     )
+    if getattr(args, "download", False):
+        result = _download_selected_artifact_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=payload.get("conversation_id"),
+            answer_id=answer.get("id"),
+            timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+        )
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
@@ -4518,7 +4740,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.202.1.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.203.1.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -4544,13 +4766,15 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify.add_argument("--json", action="store_true")
 
 
-    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; no download or migration in v0.0.202.")
+    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download to .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.202 or 0.0.202.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.203 or 0.0.203.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
-    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction as JSON.")
+    artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
+    artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
+    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download result as JSON.")
     artifact_intake.add_argument("--keep-open", action="store_true")
 
     agent = subparsers.add_parser("agent", help="Read-only MCP/Ollama planning scaffold commands.")
