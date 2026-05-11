@@ -1,4 +1,4 @@
-# promptbranch v0.0.206
+# promptbranch v0.0.207
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,6 +642,14 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+
+## v0.0.207
+
+- Added protocol-aware ask generation with `pb ask --protocol --from-current-baseline`.
+- `--print-request-json` builds and prints the `promptbranch.ask.request` envelope without sending the ask.
+- The envelope is built from `pb artifact current`-equivalent state, including current artifact/source refs and versions.
+- `--target-version` may pin the intended output version; otherwise the next normal version is inferred from the current accepted baseline.
+- No artifact download, verification, migration, adoption, or Project Source mutation behavior changed in this slice.
 
 ## v0.0.206
 
