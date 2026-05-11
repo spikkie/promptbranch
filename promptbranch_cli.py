@@ -7,6 +7,7 @@ import hashlib
 import json
 import io
 import os
+import shutil
 import re
 import shlex
 import sys
@@ -1713,7 +1714,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.204"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.205"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -1740,6 +1741,162 @@ def _artifact_file_metadata(path: Path) -> dict[str, Any]:
         "filename": path.name,
         "size_bytes": size,
         "sha256": digest.hexdigest(),
+    }
+
+
+def _artifact_candidates_registry_path(profile_dir: str | Path) -> Path:
+    return Path(profile_dir).expanduser().resolve() / "artifact_candidates.json"
+
+
+def _load_artifact_candidate_registry(profile_dir: str | Path) -> dict[str, Any]:
+    path = _artifact_candidates_registry_path(profile_dir)
+    if not path.exists():
+        return {"schema_version": 1, "candidates": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"schema_version": 1, "candidates": []}
+    if not isinstance(payload, dict):
+        return {"schema_version": 1, "candidates": []}
+    if not isinstance(payload.get("candidates"), list):
+        payload["candidates"] = []
+    payload.setdefault("schema_version", 1)
+    return payload
+
+
+def _record_artifact_candidate(profile_dir: str | Path, record: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
+    path = _artifact_candidates_registry_path(profile_dir)
+    payload = _load_artifact_candidate_registry(profile_dir)
+    candidates = [item for item in payload.get("candidates", []) if isinstance(item, dict)]
+    record_path = str(record.get("path") or "")
+    record_filename = str(record.get("filename") or "")
+    candidates = [item for item in candidates if not (str(item.get("path") or "") == record_path or (record_filename and str(item.get("filename") or "") == record_filename))]
+    candidates.append(record)
+    candidates.sort(key=lambda item: str(item.get("migrated_at") or item.get("created_at") or ""), reverse=True)
+    payload["schema_version"] = 1
+    payload["updated_at"] = utc_now()
+    payload["candidates"] = candidates
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path, record
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any) -> dict[str, Any]:
+    if result.get("status") != "verified_candidate" or not result.get("verification_performed"):
+        return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
+
+    candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
+    filename = _safe_artifact_filename((candidate or {}).get("filename"))
+    if not candidate or not filename:
+        return {**result, "ok": False, "status": "artifact_wrong_filename", "migration_performed": False, "migration_error": "verified candidate filename must be a basename ending in .zip", "intake_stage": "migration_requested", "adoption_performed": False}
+
+    profile_root = Path(profile_dir).expanduser().resolve()
+    inbox_root = profile_root / "artifact_inbox"
+    download = result.get("download") if isinstance(result.get("download"), dict) else {}
+    source_value = str(download.get("path") or "")
+    if source_value:
+        source_path = Path(source_value).expanduser().resolve()
+    else:
+        source_path = (_artifact_inbox_dir(profile_dir=profile_root, conversation_id=conversation_id, answer_id=answer_id, request_id=result.get("reply_request_id")) / filename).resolve()
+    if not source_path.is_file():
+        return {**result, "ok": False, "status": "artifact_inbox_candidate_missing", "migration_performed": False, "migration_error": "verified candidate ZIP is missing from artifact_inbox", "artifact_inbox_path": str(source_path), "intake_stage": "migration_requested", "adoption_performed": False}
+    if not _path_is_relative_to(source_path, inbox_root):
+        return {**result, "ok": False, "status": "artifact_inbox_boundary_violation", "migration_performed": False, "migration_error": "migration source must be inside .pb_profile/artifact_inbox", "artifact_inbox_path": str(source_path), "intake_stage": "migration_requested", "adoption_performed": False}
+
+    verification = verify_zip_artifact(source_path)
+    if not verification.get("ok"):
+        return {**result, "ok": False, "status": "artifact_zip_invalid", "migration_performed": False, "migration_error": str(verification.get("error") or "artifact_zip_invalid"), "verification": verification, "intake_stage": "migration_requested", "adoption_performed": False}
+
+    repo_root = Path(repo_path).expanduser().resolve()
+    if not repo_root.is_dir():
+        return {**result, "ok": False, "status": "repo_path_invalid", "migration_performed": False, "migration_error": f"repo path is not a directory: {repo_root}", "repo_path": str(repo_root), "intake_stage": "migration_requested", "adoption_performed": False}
+    target_path = (repo_root / filename).resolve()
+    if target_path.parent != repo_root:
+        return {**result, "ok": False, "status": "artifact_wrong_filename", "migration_performed": False, "migration_error": "migration target must stay directly under repo root", "target_path": str(target_path), "intake_stage": "migration_requested", "adoption_performed": False}
+
+    source_metadata = _artifact_file_metadata(source_path)
+    target_existed = target_path.exists()
+    copy_performed = False
+    if target_existed:
+        target_metadata_before = _artifact_file_metadata(target_path)
+        if target_metadata_before.get("sha256") != source_metadata.get("sha256"):
+            return {**result, "ok": False, "status": "artifact_migration_target_exists", "migration_performed": False, "migration_error": "repo-root artifact already exists with different content", "source": source_metadata, "target": target_metadata_before, "target_path": str(target_path), "intake_stage": "migration_requested", "adoption_performed": False}
+    else:
+        shutil.copy2(source_path, target_path)
+        copy_performed = True
+
+    target_metadata = _artifact_file_metadata(target_path)
+    zip_version = _read_zip_version_file(target_path) or result.get("zip_version")
+    filename_version = _artifact_version_from_filename(filename) or result.get("filename_version")
+    migrated_at = utc_now()
+    candidate_record = {
+        "schema": "promptbranch.artifact.candidate",
+        "schema_version": "1.0",
+        "kind": "candidate_release",
+        "status": "candidate_release",
+        "accepted": False,
+        "verified": True,
+        "filename": filename,
+        "version": zip_version or filename_version or candidate.get("version"),
+        "path": str(target_path),
+        "sha256": target_metadata.get("sha256"),
+        "size_bytes": target_metadata.get("size_bytes"),
+        "source_inbox_path": str(source_path),
+        "source_inbox_sha256": source_metadata.get("sha256"),
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "verification": verification,
+        "zip_version": zip_version,
+        "filename_version": filename_version,
+        "migrated_at": migrated_at,
+        "migration_performed": True,
+        "adoption_performed": False,
+    }
+    registry_path, registry_record = _record_artifact_candidate(profile_root, candidate_record)
+
+    inbox_dir = _artifact_inbox_dir(profile_dir=profile_root, conversation_id=conversation_id, answer_id=answer_id, request_id=result.get("reply_request_id"))
+    intake_record_path = inbox_dir / "intake.json"
+    try:
+        existing: dict[str, Any] = {}
+        if intake_record_path.is_file():
+            loaded = json.loads(intake_record_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        existing.update({
+            "status": "migrated_candidate",
+            "migration_performed": True,
+            "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed, "migrated_at": migrated_at},
+            "candidate_registry_path": str(registry_path),
+            "candidate_registry_entry": registry_record,
+            "adoption_performed": False,
+        })
+        intake_record_path.parent.mkdir(parents=True, exist_ok=True)
+        intake_record_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return {**result, "ok": False, "status": "artifact_migration_metadata_failed", "migration_performed": True, "migration_error": str(exc), "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed}, "candidate_registry_path": str(registry_path), "candidate_registry_entry": registry_record, "intake_stage": "migrated", "adoption_performed": False}
+
+    return {
+        **result,
+        "ok": True,
+        "status": "migrated_candidate",
+        "intake_stage": "migrated",
+        "migration_performed": True,
+        "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed, "migrated_at": migrated_at},
+        "candidate_registry_path": str(registry_path),
+        "candidate_registry_entry": registry_record,
+        "intake_record_path": str(intake_record_path),
+        "adoption_performed": False,
+        "operator_instruction": "Verified candidate ZIP was migrated to the repo root and registered as candidate_release only. Adoption and Project Source mutation were not performed.",
     }
 
 
@@ -2033,6 +2190,15 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
         lines.append(f"downloaded={download.get('path')} size={download.get('size_bytes')} sha256={download.get('sha256')}")
     if result.get("download_error"):
         lines.append(f"download_error={result.get('download_error')}")
+    if result.get("verification_performed"):
+        lines.append(f"verification={result.get('status')} zip_version={result.get('zip_version')} filename_version={result.get('filename_version')}")
+    if result.get("verification_error"):
+        lines.append(f"verification_error={result.get('verification_error')}")
+    if result.get("migration_performed"):
+        migration = result.get("migration") if isinstance(result.get("migration"), dict) else {}
+        lines.append(f"migrated={migration.get('target_path')} copy_performed={migration.get('copy_performed')}")
+    if result.get("migration_error"):
+        lines.append(f"migration_error={result.get('migration_error')}")
     candidates = result.get("artifact_candidates") if isinstance(result.get("artifact_candidates"), list) else []
     for candidate in candidates:
         errors = candidate.get("classification_errors") if isinstance(candidate.get("classification_errors"), list) else []
@@ -2052,7 +2218,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.204 supports --from-last-answer only",
+            "error": "v0.0.205 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2061,7 +2227,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.204 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.205 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2115,6 +2281,14 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         result = _verify_intake_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=payload.get("conversation_id"),
+            answer_id=answer.get("id"),
+        )
+    if getattr(args, "migrate", False):
+        result = _migrate_verified_intake_artifact_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            repo_path=getattr(args, "repo_path", ".") or ".",
             conversation_id=payload.get("conversation_id"),
             answer_id=answer.get("id"),
         )
@@ -4900,7 +5074,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.204.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.205.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -4929,13 +5103,15 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.204 or 0.0.204.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.205 or 0.0.205.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
-    artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/. No migration or adoption is performed.")
-    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download/verification result as JSON.")
+    artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/.")
+    artifact_intake.add_argument("--migrate", action="store_true", help="Migrate a verified candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as candidate_release. No adoption or Project Source mutation is performed.")
+    artifact_intake.add_argument("--repo-path", default=".", help="Repository root for --migrate. Defaults to the current directory.")
+    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download/verification/migration result as JSON.")
     artifact_intake.add_argument("--keep-open", action="store_true")
 
     agent = subparsers.add_parser("agent", help="Read-only MCP/Ollama planning scaffold commands.")

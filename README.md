@@ -642,6 +642,12 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+## v0.0.205
+
+- Added `pb artifact intake --from-last-answer --verify --migrate --repo-path <repo> --json` to copy a verified artifact-inbox ZIP to the repo root and register it as a `candidate_release`.
+- The migration is explicit, requires verification, and does not adopt artifacts, mutate Project Sources, or advance current source/artifact state.
+- `.pb_profile/` remains local runtime state and is still excluded from release ZIPs; `--release-log-keep` only prunes `.pb_profile/release_logs/` on the operator machine.
+
 ## v0.0.204
 
 - Added MVP-F3 artifact-inbox ZIP verification: `pb artifact intake --from-last-answer --verify --json`.
