@@ -55,7 +55,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
-from promptbranch_ask_protocol import classify_artifact_candidates, parse_promptbranch_reply
+from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -1715,7 +1715,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.206"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.207"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2362,7 +2362,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.206 supports --from-last-answer only",
+            "error": "v0.0.207 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2371,7 +2371,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.206 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.207 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2629,6 +2629,73 @@ async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Name
     return 0
 
 
+def _protocol_request_from_current_baseline(
+    backend: Any,
+    args: argparse.Namespace,
+    *,
+    prompt: str,
+) -> dict[str, Any]:
+    registry = _artifact_registry_from_args(args)
+    current_payload = _artifact_current_payload(backend, registry)
+    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
+    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    snapshot = backend.state_snapshot()
+    current_artifact = state.get("artifact_ref") or registry_current.get("filename")
+    current_version = state.get("artifact_version") or registry_current.get("version")
+    current_source = state.get("source_ref") or current_artifact
+    source_version = state.get("source_version") or current_version
+    repo_name = _repo_name_from_artifact_name(str(current_artifact or registry_current.get("filename") or ""))
+    request_id = getattr(args, "request_id", None) or f"req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
+    artifact = {
+        "repo": repo_name,
+        "current_baseline": current_artifact,
+        "current_version": current_version,
+        "source_ref": current_source,
+        "source_version": source_version,
+        "registry_current": registry_current.get("filename"),
+        "registry_current_version": registry_current.get("version"),
+    }
+    envelope = build_ask_request_envelope(
+        prompt=prompt,
+        request_id=request_id,
+        correlation_id=getattr(args, "correlation_id", None),
+        workspace={
+            "project_name": snapshot.get("project_name") or project_name_from_url(snapshot.get("resolved_project_home_url") or ""),
+            "project_home_url": snapshot.get("resolved_project_home_url"),
+        },
+        task={
+            "conversation_url": getattr(args, "conversation_url", None) or snapshot.get("conversation_url"),
+            "conversation_id": conversation_id_from_url(getattr(args, "conversation_url", None) or snapshot.get("conversation_url") or "") or "current",
+            "turn_policy": "assistant_may_return_one_protocol_reply",
+        },
+        artifact=artifact,
+        target_version=getattr(args, "target_version", None),
+        release_type=getattr(args, "release_type", "normal"),
+        intent_kind=getattr(args, "intent_kind", "software_release_request"),
+    )
+    return {
+        "ok": True,
+        "action": "ask_protocol_request",
+        "status": "request_built",
+        "request": envelope,
+        "artifact_current": current_payload,
+        "automation_performed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+
+
+def _repo_name_from_artifact_name(filename: str) -> str | None:
+    name = Path(filename).name
+    if name.endswith(".zip"):
+        name = name[:-4]
+    match = re.search(r"_?v?\d+\.\d+\.\d+(?:\.\d+)?$", name)
+    if not match:
+        return None
+    return name[: match.start()].rstrip("_.-") or None
+
+
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     try:
         prompt = _merge_prompt_text(args.prompt, getattr(args, "prompt_file", None))
@@ -2638,6 +2705,14 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     if not prompt:
         print("error: prompt is required", file=sys.stderr)
         return 2
+
+    if getattr(args, "protocol", False):
+        protocol_payload = _protocol_request_from_current_baseline(backend, args, prompt=prompt)
+        envelope = protocol_payload["request"]
+        if getattr(args, "print_request_json", False):
+            print(json.dumps(protocol_payload, indent=2, ensure_ascii=False))
+            return 0
+        prompt = render_protocol_ask_prompt(envelope, user_prompt=prompt)
 
     attachment_paths = _collect_ask_attachment_paths(args)
     for attachment_path in attachment_paths:
@@ -5379,7 +5454,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.206.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.207.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -5387,7 +5462,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.206. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.207. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -5423,7 +5498,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.206 or 0.0.206.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.207 or 0.0.207.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
@@ -5806,6 +5881,14 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
     ask.add_argument("--json", action="store_true", help="Request strict JSON mode.")
     ask.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
+    ask.add_argument("--protocol", action="store_true", help="Wrap the prompt in a Promptbranch ask.request envelope.")
+    ask.add_argument("--from-current-baseline", action="store_true", help="Build protocol artifact fields from pb artifact current. Currently implied by --protocol.")
+    ask.add_argument("--target-version", help="Target output version to include in the protocol request envelope.")
+    ask.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope.")
+    ask.add_argument("--request-id", help="Explicit protocol request_id. Defaults to a generated timestamp id.")
+    ask.add_argument("--correlation-id", help="Explicit protocol correlation_id. Defaults to request_id.")
+    ask.add_argument("--intent-kind", default="software_release_request", help="Protocol intent.kind. Defaults to software_release_request.")
+    ask.add_argument("--print-request-json", action="store_true", help="Print the built protocol request envelope without sending the ask.")
     ask.add_argument("--keep-open", action="store_true")
     ask.add_argument("--retries", type=int)
 

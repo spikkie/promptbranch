@@ -46,6 +46,84 @@ ALLOWED_RESULT_TYPES: tuple[str, ...] = (
 )
 
 
+_VERSION_PARTS_RE = re.compile(r"^v?(?P<base>\d+\.\d+\.)(?P<patch>\d+)(?:\.(?P<repair>\d+))?$")
+
+
+def infer_next_normal_version(current_version: str | None) -> str | None:
+    """Infer the next normal release version without advancing repair state."""
+
+    if not current_version:
+        return None
+    value = str(current_version).strip()
+    match = _VERSION_PARTS_RE.match(value)
+    if not match:
+        return None
+    patch = int(match.group("patch")) + 1
+    return f"v{match.group('base')}{patch}"
+
+
+def build_ask_request_envelope(
+    *,
+    prompt: str,
+    request_id: str,
+    correlation_id: str | None = None,
+    workspace: dict[str, Any] | None = None,
+    task: dict[str, Any] | None = None,
+    artifact: dict[str, Any] | None = None,
+    target_version: str | None = None,
+    release_type: str = "normal",
+    intent_kind: str = "software_release_request",
+) -> dict[str, Any]:
+    """Build the Promptbranch ask.request envelope used by protocol-aware asks."""
+
+    artifact_payload = dict(artifact or {})
+    current_version = artifact_payload.get("current_version") or artifact_payload.get("artifact_version")
+    inferred_target = target_version or infer_next_normal_version(str(current_version) if current_version else None)
+    if inferred_target:
+        artifact_payload["target_version"] = inferred_target
+    artifact_payload.setdefault("release_type", release_type)
+    return {
+        "schema": REQUEST_SCHEMA,
+        "schema_version": REQUEST_SCHEMA_VERSION,
+        "request_id": request_id,
+        "correlation_id": correlation_id or request_id,
+        "workspace": workspace or {},
+        "task": task or {"conversation_id": "current", "turn_policy": "assistant_may_return_one_protocol_reply"},
+        "artifact": artifact_payload,
+        "intent": {"kind": intent_kind, "summary": prompt},
+        "constraints": {
+            "preserve_baseline": True,
+            "zip_root_must_be_repo_contents": True,
+            "no_patch_files": True,
+            "no_wrapper_folder": True,
+            "no_cache_files": True,
+            "no_nested_zips": True,
+            "no_auto_adopt": True,
+        },
+        "expected_reply": {
+            "schema": REPLY_SCHEMA,
+            "schema_version": REPLY_SCHEMA_VERSION,
+            "required_sections": ["status", "summary", "baseline", "changes", "artifacts", "validation", "next_step"],
+            "markers": {"begin": BEGIN_REPLY_MARKER, "end": END_REPLY_MARKER},
+        },
+    }
+
+
+def render_protocol_ask_prompt(envelope: dict[str, Any], *, user_prompt: str) -> str:
+    """Render the protocol envelope plus user request into the actual ChatGPT prompt."""
+
+    return (
+        "Promptbranch protocol request. Return exactly one valid reply envelope between "
+        f"{BEGIN_REPLY_MARKER} and {END_REPLY_MARKER}. Human-readable explanation may appear outside "
+        "the envelope, but automation will use only the JSON envelope.\n\n"
+        "BEGIN_PROMPTBRANCH_REQUEST_JSON\n"
+        + json.dumps(envelope, indent=2, ensure_ascii=False)
+        + "\nEND_PROMPTBRANCH_REQUEST_JSON\n\n"
+        "User request:\n"
+        + user_prompt
+    )
+
+
 @dataclass(frozen=True)
 class ReplyBlock:
     index: int

@@ -335,6 +335,14 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.207
+
+- Added protocol-aware ask generation with `pb ask --protocol --from-current-baseline`.
+- `--print-request-json` builds and prints the `promptbranch.ask.request` envelope without sending the ask.
+- The envelope is built from `pb artifact current`-equivalent state, including current artifact/source refs and versions.
+- `--target-version` may pin the intended output version; otherwise the next normal version is inferred from the current accepted baseline.
+- No artifact download, verification, migration, adoption, or Project Source mutation behavior changed in this slice.
+
 ## v0.0.206
 
 - Added `pb artifact accept-candidate` for MVP-F5 guarded candidate test/adopt integration.
