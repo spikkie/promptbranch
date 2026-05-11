@@ -609,7 +609,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.203.1"
+    assert captured.out.strip() == "promptbranch 0.0.204"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1058,7 +1058,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.203.1"
+    assert payload["version"] == "0.0.204"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -1245,18 +1245,18 @@ def test_task_answer_parse_latest_extracts_protocol_artifact_candidate(monkeypat
         "baseline": {
             "input_artifact": "chatgpt_claudecode_workflow_v0.0.200.zip",
             "input_version": "v0.0.200",
-            "output_artifact": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-            "output_version": "v0.0.203.1",
+            "output_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "output_version": "v0.0.204",
             "release_type": "normal",
         },
         "changes": [],
         "artifacts": [
             {
                 "kind": "zip",
-                "filename": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-                "version": "v0.0.203.1",
+                "filename": "chatgpt_claudecode_workflow_v0.0.204.zip",
+                "version": "v0.0.204",
                 "role": "candidate_release",
-                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.203.1.zip", "url": None},
+                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.204.zip", "url": None},
             }
         ],
         "validation": {"claimed": ["focused tests"], "not_claimed": ["full suite"]},
@@ -1275,7 +1275,7 @@ def test_task_answer_parse_latest_extracts_protocol_artifact_candidate(monkeypat
                 "conversation_id": "abc",
                 "title": "Protocol chat",
                 "turns": [
-                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.203.1"},
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.204"},
                     {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
                 ],
             }
@@ -1302,7 +1302,7 @@ def test_task_answer_parse_latest_extracts_protocol_artifact_candidate(monkeypat
     assert payload["migration_performed"] is False
     assert payload["adoption_performed"] is False
     assert payload["artifact_candidate_count"] == 1
-    assert payload["artifact_candidates"][0]["filename"] == "chatgpt_claudecode_workflow_v0.0.203.1.zip"
+    assert payload["artifact_candidates"][0]["filename"] == "chatgpt_claudecode_workflow_v0.0.204.zip"
 
 
 def test_task_answer_parse_latest_fails_closed_without_protocol_block(monkeypatch, capsys, tmp_path) -> None:
@@ -1317,7 +1317,7 @@ def test_task_answer_parse_latest_fails_closed_without_protocol_block(monkeypatc
                 "conversation_id": "abc",
                 "title": "Protocol chat",
                 "turns": [
-                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.203.1"},
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.204"},
                     {"index": 2, "id": "a1", "role": "assistant", "text": "plain answer without protocol envelope"},
                 ],
             }
@@ -1356,18 +1356,18 @@ def test_artifact_intake_from_last_answer_selects_expected_candidate(monkeypatch
         "baseline": {
             "input_artifact": "chatgpt_claudecode_workflow_v0.0.201.1.zip",
             "input_version": "v0.0.201.1",
-            "output_artifact": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-            "output_version": "v0.0.203.1",
+            "output_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "output_version": "v0.0.204",
             "release_type": "normal",
         },
         "changes": [],
         "artifacts": [
             {
                 "kind": "zip",
-                "filename": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-                "version": "v0.0.203.1",
+                "filename": "chatgpt_claudecode_workflow_v0.0.204.zip",
+                "version": "v0.0.204",
                 "role": "candidate_release",
-                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.203.1.zip", "url": None},
+                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.204.zip", "url": None},
             }
         ],
         "validation": {"claimed": ["focused tests"], "not_claimed": ["full suite"]},
@@ -1386,7 +1386,7 @@ def test_artifact_intake_from_last_answer_selects_expected_candidate(monkeypatch
                 "conversation_id": "abc",
                 "title": "Protocol chat",
                 "turns": [
-                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.203.1"},
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.204"},
                     {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
                 ],
             }
@@ -1402,8 +1402,8 @@ def test_artifact_intake_from_last_answer_selects_expected_candidate(monkeypatch
         "--service-base-url", "http://localhost:8000",
         "--profile-dir", str(tmp_path),
         "artifact", "intake", "--from-last-answer",
-        "--expect-artifact", "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-        "--expect-version", "v0.0.203.1",
+        "--expect-artifact", "chatgpt_claudecode_workflow_v0.0.204.zip",
+        "--expect-version", "v0.0.204",
         "--expect-repo", "chatgpt_claudecode_workflow",
         "--json",
     ])
@@ -1412,7 +1412,7 @@ def test_artifact_intake_from_last_answer_selects_expected_candidate(monkeypatch
     assert exit_code == 0
     assert payload["action"] == "artifact_intake"
     assert payload["status"] == "candidate_selected"
-    assert payload["selected_candidate"]["filename"] == "chatgpt_claudecode_workflow_v0.0.203.1.zip"
+    assert payload["selected_candidate"]["filename"] == "chatgpt_claudecode_workflow_v0.0.204.zip"
     assert payload["download_performed"] is False
     assert payload["migration_performed"] is False
     assert payload["adoption_performed"] is False
@@ -1433,20 +1433,20 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
         "result_type": "release_candidate",
         "summary": "Built candidate.",
         "baseline": {
-            "input_artifact": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-            "input_version": "v0.0.203.1",
-            "output_artifact": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-            "output_version": "v0.0.203.1",
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "input_version": "v0.0.204",
+            "output_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "output_version": "v0.0.204",
             "release_type": "normal",
         },
         "changes": [],
         "artifacts": [
             {
                 "kind": "zip",
-                "filename": "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-                "version": "v0.0.203.1",
+                "filename": "chatgpt_claudecode_workflow_v0.0.204.zip",
+                "version": "v0.0.204",
                 "role": "candidate_release",
-                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.203.1.zip", "url": source_zip.as_uri()},
+                "download": {"available": True, "link_text": "chatgpt_claudecode_workflow_v0.0.204.zip", "url": source_zip.as_uri()},
             }
         ],
         "validation": {"claimed": ["focused tests"], "not_claimed": ["full suite"]},
@@ -1465,7 +1465,7 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
                 "conversation_id": "abc",
                 "title": "Protocol chat",
                 "turns": [
-                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.203.1"},
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.204"},
                     {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
                 ],
             }
@@ -1481,8 +1481,8 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
         "--service-base-url", "http://localhost:8000",
         "--profile-dir", str(tmp_path),
         "artifact", "intake", "--from-last-answer",
-        "--expect-artifact", "chatgpt_claudecode_workflow_v0.0.203.1.zip",
-        "--expect-version", "v0.0.203.1",
+        "--expect-artifact", "chatgpt_claudecode_workflow_v0.0.204.zip",
+        "--expect-version", "v0.0.204",
         "--expect-repo", "chatgpt_claudecode_workflow",
         "--download",
         "--json",
@@ -1496,7 +1496,7 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
     assert payload["verification_performed"] is False
     assert payload["migration_performed"] is False
     assert payload["adoption_performed"] is False
-    assert payload["download"]["filename"] == "chatgpt_claudecode_workflow_v0.0.203.1.zip"
+    assert payload["download"]["filename"] == "chatgpt_claudecode_workflow_v0.0.204.zip"
     assert payload["download"]["size_bytes"] == len(b"candidate bytes")
     assert payload["download"]["sha256"] == expected_sha
     assert Path(payload["download"]["path"]).is_file()
@@ -1509,6 +1509,167 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
     assert intake_record["adoption_performed"] is False
 
 
+
+
+def test_artifact_intake_verifies_existing_inbox_candidate_without_download(monkeypatch, capsys, tmp_path) -> None:
+    artifact_name = "chatgpt_claudecode_workflow_v0.0.204.zip"
+    inbox_dir = tmp_path / "artifact_inbox" / "abc" / "a1" / "req-verify"
+    inbox_dir.mkdir(parents=True)
+    artifact_path = inbox_dir / artifact_name
+    with zipfile.ZipFile(artifact_path, "w") as archive:
+        archive.writestr("VERSION", "v0.0.204\n")
+        archive.writestr("README.md", "# demo\n")
+
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": "req-verify",
+        "correlation_id": "corr-verify",
+        "status": "completed",
+        "result_type": "release_candidate",
+        "summary": "Built candidate.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "input_version": "v0.0.204",
+            "output_artifact": artifact_name,
+            "output_version": "v0.0.204",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [
+            {
+                "kind": "zip",
+                "filename": artifact_name,
+                "version": "v0.0.204",
+                "role": "candidate_release",
+                "download": {"available": True, "link_text": artifact_name, "url": None},
+            }
+        ],
+        "validation": {"claimed": ["focused tests"], "not_claimed": ["full suite"]},
+        "next_step": {"operator_action": "download_verify_test_adopt"},
+    }
+    answer_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            return {
+                "ok": True,
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Protocol chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.204"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake", "--from-last-answer",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.0.204",
+        "--expect-repo", "chatgpt_claudecode_workflow",
+        "--verify",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "artifact_intake"
+    assert payload["status"] == "verified_candidate"
+    assert payload["verification_performed"] is True
+    assert payload["download_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["verification"]["ok"] is True
+    assert payload["zip_version"] == "v0.0.204"
+    assert payload["filename_version"] == "v0.0.204"
+    intake_record = json.loads(Path(payload["intake_record_path"]).read_text(encoding="utf-8"))
+    assert intake_record["status"] == "verified_candidate"
+    assert intake_record["verification_performed"] is True
+    assert intake_record["migration_performed"] is False
+    assert intake_record["adoption_performed"] is False
+
+
+def test_artifact_intake_verify_rejects_version_mismatch_without_migration(monkeypatch, capsys, tmp_path) -> None:
+    artifact_name = "chatgpt_claudecode_workflow_v0.0.204.zip"
+    inbox_dir = tmp_path / "artifact_inbox" / "abc" / "a1" / "req-mismatch"
+    inbox_dir.mkdir(parents=True)
+    artifact_path = inbox_dir / artifact_name
+    with zipfile.ZipFile(artifact_path, "w") as archive:
+        archive.writestr("VERSION", "v0.0.203.1\n")
+        archive.writestr("README.md", "# demo\n")
+
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": "req-mismatch",
+        "status": "completed",
+        "result_type": "release_candidate",
+        "summary": "Built candidate.",
+        "baseline": {"input_artifact": "old.zip", "input_version": "v0.0.203.1", "output_artifact": artifact_name, "output_version": "v0.0.204"},
+        "changes": [],
+        "artifacts": [{"kind": "zip", "filename": artifact_name, "version": "v0.0.204", "role": "candidate_release", "download": {"available": True, "link_text": artifact_name, "url": None}}],
+        "validation": {"claimed": [], "not_claimed": []},
+        "next_step": {"operator_action": "download_verify_test_adopt"},
+    }
+    answer_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            return {
+                "ok": True,
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Protocol chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake", "--from-last-answer",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.0.204",
+        "--expect-repo", "chatgpt_claudecode_workflow",
+        "--verify",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["action"] == "artifact_intake"
+    assert payload["status"] == "artifact_version_mismatch"
+    assert payload["verification_performed"] is True
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert "artifact_version_mismatch" in payload["verification_errors"]
+
+
 def test_artifact_intake_download_requires_candidate_url(monkeypatch, capsys, tmp_path) -> None:
     reply = {
         "schema": "promptbranch.ask.reply",
@@ -1517,9 +1678,9 @@ def test_artifact_intake_download_requires_candidate_url(monkeypatch, capsys, tm
         "status": "completed",
         "result_type": "release_candidate",
         "summary": "Built candidate.",
-        "baseline": {"input_artifact": "old.zip", "input_version": "v0.0.203.1", "output_artifact": "repo_v0.0.203.1.zip", "output_version": "v0.0.203.1"},
+        "baseline": {"input_artifact": "old.zip", "input_version": "v0.0.204", "output_artifact": "repo_v0.0.204.zip", "output_version": "v0.0.204"},
         "changes": [],
-        "artifacts": [{"kind": "zip", "filename": "repo_v0.0.203.1.zip", "version": "v0.0.203.1", "role": "candidate_release", "download": {"available": True, "link_text": "repo_v0.0.203.1.zip", "url": None}}],
+        "artifacts": [{"kind": "zip", "filename": "repo_v0.0.204.zip", "version": "v0.0.204", "role": "candidate_release", "download": {"available": True, "link_text": "repo_v0.0.204.zip", "url": None}}],
         "validation": {"claimed": [], "not_claimed": []},
         "next_step": {"operator_action": "download_verify_test_adopt"},
     }
@@ -1571,9 +1732,9 @@ def test_artifact_intake_rejects_wrong_expected_version(monkeypatch, capsys, tmp
         "status": "completed",
         "result_type": "release_candidate",
         "summary": "Built candidate.",
-        "baseline": {"input_artifact": "old.zip", "input_version": "v0.0.201.1", "output_artifact": "repo_v0.0.203.1.zip", "output_version": "v0.0.203.1"},
+        "baseline": {"input_artifact": "old.zip", "input_version": "v0.0.201.1", "output_artifact": "repo_v0.0.204.zip", "output_version": "v0.0.204"},
         "changes": [],
-        "artifacts": [{"kind": "zip", "filename": "repo_v0.0.203.1.zip", "version": "v0.0.203.1", "role": "candidate_release", "download": {"available": True}}],
+        "artifacts": [{"kind": "zip", "filename": "repo_v0.0.204.zip", "version": "v0.0.204", "role": "candidate_release", "download": {"available": True}}],
         "validation": {"claimed": [], "not_claimed": []},
         "next_step": {"operator_action": "download_verify_test_adopt"},
     }
@@ -1605,7 +1766,7 @@ def test_artifact_intake_rejects_wrong_expected_version(monkeypatch, capsys, tmp
     exit_code = main([
         "--service-base-url", "http://localhost:8000",
         "--profile-dir", str(tmp_path),
-        "artifact", "intake", "--from-last-answer", "--expect-version", "v0.0.204", "--json",
+        "artifact", "intake", "--from-last-answer", "--expect-version", "v0.0.205", "--json",
     ])
 
     payload = json.loads(capsys.readouterr().out)
@@ -2691,7 +2852,7 @@ def test_test_report_command_emits_summary(capsys, tmp_path) -> None:
             "browser": {"ok": True, "steps": [{"name": "login", "ok": True}]},
             "agent": {
                 "ok": True,
-                "version": "v0.0.203.1",
+                "version": "v0.0.204",
                 "steps": [
                     {"name": "package_hygiene", "ok": True, "payload": {"status": "verified", "bad_entries": [], "wrapper_folder": False}}
                 ],

@@ -1713,7 +1713,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.203.1"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.204"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -1863,6 +1863,159 @@ def _download_selected_artifact_candidate(
         "operator_instruction": "Artifact was downloaded to .pb_profile/artifact_inbox only. ZIP verification, migration, and adoption were not performed.",
     }
 
+
+def _verify_intake_artifact_candidate(
+    result: dict[str, Any],
+    *,
+    profile_dir: str | Path,
+    conversation_id: Any,
+    answer_id: Any,
+) -> dict[str, Any]:
+    """Verify a selected artifact candidate already present in artifact_inbox.
+
+    This is intentionally an inbox-only verification step. It never migrates the
+    ZIP to the repo root, never adopts it, and never mutates Project Sources.
+    """
+
+    candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
+    if result.get("status") not in {"candidate_selected", "downloaded"} or candidate is None:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_candidate_not_selected",
+            "verification_performed": False,
+            "verification_error": "a single valid candidate must be selected before verification",
+            "intake_stage": result.get("intake_stage") or "candidate_extraction",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    if not filename:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_wrong_filename",
+            "verification_performed": False,
+            "verification_error": "selected candidate filename must be a basename ending in .zip",
+            "intake_stage": result.get("intake_stage") or "candidate_extraction",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    inbox_dir = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=result.get("reply_request_id"),
+    )
+    download = result.get("download") if isinstance(result.get("download"), dict) else {}
+    candidate_path = Path(str(download.get("path") or inbox_dir / filename)).expanduser().resolve()
+    if not candidate_path.is_file():
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_inbox_candidate_missing",
+            "verification_performed": False,
+            "verification_error": "candidate ZIP is not present in artifact_inbox; run with --download first or provide a persisted intake artifact",
+            "artifact_inbox_dir": str(inbox_dir),
+            "expected_artifact_path": str(candidate_path),
+            "intake_stage": "verification_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    verification = verify_zip_artifact(candidate_path)
+    zip_version = _read_zip_version_file(candidate_path)
+    filename_version = _artifact_version_from_filename(filename) or candidate.get("filename_version")
+    expected_version = result.get("expected_version") or candidate.get("expected_version") or candidate.get("version") or filename_version
+    expected_version = _artifact_version_from_filename(f"artifact_{expected_version}.zip") if expected_version and valid_version_text(str(expected_version)) else expected_version
+    verification_errors: list[str] = []
+
+    if not verification.get("ok"):
+        verification_errors.append(str(verification.get("error") or "artifact_zip_invalid"))
+    if not verification.get("has_version_file"):
+        verification_errors.append("artifact_version_file_missing")
+    if zip_version and filename_version and str(zip_version) != str(filename_version):
+        verification_errors.append("artifact_version_mismatch")
+    if zip_version and expected_version and str(zip_version) != str(expected_version):
+        verification_errors.append("artifact_wrong_version")
+    if not zip_version and verification.get("has_version_file"):
+        verification_errors.append("artifact_version_invalid")
+
+    # Prefer specific semantic errors over the generic artifact_zip_invalid when possible.
+    if not verification_errors:
+        status = "verified_candidate"
+        ok = True
+        intake_stage = "verified"
+    else:
+        status = next((item for item in verification_errors if item != "artifact_zip_invalid"), verification_errors[0])
+        ok = False
+        intake_stage = "verification_failed"
+
+    verification_record = {
+        "schema": "promptbranch.artifact.intake.verification",
+        "schema_version": "1.0",
+        "status": status,
+        "ok": ok,
+        "candidate": candidate,
+        "download": _artifact_file_metadata(candidate_path),
+        "verification": verification,
+        "zip_version": zip_version,
+        "filename_version": filename_version,
+        "expected_version": expected_version,
+        "verification_errors": verification_errors,
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "verified_at": utc_now(),
+        "verification_performed": True,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    intake_record_path = inbox_dir / "intake.json"
+    persisted_record = dict(verification_record)
+    try:
+        if intake_record_path.is_file():
+            existing = json.loads(intake_record_path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                persisted_record = {**existing, **verification_record}
+        intake_record_path.parent.mkdir(parents=True, exist_ok=True)
+        intake_record_path.write_text(json.dumps(persisted_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_verification_metadata_failed",
+            "verification_performed": True,
+            "verification": verification,
+            "verification_error": str(exc),
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": intake_stage,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    return {
+        **result,
+        "ok": ok,
+        "status": status,
+        "intake_stage": intake_stage,
+        "artifact_inbox_dir": str(inbox_dir),
+        "intake_record_path": str(intake_record_path),
+        "download": _artifact_file_metadata(candidate_path),
+        "verification": verification,
+        "zip_version": zip_version,
+        "filename_version": filename_version,
+        "expected_version": expected_version,
+        "verification_errors": verification_errors,
+        "verification_performed": True,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "operator_instruction": "Artifact ZIP was verified inside .pb_profile/artifact_inbox only. Migration and adoption were not performed.",
+    }
+
 def _render_artifact_intake_result(result: dict[str, Any]) -> str:
     lines = [
         f"status={result.get('status')}",
@@ -1899,7 +2052,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.203.1 supports --from-last-answer only",
+            "error": "v0.0.204 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -1908,7 +2061,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.203.1 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.204 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -1957,6 +2110,13 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             conversation_id=payload.get("conversation_id"),
             answer_id=answer.get("id"),
             timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+        )
+    if getattr(args, "verify", False):
+        result = _verify_intake_artifact_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=payload.get("conversation_id"),
+            answer_id=answer.get("id"),
         )
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -4740,7 +4900,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.203.1.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.204.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -4766,15 +4926,16 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify.add_argument("--json", action="store_true")
 
 
-    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download to .pb_profile/artifact_inbox/.")
+    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.203.1 or 0.0.203.1.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.204 or 0.0.204.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
-    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download result as JSON.")
+    artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/. No migration or adoption is performed.")
+    artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download/verification result as JSON.")
     artifact_intake.add_argument("--keep-open", action="store_true")
 
     agent = subparsers.add_parser("agent", help="Read-only MCP/Ollama planning scaffold commands.")
