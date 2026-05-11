@@ -10,6 +10,7 @@ import os
 import shutil
 import re
 import shlex
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
@@ -1714,7 +1715,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.205"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.206"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -1779,6 +1780,149 @@ def _record_artifact_candidate(profile_dir: str | Path, record: dict[str, Any]) 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path, record
+
+
+def _candidate_version_normalized(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if not text.startswith("v"):
+        text = "v" + text
+    return text if valid_version_text(text) else None
+
+
+def _select_artifact_candidate_record(
+    profile_dir: str | Path,
+    *,
+    artifact: str | None = None,
+    version: str | None = None,
+) -> tuple[Path, dict[str, Any] | None, dict[str, Any]]:
+    registry_path = _artifact_candidates_registry_path(profile_dir)
+    payload = _load_artifact_candidate_registry(profile_dir)
+    candidates = [item for item in payload.get("candidates", []) if isinstance(item, dict)]
+    requested_artifact = Path(str(artifact or "")).name if artifact else None
+    requested_version = _candidate_version_normalized(version)
+
+    matches: list[dict[str, Any]] = []
+    for item in candidates:
+        filename = str(item.get("filename") or Path(str(item.get("path") or "")).name)
+        item_version = _candidate_version_normalized(item.get("version") or item.get("zip_version") or item.get("filename_version") or _artifact_version_from_filename(filename))
+        if requested_artifact and filename != requested_artifact:
+            continue
+        if requested_version and item_version != requested_version:
+            continue
+        matches.append(item)
+
+    if not requested_artifact and not requested_version:
+        matches = candidates[:1] if candidates else []
+
+    if len(matches) == 1:
+        return registry_path, matches[0], {"status": "candidate_selected", "candidate_count": len(candidates), "match_count": 1}
+    if not matches:
+        return registry_path, None, {"status": "candidate_not_found", "candidate_count": len(candidates), "match_count": 0}
+    return registry_path, None, {"status": "candidate_ambiguous", "candidate_count": len(candidates), "match_count": len(matches), "matches": matches[:5]}
+
+
+def _mark_artifact_candidate_accepted(profile_dir: str | Path, *, candidate: dict[str, Any], current_payload: dict[str, Any]) -> tuple[Path, dict[str, Any] | None]:
+    path = _artifact_candidates_registry_path(profile_dir)
+    payload = _load_artifact_candidate_registry(profile_dir)
+    candidates = [item for item in payload.get("candidates", []) if isinstance(item, dict)]
+    target_path = str(candidate.get("path") or "")
+    target_filename = str(candidate.get("filename") or "")
+    accepted_at = utc_now()
+    updated: dict[str, Any] | None = None
+    next_candidates: list[dict[str, Any]] = []
+    for item in candidates:
+        item_path = str(item.get("path") or "")
+        item_filename = str(item.get("filename") or "")
+        if (target_path and item_path == target_path) or (target_filename and item_filename == target_filename):
+            item = {
+                **item,
+                "status": "accepted_candidate",
+                "accepted": True,
+                "accepted_at": accepted_at,
+                "adoption_performed": True,
+                "artifact_current": current_payload,
+            }
+            updated = item
+        next_candidates.append(item)
+    payload["schema_version"] = 1
+    payload["updated_at"] = accepted_at
+    payload["candidates"] = next_candidates
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path, updated
+
+
+def _report_artifact_current_matches_candidate(current_payload: dict[str, Any], *, filename: str, version: str) -> tuple[bool, dict[str, bool]]:
+    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
+    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    checks = {
+        "state_artifact_ref_matches_candidate": state.get("artifact_ref") == filename,
+        "state_source_ref_matches_candidate": state.get("source_ref") == filename,
+        "state_artifact_version_matches_candidate": state.get("artifact_version") == version,
+        "state_source_version_matches_candidate": state.get("source_version") == version,
+        "registry_current_matches_candidate": registry_current.get("filename") == filename and registry_current.get("version") == version,
+        "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact") is True,
+        "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact") is True,
+        "code_version_matches_state_source": consistency.get("code_version_matches_state_source") is True,
+    }
+    return all(checks.values()), checks
+
+
+def _release_control_command_for_candidate(
+    repo_root: Path,
+    *,
+    version: str,
+    release_log_keep: int,
+    skip_docker_logs: bool = True,
+    prune_release_logs: bool = True,
+) -> list[str]:
+    script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
+    command = [str(script), "--version", version, "--tests-only", "--adopt-if-green"]
+    if skip_docker_logs:
+        command.append("--skip-docker-logs")
+    if prune_release_logs:
+        command.append("--prune-release-logs")
+    command.extend(["--release-log-keep", str(int(release_log_keep))])
+    return command
+
+
+def _run_release_control_candidate_acceptance(command: list[str], *, repo_root: Path, timeout_seconds: float) -> dict[str, Any]:
+    started_at = utc_now()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "status": "candidate_acceptance_timeout",
+            "command": command,
+            "started_at": started_at,
+            "timeout_seconds": timeout_seconds,
+            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
+            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
+        }
+    return {
+        "ok": completed.returncode == 0,
+        "status": "candidate_acceptance_command_ok" if completed.returncode == 0 else "candidate_acceptance_command_failed",
+        "command": command,
+        "returncode": completed.returncode,
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        "stdout_tail": (completed.stdout or "")[-4000:],
+        "stderr_tail": (completed.stderr or "")[-4000:],
+    }
 
 
 def _path_is_relative_to(path: Path, root: Path) -> bool:
@@ -2218,7 +2362,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.205 supports --from-last-answer only",
+            "error": "v0.0.206 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2227,7 +2371,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.205 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.206 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -3944,6 +4088,165 @@ async def cmd_artifact_list(backend: Any, args: argparse.Namespace) -> int:
 
 
 
+async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) -> int:
+    """Guardedly run tests/adoption for a migrated candidate_release artifact."""
+
+    registry = _artifact_registry_from_args(args)
+    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    project_url = _artifact_state_project_url(backend)
+    artifact_arg = getattr(args, "artifact", None)
+    version_arg = getattr(args, "version", None)
+    registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
+
+    base_payload: dict[str, Any] = {
+        "ok": False,
+        "action": "artifact_accept_candidate",
+        "status": selection.get("status"),
+        "project_url": project_url,
+        "repo_path": str(repo_root),
+        "candidate_registry_path": str(registry_path),
+        "candidate_selection": selection,
+        "project_source_mutated": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+            if payload.get("error"):
+                print(f"error={payload.get('error')}")
+            if payload.get("artifact_ref"):
+                print(f"artifact_ref={payload.get('artifact_ref')}")
+        return code
+
+    if candidate is None:
+        return emit({**base_payload, "error": "candidate_release not found or ambiguous; pass --artifact or --version to select exactly one candidate"}, 1)
+
+    filename = _safe_artifact_filename(candidate.get("filename") or Path(str(candidate.get("path") or "")).name)
+    if not filename:
+        return emit({**base_payload, "status": "artifact_wrong_filename", "candidate": candidate, "error": "candidate filename must be a basename ending in .zip"}, 1)
+    candidate_version = _candidate_version_normalized(candidate.get("version") or candidate.get("zip_version") or candidate.get("filename_version") or _artifact_version_from_filename(filename))
+    if not candidate_version:
+        return emit({**base_payload, "status": "artifact_wrong_version", "candidate": candidate, "artifact_ref": filename, "error": "candidate version is missing or invalid"}, 1)
+
+    candidate_path_value = str(candidate.get("path") or "")
+    candidate_path = Path(candidate_path_value).expanduser().resolve() if candidate_path_value else (repo_root / filename).resolve()
+    payload = {
+        **base_payload,
+        "status": "candidate_selected",
+        "candidate": candidate,
+        "artifact_ref": filename,
+        "artifact_version": candidate_version,
+        "candidate_path": str(candidate_path),
+    }
+
+    if candidate.get("kind") != "candidate_release" or candidate.get("status") not in {"candidate_release", "migrated_candidate", "accepted_candidate"}:
+        return emit({**payload, "ok": False, "status": "candidate_not_release", "error": "selected record is not a candidate_release"}, 1)
+    if candidate.get("verified") is not True:
+        return emit({**payload, "ok": False, "status": "candidate_not_verified", "error": "candidate must be verified before acceptance"}, 1)
+    if not candidate_path.is_file():
+        return emit({**payload, "ok": False, "status": "candidate_zip_missing", "error": "candidate ZIP does not exist at the registered path"}, 1)
+    if candidate_path.parent != repo_root:
+        return emit({**payload, "ok": False, "status": "candidate_not_repo_root", "error": "candidate ZIP must be migrated directly under the selected repo root before acceptance"}, 1)
+
+    metadata = _artifact_file_metadata(candidate_path)
+    expected_sha = str(candidate.get("sha256") or "")
+    if expected_sha and metadata.get("sha256") != expected_sha:
+        return emit({**payload, "ok": False, "status": "candidate_sha_mismatch", "file": metadata, "error": "candidate ZIP sha256 differs from candidate registry metadata"}, 1)
+
+    zip_check = verify_zip_artifact(candidate_path)
+    zip_version = _read_zip_version_file(candidate_path)
+    if not bool(zip_check.get("ok")):
+        return emit({**payload, "ok": False, "status": "candidate_zip_invalid", "zip": zip_check, "error": "candidate ZIP failed verification"}, 1)
+    if zip_version != candidate_version:
+        return emit({**payload, "ok": False, "status": "candidate_version_mismatch", "zip": zip_check, "zip_version": zip_version, "error": "candidate ZIP VERSION does not match candidate version"}, 1)
+
+    if not getattr(args, "from_project_source", False):
+        return emit({**payload, "ok": False, "status": "project_source_verification_required", "zip": zip_check, "error": "accept-candidate requires --from-project-source so local state advances only after Project Source verification"}, 2)
+    if not project_url:
+        return emit({**payload, "ok": False, "status": "workspace_not_selected", "zip": zip_check, "error": "select a workspace before accepting a candidate"}, 2)
+
+    source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+    matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
+    if not bool(source_payload.get("ok")):
+        return emit({**payload, "ok": False, "status": "source_list_unavailable", "zip": zip_check, "source_list": source_payload, "error": "could not verify Project Sources"}, 1)
+    if len(matched_sources) != 1:
+        return emit({**payload, "ok": False, "status": "project_source_match_count_invalid", "zip": zip_check, "source_list": source_payload, "matching_expected_count": len(matched_sources), "error": f"expected exactly one matching Project Source named {filename}, found {len(matched_sources)}"}, 1)
+
+    preflight = {
+        **payload,
+        "ok": True,
+        "status": "candidate_acceptance_preflight_verified",
+        "candidate_file": metadata,
+        "zip": zip_check,
+        "source_verified": True,
+        "source_list": source_payload,
+        "matched_source": matched_sources[0],
+        "checks": {
+            "candidate_record_selected": True,
+            "candidate_verified": True,
+            "candidate_zip_exists": True,
+            "candidate_sha_matches_registry": not expected_sha or metadata.get("sha256") == expected_sha,
+            "zip_verified": bool(zip_check.get("ok")),
+            "zip_version_matches_candidate": zip_version == candidate_version,
+            "source_verified": len(matched_sources) == 1,
+            "project_source_mutated": False,
+        },
+    }
+
+    if not getattr(args, "adopt_if_green", False):
+        return emit({**preflight, "operator_instruction": "Candidate acceptance preflight verified. Re-run with --run-release-control --adopt-if-green to run guarded tests and adoption."}, 0)
+    if not getattr(args, "run_release_control", False):
+        return emit({**preflight, "ok": False, "status": "candidate_acceptance_runner_required", "error": "--adopt-if-green requires --run-release-control for guarded test/adopt execution"}, 2)
+
+    release_control_script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
+    if not release_control_script.is_file():
+        return emit({**preflight, "ok": False, "status": "release_control_missing", "error": f"release-control script not found: {release_control_script}"}, 1)
+    if not os.access(release_control_script, os.X_OK):
+        return emit({**preflight, "ok": False, "status": "release_control_not_executable", "error": f"release-control script is not executable: {release_control_script}"}, 1)
+
+    command = _release_control_command_for_candidate(
+        repo_root,
+        version=candidate_version,
+        release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
+        skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
+        prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
+    )
+    runner = _run_release_control_candidate_acceptance(command, repo_root=repo_root, timeout_seconds=float(getattr(args, "test_timeout", 3600.0) or 3600.0))
+    if not runner.get("ok"):
+        return emit({**preflight, "ok": False, "status": runner.get("status") or "candidate_acceptance_command_failed", "release_control": runner, "adoption_performed": False, "error": "release-control tests/adoption did not complete green"}, 1)
+
+    current_payload = _artifact_current_payload(backend, registry)
+    current_ok, current_checks = _report_artifact_current_matches_candidate(current_payload, filename=filename, version=candidate_version)
+    if not current_ok:
+        return emit({**preflight, "ok": False, "status": "artifact_current_mismatch", "release_control": runner, "artifact_current": current_payload, "current_checks": current_checks, "adoption_performed": True, "error": "release-control returned success, but artifact current does not match the accepted candidate"}, 1)
+
+    candidate_registry_path, accepted_record = _mark_artifact_candidate_accepted(profile_root, candidate=candidate, current_payload=current_payload)
+    result = {
+        **preflight,
+        "ok": True,
+        "status": "accepted_candidate",
+        "release_control": runner,
+        "artifact_current": current_payload,
+        "current_checks": current_checks,
+        "candidate_registry_path": str(candidate_registry_path),
+        "candidate_registry_entry": accepted_record,
+        "artifact_registry_updated": True,
+        "state_artifact_updated": True,
+        "state_source_updated": True,
+        "project_source_mutated": False,
+        "adoption_performed": True,
+        "operator_instruction": "Candidate passed guarded release-control validation/adoption and now matches artifact current.",
+    }
+    return emit(result, 0)
+
+
 async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     """Adopt an already-present Project Source ZIP as the local current baseline."""
 
@@ -4259,6 +4562,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_list(backend, args)
     if args.artifact_command == "adopt":
         return await cmd_artifact_adopt(backend, args)
+    if args.artifact_command == "accept-candidate":
+        return await cmd_artifact_accept_candidate(backend, args)
     if args.artifact_command == "release":
         return await cmd_artifact_release(backend, args)
     if args.artifact_command == "verify":
@@ -5074,11 +5379,26 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.205.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.206.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
     artifact_adopt.add_argument("--json", action="store_true")
+
+    artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
+    artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.206. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
+    artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
+    artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
+    artifact_accept_candidate.add_argument("--adopt-if-green", action="store_true", help="Adopt only if release-control tests/report are green and final artifact current matches the candidate.")
+    artifact_accept_candidate.add_argument("--test-timeout", type=float, default=3600.0, help="Timeout in seconds for release-control test/adopt execution. Defaults to 3600.")
+    artifact_accept_candidate.add_argument("--release-log-keep", type=int, default=12, help="Release log directories to keep when pruning. Defaults to 12.")
+    artifact_accept_candidate.add_argument("--skip-docker-logs", action="store_true", default=True, help="Skip docker log capture in release-control. Default: true.")
+    artifact_accept_candidate.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Do not pass --prune-release-logs to release-control.")
+    artifact_accept_candidate.set_defaults(prune_release_logs=True)
+    artifact_accept_candidate.add_argument("--keep-open", action="store_true")
+    artifact_accept_candidate.add_argument("--json", action="store_true")
 
     artifact_release = artifact_subparsers.add_parser("release", help="Create a release ZIP from a repo path, optionally through the source-sync transaction workflow.")
     artifact_release.add_argument("path", nargs="?", default=".", help="Repo path to package. Defaults to the current directory.")
@@ -5103,7 +5423,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.205 or 0.0.205.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.206 or 0.0.206.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")

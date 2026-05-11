@@ -1,4 +1,4 @@
-# promptbranch v0.0.194
+# promptbranch v0.0.206
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -641,6 +641,14 @@ pb agent mcp-call test.smoke '{"timeout_seconds":60}' --path . --json
 pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
+
+
+## v0.0.206
+
+- Added `pb artifact accept-candidate` for MVP-F5 guarded candidate test/adopt integration.
+- The command requires a migrated, verified `candidate_release`, a matching repo-root ZIP, SHA-256 consistency, ZIP hygiene/version verification, and exactly one matching Project Source before acceptance.
+- `--run-release-control --adopt-if-green` runs the fixed release-control `--tests-only --adopt-if-green` path and then re-reads `pb artifact current`-equivalent state before marking the candidate accepted.
+- Project Sources are never mutated by `accept-candidate`; `.pb_profile/` remains local runtime state and is still excluded from release ZIPs.
 
 ## v0.0.205
 
