@@ -3,29 +3,142 @@
   "$id": "https://promptbranch.local/schemas/ask.request.schema.json",
   "title": "Promptbranch Ask Request",
   "type": "object",
-  "required": ["schema", "schema_version", "request_id", "workspace", "task", "artifact", "intent", "constraints", "expected_reply"],
+  "required": [
+    "schema",
+    "schema_version",
+    "request_id",
+    "workspace",
+    "task",
+    "artifact",
+    "intent",
+    "constraints",
+    "expected_reply"
+  ],
   "properties": {
-    "schema": {"const": "promptbranch.ask.request"},
-    "schema_version": {"const": "1.0"},
-    "request_id": {"type": "string", "minLength": 1},
-    "correlation_id": {"type": "string"},
-    "workspace": {"type": "object"},
-    "task": {"type": "object"},
+    "schema": {
+      "const": "promptbranch.ask.request"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "object"
+    },
+    "task": {
+      "type": "object"
+    },
     "artifact": {
       "type": "object",
-      "required": ["repo", "current_baseline", "current_version"],
+      "required": [
+        "repo",
+        "current_baseline",
+        "current_version"
+      ],
       "properties": {
-        "repo": {"type": "string"},
-        "current_baseline": {"type": "string"},
-        "current_version": {"type": "string"},
-        "target_version": {"type": "string"},
-        "release_type": {"type": "string", "enum": ["normal", "repair", "analysis"]}
+        "repo": {
+          "type": "string"
+        },
+        "current_baseline": {
+          "type": "string"
+        },
+        "current_version": {
+          "type": "string"
+        },
+        "target_version": {
+          "type": "string"
+        },
+        "release_type": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "repair",
+            "analysis"
+          ]
+        },
+        "base_release": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Required for repair release requests; identifies the release line being repaired."
+        },
+        "repair_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Required for repair release requests; explains the validation/packaging defect being repaired."
+        },
+        "download_policy": {
+          "type": "string",
+          "enum": [
+            "direct_url_only",
+            "browser_context_later",
+            "none"
+          ],
+          "default": "direct_url_only"
+        },
+        "target_version_policy": {
+          "type": "string",
+          "enum": [
+            "explicit_required",
+            "infer_optional"
+          ],
+          "default": "explicit_required"
+        }
       },
       "additionalProperties": true
     },
-    "intent": {"type": "object"},
-    "constraints": {"type": "object"},
-    "expected_reply": {"type": "object"}
+    "intent": {
+      "type": "object"
+    },
+    "constraints": {
+      "type": "object"
+    },
+    "expected_reply": {
+      "type": "object"
+    },
+    "protocol_decisions": {
+      "type": "object",
+      "properties": {
+        "reply_envelope_required": {
+          "type": "boolean"
+        },
+        "manual_mode_allowed": {
+          "type": "boolean"
+        },
+        "multiple_answers_policy": {
+          "type": "string",
+          "enum": [
+            "fail_closed",
+            "explicit_answer_id_required"
+          ]
+        },
+        "artifact_url_policy": {
+          "type": "string",
+          "enum": [
+            "temporary_store_answer_id",
+            "direct_url_only",
+            "browser_context_later"
+          ]
+        },
+        "non_zip_artifacts": {
+          "type": "string",
+          "enum": [
+            "later",
+            "unsupported_in_mvp"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

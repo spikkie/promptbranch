@@ -335,6 +335,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.208
+
+- Locked the Ask/Reply Protocol open-question decisions for MVP-F.
+- Added the explicit MVP-F7 design for a future controlled ask/reply transaction runner.
+- Extended protocol schemas/examples with repair release metadata, answer identifiers, and temporary artifact URL metadata.
+- No runtime artifact intake behavior changed: direct URL download remains explicit, migration remains explicit, and adoption remains guarded.
+
 ## v0.0.207
 
 - Added protocol-aware ask generation with `pb ask --protocol --from-current-baseline`.

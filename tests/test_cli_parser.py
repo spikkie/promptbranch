@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.207" in out
+    assert "0.0.208" in out
     assert "promptbranch" in out
 
 
@@ -336,13 +336,13 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_verify.json is True
 
     artifact_intake = parser.parse_args([
-        "artifact", "intake", "--from-last-answer", "--expect-artifact", "release.zip", "--expect-version", "v0.0.207", "--expect-repo", "repo", "--download", "--download-timeout", "7", "--verify", "--migrate", "--repo-path", "/tmp/repo", "--json"
+        "artifact", "intake", "--from-last-answer", "--expect-artifact", "release.zip", "--expect-version", "v0.0.208", "--expect-repo", "repo", "--download", "--download-timeout", "7", "--verify", "--migrate", "--repo-path", "/tmp/repo", "--json"
     ])
     assert artifact_intake.command == "artifact"
     assert artifact_intake.artifact_command == "intake"
     assert artifact_intake.from_last_answer is True
     assert artifact_intake.expect_artifact == "release.zip"
-    assert artifact_intake.expect_version == "v0.0.207"
+    assert artifact_intake.expect_version == "v0.0.208"
     assert artifact_intake.expect_repo == "repo"
     assert artifact_intake.download is True
     assert artifact_intake.download_timeout == 7.0
@@ -352,8 +352,8 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_intake.json is True
 
     artifact_accept_candidate = parser.parse_args([
-        "artifact", "accept-candidate", "chatgpt_claudecode_workflow_v0.0.207.zip",
-        "--version", "v0.0.207",
+        "artifact", "accept-candidate", "chatgpt_claudecode_workflow_v0.0.208.zip",
+        "--version", "v0.0.208",
         "--repo-path", "/tmp/repo",
         "--from-project-source",
         "--run-release-control",
@@ -364,8 +364,8 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     ])
     assert artifact_accept_candidate.command == "artifact"
     assert artifact_accept_candidate.artifact_command == "accept-candidate"
-    assert artifact_accept_candidate.artifact == "chatgpt_claudecode_workflow_v0.0.207.zip"
-    assert artifact_accept_candidate.version == "v0.0.207"
+    assert artifact_accept_candidate.artifact == "chatgpt_claudecode_workflow_v0.0.208.zip"
+    assert artifact_accept_candidate.version == "v0.0.208"
     assert artifact_accept_candidate.repo_path == "/tmp/repo"
     assert artifact_accept_candidate.from_project_source is True
     assert artifact_accept_candidate.run_release_control is True
@@ -454,13 +454,13 @@ def test_parser_accepts_protocol_ask_generation_flags() -> None:
         "--protocol",
         "--from-current-baseline",
         "--target-version",
-        "v0.0.207",
+        "v0.0.208",
         "--print-request-json",
     ])
     assert args.command == "ask"
     assert args.protocol is True
     assert args.from_current_baseline is True
-    assert args.target_version == "v0.0.207"
+    assert args.target_version == "v0.0.208"
     assert args.print_request_json is True
 
 

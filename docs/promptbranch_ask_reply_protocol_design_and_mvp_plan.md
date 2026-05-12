@@ -1109,6 +1109,65 @@ v0.0.207
 
 ---
 
+## MVP-F7 — Controlled Ask/Reply Transaction Runner
+
+Goal:
+
+```text
+Combine protocol ask generation and reply parsing into one guarded operator transaction.
+```
+
+Scope:
+
+```text
+- send a protocol-aware ask generated from the current accepted baseline
+- persist request_id and correlation_id locally
+- wait for the assistant answer
+- parse exactly one reply envelope
+- verify request_id / correlation_id match the sent request
+- verify the reply baseline matches the current accepted baseline
+- return artifact candidates for later intake stages
+- do not download artifacts
+- do not verify ZIP contents
+- do not migrate candidates
+- do not adopt artifacts
+- do not mutate Project Sources
+```
+
+Commands:
+
+```bash
+pb ask protocol-run   "Continue next slice"   --target-version v0.0.208   --json
+```
+
+Alternative compatibility form:
+
+```bash
+pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.208   --parse-reply   --json
+```
+
+Acceptance:
+
+```text
+- request_id is generated and persisted
+- correlation_id is generated and persisted
+- reply envelope is required
+- missing envelope returns reply_schema_missing
+- multiple envelopes returns reply_schema_ambiguous
+- request_id mismatch returns reply_request_id_mismatch
+- baseline mismatch returns reply_baseline_mismatch
+- artifact candidates are returned but not downloaded
+- no artifact/source/current state is advanced
+```
+
+Recommended release:
+
+```text
+v0.0.209
+```
+
+---
+
 # 13. Acceptance criteria
 
 The full MVP-F is complete when this works end-to-end:
@@ -1149,16 +1208,171 @@ Expected invariants:
 
 ---
 
-# 14. Open questions
+# 14. Locked protocol decisions
 
-1. Can the current service access ChatGPT artifact download links directly, or must download happen through browser context?
-2. Are artifact URLs stable enough to store, or should Promptbranch store only answer IDs and re-resolve links when needed?
-3. Should the reply envelope be required for all `pb ask`, or only for `pb ask --protocol` initially?
-4. Should the host reject answers that contain prose but no envelope, or allow manual-only mode?
-5. How should multiple assistant answers for one user message be selected?
-6. Should `pb ask` infer `target_version`, or must the operator supply it?
-7. How should repair releases be requested and validated in the protocol?
-8. Should artifact intake support non-ZIP outputs later, such as docs or JSON reports?
+The original open questions are now resolved for MVP-F. These decisions define the safety boundary for releases after `v0.0.207`.
+
+## 14.1 Artifact download access
+
+Decision:
+
+```text
+MVP supports direct download URLs only.
+Browser-context artifact download is deferred.
+```
+
+If a candidate artifact has no concrete `download.url`, artifact intake must fail closed with:
+
+```text
+artifact_download_url_missing
+```
+
+Do not infer or click UI-only links in MVP.
+
+## 14.2 Artifact URL persistence
+
+Decision:
+
+```text
+Store both URL metadata and answer identity, but treat URLs as temporary.
+```
+
+Stable metadata:
+
+```text
+request_id
+answer_id
+filename
+url_seen_at
+sha256 after download
+```
+
+The preferred long-term reference is `answer_id`, not the URL.
+
+## 14.3 Reply envelope requirement
+
+Decision:
+
+```text
+The reply envelope is required only for protocol mode initially.
+```
+
+Plain ask remains manual/prose mode:
+
+```bash
+pb ask "..."
+```
+
+Strict protocol mode requires a valid envelope:
+
+```bash
+pb ask "..." --protocol --json
+```
+
+## 14.4 Prose without envelope
+
+Decision:
+
+```text
+For --protocol: reject.
+For plain pb ask: allow manual-only mode.
+```
+
+Protocol mode without an envelope must return:
+
+```text
+reply_schema_missing
+```
+
+## 14.5 Multiple assistant answers
+
+Decision:
+
+```text
+Do not auto-select silently.
+```
+
+If multiple assistant answers or multiple reply envelopes are present, return:
+
+```text
+reply_schema_ambiguous
+```
+
+The operator must select explicitly:
+
+```bash
+pb task answer parse --answer-id <id> --json
+```
+
+## 14.6 Target version handling
+
+Decision:
+
+```text
+Require explicit target_version first; keep inference optional and non-default for later.
+```
+
+Recommended operator form:
+
+```bash
+pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.208   --json
+```
+
+Rationale: repair releases make automatic inference risky.
+
+## 14.7 Repair release handling
+
+Decision:
+
+```text
+Repair releases must be explicit.
+```
+
+Request envelope fields:
+
+```json
+{
+  "release_type": "repair",
+  "base_release": "v0.0.207",
+  "target_version": "v0.0.207.1",
+  "repair_reason": "validation failure / packaging defect / stale validator"
+}
+```
+
+Validation rules:
+
+```text
+- repair does not advance MVP scope
+- repair includes a repair note
+- repair version uses one numeric suffix only
+- future normal release builds from the latest accepted repair
+```
+
+## 14.8 Non-ZIP artifact support
+
+Decision:
+
+```text
+MVP-F remains ZIP-first.
+```
+
+Supported MVP artifact kinds:
+
+```text
+kind: zip
+role: candidate_release / repair_candidate
+```
+
+Later non-release artifacts may be added as diagnostics only:
+
+```text
+markdown_report
+json_report
+log_bundle
+diagnostic_bundle
+```
+
+They must not enter the release baseline path until explicitly designed.
 
 ---
 
