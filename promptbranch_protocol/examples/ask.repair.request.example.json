@@ -1,8 +1,8 @@
 {
   "schema": "promptbranch.ask.request",
   "schema_version": "1.0",
-  "request_id": "req_20260510_001",
-  "correlation_id": "corr_20260510_001",
+  "request_id": "req_20260510_repair_001",
+  "correlation_id": "corr_20260510_repair_001",
   "workspace": {
     "project_name": "Claude Code workflow in ChatGPT",
     "project_home_url": "https://chatgpt.com/..."
@@ -13,18 +13,18 @@
   },
   "artifact": {
     "repo": "chatgpt_claudecode_workflow",
-    "current_baseline": "chatgpt_claudecode_workflow_v0.0.200.zip",
-    "current_version": "v0.0.200",
-    "target_version": "v0.0.201",
-    "release_type": "normal",
+    "current_baseline": "chatgpt_claudecode_workflow_v0.0.207.zip",
+    "current_version": "v0.0.207",
+    "target_version": "v0.0.207.1",
+    "release_type": "repair",
     "target_version_policy": "explicit_required",
     "download_policy": "direct_url_only",
-    "base_release": null,
-    "repair_reason": null
+    "base_release": "v0.0.207",
+    "repair_reason": "validation failure in intended release; no scope advancement"
   },
   "intent": {
-    "kind": "software_release_request",
-    "summary": "Implement ask/reply protocol first slice."
+    "kind": "software_repair_request",
+    "summary": "Repair v0.0.207 without advancing MVP scope."
   },
   "constraints": {
     "preserve_baseline": true,

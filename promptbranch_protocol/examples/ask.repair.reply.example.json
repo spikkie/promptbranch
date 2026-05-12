@@ -1,19 +1,19 @@
 {
   "schema": "promptbranch.ask.reply",
   "schema_version": "1.0",
-  "request_id": "req_20260510_001",
-  "correlation_id": "corr_20260510_001",
+  "request_id": "req_20260510_repair_001",
+  "correlation_id": "corr_20260510_repair_001",
   "status": "completed",
-  "result_type": "release_candidate",
-  "summary": "Implemented ask/reply protocol schema and answer parsing.",
+  "result_type": "repair_candidate",
+  "summary": "Created repair candidate without advancing MVP scope.",
   "baseline": {
-    "input_artifact": "chatgpt_claudecode_workflow_v0.0.200.zip",
-    "input_version": "v0.0.200",
-    "output_artifact": "chatgpt_claudecode_workflow_v0.0.201.zip",
-    "output_version": "v0.0.201",
-    "release_type": "normal",
-    "base_release": null,
-    "repair_reason": null
+    "input_artifact": "chatgpt_claudecode_workflow_v0.0.207.zip",
+    "input_version": "v0.0.207",
+    "output_artifact": "chatgpt_claudecode_workflow_v0.0.207.1.zip",
+    "output_version": "v0.0.207.1",
+    "release_type": "repair",
+    "base_release": "v0.0.207",
+    "repair_reason": "validation failure in intended release; no scope advancement"
   },
   "changes": [
     {
@@ -25,20 +25,20 @@
   "artifacts": [
     {
       "kind": "zip",
-      "filename": "chatgpt_claudecode_workflow_v0.0.201.zip",
-      "version": "v0.0.201",
-      "role": "candidate_release",
+      "filename": "chatgpt_claudecode_workflow_v0.0.207.1.zip",
+      "version": "v0.0.207.1",
+      "role": "repair_candidate",
       "download": {
         "available": true,
-        "link_text": "chatgpt_claudecode_workflow_v0.0.201.zip",
+        "link_text": "chatgpt_claudecode_workflow_v0.0.207.1.zip",
         "url": null,
         "url_seen_at": "2026-05-10T00:00:00Z",
         "url_temporary": true,
         "requires_browser_context": false
       },
       "source": {
-        "request_id": "req_20260510_001",
-        "answer_id": "ans_20260510_001",
+        "request_id": "req_20260510_repair_001",
+        "answer_id": "ans_20260510_repair_001",
         "url_seen_at": "2026-05-10T00:00:00Z",
         "url_temporary": true
       }
@@ -61,5 +61,5 @@
     "recommended_command": "pb artifact intake --from-last-answer --download --verify --migrate --json"
   },
   "confidence": "medium",
-  "answer_id": "ans_20260510_001"
+  "answer_id": "ans_20260510_repair_001"
 }

@@ -1,4 +1,4 @@
-# promptbranch v0.0.207
+# promptbranch v0.0.208
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -642,6 +642,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 ```
 
 
+
+## v0.0.208
+
+- Locked the remaining Ask/Reply Protocol open questions in `docs/promptbranch_ask_reply_protocol_design_and_mvp_plan.md`.
+- Added the explicit MVP-F7 plan for a future controlled ask/reply transaction runner; this release does not implement that runner yet.
+- Hardened protocol schemas/examples with repair metadata (`base_release`, `repair_reason`), answer identity (`answer_id`), temporary URL metadata (`url_seen_at`, `url_temporary`), and explicit protocol decision fields.
+- Preserved existing artifact intake boundaries: no new download, migration, adoption, or Project Source mutation behavior.
 
 ## v0.0.207
 

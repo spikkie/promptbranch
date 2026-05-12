@@ -72,6 +72,8 @@ def build_ask_request_envelope(
     artifact: dict[str, Any] | None = None,
     target_version: str | None = None,
     release_type: str = "normal",
+    base_release: str | None = None,
+    repair_reason: str | None = None,
     intent_kind: str = "software_release_request",
 ) -> dict[str, Any]:
     """Build the Promptbranch ask.request envelope used by protocol-aware asks."""
@@ -82,6 +84,16 @@ def build_ask_request_envelope(
     if inferred_target:
         artifact_payload["target_version"] = inferred_target
     artifact_payload.setdefault("release_type", release_type)
+    artifact_payload.setdefault("target_version_policy", "explicit_required")
+    artifact_payload.setdefault("download_policy", "direct_url_only")
+    if base_release is not None:
+        artifact_payload["base_release"] = base_release
+    elif artifact_payload.get("release_type") == "repair":
+        artifact_payload.setdefault("base_release", current_version)
+    if repair_reason is not None:
+        artifact_payload["repair_reason"] = repair_reason
+    elif artifact_payload.get("release_type") == "repair":
+        artifact_payload.setdefault("repair_reason", "repair release; no scope advancement")
     return {
         "schema": REQUEST_SCHEMA,
         "schema_version": REQUEST_SCHEMA_VERSION,
@@ -105,6 +117,14 @@ def build_ask_request_envelope(
             "schema_version": REPLY_SCHEMA_VERSION,
             "required_sections": ["status", "summary", "baseline", "changes", "artifacts", "validation", "next_step"],
             "markers": {"begin": BEGIN_REPLY_MARKER, "end": END_REPLY_MARKER},
+        },
+        "protocol_decisions": {
+            "reply_envelope_required": True,
+            "manual_mode_allowed": False,
+            "multiple_answers_policy": "explicit_answer_id_required",
+            "artifact_url_policy": "temporary_store_answer_id",
+            "download_policy": "direct_url_only",
+            "non_zip_artifacts": "unsupported_in_mvp",
         },
     }
 
@@ -181,6 +201,7 @@ def _normalize_artifact_candidate(raw: Any, *, index: int) -> dict[str, Any]:
             "raw": raw,
         }
     download = raw.get("download") if isinstance(raw.get("download"), dict) else {}
+    source = raw.get("source") if isinstance(raw.get("source"), dict) else {}
     filename = raw.get("filename") or raw.get("name") or raw.get("artifact")
     return {
         "index": index,
@@ -194,6 +215,15 @@ def _normalize_artifact_candidate(raw: Any, *, index: int) -> dict[str, Any]:
             "available": bool(download.get("available")),
             "url": download.get("url"),
             "link_text": download.get("link_text"),
+            "url_seen_at": download.get("url_seen_at"),
+            "url_temporary": bool(download.get("url_temporary", True)),
+            "requires_browser_context": bool(download.get("requires_browser_context", False)),
+        },
+        "source": {
+            "request_id": source.get("request_id"),
+            "answer_id": source.get("answer_id"),
+            "url_seen_at": source.get("url_seen_at") or download.get("url_seen_at"),
+            "url_temporary": bool(source.get("url_temporary", download.get("url_temporary", True))),
         },
         "raw": raw,
     }
@@ -435,6 +465,7 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
         "block_count": 1,
         "request_id": parsed.get("request_id"),
         "correlation_id": parsed.get("correlation_id"),
+        "answer_id": parsed.get("answer_id"),
         "reply_status": parsed.get("status"),
         "result_type": parsed.get("result_type"),
         "summary": parsed.get("summary"),

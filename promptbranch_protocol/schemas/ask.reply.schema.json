@@ -3,21 +3,136 @@
   "$id": "https://promptbranch.local/schemas/ask.reply.schema.json",
   "title": "Promptbranch Ask Reply",
   "type": "object",
-  "required": ["schema", "schema_version", "request_id", "status", "result_type", "summary", "baseline", "changes", "artifacts", "validation", "next_step"],
+  "required": [
+    "schema",
+    "schema_version",
+    "request_id",
+    "status",
+    "result_type",
+    "summary",
+    "baseline",
+    "changes",
+    "artifacts",
+    "validation",
+    "next_step"
+  ],
   "properties": {
-    "schema": {"const": "promptbranch.ask.reply"},
-    "schema_version": {"const": "1.0"},
-    "request_id": {"type": "string", "minLength": 1},
-    "correlation_id": {"type": "string"},
-    "status": {"type": "string", "enum": ["completed", "partial", "blocked", "needs_clarification", "failed", "no_artifact", "invalid_request"]},
-    "result_type": {"type": "string", "enum": ["analysis_only", "release_candidate", "repair_candidate", "test_report", "diagnostic", "no_change"]},
-    "summary": {"type": "string"},
-    "baseline": {"type": "object"},
-    "changes": {"type": "array", "items": {"type": "object"}},
-    "artifacts": {"type": "array", "items": {"$ref": "artifact.candidate.schema.json"}},
-    "validation": {"type": "object"},
-    "next_step": {"type": "object"},
-    "confidence": {"type": "string", "enum": ["low", "medium", "high"]}
+    "schema": {
+      "const": "promptbranch.ask.reply"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "blocked",
+        "needs_clarification",
+        "failed",
+        "no_artifact",
+        "invalid_request"
+      ]
+    },
+    "result_type": {
+      "type": "string",
+      "enum": [
+        "analysis_only",
+        "release_candidate",
+        "repair_candidate",
+        "test_report",
+        "diagnostic",
+        "no_change"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "baseline": {
+      "type": "object",
+      "properties": {
+        "input_artifact": {
+          "type": "string"
+        },
+        "input_version": {
+          "type": "string"
+        },
+        "output_artifact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "release_type": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "repair",
+            "analysis"
+          ]
+        },
+        "base_release": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repair_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "artifact.candidate.schema.json"
+      }
+    },
+    "validation": {
+      "type": "object"
+    },
+    "next_step": {
+      "type": "object"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "answer_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Stable answer/message identifier when available; preferred over temporary artifact URLs for re-resolution."
+    }
   },
   "additionalProperties": true
 }
