@@ -95,6 +95,7 @@ class AskResponse(BaseModel):
     ok: bool = True
     answer: object
     conversation_url: Optional[str] = None
+    submit_evidence: Optional[dict] = None
 
 
 class ProjectResolveRequest(BaseModel):
@@ -407,6 +408,7 @@ async def ask(
         return AskResponse(
             answer=result["answer"],
             conversation_url=result.get("conversation_url"),
+            submit_evidence=result.get("submit_evidence") if isinstance(result, dict) else None,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)

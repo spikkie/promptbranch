@@ -72,6 +72,12 @@ ASSISTANT_MESSAGE_SELECTORS = [
     'main article',
     'main [role="article"]',
 ]
+USER_MESSAGE_SELECTORS = [
+    '[data-message-author-role="user"]',
+    'section[data-testid*="conversation-turn"][data-turn="user"]',
+    'section[data-turn="user"]',
+    '[data-testid*="conversation-turn"][data-turn="user"]',
+]
 PRIMARY_ASSISTANT_MESSAGE_SELECTOR = ASSISTANT_MESSAGE_SELECTORS[0]
 COMPOSER_SUBMIT_BUTTON_SELECTORS = [
     '#composer-submit-button',
@@ -1235,7 +1241,7 @@ class ChatGPTBrowserClient:
             self._log("upload", "file uploaded to browser input", file_path=file_path)
 
         response_context = await self._capture_response_context(page)
-        await self._submit_prompt(page)
+        submit_evidence = await self._submit_prompt(page, prompt=prompt)
         answer = (
             await self._wait_and_get_json(page, response_context=response_context)
             if expect_json
@@ -1255,6 +1261,7 @@ class ChatGPTBrowserClient:
         return {
             "answer": answer,
             "conversation_url": conversation_url,
+            "submit_evidence": submit_evidence,
         }
 
     async def _list_projects_operation(
@@ -3818,16 +3825,190 @@ class ChatGPTBrowserClient:
             "text": "",
         }
 
-    async def _submit_prompt(self, page: Any) -> None:
+    async def _capture_composer_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        state: dict[str, Any] = {
+            "input_selector": None,
+            "input_count": 0,
+            "input_visible": False,
+            "text_length": None,
+            "contains_prompt_prefix": None,
+            "submit_button": {},
+            "current_url": await self._safe_page_url(page),
+        }
+        prompt_prefix = (prompt or "")[:80]
+        for selector in CHAT_INPUT_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                state["input_count"] = count
+                if not count:
+                    continue
+                item = locator.first
+                visible = False
+                try:
+                    visible = await item.is_visible(timeout=750)
+                except Exception:
+                    visible = False
+                if not visible:
+                    continue
+                text = await self._extract_text_from_locator(item, timeout_ms=750)
+                if not text:
+                    try:
+                        text = (await item.input_value(timeout=750) or "").strip()
+                    except Exception:
+                        text = ""
+                state.update({
+                    "input_selector": selector,
+                    "input_visible": True,
+                    "text_length": len(text),
+                    "text_preview": text[:160],
+                    "contains_prompt_prefix": bool(prompt_prefix and prompt_prefix in text),
+                })
+                break
+            except Exception as exc:
+                self._log("submit", "composer state probe failed", selector=selector, error=str(exc))
+                continue
+        try:
+            state["submit_button"] = await self._probe_submit_button_state(page)
+        except Exception as exc:
+            state["submit_button"] = {"probe_failed": True, "error": str(exc)}
+        return state
+
+    def _protocol_request_id_from_prompt(self, prompt: str | None) -> str | None:
+        if not prompt:
+            return None
+        match = re.search(r'"request_id"\s*:\s*"([^"]+)"', prompt)
+        if match:
+            return match.group(1)
+        match = re.search(r'\breq_[A-Za-z0-9_.:-]+\b', prompt)
+        return match.group(0) if match else None
+
+    async def _capture_user_turn_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        prompt_prefix = (prompt or "")[:120]
+        request_id = self._protocol_request_id_from_prompt(prompt)
+        probes: list[dict[str, Any]] = []
+        best_selector: str | None = None
+        best_count = 0
+        best_last_text = ""
+        for selector in USER_MESSAGE_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                last_text = ""
+                if count:
+                    try:
+                        last_text = await self._extract_text_from_locator(locator.nth(count - 1), timeout_ms=750)
+                    except Exception:
+                        last_text = ""
+                probe = {
+                    "selector": selector,
+                    "count": count,
+                    "last_text_length": len(last_text),
+                    "last_text_preview": last_text[:240],
+                    "request_id_found": bool(request_id and request_id in last_text),
+                    "prompt_prefix_found": bool(prompt_prefix and prompt_prefix in last_text),
+                }
+                probes.append(probe)
+                if count > best_count:
+                    best_selector = selector
+                    best_count = count
+                    best_last_text = last_text
+            except Exception as exc:
+                probes.append({"selector": selector, "error": str(exc), "count": 0})
+        return {
+            "selector": best_selector,
+            "count": best_count,
+            "last_text_length": len(best_last_text),
+            "last_text_preview": best_last_text[:240],
+            "request_id": request_id,
+            "request_id_found": bool(request_id and request_id in best_last_text),
+            "prompt_prefix_found": bool(prompt_prefix and prompt_prefix in best_last_text),
+            "probes": probes,
+        }
+
+    async def _wait_for_user_turn_dom_evidence(
+        self,
+        page: Any,
+        *,
+        before_state: dict[str, Any],
+        prompt: str | None = None,
+        timeout_ms: int = 10_000,
+        poll_interval_ms: int = 500,
+    ) -> dict[str, Any]:
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        before_count = int(before_state.get("count") or 0)
+        attempts: list[dict[str, Any]] = []
+        attempt = 0
+        last_state: dict[str, Any] = {}
+        while True:
+            attempt += 1
+            state = await self._capture_user_turn_state(page, prompt=prompt)
+            last_state = state
+            visible = bool(
+                int(state.get("count") or 0) > before_count
+                or state.get("request_id_found")
+                or state.get("prompt_prefix_found")
+            )
+            attempts.append({
+                "attempt": attempt,
+                "count": state.get("count"),
+                "count_delta": int(state.get("count") or 0) - before_count,
+                "request_id_found": state.get("request_id_found"),
+                "prompt_prefix_found": state.get("prompt_prefix_found"),
+                "last_text_length": state.get("last_text_length"),
+            })
+            if visible:
+                return {
+                    "visible": True,
+                    "status": "user_turn_dom_visible",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "before_count": before_count,
+                    "after_count": state.get("count"),
+                    "count_delta": int(state.get("count") or 0) - before_count,
+                    "state": state,
+                }
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return {
+                    "visible": False,
+                    "status": "user_turn_dom_not_visible",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "before_count": before_count,
+                    "after_count": last_state.get("count"),
+                    "count_delta": int(last_state.get("count") or 0) - before_count,
+                    "state": last_state,
+                }
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
+    async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         submit_wait_timeout_s = 20.0
         poll_interval_ms = 500
         deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
         attempt = 0
+        before_composer = await self._capture_composer_state(page, prompt=prompt)
+        before_user_turns = await self._capture_user_turn_state(page, prompt=prompt)
+        evidence: dict[str, Any] = {
+            "status": "submit_not_attempted",
+            "clicked": False,
+            "enter_fallback_used": False,
+            "selector": None,
+            "attempt": None,
+            "before_composer": before_composer,
+            "before_user_turns": before_user_turns,
+        }
         self._log(
             "submit",
             "attempting to submit prompt",
             wait_timeout_s=submit_wait_timeout_s,
             selectors=COMPOSER_SUBMIT_BUTTON_SELECTORS,
+            before_composer=before_composer,
+            before_user_turns=before_user_turns,
         )
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
@@ -3857,8 +4038,23 @@ class ChatGPTBrowserClient:
                     )
                     if count and enabled:
                         await button.click()
+                        evidence.update({
+                            "status": "clicked_submit_button",
+                            "clicked": True,
+                            "selector": selector,
+                            "attempt": attempt,
+                            "button_visible": visible,
+                            "button_enabled": enabled,
+                        })
                         self._log("submit", "clicked submit button", attempt=attempt, selector=selector)
-                        return
+                        after_composer = await self._capture_composer_state(page, prompt=prompt)
+                        dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
+                        evidence.update({
+                            "after_composer": after_composer,
+                            "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
+                            "dom_user_turn_evidence": dom_evidence,
+                        })
+                        return evidence
                 except Exception as exc:
                     self._log("submit", "submit selector failed", attempt=attempt, selector=selector, error=str(exc))
                     continue
@@ -3870,6 +4066,16 @@ class ChatGPTBrowserClient:
             wait_timeout_s=submit_wait_timeout_s,
         )
         await page.keyboard.press("Enter")
+        after_composer = await self._capture_composer_state(page, prompt=prompt)
+        dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
+        evidence.update({
+            "status": "enter_fallback_used",
+            "enter_fallback_used": True,
+            "after_composer": after_composer,
+            "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
+            "dom_user_turn_evidence": dom_evidence,
+        })
+        return evidence
 
     def _extract_json_from_text(self, text: Optional[str]) -> Optional[Any]:
         source_text = (text or "").strip()
