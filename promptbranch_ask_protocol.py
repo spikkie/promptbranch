@@ -133,9 +133,15 @@ def render_protocol_ask_prompt(envelope: dict[str, Any], *, user_prompt: str) ->
     """Render the protocol envelope plus user request into the actual ChatGPT prompt."""
 
     return (
-        "Promptbranch protocol request. Return exactly one valid reply envelope between "
-        f"{BEGIN_REPLY_MARKER} and {END_REPLY_MARKER}. Human-readable explanation may appear outside "
-        "the envelope, but automation will use only the JSON envelope.\n\n"
+        "Promptbranch protocol request. You MUST answer the current request with exactly one "
+        "machine-readable reply envelope. Do not summarize a previous response, do not omit "
+        "the markers, and do not put the JSON in a Markdown code fence. The automation will "
+        "reject the answer unless it contains one block beginning with "
+        f"{BEGIN_REPLY_MARKER} and ending with {END_REPLY_MARKER}. The JSON inside the block "
+        "MUST include the exact request_id, correlation_id, input baseline, target version, "
+        "and release_type from the request below. For smoke/no-output tasks, still return a "
+        "valid envelope with status no_artifact and result_type no_change. Human-readable "
+        "explanation may appear outside the envelope, but automation will use only the JSON envelope.\n\n"
         "BEGIN_PROMPTBRANCH_REQUEST_JSON\n"
         + json.dumps(envelope, indent=2, ensure_ascii=False)
         + "\nEND_PROMPTBRANCH_REQUEST_JSON\n\n"

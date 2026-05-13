@@ -1116,6 +1116,17 @@ Implementation status:
 ```text
 Implemented in v0.0.209 through the compatibility form:
 pb ask "Continue next slice" --protocol --from-current-baseline --target-version v0.0.209 --parse-reply --json
+
+Hardened in v0.0.210:
+- bounded protocol timeout
+- structured JSON failure output
+- protocol mode no longer waits for raw JSON browser output
+
+Hardened in v0.0.211:
+- stale-answer detection
+- pre/post ask markers
+- selected-answer metadata
+- stricter reply-envelope prompt contract
 ```
 
 Goal:
@@ -1165,6 +1176,8 @@ Acceptance:
 - baseline mismatch returns reply_baseline_mismatch
 - artifact candidates are returned but not downloaded
 - no artifact/source/current state is advanced
+- stale latest answers return stale_answer_detected
+- answer selection records selected answer_id / turn_index
 ```
 
 Recommended release:

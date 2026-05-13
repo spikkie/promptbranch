@@ -10,6 +10,7 @@ from promptbranch_ask_protocol import (
     extract_reply_blocks,
     build_ask_request_envelope,
     parse_promptbranch_reply,
+    render_protocol_ask_prompt,
     repo_prefix_from_artifact_filename,
     version_from_artifact_filename,
 )
@@ -44,6 +45,25 @@ def test_parse_promptbranch_reply_returns_artifact_candidates() -> None:
     assert payload["answer_id"] == "ans_20260510_001"
 
 
+
+
+def test_render_protocol_prompt_strictly_requires_current_reply_envelope() -> None:
+    request = build_ask_request_envelope(
+        prompt="Protocol smoke only",
+        request_id="req_strict",
+        correlation_id="corr_strict",
+        artifact={"current_baseline": "chatgpt_claudecode_workflow_v0.0.210.zip", "current_version": "v0.0.210"},
+        target_version="v0.0.211",
+    )
+
+    prompt = render_protocol_ask_prompt(request, user_prompt="Return no artifact")
+
+    assert "You MUST answer the current request" in prompt
+    assert "Do not summarize a previous response" in prompt
+    assert "status no_artifact" in prompt
+    assert "BEGIN_PROMPTBRANCH_REPLY_JSON" in prompt
+    assert "END_PROMPTBRANCH_REPLY_JSON" in prompt
+    assert "BEGIN_PROMPTBRANCH_REQUEST_JSON" in prompt
 
 def test_build_ask_request_envelope_locks_protocol_decisions_and_repair_metadata() -> None:
     request = build_ask_request_envelope(

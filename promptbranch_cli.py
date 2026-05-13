@@ -1612,6 +1612,7 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
         "title": payload.get("title"),
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
+        "selected_answer": _protocol_answer_metadata(message, answer),
         "answer_text_length": len(str(answer.get("text") or "")),
         "automation_performed": False,
         "download_performed": False,
@@ -1716,7 +1717,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.210"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.211"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2363,7 +2364,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.210 supports --from-last-answer only",
+            "error": "v0.0.211 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2372,7 +2373,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.210 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.211 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2765,6 +2766,7 @@ def _protocol_failure_result(
     error: str,
     error_type: str | None = None,
     ask_response: dict[str, Any] | None = None,
+    pre_ask_marker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
     return {
@@ -2783,6 +2785,7 @@ def _protocol_failure_result(
         "release_type": artifact.get("release_type"),
         "protocol_timeout_seconds": float(getattr(args, "protocol_timeout_seconds", DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS) or DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS),
         "ask_response": ask_response,
+        "pre_ask_marker": pre_ask_marker,
         "debug_artifacts": _recent_debug_artifacts(),
         "automation_performed": True,
         "download_performed": False,
@@ -2806,6 +2809,167 @@ def _emit_protocol_result(args: argparse.Namespace, result: dict[str, Any]) -> i
     return 0 if result.get("ok") else 1
 
 
+def _protocol_turn_number(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_protocol_task_marker(payload: dict[str, Any]) -> dict[str, Any]:
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    latest_message = messages[-1] if messages else None
+    latest_answer: dict[str, Any] | None = None
+    latest_answer_message: dict[str, Any] | None = None
+    for message in reversed(messages):
+        answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+        if answers:
+            latest_answer = answers[-1]
+            latest_answer_message = message
+            break
+    return {
+        "available": True,
+        "conversation_url": payload.get("conversation_url"),
+        "conversation_id": payload.get("conversation_id"),
+        "message_count": len(messages),
+        "latest_user_message_id": latest_message.get("id") if isinstance(latest_message, dict) else None,
+        "latest_user_message_index": latest_message.get("index") if isinstance(latest_message, dict) else None,
+        "latest_user_turn_index": latest_message.get("turn_index") if isinstance(latest_message, dict) else None,
+        "latest_answer_id": latest_answer.get("id") if isinstance(latest_answer, dict) else None,
+        "latest_answer_index": latest_answer.get("index") if isinstance(latest_answer, dict) else None,
+        "latest_answer_turn_index": latest_answer.get("turn_index") if isinstance(latest_answer, dict) else None,
+        "latest_answer_message_id": latest_answer_message.get("id") if isinstance(latest_answer_message, dict) else None,
+        "latest_answer_message_index": latest_answer_message.get("index") if isinstance(latest_answer_message, dict) else None,
+    }
+
+
+def _message_after_protocol_marker(message: dict[str, Any], marker: dict[str, Any] | None) -> bool:
+    if not isinstance(marker, dict) or not marker.get("available"):
+        return True
+    msg_index = _protocol_turn_number(message.get("index"))
+    marker_msg_index = _protocol_turn_number(marker.get("message_count") or marker.get("latest_user_message_index"))
+    if msg_index is not None and marker_msg_index is not None and msg_index > marker_msg_index:
+        return True
+    msg_turn = _protocol_turn_number(message.get("turn_index"))
+    marker_turn = _protocol_turn_number(marker.get("latest_user_turn_index"))
+    if msg_turn is not None and marker_turn is not None and msg_turn > marker_turn:
+        return True
+    return False
+
+
+def _answer_after_protocol_marker(answer: dict[str, Any], marker: dict[str, Any] | None) -> bool:
+    if not isinstance(marker, dict) or not marker.get("available"):
+        return True
+    answer_turn = _protocol_turn_number(answer.get("turn_index"))
+    marker_turn = _protocol_turn_number(marker.get("latest_answer_turn_index"))
+    if answer_turn is not None and marker_turn is not None:
+        return answer_turn > marker_turn
+    answer_id = str(answer.get("id") or "")
+    marker_id = str(marker.get("latest_answer_id") or "")
+    return bool(answer_id and marker_id and answer_id != marker_id)
+
+
+def _protocol_answer_metadata(message: dict[str, Any] | None, answer: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "message_id": message.get("id") if isinstance(message, dict) else None,
+        "message_index": message.get("index") if isinstance(message, dict) else None,
+        "message_turn_index": message.get("turn_index") if isinstance(message, dict) else None,
+        "answer_id": answer.get("id") if isinstance(answer, dict) else None,
+        "answer_index": answer.get("index") if isinstance(answer, dict) else None,
+        "answer_turn_index": answer.get("turn_index") if isinstance(answer, dict) else None,
+    }
+
+
+def _select_protocol_reply_message_answer(
+    messages: list[dict[str, Any]],
+    *,
+    args: argparse.Namespace,
+    envelope: dict[str, Any],
+    pre_ask_marker: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    request_id = str(envelope.get("request_id") or "")
+
+    if getattr(args, "answer_id", None):
+        for message in messages:
+            answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+            try:
+                answer = _resolve_task_answer(message, answer_id=getattr(args, "answer_id", None))
+            except ValueError:
+                continue
+            is_after = _message_after_protocol_marker(message, pre_ask_marker) or _answer_after_protocol_marker(answer, pre_ask_marker)
+            if not is_after and request_id and request_id not in str(answer.get("text") or ""):
+                raise ValueError("stale_answer_detected: explicit answer id selected an answer older than the protocol ask")
+            return message, answer, {
+                "policy": "explicit_answer_id",
+                "fresh_request_message_matched": request_id in str(message.get("text") or "") if request_id else False,
+                "selected_answer_is_after_pre_ask_marker": is_after,
+            }
+        raise ValueError(f"answer not found: {getattr(args, 'answer_id', None)}")
+
+    request_messages = [message for message in messages if request_id and request_id in str(message.get("text") or "")]
+    if request_messages:
+        candidate_messages = request_messages
+        policy = "request_id_message_match"
+        fresh_match = True
+    elif isinstance(pre_ask_marker, dict) and pre_ask_marker.get("available"):
+        candidate_messages = [message for message in messages if _message_after_protocol_marker(message, pre_ask_marker)]
+        policy = "newer_than_pre_ask_marker"
+        fresh_match = False
+        if not candidate_messages:
+            raise ValueError("stale_answer_detected: no user message newer than the protocol ask pre-marker was found")
+    else:
+        candidate_messages = messages[-1:] if messages else []
+        policy = "latest_without_pre_ask_marker"
+        fresh_match = False
+
+    if not candidate_messages:
+        raise ValueError("assistant_not_detected: no candidate user message is available for protocol reply parsing")
+
+    for message in reversed(candidate_messages):
+        answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+        if not answers:
+            continue
+        answer = _resolve_task_answer(message, answer_index=getattr(args, "answer_index", None), answer_id=None)
+        is_after = _message_after_protocol_marker(message, pre_ask_marker) or _answer_after_protocol_marker(answer, pre_ask_marker)
+        if isinstance(pre_ask_marker, dict) and pre_ask_marker.get("available") and not is_after and not fresh_match:
+            raise ValueError("stale_answer_detected: selected assistant answer is not newer than the protocol ask pre-marker")
+        return message, answer, {
+            "policy": policy,
+            "fresh_request_message_matched": fresh_match,
+            "selected_answer_is_after_pre_ask_marker": is_after,
+        }
+
+    if policy == "request_id_message_match":
+        raise ValueError("assistant_not_detected: protocol request message was found but it has no assistant answer yet")
+    raise ValueError("stale_answer_detected: no newer assistant answer was found after the protocol ask")
+
+
+async def _capture_pre_ask_protocol_marker(backend: Any, args: argparse.Namespace) -> dict[str, Any] | None:
+    conversation_url = str(
+        getattr(args, "conversation_url", None)
+        or _state_store_from_args(args).snapshot(getattr(args, "project_url", None)).get("conversation_url")
+        or ""
+    )
+    if not conversation_url:
+        return None
+    try:
+        chat = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
+        payload = _task_messages_payload(chat)
+        marker = _latest_protocol_task_marker(payload)
+        marker["capture_status"] = "captured"
+        return marker
+    except Exception as exc:
+        return {
+            "available": False,
+            "capture_status": "failed",
+            "conversation_url": conversation_url,
+            "error_type": exc.__class__.__name__,
+            "error": str(exc),
+        }
+
+
 def _is_protocol_parse_ask(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "command", None) == "ask" and getattr(args, "protocol", False) and getattr(args, "parse_reply", False))
 
@@ -2826,6 +2990,7 @@ async def _parse_protocol_reply_after_ask(
     *,
     envelope: dict[str, Any],
     ask_response: dict[str, Any],
+    pre_ask_marker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     conversation_url = str(
         ask_response.get("conversation_url")
@@ -2849,18 +3014,35 @@ async def _parse_protocol_reply_after_ask(
 
     chat = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
     payload = _task_messages_payload(chat)
+    post_ask_marker = _latest_protocol_task_marker(payload)
     try:
-        message = _resolve_task_message(payload["messages"], "latest")
-        answer = _resolve_task_answer(message, answer_index=getattr(args, "answer_index", None), answer_id=getattr(args, "answer_id", None))
+        message, answer, selection = _select_protocol_reply_message_answer(
+            payload["messages"],
+            args=args,
+            envelope=envelope,
+            pre_ask_marker=pre_ask_marker,
+        )
     except ValueError as exc:
+        status = "answer_selection_failed"
+        error_text = str(exc)
+        if error_text.startswith("stale_answer_detected"):
+            status = "stale_answer_detected"
+        elif error_text.startswith("assistant_not_detected"):
+            status = "assistant_not_detected"
         return {
             "ok": False,
             "action": "ask_protocol_run",
-            "status": "answer_selection_failed",
-            "error": str(exc),
+            "status": status,
+            "error": error_text,
             "request": envelope,
+            "request_baseline": _baseline_from_protocol_request(envelope),
             "ask_response": ask_response,
             "conversation_url": conversation_url,
+            "conversation_id": payload.get("conversation_id"),
+            "title": payload.get("title"),
+            "pre_ask_marker": pre_ask_marker,
+            "post_ask_marker": post_ask_marker,
+            "answer_selection": {"policy": "fresh_protocol_reply_required", "selected": None},
             "automation_performed": True,
             "download_performed": False,
             "migration_performed": False,
@@ -2885,6 +3067,10 @@ async def _parse_protocol_reply_after_ask(
         "title": payload.get("title"),
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
+        "selected_answer": _protocol_answer_metadata(message, answer),
+        "answer_selection": {**selection, "selected": _protocol_answer_metadata(message, answer)},
+        "pre_ask_marker": pre_ask_marker,
+        "post_ask_marker": post_ask_marker,
         "answer_text_length": len(str(answer.get("text") or "")),
         "automation_performed": True,
         "download_performed": False,
@@ -2937,6 +3123,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     repeatable_attachments = attachment_paths if not legacy_single_file else None
 
     protocol_parse = bool(getattr(args, "parse_reply", False))
+    pre_ask_marker = await _capture_pre_ask_protocol_marker(backend, args) if protocol_parse else None
     try:
         response = await backend.ask(
             prompt=prompt,
@@ -2959,13 +3146,14 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
                 status=status,
                 error=str(exc),
                 error_type=exc.__class__.__name__,
+                pre_ask_marker=pre_ask_marker,
             )
             return _emit_protocol_result(args, result)
         raise
     if protocol_parse:
         assert envelope is not None
         try:
-            result = await _parse_protocol_reply_after_ask(backend, args, envelope=envelope, ask_response=response)
+            result = await _parse_protocol_reply_after_ask(backend, args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
         except Exception as exc:
             result = _protocol_failure_result(
                 args,
@@ -2974,6 +3162,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
                 error=str(exc),
                 error_type=exc.__class__.__name__,
                 ask_response=response if isinstance(response, dict) else {"answer": response},
+                pre_ask_marker=pre_ask_marker,
             )
         return _emit_protocol_result(args, result)
 
@@ -5699,7 +5888,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.210.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.211.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -5707,7 +5896,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.210. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.211. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -5743,7 +5932,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.210 or 0.0.210.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.211 or 0.0.211.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
