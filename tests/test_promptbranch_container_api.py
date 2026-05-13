@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.213"
+    assert payload["version"] == "0.0.214"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.213"
+    assert response.json()["version"] == "0.0.214"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -190,3 +190,34 @@ def test_ask_multiple_attachments_preserve_uploaded_basenames(monkeypatch) -> No
     assert captured["basenames"] == ["one.log", "two.log"]
     assert captured["exists_during_call"] == [True, True]
     assert captured["file_path"] is None
+
+
+def test_ask_endpoint_preserves_partial_timeout_result(monkeypatch) -> None:
+    class FakeService:
+        async def ask_question_result(self, **kwargs):
+            return {
+                "ok": False,
+                "status": "assistant_response_timeout",
+                "error": "timed out",
+                "error_type": "ResponseTimeoutError",
+                "timeout_layer": "assistant_response",
+                "answer": None,
+                "conversation_url": "https://chatgpt.com/c/abc",
+                "submit_evidence": {"clicked": True},
+                "partial_result": True,
+                "response_timeout_ms": 600000,
+                "debug_artifacts": ["debug_artifacts/response_wait.txt"],
+            }
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post("/v1/ask", data={"prompt": "hello"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["status"] == "assistant_response_timeout"
+    assert payload["timeout_layer"] == "assistant_response"
+    assert payload["submit_evidence"] == {"clicked": True}
+    assert payload["partial_result"] is True
+    assert payload["debug_artifacts"] == ["debug_artifacts/response_wait.txt"]

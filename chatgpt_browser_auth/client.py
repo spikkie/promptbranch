@@ -1242,11 +1242,14 @@ class ChatGPTBrowserClient:
 
         response_context = await self._capture_response_context(page)
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
-        answer = (
-            await self._wait_and_get_json(page, response_context=response_context)
-            if expect_json
-            else await self._wait_and_get_response(page, response_context=response_context)
-        )
+        try:
+            answer = (
+                await self._wait_and_get_json(page, response_context=response_context)
+                if expect_json
+                else await self._wait_and_get_response(page, response_context=response_context)
+            )
+        except ResponseTimeoutError as exc:
+            return await self._build_ask_response_timeout_result(page, exc=exc, submit_evidence=submit_evidence)
         current_url = await self._safe_page_url(page)
         conversation_url = current_url if self._is_conversation_url(current_url) else None
         self._log(
@@ -8903,6 +8906,50 @@ class ChatGPTBrowserClient:
                 self._log("artifact", "saved response wait screenshot", path=str(screenshot_path))
             except Exception as artifact_exc:
                 self._log("artifact", "failed to save response wait screenshot", error=str(artifact_exc))
+
+    def _recent_debug_artifacts(self, limit: int = 12) -> list[str]:
+        if not self._artifact_dir.is_dir():
+            return []
+        try:
+            artifacts = [item for item in self._artifact_dir.iterdir() if item.is_file()]
+        except OSError:
+            return []
+        artifacts.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0.0, reverse=True)
+        return [str(path) for path in artifacts[: max(0, int(limit))]]
+
+    async def _build_ask_response_timeout_result(
+        self,
+        page: Any,
+        *,
+        exc: ResponseTimeoutError,
+        submit_evidence: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_url = await self._safe_page_url(page)
+        conversation_url = current_url if self._is_conversation_url(current_url) else None
+        result = {
+            "ok": False,
+            "status": "assistant_response_timeout",
+            "error": str(exc),
+            "error_type": exc.__class__.__name__,
+            "timeout_layer": "assistant_response",
+            "answer": None,
+            "conversation_url": conversation_url,
+            "current_url": current_url,
+            "submit_evidence": submit_evidence,
+            "partial_result": True,
+            "response_timeout_ms": self.config.response_timeout_ms,
+            "debug_artifacts": self._recent_debug_artifacts(),
+        }
+        self._log(
+            "ask",
+            "assistant response wait timed out after submit; returning partial ask evidence",
+            current_url=current_url,
+            conversation_url=conversation_url,
+            submit_status=submit_evidence.get("status") if isinstance(submit_evidence, dict) else None,
+            submit_clicked=submit_evidence.get("clicked") if isinstance(submit_evidence, dict) else None,
+            error=str(exc),
+        )
+        return result
 
     async def _try_extract_json_payload(
         self,
