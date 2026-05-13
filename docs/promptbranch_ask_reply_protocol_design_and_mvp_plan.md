@@ -1111,6 +1111,13 @@ v0.0.207
 
 ## MVP-F7 — Controlled Ask/Reply Transaction Runner
 
+Implementation status:
+
+```text
+Implemented in v0.0.209 through the compatibility form:
+pb ask "Continue next slice" --protocol --from-current-baseline --target-version v0.0.209 --parse-reply --json
+```
+
 Goal:
 
 ```text
@@ -1137,13 +1144,13 @@ Scope:
 Commands:
 
 ```bash
-pb ask protocol-run   "Continue next slice"   --target-version v0.0.208   --json
+pb ask protocol-run   "Continue next slice"   --target-version v0.0.209   --json
 ```
 
 Alternative compatibility form:
 
 ```bash
-pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.208   --parse-reply   --json
+pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.209   --parse-reply   --json
 ```
 
 Acceptance:
@@ -1315,7 +1322,7 @@ Require explicit target_version first; keep inference optional and non-default f
 Recommended operator form:
 
 ```bash
-pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.208   --json
+pb ask "Continue next slice"   --protocol   --from-current-baseline   --target-version v0.0.209   --json
 ```
 
 Rationale: repair releases make automatic inference risky.
