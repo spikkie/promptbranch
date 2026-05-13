@@ -335,6 +335,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+
+## v0.0.213
+
+- Protocol ask runs now expose browser submit evidence when available.
+- Failure classification is more specific: `ask_submit_not_triggered`, `ask_submitted_dom_visible_backend_stale`, or `ask_submission_not_visible`.
+- This is diagnostic hardening only; artifact download, migration, adoption, and Project Source mutation behavior are unchanged.
+
 ## v0.0.212
 
 - Hardened `pb ask --protocol --parse-reply` against stale assistant answers by capturing a pre-ask task marker and requiring the parsed answer to be newer or tied to the current request id.

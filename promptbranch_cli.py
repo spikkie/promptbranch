@@ -1720,7 +1720,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.212"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.213"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2367,7 +2367,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.212 supports --from-last-answer only",
+            "error": "v0.0.213 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2376,7 +2376,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.212 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.213 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2788,6 +2788,7 @@ def _protocol_failure_result(
         "release_type": artifact.get("release_type"),
         "protocol_timeout_seconds": float(getattr(args, "protocol_timeout_seconds", DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS) or DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS),
         "ask_response": ask_response,
+        "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
         "pre_ask_marker": pre_ask_marker,
         "debug_artifacts": _recent_debug_artifacts(),
         "automation_performed": True,
@@ -2797,6 +2798,50 @@ def _protocol_failure_result(
         "operator_instruction": "Protocol ask failed before a validated reply was available. No artifact download, migration, adoption, or Project Source mutation was performed.",
     }
 
+
+
+
+def _protocol_ask_submit_evidence(ask_response: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(ask_response, dict):
+        return None
+    evidence = ask_response.get("submit_evidence")
+    return evidence if isinstance(evidence, dict) else None
+
+
+def _classify_protocol_submit_visibility_failure(
+    ask_response: dict[str, Any],
+    fresh_turn_evidence: dict[str, Any],
+) -> tuple[str, str, str]:
+    """Classify failure between browser submit and backend/task visibility."""
+
+    submit = _protocol_ask_submit_evidence(ask_response)
+    if not submit:
+        return (
+            "ask_submission_not_visible",
+            "ask_submission_not_visible: no newer user message or request_id-matched user turn was visible after the protocol ask submit; browser submit evidence was unavailable",
+            "Protocol ask submit evidence was unavailable and no fresh user turn was visible after post-submit refresh/poll. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        )
+    clicked = bool(submit.get("clicked"))
+    enter_fallback = bool(submit.get("enter_fallback_used"))
+    dom = submit.get("dom_user_turn_evidence") if isinstance(submit.get("dom_user_turn_evidence"), dict) else {}
+    dom_visible = bool(dom.get("visible"))
+    if not clicked and not enter_fallback:
+        return (
+            "ask_submit_not_triggered",
+            "ask_submit_not_triggered: browser submit evidence does not show a clicked send button or Enter fallback",
+            "Protocol ask was not proven submitted in the browser. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        )
+    if dom_visible and not fresh_turn_evidence.get("fresh_user_turn_visible"):
+        return (
+            "ask_submitted_dom_visible_backend_stale",
+            "ask_submitted_dom_visible_backend_stale: browser DOM shows the submitted user turn but backend/task transcript did not expose it after polling",
+            "Protocol ask was visible in the browser DOM, but not in the backend/task transcript. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        )
+    return (
+        "ask_submission_not_visible",
+        "ask_submission_not_visible: no newer user message or request_id-matched user turn was visible after the protocol ask submit",
+        "Protocol ask was submitted or attempted, but no fresh user turn was visible after post-submit refresh/poll. No artifact download, migration, adoption, or Project Source mutation was performed.",
+    )
 
 def _emit_protocol_result(args: argparse.Namespace, result: dict[str, Any]) -> int:
     record_path = _persist_protocol_run_record(args, result)
@@ -3113,14 +3158,16 @@ async def _parse_protocol_reply_after_ask(
     )
     post_ask_marker = _latest_protocol_task_marker(payload)
     if not fresh_turn_evidence.get("fresh_user_turn_visible"):
+        failure_status, failure_error, operator_instruction = _classify_protocol_submit_visibility_failure(ask_response, fresh_turn_evidence)
         return {
             "ok": False,
             "action": "ask_protocol_run",
-            "status": "ask_submission_not_visible",
-            "error": "ask_submission_not_visible: no newer user message or request_id-matched user turn was visible after the protocol ask submit",
+            "status": failure_status,
+            "error": failure_error,
             "request": envelope,
             "request_baseline": _baseline_from_protocol_request(envelope),
             "ask_response": ask_response,
+            "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
             "conversation_url": conversation_url,
             "conversation_id": payload.get("conversation_id"),
             "title": payload.get("title"),
@@ -3128,11 +3175,12 @@ async def _parse_protocol_reply_after_ask(
             "post_ask_marker": post_ask_marker,
             "fresh_turn_evidence": fresh_turn_evidence,
             "answer_selection": {"policy": "fresh_protocol_reply_required", "selected": None},
+            "debug_artifacts": _recent_debug_artifacts(),
             "automation_performed": True,
             "download_performed": False,
             "migration_performed": False,
             "adoption_performed": False,
-            "operator_instruction": "Protocol ask was submitted, but no fresh user turn was visible after a post-submit refresh/poll. No artifact download, migration, adoption, or Project Source mutation was performed.",
+            "operator_instruction": operator_instruction,
         }
     try:
         message, answer, selection = _select_protocol_reply_message_answer(
@@ -3156,6 +3204,7 @@ async def _parse_protocol_reply_after_ask(
             "request": envelope,
             "request_baseline": _baseline_from_protocol_request(envelope),
             "ask_response": ask_response,
+            "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
             "conversation_url": conversation_url,
             "conversation_id": payload.get("conversation_id"),
             "title": payload.get("title"),
@@ -3182,6 +3231,7 @@ async def _parse_protocol_reply_after_ask(
         "reply_validation_ok": validation_ok,
         "reply_validation_errors": validation_errors,
         "ask_response": ask_response,
+        "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
         "conversation_url": payload.get("conversation_url") or conversation_url,
         "conversation_id": payload.get("conversation_id"),
         "title": payload.get("title"),
@@ -6009,7 +6059,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.212.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.213.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -6017,7 +6067,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.212. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.213. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -6053,7 +6103,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.212 or 0.0.212.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.213 or 0.0.213.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
