@@ -1,4 +1,4 @@
-# promptbranch v0.0.209
+# promptbranch v0.0.210
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -643,7 +643,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.209
+## v0.0.210
 
 - Implemented MVP-F7 controlled ask → parse-reply integration through `pb ask --protocol --parse-reply`.
 - The command sends a protocol request, fetches the latest assistant answer, parses the reply envelope, and validates request id, correlation id, baseline, target version, and release type.
