@@ -74,6 +74,7 @@ DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS = 120.0
 DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS = 12.0
 DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
+DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS = 90.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
@@ -1720,7 +1721,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.213"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.214"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2367,7 +2368,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.213 supports --from-last-answer only",
+            "error": "v0.0.214 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2376,7 +2377,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.213 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.214 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2787,6 +2788,7 @@ def _protocol_failure_result(
         "target_version": artifact.get("target_version"),
         "release_type": artifact.get("release_type"),
         "protocol_timeout_seconds": float(getattr(args, "protocol_timeout_seconds", DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS) or DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS),
+        "service_timeout_seconds": float(getattr(args, "service_timeout_seconds", DEFAULT_SERVICE_TIMEOUT_SECONDS) or DEFAULT_SERVICE_TIMEOUT_SECONDS),
         "ask_response": ask_response,
         "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
         "pre_ask_marker": pre_ask_marker,
@@ -3022,6 +3024,21 @@ def _is_protocol_parse_ask(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "command", None) == "ask" and getattr(args, "protocol", False) and getattr(args, "parse_reply", False))
 
 
+def _protocol_service_timeout_floor(args: argparse.Namespace) -> float:
+    """Minimum HTTP read timeout for a protocol ask transaction.
+
+    The browser service has to submit the ask, wait for the assistant response
+    or service-side timeout, and return submit evidence. The client read
+    timeout must therefore be larger than the protocol response wait budget,
+    not equal to or smaller than it.
+    """
+
+    protocol_timeout = max(1.0, float(getattr(args, "protocol_timeout_seconds", DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS) or DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS))
+    fresh_turn_timeout = max(0.0, float(getattr(args, "protocol_fresh_turn_timeout_seconds", DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS) or 0.0))
+    buffer_seconds = max(30.0, float(DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS))
+    return protocol_timeout + fresh_turn_timeout + buffer_seconds
+
+
 def _apply_protocol_timeout(args: argparse.Namespace) -> None:
     if not _is_protocol_parse_ask(args):
         return
@@ -3029,7 +3046,7 @@ def _apply_protocol_timeout(args: argparse.Namespace) -> None:
     args.protocol_timeout_seconds = timeout
     if getattr(args, "service_base_url", None):
         current = float(getattr(args, "service_timeout_seconds", DEFAULT_SERVICE_TIMEOUT_SECONDS) or DEFAULT_SERVICE_TIMEOUT_SECONDS)
-        args.service_timeout_seconds = min(current, timeout)
+        args.service_timeout_seconds = max(current, _protocol_service_timeout_floor(args))
 
 
 
@@ -3119,6 +3136,41 @@ async def _wait_for_protocol_fresh_turn(
             evidence["poll_seconds"] = poll_seconds
             return payload, evidence
         await asyncio.sleep(min(poll_seconds, max(0.0, remaining)))
+
+
+def _protocol_ask_response_failure_result(
+    args: argparse.Namespace,
+    *,
+    envelope: dict[str, Any],
+    ask_response: dict[str, Any],
+    pre_ask_marker: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Convert a service-returned ask failure into protocol-run JSON.
+
+    v0.0.214 relies on the browser service returning partial submit evidence
+    when assistant response waiting times out. Such a response is a terminal
+    protocol failure, not a reply to parse.
+    """
+
+    if not isinstance(ask_response, dict) or ask_response.get("ok", True):
+        return None
+    status = str(ask_response.get("status") or "ask_failed")
+    error = str(ask_response.get("error") or status)
+    result = _protocol_failure_result(
+        args,
+        envelope=envelope,
+        status=status,
+        error=error,
+        error_type=str(ask_response.get("error_type") or status),
+        ask_response=ask_response,
+        pre_ask_marker=pre_ask_marker,
+    )
+    result["partial_submit_evidence_returned"] = _protocol_ask_submit_evidence(ask_response) is not None
+    result["timeout_layer"] = ask_response.get("timeout_layer") or ("assistant_response" if "timeout" in status else "service")
+    if "debug_artifacts" in ask_response and isinstance(ask_response.get("debug_artifacts"), list):
+        result["debug_artifacts"] = ask_response.get("debug_artifacts")
+    result["operator_instruction"] = "Protocol ask reached the browser service but failed before a validated reply was available. Partial submit evidence is included when available. No artifact download, migration, adoption, or Project Source mutation was performed."
+    return result
 
 
 async def _parse_protocol_reply_after_ask(
@@ -3310,7 +3362,10 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     except Exception as exc:
         if protocol_parse and envelope is not None:
             lowered = f"{exc.__class__.__name__}: {exc}".lower()
-            status = "response_timeout" if "timeout" in lowered or "timed out" in lowered else "ask_failed"
+            if exc.__class__.__name__ in {"ReadTimeout", "TimeoutException"}:
+                status = "service_read_timeout"
+            else:
+                status = "response_timeout" if "timeout" in lowered or "timed out" in lowered else "ask_failed"
             result = _protocol_failure_result(
                 args,
                 envelope=envelope,
@@ -3319,10 +3374,18 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
                 error_type=exc.__class__.__name__,
                 pre_ask_marker=pre_ask_marker,
             )
+            if status == "service_read_timeout":
+                result["timeout_layer"] = "service_client"
+            elif status == "response_timeout":
+                result["timeout_layer"] = "unknown_response_wait"
             return _emit_protocol_result(args, result)
         raise
     if protocol_parse:
         assert envelope is not None
+        if isinstance(response, dict):
+            response_failure = _protocol_ask_response_failure_result(args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
+            if response_failure is not None:
+                return _emit_protocol_result(args, response_failure)
         try:
             result = await _parse_protocol_reply_after_ask(backend, args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
         except Exception as exc:
@@ -6059,7 +6122,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.213.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.214.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -6067,7 +6130,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.213. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.214. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -6103,7 +6166,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.213 or 0.0.213.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.214 or 0.0.214.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")

@@ -336,11 +336,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.213
+## v0.0.214
 
-- Protocol ask runs now expose browser submit evidence when available.
-- Failure classification is more specific: `ask_submit_not_triggered`, `ask_submitted_dom_visible_backend_stale`, or `ask_submission_not_visible`.
-- This is diagnostic hardening only; artifact download, migration, adoption, and Project Source mutation behavior are unchanged.
+- Hardened `pb ask --protocol --parse-reply` around service/client timeout layering.
+- The CLI no longer shortens the HTTP service read timeout to the protocol response timeout; the service timeout now has enough budget to return structured timeout evidence.
+- Browser ask handling now returns partial protocol evidence when assistant-response waiting times out after submit.
+- Protocol failure JSON can now distinguish service-client read timeout from browser-side assistant response timeout and preserves `ask_submit_evidence` when available.
+- No artifact download, candidate migration, adoption, or Project Source mutation behavior changed.
 
 ## v0.0.212
 

@@ -1,4 +1,4 @@
-# promptbranch v0.0.213
+# promptbranch v0.0.214
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -644,11 +644,12 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.213
+## v0.0.214
 
-- Added browser/service-level ask submit evidence for protocol runs.
-- `pb ask --protocol --parse-reply` now includes submit evidence such as composer state, clicked/Enter fallback status, composer-cleared status, and DOM user-turn visibility.
-- Protocol submit failures now distinguish `ask_submit_not_triggered`, `ask_submitted_dom_visible_backend_stale`, and `ask_submission_not_visible`.
+- Hardened `pb ask --protocol --parse-reply` around service/client timeout layering.
+- The CLI no longer shortens the HTTP service read timeout to the protocol response timeout; the service timeout now has enough budget to return structured timeout evidence.
+- Browser ask handling now returns partial protocol evidence when assistant-response waiting times out after submit.
+- Protocol failure JSON can now distinguish service-client read timeout from browser-side assistant response timeout and preserves `ask_submit_evidence` when available.
 - No artifact download, candidate migration, adoption, or Project Source mutation behavior changed.
 
 ## v0.0.212
