@@ -49,15 +49,15 @@ def test_build_ask_request_envelope_locks_protocol_decisions_and_repair_metadata
     request = build_ask_request_envelope(
         prompt="repair current release",
         request_id="req_repair",
-        artifact={"repo": "chatgpt_claudecode_workflow", "current_baseline": "chatgpt_claudecode_workflow_v0.0.208.zip", "current_version": "v0.0.208"},
-        target_version="v0.0.208.1",
+        artifact={"repo": "chatgpt_claudecode_workflow", "current_baseline": "chatgpt_claudecode_workflow_v0.0.209.zip", "current_version": "v0.0.209"},
+        target_version="v0.0.209.1",
         release_type="repair",
-        base_release="v0.0.208",
+        base_release="v0.0.209",
         repair_reason="packaging defect; no scope advancement",
     )
 
     assert request["artifact"]["release_type"] == "repair"
-    assert request["artifact"]["base_release"] == "v0.0.208"
+    assert request["artifact"]["base_release"] == "v0.0.209"
     assert request["artifact"]["repair_reason"] == "packaging defect; no scope advancement"
     assert request["artifact"]["target_version_policy"] == "explicit_required"
     assert request["artifact"]["download_policy"] == "direct_url_only"
