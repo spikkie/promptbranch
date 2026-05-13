@@ -335,7 +335,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.211
+## v0.0.212
 
 - Hardened `pb ask --protocol --parse-reply` against stale assistant answers by capturing a pre-ask task marker and requiring the parsed answer to be newer or tied to the current request id.
 - Added selected-answer metadata, pre/post ask markers, and explicit `stale_answer_detected` / `assistant_not_detected` failure statuses in protocol-run JSON output.
