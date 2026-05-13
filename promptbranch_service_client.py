@@ -153,10 +153,10 @@ class ChatGPTServiceClient:
                     "/v1/ask",
                     data=data,
                     files=files,
-                    timeout=max(self._timeout, 900.0),
+                    timeout=self._timeout,
                 )
         else:
-            response = self._client.post("/v1/ask", data=data, timeout=max(self._timeout, 900.0))
+            response = self._client.post("/v1/ask", data=data, timeout=self._timeout)
         return self._json(response)
 
     def discover_project_source_capabilities(

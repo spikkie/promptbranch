@@ -335,7 +335,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.209
+## v0.0.210
 
 - Added controlled protocol ask → parse-reply integration with `pb ask --protocol --parse-reply --json`.
 - The command validates the reply envelope against the sent request id, correlation id, current baseline, target version, and release type.

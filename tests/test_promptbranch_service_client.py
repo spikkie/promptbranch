@@ -287,10 +287,10 @@ def test_add_project_source_file_normalizes_display_name_to_basename(tmp_path: P
     assert payload["ok"] is True
 
 
-def test_ask_result_uses_long_ask_timeout_when_client_timeout_is_short() -> None:
+def test_ask_result_respects_short_client_timeout_for_protocol_failure_bounds() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/ask"
-        assert request.extensions["timeout"]["read"] == 900.0
+        assert request.extensions["timeout"]["read"] == 300.0
         return httpx.Response(200, json={"ok": True, "answer": "ready"})
 
     transport = httpx.MockTransport(handler)
@@ -320,3 +320,20 @@ def test_ask_result_posts_repeatable_attachments(tmp_path: Path) -> None:
         payload = client.ask_result("Analyze these logs", attachment_paths=[str(first), str(second)])
 
     assert payload["answer"] == "ready"
+
+
+def test_ask_result_respects_configured_timeout(monkeypatch):
+    import httpx
+    from promptbranch_service_client import ChatGPTServiceClient
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["timeout"] = request.extensions.get("timeout")
+        return httpx.Response(200, json={"answer": "ok", "conversation_url": "https://chatgpt.com/g/demo/c/1"})
+
+    client = ChatGPTServiceClient("http://service", timeout=3.0, transport=httpx.MockTransport(handler))
+    payload = client.ask_result("hello")
+
+    assert payload["answer"] == "ok"
+    assert captured["timeout"]["read"] == 3.0
