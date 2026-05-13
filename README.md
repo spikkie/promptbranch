@@ -1,4 +1,4 @@
-# promptbranch v0.0.211
+# promptbranch v0.0.212
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -643,7 +643,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.211
+## v0.0.212
 
 - Hardened `pb ask --protocol --parse-reply` against stale assistant answers by capturing a pre-ask task marker and requiring the parsed answer to be newer or tied to the current request id.
 - Added selected-answer metadata, pre/post ask markers, and explicit `stale_answer_detected` / `assistant_not_detected` failure statuses in protocol-run JSON output.

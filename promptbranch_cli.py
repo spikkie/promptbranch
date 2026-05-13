@@ -12,6 +12,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -71,6 +72,8 @@ from promptbranch_state import (
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS = 120.0
+DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS = 12.0
+DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
@@ -1717,7 +1720,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.211"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.212"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2364,7 +2367,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.211 supports --from-last-answer only",
+            "error": "v0.0.212 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2373,7 +2376,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.211 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.212 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2984,6 +2987,95 @@ def _apply_protocol_timeout(args: argparse.Namespace) -> None:
         args.service_timeout_seconds = min(current, timeout)
 
 
+
+def _protocol_request_message_matches(messages: list[dict[str, Any]], envelope: dict[str, Any]) -> list[dict[str, Any]]:
+    request_id = str(envelope.get("request_id") or "")
+    if not request_id:
+        return []
+    return [message for message in messages if request_id in str(message.get("text") or "")]
+
+
+def _protocol_new_user_messages(messages: list[dict[str, Any]], pre_ask_marker: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(pre_ask_marker, dict) or not pre_ask_marker.get("available"):
+        return messages[-1:] if messages else []
+    return [message for message in messages if _message_after_protocol_marker(message, pre_ask_marker)]
+
+
+def _protocol_fresh_turn_evidence(
+    payload: dict[str, Any],
+    *,
+    pre_ask_marker: dict[str, Any] | None,
+    envelope: dict[str, Any],
+    attempts: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    request_matches = _protocol_request_message_matches(messages, envelope)
+    newer_messages = _protocol_new_user_messages(messages, pre_ask_marker)
+    marker_count = _protocol_turn_number(pre_ask_marker.get("message_count") if isinstance(pre_ask_marker, dict) else None) if isinstance(pre_ask_marker, dict) else None
+    message_count = len(messages)
+    latest_marker = _latest_protocol_task_marker(payload)
+    return {
+        "fresh_user_turn_visible": bool(request_matches or newer_messages),
+        "request_message_found": bool(request_matches),
+        "newer_user_message_count": len(newer_messages),
+        "request_message_count": len(request_matches),
+        "message_count_before": marker_count,
+        "message_count_after": message_count,
+        "message_count_delta": (message_count - marker_count) if marker_count is not None else None,
+        "latest_marker": latest_marker,
+        "attempt_count": len(attempts or []),
+        "attempts": attempts or [],
+    }
+
+
+async def _wait_for_protocol_fresh_turn(
+    backend: Any,
+    args: argparse.Namespace,
+    *,
+    conversation_url: str,
+    envelope: dict[str, Any],
+    pre_ask_marker: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fetch/poll chat state until the protocol ask is visible as a fresh user turn."""
+
+    timeout = max(0.0, float(getattr(args, "protocol_fresh_turn_timeout_seconds", DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS) or 0.0))
+    poll_seconds = max(0.1, float(getattr(args, "protocol_fresh_turn_poll_seconds", DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS) or DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS))
+    deadline = time.monotonic() + timeout
+    attempts: list[dict[str, Any]] = []
+    last_payload: dict[str, Any] | None = None
+    attempt = 0
+    while True:
+        attempt += 1
+        chat = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
+        payload = _task_messages_payload(chat)
+        last_payload = payload
+        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts)
+        attempts.append({
+            "attempt": attempt,
+            "message_count_after": evidence.get("message_count_after"),
+            "message_count_delta": evidence.get("message_count_delta"),
+            "request_message_found": evidence.get("request_message_found"),
+            "newer_user_message_count": evidence.get("newer_user_message_count"),
+            "fresh_user_turn_visible": evidence.get("fresh_user_turn_visible"),
+            "latest_user_message_id": (evidence.get("latest_marker") or {}).get("latest_user_message_id") if isinstance(evidence.get("latest_marker"), dict) else None,
+            "latest_user_message_index": (evidence.get("latest_marker") or {}).get("latest_user_message_index") if isinstance(evidence.get("latest_marker"), dict) else None,
+            "latest_answer_id": (evidence.get("latest_marker") or {}).get("latest_answer_id") if isinstance(evidence.get("latest_marker"), dict) else None,
+        })
+        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts)
+        if evidence["fresh_user_turn_visible"]:
+            evidence["status"] = "fresh_turn_visible"
+            evidence["timeout_seconds"] = timeout
+            evidence["poll_seconds"] = poll_seconds
+            return payload, evidence
+        remaining = deadline - time.monotonic()
+        if timeout <= 0.0 or remaining <= 0.0:
+            evidence["status"] = "ask_submission_not_visible"
+            evidence["timeout_seconds"] = timeout
+            evidence["poll_seconds"] = poll_seconds
+            return payload, evidence
+        await asyncio.sleep(min(poll_seconds, max(0.0, remaining)))
+
+
 async def _parse_protocol_reply_after_ask(
     backend: Any,
     args: argparse.Namespace,
@@ -3012,9 +3104,36 @@ async def _parse_protocol_reply_after_ask(
             "adoption_performed": False,
         }
 
-    chat = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
-    payload = _task_messages_payload(chat)
+    payload, fresh_turn_evidence = await _wait_for_protocol_fresh_turn(
+        backend,
+        args,
+        conversation_url=conversation_url,
+        envelope=envelope,
+        pre_ask_marker=pre_ask_marker,
+    )
     post_ask_marker = _latest_protocol_task_marker(payload)
+    if not fresh_turn_evidence.get("fresh_user_turn_visible"):
+        return {
+            "ok": False,
+            "action": "ask_protocol_run",
+            "status": "ask_submission_not_visible",
+            "error": "ask_submission_not_visible: no newer user message or request_id-matched user turn was visible after the protocol ask submit",
+            "request": envelope,
+            "request_baseline": _baseline_from_protocol_request(envelope),
+            "ask_response": ask_response,
+            "conversation_url": conversation_url,
+            "conversation_id": payload.get("conversation_id"),
+            "title": payload.get("title"),
+            "pre_ask_marker": pre_ask_marker,
+            "post_ask_marker": post_ask_marker,
+            "fresh_turn_evidence": fresh_turn_evidence,
+            "answer_selection": {"policy": "fresh_protocol_reply_required", "selected": None},
+            "automation_performed": True,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+            "operator_instruction": "Protocol ask was submitted, but no fresh user turn was visible after a post-submit refresh/poll. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        }
     try:
         message, answer, selection = _select_protocol_reply_message_answer(
             payload["messages"],
@@ -3042,6 +3161,7 @@ async def _parse_protocol_reply_after_ask(
             "title": payload.get("title"),
             "pre_ask_marker": pre_ask_marker,
             "post_ask_marker": post_ask_marker,
+            "fresh_turn_evidence": fresh_turn_evidence,
             "answer_selection": {"policy": "fresh_protocol_reply_required", "selected": None},
             "automation_performed": True,
             "download_performed": False,
@@ -3071,6 +3191,7 @@ async def _parse_protocol_reply_after_ask(
         "answer_selection": {**selection, "selected": _protocol_answer_metadata(message, answer)},
         "pre_ask_marker": pre_ask_marker,
         "post_ask_marker": post_ask_marker,
+        "fresh_turn_evidence": fresh_turn_evidence,
         "answer_text_length": len(str(answer.get("text") or "")),
         "automation_performed": True,
         "download_performed": False,
@@ -3245,7 +3366,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
         "version": [],
-        "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--answer-index", "--answer-id"],
+        "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
@@ -5888,7 +6009,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.211.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.212.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -5896,7 +6017,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.211. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.212. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -5932,7 +6053,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.211 or 0.0.211.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.212 or 0.0.212.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
@@ -6325,6 +6446,8 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--print-request-json", action="store_true", help="Print the built protocol request envelope without sending the ask.")
     ask.add_argument("--parse-reply", action="store_true", help="After a protocol ask, fetch the latest answer and validate the Promptbranch reply envelope. No artifact intake is performed.")
     ask.add_argument("--protocol-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS, help="Bounded timeout for protocol ask/parse-reply service calls. Defaults to 120 seconds.")
+    ask.add_argument("--protocol-fresh-turn-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS, help="Seconds to poll after submit until a fresh user turn or request_id-matched turn is visible. Defaults to 12 seconds.")
+    ask.add_argument("--protocol-fresh-turn-poll-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS, help="Polling interval for fresh-turn visibility after protocol submit. Defaults to 1 second.")
     ask.add_argument("--answer-index", help="Assistant answer index to parse after --parse-reply. Defaults to latest.")
     ask.add_argument("--answer-id", help="Assistant answer id or unique prefix to parse after --parse-reply.")
     ask.add_argument("--keep-open", action="store_true")
