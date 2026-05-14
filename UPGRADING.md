@@ -336,7 +336,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.214
+## v0.0.215
 
 - Hardened `pb ask --protocol --parse-reply` around service/client timeout layering.
 - The CLI no longer shortens the HTTP service read timeout to the protocol response timeout; the service timeout now has enough budget to return structured timeout evidence.

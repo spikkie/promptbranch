@@ -74,9 +74,24 @@ ASSISTANT_MESSAGE_SELECTORS = [
 ]
 USER_MESSAGE_SELECTORS = [
     '[data-message-author-role="user"]',
+    'main [data-message-author-role="user"]',
+    'article:has([data-message-author-role="user"])',
+    'section:has([data-message-author-role="user"])',
+    '[data-testid*="conversation-turn"]:has([data-message-author-role="user"])',
+    'article[data-testid*="conversation-turn"]:has([data-message-author-role="user"])',
     'section[data-testid*="conversation-turn"][data-turn="user"]',
     'section[data-turn="user"]',
     '[data-testid*="conversation-turn"][data-turn="user"]',
+    'article[data-turn="user"]',
+    'main article[data-turn="user"]',
+]
+GENERIC_CONVERSATION_TURN_SELECTORS = [
+    '[data-testid*="conversation-turn"]',
+    'article[data-testid*="conversation-turn"]',
+    'section[data-testid*="conversation-turn"]',
+    'main article',
+    'main [role="article"]',
+    '[data-message-author-role]',
 ]
 PRIMARY_ASSISTANT_MESSAGE_SELECTOR = ASSISTANT_MESSAGE_SELECTORS[0]
 COMPOSER_SUBMIT_BUTTON_SELECTORS = [
@@ -3886,6 +3901,74 @@ class ChatGPTBrowserClient:
         match = re.search(r'\breq_[A-Za-z0-9_.:-]+\b', prompt)
         return match.group(0) if match else None
 
+    async def _capture_generic_conversation_turn_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        """Capture broad turn evidence when role-specific selectors miss ChatGPT's current DOM."""
+
+        prompt_prefix = (prompt or "")[:120]
+        request_id = self._protocol_request_id_from_prompt(prompt)
+        probes: list[dict[str, Any]] = []
+        best_selector: str | None = None
+        best_count = 0
+        best_last_text = ""
+        best_request_id_found = False
+        best_prompt_prefix_found = False
+        for selector in GENERIC_CONVERSATION_TURN_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                snippets: list[dict[str, Any]] = []
+                selector_request_id_found = False
+                selector_prompt_prefix_found = False
+                last_text = ""
+                if count:
+                    start = max(0, count - 5)
+                    for index in range(start, count):
+                        try:
+                            text = await self._extract_text_from_locator(locator.nth(index), timeout_ms=500)
+                        except Exception:
+                            text = ""
+                        if text:
+                            last_text = text
+                        item_request_id_found = bool(request_id and request_id in text)
+                        item_prompt_prefix_found = bool(prompt_prefix and prompt_prefix in text)
+                        selector_request_id_found = selector_request_id_found or item_request_id_found
+                        selector_prompt_prefix_found = selector_prompt_prefix_found or item_prompt_prefix_found
+                        snippets.append({
+                            "index": index,
+                            "text_length": len(text),
+                            "text_preview": text[:240],
+                            "request_id_found": item_request_id_found,
+                            "prompt_prefix_found": item_prompt_prefix_found,
+                        })
+                probe = {
+                    "selector": selector,
+                    "count": count,
+                    "last_text_length": len(last_text),
+                    "last_text_preview": last_text[:240],
+                    "request_id_found": selector_request_id_found,
+                    "prompt_prefix_found": selector_prompt_prefix_found,
+                    "snippets": snippets,
+                }
+                probes.append(probe)
+                if (selector_request_id_found or selector_prompt_prefix_found) or count > best_count:
+                    best_selector = selector
+                    best_count = count
+                    best_last_text = last_text
+                    best_request_id_found = selector_request_id_found
+                    best_prompt_prefix_found = selector_prompt_prefix_found
+            except Exception as exc:
+                probes.append({"selector": selector, "error": str(exc), "count": 0})
+        return {
+            "selector": best_selector,
+            "count": best_count,
+            "last_text_length": len(best_last_text),
+            "last_text_preview": best_last_text[:240],
+            "request_id": request_id,
+            "request_id_found": best_request_id_found,
+            "prompt_prefix_found": best_prompt_prefix_found,
+            "probes": probes,
+        }
+
     async def _capture_user_turn_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         prompt_prefix = (prompt or "")[:120]
         request_id = self._protocol_request_id_from_prompt(prompt)
@@ -3893,6 +3976,8 @@ class ChatGPTBrowserClient:
         best_selector: str | None = None
         best_count = 0
         best_last_text = ""
+        best_request_id_found = False
+        best_prompt_prefix_found = False
         for selector in USER_MESSAGE_SELECTORS:
             try:
                 locator = page.locator(selector)
@@ -3903,29 +3988,37 @@ class ChatGPTBrowserClient:
                         last_text = await self._extract_text_from_locator(locator.nth(count - 1), timeout_ms=750)
                     except Exception:
                         last_text = ""
+                selector_request_id_found = bool(request_id and request_id in last_text)
+                selector_prompt_prefix_found = bool(prompt_prefix and prompt_prefix in last_text)
                 probe = {
                     "selector": selector,
                     "count": count,
                     "last_text_length": len(last_text),
                     "last_text_preview": last_text[:240],
-                    "request_id_found": bool(request_id and request_id in last_text),
-                    "prompt_prefix_found": bool(prompt_prefix and prompt_prefix in last_text),
+                    "request_id_found": selector_request_id_found,
+                    "prompt_prefix_found": selector_prompt_prefix_found,
                 }
                 probes.append(probe)
-                if count > best_count:
+                if (selector_request_id_found or selector_prompt_prefix_found) or count > best_count:
                     best_selector = selector
                     best_count = count
                     best_last_text = last_text
+                    best_request_id_found = selector_request_id_found
+                    best_prompt_prefix_found = selector_prompt_prefix_found
             except Exception as exc:
                 probes.append({"selector": selector, "error": str(exc), "count": 0})
+        generic_turns = await self._capture_generic_conversation_turn_state(page, prompt=prompt)
+        request_id_found = best_request_id_found or bool(generic_turns.get("request_id_found"))
+        prompt_prefix_found = best_prompt_prefix_found or bool(generic_turns.get("prompt_prefix_found"))
         return {
             "selector": best_selector,
             "count": best_count,
             "last_text_length": len(best_last_text),
             "last_text_preview": best_last_text[:240],
             "request_id": request_id,
-            "request_id_found": bool(request_id and request_id in best_last_text),
-            "prompt_prefix_found": bool(prompt_prefix and prompt_prefix in best_last_text),
+            "request_id_found": request_id_found,
+            "prompt_prefix_found": prompt_prefix_found,
+            "generic_turns": generic_turns,
             "probes": probes,
         }
 
@@ -3940,6 +4033,8 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         before_count = int(before_state.get("count") or 0)
+        before_generic = before_state.get("generic_turns") if isinstance(before_state.get("generic_turns"), dict) else {}
+        before_generic_count = int(before_generic.get("count") or 0)
         attempts: list[dict[str, Any]] = []
         attempt = 0
         last_state: dict[str, Any] = {}
@@ -3947,17 +4042,27 @@ class ChatGPTBrowserClient:
             attempt += 1
             state = await self._capture_user_turn_state(page, prompt=prompt)
             last_state = state
+            generic_turns = state.get("generic_turns") if isinstance(state.get("generic_turns"), dict) else {}
+            generic_count = int(generic_turns.get("count") or 0)
+            generic_count_delta = generic_count - before_generic_count
             visible = bool(
                 int(state.get("count") or 0) > before_count
                 or state.get("request_id_found")
                 or state.get("prompt_prefix_found")
+                or generic_count_delta > 0
+                or generic_turns.get("request_id_found")
+                or generic_turns.get("prompt_prefix_found")
             )
             attempts.append({
                 "attempt": attempt,
                 "count": state.get("count"),
                 "count_delta": int(state.get("count") or 0) - before_count,
+                "generic_count": generic_count,
+                "generic_count_delta": generic_count_delta,
                 "request_id_found": state.get("request_id_found"),
                 "prompt_prefix_found": state.get("prompt_prefix_found"),
+                "generic_request_id_found": generic_turns.get("request_id_found"),
+                "generic_prompt_prefix_found": generic_turns.get("prompt_prefix_found"),
                 "last_text_length": state.get("last_text_length"),
             })
             if visible:
@@ -3971,6 +4076,9 @@ class ChatGPTBrowserClient:
                     "before_count": before_count,
                     "after_count": state.get("count"),
                     "count_delta": int(state.get("count") or 0) - before_count,
+                    "before_generic_count": before_generic_count,
+                    "after_generic_count": generic_count,
+                    "generic_count_delta": generic_count_delta,
                     "state": state,
                 }
             remaining = deadline - asyncio.get_running_loop().time()
@@ -3985,6 +4093,9 @@ class ChatGPTBrowserClient:
                     "before_count": before_count,
                     "after_count": last_state.get("count"),
                     "count_delta": int(last_state.get("count") or 0) - before_count,
+                    "before_generic_count": before_generic_count,
+                    "after_generic_count": (last_state.get("generic_turns") or {}).get("count") if isinstance(last_state.get("generic_turns"), dict) else None,
+                    "generic_count_delta": (int((last_state.get("generic_turns") or {}).get("count") or 0) - before_generic_count) if isinstance(last_state.get("generic_turns"), dict) else None,
                     "state": last_state,
                 }
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
@@ -4835,13 +4946,19 @@ class ChatGPTBrowserClient:
                     accessToken = null;
                 }
 
-                const headers = { accept: 'application/json' };
+                base.searchParams.set('_pb_fresh', String(Date.now()));
+                const headers = {
+                    accept: 'application/json',
+                    'cache-control': 'no-cache',
+                    pragma: 'no-cache',
+                };
                 if (accessToken) {
                     headers.authorization = `Bearer ${accessToken}`;
                 }
                 const response = await fetch(base.toString(), {
                     credentials: 'include',
                     headers,
+                    cache: 'no-store',
                 });
                 const text = await response.text();
                 return {
@@ -5375,13 +5492,19 @@ class ChatGPTBrowserClient:
                 } catch (_err) {
                     accessToken = null;
                 }
-                const headers = { accept: 'application/json' };
+                base.searchParams.set('_pb_fresh', String(Date.now()));
+                const headers = {
+                    accept: 'application/json',
+                    'cache-control': 'no-cache',
+                    pragma: 'no-cache',
+                };
                 if (accessToken) {
                     headers.authorization = `Bearer ${accessToken}`;
                 }
                 const response = await fetch(base.toString(), {
                     credentials: 'include',
                     headers,
+                    cache: 'no-store',
                 });
                 const text = await response.text();
                 return {

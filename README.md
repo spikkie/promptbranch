@@ -1,4 +1,4 @@
-# promptbranch v0.0.214
+# promptbranch v0.0.215
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -644,7 +644,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.214
+## v0.0.215
 
 - Hardened `pb ask --protocol --parse-reply` around service/client timeout layering.
 - The CLI no longer shortens the HTTP service read timeout to the protocol response timeout; the service timeout now has enough budget to return structured timeout evidence.
