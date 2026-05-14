@@ -18,6 +18,15 @@ def _make_client(tmp_path: Path) -> ChatGPTBrowserClient:
     return ChatGPTBrowserClient(config)
 
 
+
+def test_protocol_submit_turn_probe_selectors_include_generic_fallbacks(tmp_path: Path) -> None:
+    from promptbranch_browser_auth.client import GENERIC_CONVERSATION_TURN_SELECTORS, USER_MESSAGE_SELECTORS
+
+    assert '[data-message-author-role="user"]' in USER_MESSAGE_SELECTORS
+    assert 'article:has([data-message-author-role="user"])' in USER_MESSAGE_SELECTORS
+    assert '[data-testid*="conversation-turn"]' in GENERIC_CONVERSATION_TURN_SELECTORS
+    assert 'main article' in GENERIC_CONVERSATION_TURN_SELECTORS
+
 def test_response_completion_ready_after_observed_run_then_idle(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
