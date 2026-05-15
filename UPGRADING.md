@@ -336,6 +336,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.219
+
+- `pb test full` now uses more conservative rate-limit-safe pacing defaults for broad live-browser validation.
+- Test-suite and test-report JSON now include `rate_limit_summary` beside the existing detailed `rate_limit_telemetry` payload.
+- Treat `rate_limit_summary.status=rate_limited_excessive` as a recovered but fragile live run, not as a functional suite failure.
+- No protocol schema, artifact/source/adoption, or MCP/write behavior changed.
+
 ## v0.0.218
 
 - `pb ask --protocol --parse-reply` now separates the authoritative parsed protocol reply from any intermediate browser-stream answer returned by the service.

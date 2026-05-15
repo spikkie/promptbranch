@@ -29,6 +29,16 @@ def _suite_payload(ok: bool = True) -> dict:
             "service_rate_limit_events": [],
             "event_count": 0,
         },
+        "rate_limit_summary": {
+            "status": "none",
+            "blocking": False,
+            "event_count": 0,
+            "cooldown_wait_seconds_total": 0.0,
+            "cooldown_wait_count": 0,
+            "planned_cooldown_wait_seconds_total": 90.0,
+            "planned_cooldown_wait_count": 2,
+            "recommendation": "No ChatGPT rate-limit evidence observed.",
+        },
         "safety": {
             "write_tools_blocked": True,
             "model_has_execution_authority": False,
@@ -49,9 +59,34 @@ def test_build_test_report_extracts_last_test_suite_json_from_noisy_log(tmp_path
     assert report["suite"]["browser"]["step_count"] == 1
     assert report["suite"]["agent"]["step_count"] == 1
     assert report["suite"]["rate_limit_telemetry"]["planned_cooldown_wait_count"] == 2
+    assert report["suite"]["rate_limit_summary"]["status"] == "none"
     assert report["suite"]["safety"]["write_tools_blocked"] is True
     assert report["suite"]["package_hygiene"]["ok"] is True
 
+
+
+
+def test_build_test_report_derives_excessive_rate_limit_summary(tmp_path):
+    log = tmp_path / "suite_rate_limit.log"
+    payload = _suite_payload()
+    payload.pop("rate_limit_summary", None)
+    payload["rate_limit_telemetry"] = {
+        "rate_limit_modal_detected": True,
+        "conversation_history_429_seen": True,
+        "cooldown_wait_seconds_total": 918.189,
+        "cooldown_wait_count": 8,
+        "planned_cooldown_wait_seconds_total": 90.0,
+        "planned_cooldown_wait_count": 2,
+        "service_rate_limit_events": [{"kind": "cooldown_wait"}] * 30,
+        "event_count": 30,
+    }
+    log.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    report = build_test_report(log)
+
+    assert report["ok"] is True
+    assert report["suite"]["rate_limit_summary"]["status"] == "rate_limited_excessive"
+    assert report["suite"]["rate_limit_summary"]["blocking"] is False
 
 def test_build_test_report_marks_failed_suite(tmp_path):
     log = tmp_path / "suite_fail.log"
