@@ -489,6 +489,10 @@ class ChatGPTBrowserClient:
         self._rate_limit_events: list[dict[str, object]] = []
         self._rate_limit_cooldown_wait_seconds_total = 0.0
         self._rate_limit_cooldown_wait_count = 0
+        self._navigation_noop_skip_count = 0
+        self._conversation_history_fetch_attempt_count = 0
+        self._conversation_history_fetch_skipped_count = 0
+        self._conversation_history_cooldown_skip_count = 0
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
@@ -505,6 +509,36 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log('rate-limit', 'failed reading cooldown file', path=str(self._rate_limit_cooldown_path), error=str(exc))
             return 0.0
+
+    def _conversation_history_cooldown_remaining(self) -> float:
+        return max(0.0, self._read_rate_limit_cooldown_until() - time.time())
+
+    def _conversation_history_cooldown_active(self) -> bool:
+        return self._conversation_history_cooldown_remaining() > 0
+
+    def _normalize_navigation_url(self, url: str) -> str:
+        try:
+            parsed = urlparse(url or '')
+        except Exception:
+            return (url or '').strip()
+        path = (parsed.path or '/').rstrip('/') or '/'
+        query = urlencode(sorted(parse_qsl(parsed.query, keep_blank_values=True)))
+        return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, '', query, ''))
+
+    def _navigation_requires_refresh(self, *, label: str, current_url: str, target_url: str) -> bool:
+        normalized_label = (label or '').lower()
+        if 'refresh' in normalized_label:
+            return True
+        if 'reload' in normalized_label:
+            return True
+        return False
+
+    def _record_conversation_history_skip(self, *, reason: str, label: str | None = None, url: str | None = None) -> None:
+        self._conversation_history_fetch_skipped_count += 1
+        if reason == 'cooldown_active':
+            self._conversation_history_cooldown_skip_count += 1
+        self._record_rate_limit_event(kind='conversation_history_skipped', trigger='skip', url=url, label=label, wait_seconds=self._conversation_history_cooldown_remaining())
+        self._log('rate-limit', 'skipping conversation-history fetch', reason=reason, label=label, url=url, cooldown_remaining=round(self._conversation_history_cooldown_remaining(), 3))
 
     def _write_rate_limit_cooldown_until(self, cooldown_until: float) -> None:
         try:
@@ -537,6 +571,10 @@ class ChatGPTBrowserClient:
             'conversation_history_429_seen': any(int(event.get('status') or 0) == 429 for event in events),
             'cooldown_wait_seconds_total': round(self._rate_limit_cooldown_wait_seconds_total, 3),
             'cooldown_wait_count': int(self._rate_limit_cooldown_wait_count),
+            'conversation_history_fetch_attempt_count': int(self._conversation_history_fetch_attempt_count),
+            'conversation_history_fetch_skipped_count': int(self._conversation_history_fetch_skipped_count),
+            'conversation_history_cooldown_skip_count': int(self._conversation_history_cooldown_skip_count),
+            'navigation_noop_skip_count': int(self._navigation_noop_skip_count),
             'service_rate_limit_events': events,
         }
 
@@ -1688,36 +1726,52 @@ class ChatGPTBrowserClient:
                 # Project chat DOM/snorlax sources may expose only the initially
                 # materialized batch. Supplement indexed results with the
                 # backend conversation-history scan only when the project-specific
-                # endpoint was unavailable or empty.
-                if index_sources_found:
-                    history_supplement_used = True
+                # endpoint was unavailable or empty.  Under an active persisted
+                # conversation-history cooldown, keep already-indexed rows instead
+                # of immediately re-hitting the global history endpoint.
+                if index_sources_found and self._conversation_history_cooldown_active():
+                    history_fallback_skipped = True
+                    history_supplement_skipped_reason = 'conversation_history_cooldown_active_indexed_sources_available'
+                    self._record_conversation_history_skip(reason='cooldown_active', label='chat-list')
                     self._log(
                         'chat-list',
-                        'supplementing indexed project chats with conversation history because project endpoint was unavailable or empty',
+                        'skipping global conversation history because cooldown is active and indexed project chats are available',
+                        cooldown_remaining=round(self._conversation_history_cooldown_remaining(), 3),
                         snorlax_count=len(snorlax_chats),
                         project_endpoint_count=len(project_endpoint_chats),
                         dom_count=len(dom_chats),
                         retained_count=len(chats),
                     )
                 else:
-                    history_fallback_used = True
-                try:
-                    history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
-                except Exception as exc:
-                    if chats:
+                    if index_sources_found:
+                        history_supplement_used = True
                         self._log(
                             'chat-list',
-                            'conversation history supplement failed; keeping indexed project chats',
-                            error=repr(exc),
+                            'supplementing indexed project chats with conversation history because project endpoint was unavailable or empty',
+                            snorlax_count=len(snorlax_chats),
+                            project_endpoint_count=len(project_endpoint_chats),
+                            dom_count=len(dom_chats),
                             retained_count=len(chats),
                         )
-                        history_chats = []
                     else:
-                        raise
-                if history_chats:
-                    # Keep DOM/snorlax/current-page ordering first because it
-                    # matches the visible project UI, then append deeper history-only tasks.
-                    chats = self._merge_project_chat_lists(chats, history_chats)
+                        history_fallback_used = True
+                    try:
+                        history_chats = await self._collect_all_project_chats(page, project_url=project_url, label='chat-list')
+                    except Exception as exc:
+                        if chats:
+                            self._log(
+                                'chat-list',
+                                'conversation history supplement failed; keeping indexed project chats',
+                                error=repr(exc),
+                                retained_count=len(chats),
+                            )
+                            history_chats = []
+                        else:
+                            raise
+                    if history_chats:
+                        # Keep DOM/snorlax/current-page ordering first because it
+                        # matches the visible project UI, then append deeper history-only tasks.
+                        chats = self._merge_project_chat_lists(chats, history_chats)
         else:
             history_fallback_skipped = True
             self._log(
@@ -5313,7 +5367,27 @@ class ChatGPTBrowserClient:
         offset: int = 0,
         limit: int = 100,
         order: str = 'updated',
+        allow_during_cooldown: bool = False,
+        label: str | None = None,
     ) -> dict[str, Any]:
+        if self._conversation_history_cooldown_active() and not allow_during_cooldown:
+            self._record_conversation_history_skip(
+                reason='cooldown_active',
+                label=label,
+                url=f'/backend-api/conversations?offset={offset}&limit={limit}',
+            )
+            return {
+                'ok': False,
+                'status': 'skipped_cooldown',
+                'url': f'/backend-api/conversations?offset={offset}&limit={limit}',
+                'payload': None,
+                'text': '',
+                'used_authorization': False,
+                'skipped': True,
+                'skip_reason': 'conversation_history_cooldown_active',
+                'cooldown_remaining_seconds': round(self._conversation_history_cooldown_remaining(), 3),
+            }
+        self._conversation_history_fetch_attempt_count += 1
         result = await page.evaluate(
             r'''
             async ({ offset, limit, order }) => {
@@ -5396,6 +5470,9 @@ class ChatGPTBrowserClient:
         for page_index in range(max_pages):
             response = await self._fetch_conversations_page(page, offset=offset, limit=limit)
             status = response.get('status')
+            if response.get('skipped'):
+                self._log(label, 'stopping conversation pagination because history fetch was skipped', page=page_index + 1, status=status, reason=response.get('skip_reason'), retained_count=len(collected))
+                break
             if status == 429:
                 self._note_conversation_history_rate_limit(trigger='fetch', url=str(response.get('url') or ''), status=429)
             if status != 200:
@@ -9541,6 +9618,19 @@ class ChatGPTBrowserClient:
 
     async def _goto(self, page: Any, url: str, *, label: str) -> None:
         current_url = await self._safe_page_url(page)
+        current_norm = self._normalize_navigation_url(current_url)
+        target_norm = self._normalize_navigation_url(url)
+        if current_norm and target_norm and current_norm == target_norm and not self._navigation_requires_refresh(label=label, current_url=current_url, target_url=url):
+            self._navigation_noop_skip_count += 1
+            self._log(
+                "nav",
+                "skipping no-op navigation to avoid reloading ChatGPT conversation history",
+                label=label,
+                current_url=current_url,
+                to_url=url,
+            )
+            await self._wait_for_rate_limit_modal_to_clear(page, label=label, timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 5_000))
+            return
         self._log("nav", "navigating", label=label, from_url=current_url, to_url=url)
         await page.goto(url, wait_until="domcontentloaded")
         self._log("nav", "domcontentloaded reached", label=label, current_url=await self._safe_page_url(page), title=await self._safe_page_title(page))

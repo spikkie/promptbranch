@@ -336,7 +336,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.219
+## v0.0.220
 
 - `pb test full` now uses more conservative rate-limit-safe pacing defaults for broad live-browser validation.
 - Test-suite and test-report JSON now include `rate_limit_summary` beside the existing detailed `rate_limit_telemetry` payload.

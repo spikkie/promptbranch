@@ -600,10 +600,10 @@ def test_ask_protocol_parse_reply_preserves_partial_submit_evidence(monkeypatch,
     store.remember(project_url, conversation_url, project_name="Claude Code workflow in ChatGPT")
     store.remember_artifact(
         project_url=project_url,
-        artifact_ref="chatgpt_claudecode_workflow_v0.0.219.zip",
-        artifact_version="v0.0.219",
-        source_ref="chatgpt_claudecode_workflow_v0.0.219.zip",
-        source_version="v0.0.219",
+        artifact_ref="chatgpt_claudecode_workflow_v0.0.220.zip",
+        artifact_version="v0.0.220",
+        source_ref="chatgpt_claudecode_workflow_v0.0.220.zip",
+        source_version="v0.0.220",
     )
     monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
@@ -612,7 +612,7 @@ def test_ask_protocol_parse_reply_preserves_partial_submit_evidence(monkeypatch,
         "--profile-dir", str(tmp_path),
         "--project-url", project_url,
         "ask", "protocol smoke",
-        "--protocol", "--target-version", "v0.0.219",
+        "--protocol", "--target-version", "v0.0.220",
         "--request-id", "req-v214",
         "--correlation-id", "corr-v214",
         "--parse-reply", "--json",
@@ -712,8 +712,8 @@ def test_ask_protocol_parse_reply_polls_until_fresh_turn_is_visible(monkeypatch,
         "baseline": {
             "input_artifact": "chatgpt_claudecode_workflow_v0.0.211.zip",
             "input_version": "v0.0.211",
-            "output_artifact": "chatgpt_claudecode_workflow_v0.0.219.zip",
-            "output_version": "v0.0.219",
+            "output_artifact": "chatgpt_claudecode_workflow_v0.0.220.zip",
+            "output_version": "v0.0.220",
             "release_type": "normal",
         },
         "changes": [],
@@ -769,7 +769,7 @@ def test_ask_protocol_parse_reply_polls_until_fresh_turn_is_visible(monkeypatch,
         "--profile-dir", str(tmp_path),
         "--project-url", project_url,
         "ask", "protocol smoke",
-        "--protocol", "--target-version", "v0.0.219",
+        "--protocol", "--target-version", "v0.0.220",
         "--request-id", "req-v211",
         "--correlation-id", "corr-v211",
         "--parse-reply", "--json",
@@ -1447,7 +1447,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.219"
+    assert captured.out.strip() == "promptbranch 0.0.220"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1896,7 +1896,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.219"
+    assert payload["version"] == "0.0.220"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2994,16 +2994,16 @@ def _write_candidate_registry(profile: Path, *, filename: str, zip_path: Path, v
 
 
 def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.219.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.220.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.219")
+    _write_test_release_zip(zip_path, "v0.0.220")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.219")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.220")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
     args = argparse.Namespace(
         artifact=filename,
@@ -3034,21 +3034,21 @@ def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_pa
 
 
 def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_accepted(monkeypatch, capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.219.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.220.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.219")
+    _write_test_release_zip(zip_path, "v0.0.220")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.219")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.220")
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        assert command[:5] == [str(script), "--version", "v0.0.219", "--tests-only", "--adopt-if-green"]
+        assert command[:5] == [str(script), "--version", "v0.0.220", "--tests-only", "--adopt-if-green"]
         from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, utc_now, verify_zip_artifact
 
         registry = ArtifactRegistry(profile)
@@ -3057,7 +3057,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
             path=str(zip_path),
             filename=filename,
             kind="adopted_release",
-            version="v0.0.219",
+            version="v0.0.220",
             repo_path=None,
             sha256=str(zip_check.get("sha256") or ""),
             size_bytes=int(zip_check.get("size_bytes") or zip_path.stat().st_size),
@@ -3070,9 +3070,9 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
         backend.store.remember_artifact(
             project_url=project_url,
             artifact_ref=filename,
-            artifact_version="v0.0.219",
+            artifact_version="v0.0.220",
             source_ref=filename,
-            source_version="v0.0.219",
+            source_version="v0.0.220",
         )
         import subprocess
 
@@ -3081,7 +3081,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(
         artifact=None,
-        version="v0.0.219",
+        version="v0.0.220",
         repo_path=str(repo),
         from_project_source=True,
         run_release_control=True,
@@ -3110,13 +3110,13 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
 
 
 def test_artifact_accept_candidate_rejects_sha_mismatch_before_tests(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.219.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.220.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.219")
+    _write_test_release_zip(zip_path, "v0.0.220")
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.219")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.220")
     registry = json.loads((profile / "artifact_candidates.json").read_text(encoding="utf-8"))
     registry["candidates"][0]["sha256"] = "0" * 64
     (profile / "artifact_candidates.json").write_text(json.dumps(registry), encoding="utf-8")

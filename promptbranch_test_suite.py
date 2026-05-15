@@ -207,6 +207,10 @@ def _empty_rate_limit_telemetry() -> dict[str, Any]:
         "conversation_history_429_seen": False,
         "cooldown_wait_seconds_total": 0.0,
         "cooldown_wait_count": 0,
+        "conversation_history_fetch_attempt_count": 0,
+        "conversation_history_fetch_skipped_count": 0,
+        "conversation_history_cooldown_skip_count": 0,
+        "navigation_noop_skip_count": 0,
         "planned_cooldown_wait_seconds_total": 0.0,
         "planned_cooldown_wait_count": 0,
         "service_rate_limit_events": [],
@@ -226,6 +230,16 @@ def _merge_rate_limit_telemetry(target: dict[str, Any], telemetry: Any) -> None:
         target["cooldown_wait_count"] = int(target.get("cooldown_wait_count") or 0) + int(telemetry.get("cooldown_wait_count") or 0)
     except (TypeError, ValueError):
         pass
+    for key in (
+        "conversation_history_fetch_attempt_count",
+        "conversation_history_fetch_skipped_count",
+        "conversation_history_cooldown_skip_count",
+        "navigation_noop_skip_count",
+    ):
+        try:
+            target[key] = int(target.get(key) or 0) + int(telemetry.get(key) or 0)
+        except (TypeError, ValueError):
+            pass
     events = telemetry.get("service_rate_limit_events")
     if isinstance(events, list):
         target.setdefault("service_rate_limit_events", []).extend(event for event in events if isinstance(event, dict))
@@ -777,6 +791,10 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
             "cooldown_wait_count",
             "planned_cooldown_wait_seconds_total",
             "planned_cooldown_wait_count",
+            "conversation_history_fetch_attempt_count",
+            "conversation_history_fetch_skipped_count",
+            "conversation_history_cooldown_skip_count",
+            "navigation_noop_skip_count",
             "service_rate_limit_events",
         ],
         "operator_message": "If ChatGPT shows 'You're making requests too quickly', the live browser profile will honor persisted cooldowns and report rate-limit telemetry in the suite JSON.",

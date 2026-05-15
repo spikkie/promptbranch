@@ -190,6 +190,10 @@ def test_extract_rate_limit_telemetry_aggregates_operation_and_planned_cooldowns
     assert telemetry["conversation_history_429_seen"] is True
     assert telemetry["cooldown_wait_seconds_total"] == 15.345
     assert telemetry["cooldown_wait_count"] == 2
+    assert telemetry["conversation_history_fetch_attempt_count"] == 0
+    assert telemetry["conversation_history_fetch_skipped_count"] == 0
+    assert telemetry["conversation_history_cooldown_skip_count"] == 0
+    assert telemetry["navigation_noop_skip_count"] == 0
     assert telemetry["planned_cooldown_wait_seconds_total"] == 45.0
     assert telemetry["planned_cooldown_wait_count"] == 1
     assert telemetry["event_count"] == 2
@@ -283,6 +287,8 @@ def test_browser_profile_reports_rate_limit_telemetry(monkeypatch) -> None:
     assert result["rate_limit_telemetry"]["planned_cooldown_wait_seconds_total"] == 45.0
     assert result["rate_limit_summary"]["status"] == "rate_limited_recovered"
     assert "rate_limit_modal_detected" in result["rate_limit_strategy"]["telemetry_fields"]
+    assert "conversation_history_fetch_skipped_count" in result["rate_limit_strategy"]["telemetry_fields"]
+    assert "navigation_noop_skip_count" in result["rate_limit_strategy"]["telemetry_fields"]
 
 
 def test_source_version_consistency_detects_pyproject_drift(tmp_path: Path) -> None:
