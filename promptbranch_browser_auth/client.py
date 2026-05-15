@@ -531,6 +531,14 @@ class ChatGPTBrowserClient:
             return True
         if 'reload' in normalized_label:
             return True
+        if normalized_label == "chat-home-after-login" and self._is_conversation_url(target_url):
+            # Protocol ask correctness depends on the target conversation being
+            # fully hydrated before we fill and submit. A same-URL skip can
+            # leave a zero-turn transient DOM in place after prior reloads or
+            # history throttling, making the composer clear without the user
+            # turn persisting. Keep the v0.0.220 no-op optimization for other
+            # paths, but force this navigation/reload for conversation asks.
+            return True
         return False
 
     def _record_conversation_history_skip(self, *, reason: str, label: str | None = None, url: str | None = None) -> None:
@@ -1232,6 +1240,128 @@ class ChatGPTBrowserClient:
                 paths.append(attachment_path)
         return paths
 
+    async def _conversation_turn_presence_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        """Return a compact DOM hydration signal for the active conversation.
+
+        This intentionally reuses the existing broad user/generic probes. For
+        a selected existing conversation, either role-specific user turns or
+        generic conversation-turn nodes are enough to prove the transcript has
+        hydrated before we submit a protocol ask.
+        """
+
+        state = await self._capture_user_turn_state(page, prompt=prompt)
+        generic = state.get("generic_turns") if isinstance(state.get("generic_turns"), dict) else {}
+        user_count = int(state.get("count") or 0)
+        generic_count = int(generic.get("count") or 0)
+        return {
+            "user_turn_count": user_count,
+            "generic_turn_count": generic_count,
+            "hydrated": bool(user_count > 0 or generic_count > 0),
+            "state": state,
+        }
+
+    async def _ensure_target_conversation_hydrated(
+        self,
+        page: Any,
+        *,
+        target_url: str,
+        label: str,
+        timeout_ms: int = 8_000,
+        poll_interval_ms: int = 500,
+    ) -> dict[str, Any]:
+        """Block protocol submits when an existing conversation has not hydrated.
+
+        v0.0.220 reduced same-URL navigations. That exposed a correctness
+        hazard: a conversation URL may be current while the DOM still has zero
+        conversation turns. Submitting from that transient state can clear the
+        composer without the backend persisting the new user turn.
+        """
+
+        if not self._is_conversation_url(target_url):
+            return {"status": "not_required", "target_url": target_url, "label": label}
+
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        attempts: list[dict[str, Any]] = []
+        attempt = 0
+        last_state: dict[str, Any] = {}
+        while True:
+            attempt += 1
+            presence = await self._conversation_turn_presence_state(page)
+            last_state = presence
+            attempts.append({
+                "attempt": attempt,
+                "phase": "initial_wait",
+                "user_turn_count": presence.get("user_turn_count"),
+                "generic_turn_count": presence.get("generic_turn_count"),
+                "hydrated": presence.get("hydrated"),
+            })
+            if presence.get("hydrated"):
+                result = {
+                    "status": "target_conversation_hydrated",
+                    "target_url": target_url,
+                    "label": label,
+                    "attempt_count": attempt,
+                    "reload_performed": False,
+                    "attempts": attempts,
+                    "state": presence.get("state"),
+                }
+                self._log("hydration", "target conversation hydrated before submit", **{k: v for k, v in result.items() if k != "state"})
+                return result
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
+        self._log(
+            "hydration",
+            "target conversation not hydrated; forcing one reload before submit",
+            target_url=target_url,
+            label=label,
+            attempts=attempts,
+        )
+        await page.goto(target_url, wait_until="domcontentloaded")
+        await self._wait_for_rate_limit_modal_to_clear(page, label=f"{label}-hydration-reload")
+
+        reload_deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        reload_attempt = 0
+        while True:
+            reload_attempt += 1
+            presence = await self._conversation_turn_presence_state(page)
+            last_state = presence
+            attempts.append({
+                "attempt": reload_attempt,
+                "phase": "after_reload",
+                "user_turn_count": presence.get("user_turn_count"),
+                "generic_turn_count": presence.get("generic_turn_count"),
+                "hydrated": presence.get("hydrated"),
+            })
+            if presence.get("hydrated"):
+                result = {
+                    "status": "target_conversation_hydrated_after_reload",
+                    "target_url": target_url,
+                    "label": label,
+                    "attempt_count": len(attempts),
+                    "reload_performed": True,
+                    "attempts": attempts,
+                    "state": presence.get("state"),
+                }
+                self._log("hydration", "target conversation hydrated after forced reload", **{k: v for k, v in result.items() if k != "state"})
+                return result
+            remaining = reload_deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                result = {
+                    "status": "target_conversation_not_hydrated_before_submit",
+                    "target_url": target_url,
+                    "label": label,
+                    "attempt_count": len(attempts),
+                    "reload_performed": True,
+                    "attempts": attempts,
+                    "state": last_state.get("state") if isinstance(last_state, dict) else None,
+                }
+                self._log("hydration", "target conversation not hydrated before submit; refusing to submit", **{k: v for k, v in result.items() if k != "state"})
+                return result
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
     async def _upload_chat_attachments(self, page: Any, file_paths: list[str]) -> None:
         normalized_paths = [str(Path(path)) for path in file_paths]
         for path in normalized_paths:
@@ -1269,6 +1399,17 @@ class ChatGPTBrowserClient:
         await self.ensure_logged_in(page, context)
         target_url = conversation_url or self.config.project_url
         await self._goto(page, target_url, label="chat-home-after-login")
+        hydration = await self._ensure_target_conversation_hydrated(page, target_url=target_url, label="chat-home-after-login")
+        if isinstance(hydration, dict) and hydration.get("status") == "target_conversation_not_hydrated_before_submit":
+            return {
+                "ok": False,
+                "status": "target_conversation_not_hydrated_before_submit",
+                "error": "target_conversation_not_hydrated_before_submit: target conversation URL loaded but no conversation turns hydrated before submit",
+                "error_type": "target_conversation_not_hydrated_before_submit",
+                "conversation_url": target_url if self._is_conversation_url(target_url) else None,
+                "hydration_evidence": hydration,
+                "partial_result": True,
+            }
         input_locator = await self._wait_for_chat_input(page)
         await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
         self._log("composer", "chat input resolved; clicking")
