@@ -336,6 +336,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.218
+
+- `pb ask --protocol --parse-reply` now separates the authoritative parsed protocol reply from any intermediate browser-stream answer returned by the service.
+- For successful parsed protocol runs, use top-level `reply` and `reply_validation_ok`; `ask_response.answer` is intentionally `null` and diagnostic stream text is retained under `raw_browser_answer_preview`.
+- No artifact/source/adoption behavior changed.
+
 ## v0.0.217
 
 - Hardened `pb ask --protocol --parse-reply` with a conversation lock: the reply parser now refuses assistant text when the service/browser response points to a different conversation than the protocol request target.
