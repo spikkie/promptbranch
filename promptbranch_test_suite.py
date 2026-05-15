@@ -265,6 +265,75 @@ def extract_rate_limit_telemetry(summary: dict[str, Any]) -> dict[str, Any]:
     return aggregate
 
 
+def classify_rate_limit_summary(telemetry: Any, *, suite_ok: bool | None = None) -> dict[str, Any]:
+    """Return a compact operator-facing rate-limit classification.
+
+    The full telemetry can be large and noisy. This summary preserves the
+    operational decision: whether rate limiting was absent, recovered from, or
+    excessive enough to make the live validation result fragile.
+    """
+
+    data = telemetry if isinstance(telemetry, dict) else {}
+    try:
+        event_count = int(data.get("event_count") or len(data.get("service_rate_limit_events") or []))
+    except (TypeError, ValueError):
+        event_count = 0
+    try:
+        cooldown_total = float(data.get("cooldown_wait_seconds_total") or 0.0)
+    except (TypeError, ValueError):
+        cooldown_total = 0.0
+    try:
+        cooldown_count = int(data.get("cooldown_wait_count") or 0)
+    except (TypeError, ValueError):
+        cooldown_count = 0
+    try:
+        planned_total = float(data.get("planned_cooldown_wait_seconds_total") or 0.0)
+    except (TypeError, ValueError):
+        planned_total = 0.0
+    try:
+        planned_count = int(data.get("planned_cooldown_wait_count") or 0)
+    except (TypeError, ValueError):
+        planned_count = 0
+    modal = bool(data.get("rate_limit_modal_detected"))
+    history_429 = bool(data.get("conversation_history_429_seen"))
+
+    observed = modal or history_429 or event_count > 0 or cooldown_count > 0
+    excessive = cooldown_total >= 900.0 or cooldown_count >= 8 or event_count >= 30
+    if not observed:
+        status = "none"
+        blocking = False
+        recommendation = "No ChatGPT rate-limit evidence observed."
+    elif suite_ok is False:
+        status = "rate_limited_failed"
+        blocking = True
+        recommendation = "Live validation failed with rate-limit evidence; rerun later or reduce conversation-history enumeration."
+    elif excessive:
+        status = "rate_limited_excessive"
+        blocking = False
+        recommendation = "Suite recovered, but rate-limit pressure was excessive; reduce history enumeration or increase live-test pacing before relying on repeated runs."
+    elif cooldown_count > 0:
+        status = "rate_limited_recovered"
+        blocking = False
+        recommendation = "Suite recovered after persisted cooldown waits."
+    else:
+        status = "observed_no_cooldown"
+        blocking = False
+        recommendation = "Rate-limit evidence was observed without a recorded cooldown wait."
+
+    return {
+        "status": status,
+        "blocking": blocking,
+        "event_count": event_count,
+        "rate_limit_modal_detected": modal,
+        "conversation_history_429_seen": history_429,
+        "cooldown_wait_seconds_total": round(cooldown_total, 3),
+        "cooldown_wait_count": cooldown_count,
+        "planned_cooldown_wait_seconds_total": round(planned_total, 3),
+        "planned_cooldown_wait_count": planned_count,
+        "recommendation": recommendation,
+    }
+
+
 
 def _find_release_zip(package_zip: str | None, *, repo_path: Path | str) -> tuple[Path | None, list[Path]]:
     repo_path = Path(repo_path).expanduser().resolve()
@@ -684,6 +753,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
             "source_or_artifact_mutation_allowed": False,
         },
         "rate_limit_telemetry": _empty_rate_limit_telemetry(),
+        "rate_limit_summary": classify_rate_limit_summary(_empty_rate_limit_telemetry(), suite_ok=ok),
     }
 
 
@@ -720,6 +790,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
     browser_summary = await run_integration(browser_args)
     browser_summary["rate_limit_telemetry"] = extract_rate_limit_telemetry(browser_summary)
+    browser_summary["rate_limit_summary"] = classify_rate_limit_summary(browser_summary["rate_limit_telemetry"], suite_ok=bool(browser_summary.get("ok")))
     browser_summary["rate_limit_strategy"] = {
         **rate_limit_strategy,
         "step_delay_seconds": getattr(browser_args, "step_delay_seconds", None),
@@ -743,6 +814,10 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "agent": agent_summary,
         "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),
         "rate_limit_telemetry": browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
+        "rate_limit_summary": classify_rate_limit_summary(
+            browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
+            suite_ok=bool(browser_summary.get("ok")) and bool(agent_summary.get("ok")),
+        ),
         "safety": {
             "write_tools_blocked": bool(agent_summary.get("safety", {}).get("write_tools_blocked")),
             "model_has_execution_authority": False,

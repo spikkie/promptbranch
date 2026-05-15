@@ -195,6 +195,51 @@ def test_extract_rate_limit_telemetry_aggregates_operation_and_planned_cooldowns
     assert telemetry["event_count"] == 2
 
 
+
+
+def test_rate_limit_summary_none() -> None:
+    summary = suite.classify_rate_limit_summary(suite._empty_rate_limit_telemetry(), suite_ok=True)
+
+    assert summary["status"] == "none"
+    assert summary["blocking"] is False
+    assert summary["event_count"] == 0
+
+
+def test_rate_limit_summary_recovered() -> None:
+    summary = suite.classify_rate_limit_summary(
+        {
+            "rate_limit_modal_detected": True,
+            "conversation_history_429_seen": True,
+            "cooldown_wait_seconds_total": 118.5,
+            "cooldown_wait_count": 1,
+            "service_rate_limit_events": [{"kind": "cooldown_wait", "wait_seconds": 118.5}],
+            "event_count": 1,
+        },
+        suite_ok=True,
+    )
+
+    assert summary["status"] == "rate_limited_recovered"
+    assert summary["blocking"] is False
+    assert summary["cooldown_wait_count"] == 1
+
+
+def test_rate_limit_summary_excessive() -> None:
+    summary = suite.classify_rate_limit_summary(
+        {
+            "rate_limit_modal_detected": True,
+            "conversation_history_429_seen": True,
+            "cooldown_wait_seconds_total": 918.189,
+            "cooldown_wait_count": 8,
+            "service_rate_limit_events": [{"kind": "cooldown_wait"}] * 30,
+            "event_count": 30,
+        },
+        suite_ok=True,
+    )
+
+    assert summary["status"] == "rate_limited_excessive"
+    assert summary["blocking"] is False
+    assert "excessive" in summary["recommendation"]
+
 def test_browser_profile_reports_rate_limit_telemetry(monkeypatch) -> None:
     async def fake_run_integration(args):
         return {
@@ -236,6 +281,7 @@ def test_browser_profile_reports_rate_limit_telemetry(monkeypatch) -> None:
     assert result["rate_limit_telemetry"]["conversation_history_429_seen"] is True
     assert result["rate_limit_telemetry"]["cooldown_wait_seconds_total"] == 5.0
     assert result["rate_limit_telemetry"]["planned_cooldown_wait_seconds_total"] == 45.0
+    assert result["rate_limit_summary"]["status"] == "rate_limited_recovered"
     assert "rate_limit_modal_detected" in result["rate_limit_strategy"]["telemetry_fields"]
 
 

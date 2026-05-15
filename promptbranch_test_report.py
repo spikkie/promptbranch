@@ -137,6 +137,66 @@ def _version_consistency_from(section: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+def classify_rate_limit_summary(telemetry: Any, *, suite_ok: bool | None = None) -> dict[str, Any]:
+    data = telemetry if isinstance(telemetry, dict) else {}
+    try:
+        event_count = int(data.get("event_count") or len(data.get("service_rate_limit_events") or []))
+    except (TypeError, ValueError):
+        event_count = 0
+    try:
+        cooldown_total = float(data.get("cooldown_wait_seconds_total") or 0.0)
+    except (TypeError, ValueError):
+        cooldown_total = 0.0
+    try:
+        cooldown_count = int(data.get("cooldown_wait_count") or 0)
+    except (TypeError, ValueError):
+        cooldown_count = 0
+    try:
+        planned_total = float(data.get("planned_cooldown_wait_seconds_total") or 0.0)
+    except (TypeError, ValueError):
+        planned_total = 0.0
+    try:
+        planned_count = int(data.get("planned_cooldown_wait_count") or 0)
+    except (TypeError, ValueError):
+        planned_count = 0
+    modal = bool(data.get("rate_limit_modal_detected"))
+    history_429 = bool(data.get("conversation_history_429_seen"))
+    observed = modal or history_429 or event_count > 0 or cooldown_count > 0
+    excessive = cooldown_total >= 900.0 or cooldown_count >= 8 or event_count >= 30
+    if not observed:
+        status = "none"
+        blocking = False
+        recommendation = "No ChatGPT rate-limit evidence observed."
+    elif suite_ok is False:
+        status = "rate_limited_failed"
+        blocking = True
+        recommendation = "Live validation failed with rate-limit evidence; rerun later or reduce conversation-history enumeration."
+    elif excessive:
+        status = "rate_limited_excessive"
+        blocking = False
+        recommendation = "Suite recovered, but rate-limit pressure was excessive; reduce history enumeration or increase live-test pacing before relying on repeated runs."
+    elif cooldown_count > 0:
+        status = "rate_limited_recovered"
+        blocking = False
+        recommendation = "Suite recovered after persisted cooldown waits."
+    else:
+        status = "observed_no_cooldown"
+        blocking = False
+        recommendation = "Rate-limit evidence was observed without a recorded cooldown wait."
+    return {
+        "status": status,
+        "blocking": blocking,
+        "event_count": event_count,
+        "rate_limit_modal_detected": modal,
+        "conversation_history_429_seen": history_429,
+        "cooldown_wait_seconds_total": round(cooldown_total, 3),
+        "cooldown_wait_count": cooldown_count,
+        "planned_cooldown_wait_seconds_total": round(planned_total, 3),
+        "planned_cooldown_wait_count": planned_count,
+        "recommendation": recommendation,
+    }
+
+
 def _package_hygiene_from(section: dict[str, Any] | None) -> dict[str, Any] | None:
     step = _find_step(section, "package_hygiene")
     if not isinstance(step, dict):
@@ -189,6 +249,11 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
     rate_limit_telemetry = payload.get("rate_limit_telemetry")
     if rate_limit_telemetry is None and isinstance(browser, dict):
         rate_limit_telemetry = browser.get("rate_limit_telemetry")
+    rate_limit_summary = payload.get("rate_limit_summary")
+    if rate_limit_summary is None and isinstance(browser, dict):
+        rate_limit_summary = browser.get("rate_limit_summary")
+    if not isinstance(rate_limit_summary, dict):
+        rate_limit_summary = classify_rate_limit_summary(rate_limit_telemetry, suite_ok=bool(payload.get("ok")))
     safety = payload.get("safety")
     if safety is None and isinstance(agent, dict):
         safety = agent.get("safety")
@@ -202,6 +267,7 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "failure_count": len(failures),
         "failed_steps": failures,
         "rate_limit_telemetry": rate_limit_telemetry if isinstance(rate_limit_telemetry, dict) else {},
+        "rate_limit_summary": rate_limit_summary,
         "safety": safety if isinstance(safety, dict) else {},
         "package_hygiene": _package_hygiene_from(agent or payload),
         "version_consistency": _version_consistency_from(agent or payload),
@@ -481,6 +547,15 @@ def render_test_report_text(report: dict[str, Any]) -> str:
                 f"429={telemetry.get('conversation_history_429_seen')} "
                 f"cooldowns={telemetry.get('cooldown_wait_count')} "
                 f"planned={telemetry.get('planned_cooldown_wait_count')}"
+            )
+        rate_limit_summary = suite.get("rate_limit_summary") if isinstance(suite.get("rate_limit_summary"), dict) else {}
+        if rate_limit_summary:
+            lines.append(
+                "rate_limit_summary="
+                f"status={rate_limit_summary.get('status')} "
+                f"blocking={rate_limit_summary.get('blocking')} "
+                f"events={rate_limit_summary.get('event_count')} "
+                f"cooldown_seconds={rate_limit_summary.get('cooldown_wait_seconds_total')}"
             )
         package = suite.get("package_hygiene") if isinstance(suite.get("package_hygiene"), dict) else None
         if package:

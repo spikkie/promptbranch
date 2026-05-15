@@ -1,0 +1,373 @@
+{
+  "ok": true,
+  "action": "test_report",
+  "status": "verified",
+  "log_path": "pb_test.full.v0.0.218.log",
+  "source": {
+    "bytes": 450942,
+    "json_object_count": 1,
+    "selected": {
+      "start_offset": 0,
+      "end_offset": 450938
+    }
+  },
+  "suite": {
+    "ok": true,
+    "action": "test_suite",
+    "profile": "full",
+    "version": "v0.0.218",
+    "browser": {
+      "name": "browser",
+      "ok": true,
+      "step_count": 21,
+      "failure_count": 0,
+      "failed_steps": []
+    },
+    "agent": {
+      "name": "agent",
+      "ok": true,
+      "step_count": 20,
+      "failure_count": 0,
+      "failed_steps": []
+    },
+    "failure_count": 0,
+    "failed_steps": [],
+    "rate_limit_telemetry": {
+      "rate_limit_modal_detected": true,
+      "conversation_history_429_seen": true,
+      "cooldown_wait_seconds_total": 918.189,
+      "cooldown_wait_count": 8,
+      "planned_cooldown_wait_seconds_total": 90.0,
+      "planned_cooldown_wait_count": 2,
+      "service_rate_limit_events": [
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 257918.76951,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=28&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 257949.612581,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 89.157
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258069.516058,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=56&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 258077.924744,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/",
+          "label": "project-new-button-wait"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258077.924757,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 258079.395477,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.529
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258260.855489,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 258261.209571,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/",
+          "label": "project-resolve-home"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258261.20958,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 258262.939521,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.27
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258439.00287,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 258439.44364,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project",
+          "label": "project-source-add-home"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258439.443652,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 258440.93244,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.511
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258612.50018,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 258613.021599,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project?tab=sources",
+          "label": "project-source-add-persistence-refresh"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258613.021612,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project?tab=sources"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 258614.497901,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.524
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258757.67062,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 258758.12354,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project",
+          "label": "initial-auth-check"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 258758.123552,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 258759.68145,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.442
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 259462.992028,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 259463.137626,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1-itest-promptbranch-20260515-135935-1029438/c/6a071001-c164-838f-a369-c1f16fb81499",
+          "label": "chat-show-home"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 259463.137638,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1-itest-promptbranch-20260515-135935-1029438/c/6a071001-c164-838f-a369-c1f16fb81499"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 259464.964928,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.173
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 259634.526343,
+          "trigger": "response",
+          "status": 429,
+          "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated&is_archived=false&is_starred=false"
+        },
+        {
+          "kind": "modal_detected",
+          "monotonic_time": 259635.051503,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project",
+          "label": "project-source-remove-home"
+        },
+        {
+          "kind": "conversation_history_rate_limit",
+          "monotonic_time": 259635.051513,
+          "trigger": "modal",
+          "status": 429,
+          "url": "https://chatgpt.com/g/g-p-6a070be6b7288191969cc290fab9e0a1/project"
+        },
+        {
+          "kind": "cooldown_wait",
+          "monotonic_time": 259636.468688,
+          "url": "/app/.pb_profile/.conversation_history_rate_limit_until",
+          "wait_seconds": 118.583
+        }
+      ],
+      "event_count": 30
+    },
+    "safety": {
+      "write_tools_blocked": true,
+      "model_has_execution_authority": false,
+      "source_or_artifact_mutation_allowed": false
+    },
+    "package_hygiene": {
+      "ok": true,
+      "status": "verified",
+      "zip_path": "/home/spikkie/git/chatgpt_claudecode_workflow/chatgpt_claudecode_workflow_v0.0.218.zip",
+      "testzip": null,
+      "bad_entry_count": 0,
+      "wrapper_folder": false
+    },
+    "version_consistency": {
+      "ok": true,
+      "sources": {
+        "source": {
+          "ok": true,
+          "action": "version_consistency",
+          "status": "verified",
+          "repo_path": "/home/spikkie/git/chatgpt_claudecode_workflow",
+          "expected_version": "0.0.218",
+          "expected_version_tag": "v0.0.218",
+          "observations": [
+            {
+              "name": "VERSION",
+              "value": "v0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "pyproject.project.version",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            }
+          ],
+          "missing": [],
+          "mismatches": []
+        },
+        "package_metadata": {
+          "ok": true,
+          "expected_version": "0.0.218",
+          "expected_version_tag": "v0.0.218",
+          "observations": [
+            {
+              "name": "zip.VERSION",
+              "value": "v0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "zip.pyproject.project.version",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "zip.promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            }
+          ],
+          "missing": [],
+          "mismatches": []
+        },
+        "installed_runtime": {
+          "ok": true,
+          "expected_version": "0.0.218",
+          "observations": [
+            {
+              "name": "installed_distribution.promptbranch",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_version.PACKAGE_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_version.VERSION_TAG",
+              "value": "v0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_cli.CLI_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch version output",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_mcp.MCP_SERVER_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "mcp server_info.version",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            },
+            {
+              "name": "promptbranch_container_api.SERVICE_VERSION",
+              "value": "0.0.218",
+              "normalized": "0.0.218"
+            }
+          ],
+          "missing": [],
+          "mismatches": []
+        }
+      }
+    }
+  }
+}
