@@ -1721,7 +1721,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.217"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.218"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2368,7 +2368,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.217 supports --from-last-answer only",
+            "error": "v0.0.218 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2377,7 +2377,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.217 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.218 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2923,7 +2923,7 @@ def _classify_protocol_submit_visibility_failure(
 ) -> tuple[str, str, str]:
     """Classify failure between browser submit and transcript visibility.
 
-    v0.0.217 keeps submit/click evidence separate from backend transcript
+    v0.0.218 keeps submit/click evidence separate from backend transcript
     evidence so the operator can distinguish a failed submit from a stale
     transcript reader or wrong conversation context.
     """
@@ -3460,7 +3460,7 @@ def _protocol_ask_response_failure_result(
 ) -> dict[str, Any] | None:
     """Convert a service-returned ask failure into protocol-run JSON.
 
-    v0.0.217 relies on the browser service returning partial submit evidence
+    v0.0.218 relies on the browser service returning partial submit evidence
     when assistant response waiting times out. Such a response is a terminal
     protocol failure, not a reply to parse.
     """
@@ -3612,9 +3612,16 @@ async def _parse_protocol_reply_after_ask(
             "adoption_performed": False,
         }
 
-    parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
+    selected_answer_text = str(answer.get("text") or "")
+    parsed = parse_promptbranch_reply(selected_answer_text)
     validation_ok, validation_errors = _validate_protocol_reply_against_request(parsed, envelope)
     status = "reply_validated" if validation_ok else "reply_validation_failed"
+    normalized_ask_response = _normalize_protocol_ask_response_for_selected_reply(
+        ask_response,
+        selected_answer_text=selected_answer_text,
+        selected_answer=answer,
+        validation_ok=validation_ok,
+    )
     result = {
         **parsed,
         "ok": bool(parsed.get("ok") and validation_ok),
@@ -3624,7 +3631,7 @@ async def _parse_protocol_reply_after_ask(
         "request_baseline": _baseline_from_protocol_request(envelope),
         "reply_validation_ok": validation_ok,
         "reply_validation_errors": validation_errors,
-        "ask_response": ask_response,
+        "ask_response": normalized_ask_response,
         "ask_submit_evidence": _protocol_ask_submit_evidence(ask_response),
         "conversation_url": payload.get("conversation_url") or conversation_url,
         "conversation_id": payload.get("conversation_id"),
@@ -3644,6 +3651,45 @@ async def _parse_protocol_reply_after_ask(
         "operator_instruction": "Protocol ask was sent and the latest reply was parsed/validated only. No artifact download, migration, adoption, or Project Source mutation was performed.",
     }
     return result
+
+
+
+def _normalize_protocol_ask_response_for_selected_reply(
+    ask_response: dict[str, Any] | None,
+    *,
+    selected_answer_text: str,
+    selected_answer: dict[str, Any] | None,
+    validation_ok: bool,
+) -> dict[str, Any] | None:
+    """Keep browser-stream text diagnostic and prevent stale answer misuse.
+
+    The service/browser ``ask_response.answer`` field may contain an
+    intermediate stream value such as "Thinking ... Streaming interrupted"
+    even when protocol parsing succeeds from the authoritative task transcript.
+    Protocol automation must not treat that browser stream value as the final
+    answer source.
+    """
+
+    if not isinstance(ask_response, dict):
+        return ask_response
+    normalized = copy.deepcopy(ask_response)
+    raw_answer = normalized.get("answer")
+    raw_answer_text = raw_answer if isinstance(raw_answer, str) else (json.dumps(raw_answer, ensure_ascii=False) if raw_answer is not None else "")
+    selected_text = str(selected_answer_text or "")
+    normalized["answer"] = None
+    normalized["answer_source"] = "protocol_reply_authoritative" if validation_ok else "protocol_reply_candidate"
+    normalized["authoritative_reply_location"] = "reply" if validation_ok else "selected_answer"
+    normalized["answer_suppressed_reason"] = "browser_stream_answer_may_be_intermediate; use top-level reply and reply_validation_ok for protocol automation"
+    normalized["raw_browser_answer_preview"] = raw_answer_text[:500] if raw_answer_text else ""
+    normalized["raw_browser_answer_length"] = len(raw_answer_text)
+    normalized["raw_browser_answer_complete"] = bool(raw_answer_text and raw_answer_text.strip() == selected_text.strip())
+    normalized["selected_answer_source"] = "task_messages"
+    normalized["selected_answer_text_length"] = len(selected_text)
+    if isinstance(selected_answer, dict):
+        normalized["selected_answer_id"] = selected_answer.get("id")
+        normalized["selected_answer_index"] = selected_answer.get("index")
+        normalized["selected_answer_turn_index"] = selected_answer.get("turn_index")
+    return normalized
 
 def _repo_name_from_artifact_name(filename: str) -> str | None:
     name = Path(filename).name
@@ -6464,7 +6510,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.217.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.218.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -6472,7 +6518,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.217. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.218. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -6508,7 +6554,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.217 or 0.0.217.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.218 or 0.0.218.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
