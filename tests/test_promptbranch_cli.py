@@ -218,9 +218,10 @@ def test_protocol_submit_visibility_failure_distinguishes_wrong_conversation() -
         },
     )
 
-    assert status == "submit_visible_but_wrong_conversation"
+    assert status == "submit_clicked_target_conversation_lost"
     assert "different conversation" in error
     assert "different conversation" in instruction
+    assert "refused" in instruction
 
 
 def test_protocol_submit_visibility_failure_distinguishes_no_turn_materialized() -> None:
@@ -593,10 +594,10 @@ def test_ask_protocol_parse_reply_preserves_partial_submit_evidence(monkeypatch,
     store.remember(project_url, conversation_url, project_name="Claude Code workflow in ChatGPT")
     store.remember_artifact(
         project_url=project_url,
-        artifact_ref="chatgpt_claudecode_workflow_v0.0.216.zip",
-        artifact_version="v0.0.216",
-        source_ref="chatgpt_claudecode_workflow_v0.0.216.zip",
-        source_version="v0.0.216",
+        artifact_ref="chatgpt_claudecode_workflow_v0.0.217.zip",
+        artifact_version="v0.0.217",
+        source_ref="chatgpt_claudecode_workflow_v0.0.217.zip",
+        source_version="v0.0.217",
     )
     monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 
@@ -605,7 +606,7 @@ def test_ask_protocol_parse_reply_preserves_partial_submit_evidence(monkeypatch,
         "--profile-dir", str(tmp_path),
         "--project-url", project_url,
         "ask", "protocol smoke",
-        "--protocol", "--target-version", "v0.0.216",
+        "--protocol", "--target-version", "v0.0.217",
         "--request-id", "req-v214",
         "--correlation-id", "corr-v214",
         "--parse-reply", "--json",
@@ -705,8 +706,8 @@ def test_ask_protocol_parse_reply_polls_until_fresh_turn_is_visible(monkeypatch,
         "baseline": {
             "input_artifact": "chatgpt_claudecode_workflow_v0.0.211.zip",
             "input_version": "v0.0.211",
-            "output_artifact": "chatgpt_claudecode_workflow_v0.0.216.zip",
-            "output_version": "v0.0.216",
+            "output_artifact": "chatgpt_claudecode_workflow_v0.0.217.zip",
+            "output_version": "v0.0.217",
             "release_type": "normal",
         },
         "changes": [],
@@ -762,7 +763,7 @@ def test_ask_protocol_parse_reply_polls_until_fresh_turn_is_visible(monkeypatch,
         "--profile-dir", str(tmp_path),
         "--project-url", project_url,
         "ask", "protocol smoke",
-        "--protocol", "--target-version", "v0.0.216",
+        "--protocol", "--target-version", "v0.0.217",
         "--request-id", "req-v211",
         "--correlation-id", "corr-v211",
         "--parse-reply", "--json",
@@ -779,6 +780,79 @@ def test_ask_protocol_parse_reply_polls_until_fresh_turn_is_visible(monkeypatch,
     assert payload["fresh_turn_evidence"]["attempt_count"] >= 2
     assert captured["get_chat_calls"] >= 3
 
+
+
+def test_ask_protocol_parse_reply_fails_closed_when_service_returns_wrong_conversation(monkeypatch, capsys, tmp_path) -> None:
+    project_url = "https://chatgpt.com/g/g-p-demo-claude-code/project"
+    expected_conversation_url = "https://chatgpt.com/g/g-p-demo-claude-code/c/expected123"
+    wrong_conversation_url = "https://chatgpt.com/g/g-p-demo-claude-code/c/wrong456"
+    captured: dict[str, object] = {"ask_called": False, "get_chat_calls": 0}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            captured["ask_called"] = True
+            return {
+                "ok": True,
+                "answer": "stale wrong-conversation answer that must not be parsed",
+                "conversation_url": wrong_conversation_url,
+                "submit_evidence": {"clicked": True, "composer_cleared": True},
+            }
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            captured["get_chat_calls"] = int(captured.get("get_chat_calls") or 0) + 1
+            assert conversation_url == expected_conversation_url
+            return {
+                "ok": True,
+                "conversation_url": expected_conversation_url,
+                "conversation_id": "expected123",
+                "title": "Protocol run",
+                "turns": [
+                    {"index": 1, "id": "u-old", "role": "user", "text": "previous ask"},
+                    {"index": 2, "id": "a-old", "role": "assistant", "text": "previous answer"},
+                ],
+            }
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="Claude Code workflow in ChatGPT")
+    store.remember(project_url, expected_conversation_url, project_name="Claude Code workflow in ChatGPT")
+    store.remember_artifact(
+        project_url=project_url,
+        artifact_ref="chatgpt_claudecode_workflow_v0.0.100.zip",
+        artifact_version="v0.0.100",
+        source_ref="chatgpt_claudecode_workflow_v0.0.100.zip",
+        source_version="v0.0.100",
+    )
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "--project-url", project_url,
+        "ask", "protocol smoke",
+        "--protocol", "--target-version", "v0.0.101",
+        "--request-id", "req-conv-lock",
+        "--correlation-id", "corr-conv-lock",
+        "--parse-reply", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert captured["ask_called"] is True
+    assert captured["get_chat_calls"] == 1  # pre-marker only; no polling wrong conversation
+    assert payload["action"] == "ask_protocol_run"
+    assert payload["status"] == "submit_clicked_target_conversation_lost"
+    assert payload["error_type"] == "conversation_lock_mismatch"
+    assert payload["conversation_id"] == "expected123"
+    assert payload["response_conversation_id"] == "wrong456"
+    assert payload["conversation_lock"]["expected_conversation_id"] == "expected123"
+    assert payload["conversation_lock"]["actual_conversation_id"] == "wrong456"
+    assert payload["answer_selection"]["selected"] is None
+    assert payload["download_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
 
 def test_ask_protocol_parse_reply_fails_closed_on_request_id_mismatch(monkeypatch, capsys, tmp_path) -> None:
     project_url = "https://chatgpt.com/g/g-p-demo-claude-code/project"
@@ -1367,7 +1441,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.216"
+    assert captured.out.strip() == "promptbranch 0.0.217"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1816,7 +1890,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.216"
+    assert payload["version"] == "0.0.217"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2914,16 +2988,16 @@ def _write_candidate_registry(profile: Path, *, filename: str, zip_path: Path, v
 
 
 def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.216.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.217.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.216")
+    _write_test_release_zip(zip_path, "v0.0.217")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.216")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.217")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
     args = argparse.Namespace(
         artifact=filename,
@@ -2954,21 +3028,21 @@ def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_pa
 
 
 def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_accepted(monkeypatch, capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.216.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.217.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.216")
+    _write_test_release_zip(zip_path, "v0.0.217")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.216")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.217")
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        assert command[:5] == [str(script), "--version", "v0.0.216", "--tests-only", "--adopt-if-green"]
+        assert command[:5] == [str(script), "--version", "v0.0.217", "--tests-only", "--adopt-if-green"]
         from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, utc_now, verify_zip_artifact
 
         registry = ArtifactRegistry(profile)
@@ -2977,7 +3051,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
             path=str(zip_path),
             filename=filename,
             kind="adopted_release",
-            version="v0.0.216",
+            version="v0.0.217",
             repo_path=None,
             sha256=str(zip_check.get("sha256") or ""),
             size_bytes=int(zip_check.get("size_bytes") or zip_path.stat().st_size),
@@ -2990,9 +3064,9 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
         backend.store.remember_artifact(
             project_url=project_url,
             artifact_ref=filename,
-            artifact_version="v0.0.216",
+            artifact_version="v0.0.217",
             source_ref=filename,
-            source_version="v0.0.216",
+            source_version="v0.0.217",
         )
         import subprocess
 
@@ -3001,7 +3075,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(
         artifact=None,
-        version="v0.0.216",
+        version="v0.0.217",
         repo_path=str(repo),
         from_project_source=True,
         run_release_control=True,
@@ -3030,13 +3104,13 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
 
 
 def test_artifact_accept_candidate_rejects_sha_mismatch_before_tests(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.216.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.217.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.216")
+    _write_test_release_zip(zip_path, "v0.0.217")
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.216")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.217")
     registry = json.loads((profile / "artifact_candidates.json").read_text(encoding="utf-8"))
     registry["candidates"][0]["sha256"] = "0" * 64
     (profile / "artifact_candidates.json").write_text(json.dumps(registry), encoding="utf-8")

@@ -336,6 +336,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.217
+
+- Hardened `pb ask --protocol --parse-reply` with a conversation lock: the reply parser now refuses assistant text when the service/browser response points to a different conversation than the protocol request target.
+- Added `submit_clicked_target_conversation_lost` / `conversation_lock_mismatch` diagnostics for the observed post-submit route-loss case.
+- Fresh-turn evidence now requires the transcript source to match the expected conversation id before accepting request-id, prompt-prefix, or newer-message matches.
+- Kept artifact download, candidate migration, adoption, Project Source mutation, and MCP/write behavior unchanged.
+
 ## v0.0.216
 
 - `pb ask --protocol --parse-reply` now emits transcript snapshot diagnostics and stores ask debug records under `.pb_profile/ask_records/<request_id>/`.
