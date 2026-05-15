@@ -1,4 +1,4 @@
-# promptbranch v0.0.220
+# promptbranch v0.0.221
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -644,7 +644,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.220
+## v0.0.221
 
 - Added compact `rate_limit_summary` classification to test-suite and test-report output: `none`, `observed_no_cooldown`, `rate_limited_recovered`, `rate_limited_excessive`, and `rate_limited_failed`.
 - Made `pb test full` rate-limit-safe defaults more conservative to reduce repeated conversation-history pressure during live browser validation.
