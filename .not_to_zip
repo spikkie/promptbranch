@@ -5,6 +5,7 @@
 .git/
 
 # Python caches
+*.pyo
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -69,3 +70,11 @@ promptbranch-project-list.json
 
 # Optional custom release-control log root
 release_logs/
+
+build/
+
+.mypy_cache/
+
+.ruff_cache/
+
+.venv/

@@ -962,6 +962,157 @@ def test_list_project_chats_operation_uses_current_project_conversation_when_ind
     assert result["history_fallback_used"] is True
 
 
+
+def test_goto_skips_noop_navigation_to_avoid_history_reload(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/project?tab=sources"
+
+        def __init__(self) -> None:
+            self.goto_calls: list[tuple[str, str]] = []
+            self.titles = 0
+
+        async def goto(self, url: str, *, wait_until: str):
+            self.goto_calls.append((url, wait_until))
+
+        async def title(self):
+            self.titles += 1
+            return "Project"
+
+    page = DummyPage()
+    waits: list[str] = []
+
+    async def fake_wait(page, *, label: str, timeout_ms: int | None = None):
+        waits.append(label)
+        return False
+
+    client._wait_for_rate_limit_modal_to_clear = fake_wait
+
+    import asyncio
+
+    asyncio.run(client._goto(page, "https://chatgpt.com/g/g-p-current-demo/project?tab=sources", label="project-source-remove-home"))
+
+    assert page.goto_calls == []
+    assert waits == ["project-source-remove-home"]
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert telemetry["navigation_noop_skip_count"] == 1
+    assert telemetry["service_rate_limit_events"] == []
+
+
+def test_goto_does_not_skip_explicit_refresh_navigation(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/project?tab=sources"
+
+        def __init__(self) -> None:
+            self.goto_calls: list[tuple[str, str]] = []
+
+        async def goto(self, url: str, *, wait_until: str):
+            self.goto_calls.append((url, wait_until))
+            self.url = url
+
+        async def title(self):
+            return "Project"
+
+    page = DummyPage()
+
+    async def fake_wait(page, *, label: str, timeout_ms: int | None = None):
+        return False
+
+    client._wait_for_rate_limit_modal_to_clear = fake_wait
+
+    import asyncio
+
+    asyncio.run(client._goto(page, "https://chatgpt.com/g/g-p-current-demo/project?tab=sources", label="project-source-add-persistence-refresh"))
+
+    assert page.goto_calls == [("https://chatgpt.com/g/g-p-current-demo/project?tab=sources", "domcontentloaded")]
+    assert client._rate_limit_telemetry_snapshot()["navigation_noop_skip_count"] == 0
+
+
+def test_list_project_chats_skips_history_supplement_during_cooldown_when_indexed_rows_exist(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._write_rate_limit_cooldown_until(__import__("time").time() + 120.0)
+    page = object()
+    history_called = False
+
+    async def fake_ensure_logged_in(page, context):
+        return None
+
+    async def fake_goto(page, url, label=None):
+        return None
+
+    async def fake_open_chats_tab(page):
+        return True
+
+    async def fake_collect_snorlax(page, *, project_url, label):
+        return [
+            {
+                "id": "chat-snorlax-1",
+                "title": "Visible task",
+                "conversation_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-snorlax-1",
+                "source": "snorlax",
+            }
+        ]
+
+    async def fake_collect_project_endpoint(page, *, project_url, label):
+        return []
+
+    async def fake_collect_dom(page, *, project_url, label):
+        return []
+
+    async def fake_collect_history(page, *, project_url, label):
+        nonlocal history_called
+        history_called = True
+        return []
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-current-demo/project"
+
+    client.ensure_logged_in = fake_ensure_logged_in
+    client._goto = fake_goto
+    client._open_project_chats_tab = fake_open_chats_tab
+    client._collect_project_chats_via_snorlax_sidebar = fake_collect_snorlax
+    client._collect_project_chats_via_project_conversations_endpoint = fake_collect_project_endpoint
+    client._collect_project_chats_from_home_dom = fake_collect_dom
+    client._collect_all_project_chats = fake_collect_history
+    client._safe_page_url = fake_safe_page_url
+    client.config.project_url = "https://chatgpt.com/g/g-p-current-demo/project"
+
+    import asyncio
+
+    result = asyncio.run(client._list_project_chats_operation(context=None, page=page, keep_open=False))
+
+    assert history_called is False
+    assert result["count"] == 1
+    assert result["history_fallback_skipped"] is True
+    assert result["history_supplement_used"] is False
+    assert result["history_supplement_skipped_reason"] == "conversation_history_cooldown_active_indexed_sources_available"
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert telemetry["conversation_history_fetch_skipped_count"] >= 1
+    assert telemetry["conversation_history_cooldown_skip_count"] >= 1
+
+
+def test_fetch_conversations_page_skips_during_cooldown(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._write_rate_limit_cooldown_until(__import__("time").time() + 120.0)
+
+    class DummyPage:
+        async def evaluate(self, *_args, **_kwargs):
+            raise AssertionError("conversation history fetch should have been skipped")
+
+    import asyncio
+
+    result = asyncio.run(client._fetch_conversations_page(DummyPage(), offset=28, limit=28, label="chat-list"))
+
+    assert result["skipped"] is True
+    assert result["status"] == "skipped_cooldown"
+    assert result["skip_reason"] == "conversation_history_cooldown_active"
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert telemetry["conversation_history_fetch_attempt_count"] == 0
+    assert telemetry["conversation_history_fetch_skipped_count"] == 1
+
 def test_is_conversation_history_url_accepts_detail_endpoint(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
