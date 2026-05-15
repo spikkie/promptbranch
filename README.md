@@ -1,4 +1,4 @@
-# promptbranch v0.0.215
+# promptbranch v0.0.216
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -643,6 +643,14 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.216
+
+- Added normalized protocol transcript snapshots for `pb ask --protocol --parse-reply` freshness diagnostics.
+- Added backend snapshot comparison using message IDs, role tails, timestamps, and fingerprints instead of count-only checks.
+- Added sharper submit visibility classifications for stale backend snapshots, stale task readers, and wrong-conversation reads.
+- Persisted ask debug records under `.pb_profile/ask_records/<request_id>/` for request, submit evidence, transcript snapshots, and classification data.
+- Kept artifact download, migration, adoption, Project Source mutation, and new write capabilities out of scope.
 
 ## v0.0.215
 

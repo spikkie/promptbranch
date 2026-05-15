@@ -336,6 +336,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.216
+
+- `pb ask --protocol --parse-reply` now emits transcript snapshot diagnostics and stores ask debug records under `.pb_profile/ask_records/<request_id>/`.
+- Failure classification is more specific when submit evidence exists but backend/task transcript refresh stays stale or points at the wrong conversation.
+- No source/artifact write or adoption behavior changed.
+
 ## v0.0.215
 
 - Hardened `pb ask --protocol --parse-reply` around service/client timeout layering.

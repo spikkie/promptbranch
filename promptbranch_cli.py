@@ -1721,7 +1721,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.215"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.216"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2368,7 +2368,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.215 supports --from-last-answer only",
+            "error": "v0.0.216 supports --from-last-answer only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2377,7 +2377,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.215 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.216 supports --from-last-answer only", file=sys.stderr)
         return 1
     try:
         task_target = getattr(args, "target", None)
@@ -2749,6 +2749,66 @@ def _persist_protocol_run_record(args: argparse.Namespace, result: dict[str, Any
         return None
 
 
+def _protocol_ask_record_dir(args: argparse.Namespace, request_id: Any) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(request_id or "unknown")).strip("._") or "unknown"
+    return Path(args.profile_dir).expanduser().resolve() / "ask_records" / safe
+
+
+def _write_protocol_record_json(path: Path, value: Any) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def _persist_protocol_ask_debug_record(args: argparse.Namespace, result: dict[str, Any]) -> dict[str, str]:
+    request = result.get("request") if isinstance(result.get("request"), dict) else {}
+    request_id = request.get("request_id") or result.get("request_id")
+    record_dir = _protocol_ask_record_dir(args, request_id)
+    written: dict[str, str] = {}
+
+    def write_json(name: str, value: Any) -> None:
+        if value is None:
+            return
+        path = record_dir / name
+        if _write_protocol_record_json(path, value):
+            written[name] = str(path)
+
+    write_json("request.json", request or None)
+    write_json("submit_evidence.json", result.get("ask_submit_evidence"))
+    pre_marker = result.get("pre_ask_marker") if isinstance(result.get("pre_ask_marker"), dict) else {}
+    write_json("before_backend_snapshot.json", pre_marker.get("transcript_snapshot") if isinstance(pre_marker, dict) else None)
+    fresh_turn = result.get("fresh_turn_evidence") if isinstance(result.get("fresh_turn_evidence"), dict) else {}
+    attempts = fresh_turn.get("attempts") if isinstance(fresh_turn.get("attempts"), list) else []
+    if attempts:
+        path = record_dir / "after_backend_snapshots.jsonl"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8") as handle:
+                for attempt in attempts:
+                    snapshot = attempt.get("snapshot") if isinstance(attempt, dict) else None
+                    if isinstance(snapshot, dict):
+                        handle.write(json.dumps(snapshot, ensure_ascii=False, sort_keys=True) + "\n")
+            written["after_backend_snapshots.jsonl"] = str(path)
+        except OSError:
+            pass
+    write_json("classification.json", {
+        "ok": result.get("ok"),
+        "status": result.get("status"),
+        "error": result.get("error"),
+        "error_type": result.get("error_type"),
+        "request_id": result.get("request_id") or request.get("request_id"),
+        "conversation_id": result.get("conversation_id"),
+        "fresh_turn_evidence": fresh_turn or None,
+        "answer_selection": result.get("answer_selection"),
+    })
+    parsed_reply = {key: result.get(key) for key in ("schema", "schema_version", "request_id", "correlation_id", "result_type", "summary", "baseline", "changes", "artifacts", "validation", "next_step", "confidence") if key in result}
+    write_json("reply.parsed.json", parsed_reply or None)
+    return written
+
+
 def _recent_debug_artifacts(limit: int = 12) -> list[str]:
     root = Path.cwd() / "debug_artifacts"
     if not root.is_dir():
@@ -2814,9 +2874,22 @@ def _classify_protocol_submit_visibility_failure(
     ask_response: dict[str, Any],
     fresh_turn_evidence: dict[str, Any],
 ) -> tuple[str, str, str]:
-    """Classify failure between browser submit and backend/task visibility."""
+    """Classify failure between browser submit and transcript visibility.
+
+    v0.0.216 keeps submit/click evidence separate from backend transcript
+    evidence so the operator can distinguish a failed submit from a stale
+    transcript reader or wrong conversation context.
+    """
 
     submit = _protocol_ask_submit_evidence(ask_response)
+    source_agreement = fresh_turn_evidence.get("source_agreement") if isinstance(fresh_turn_evidence.get("source_agreement"), dict) else {}
+    backend_refresh = fresh_turn_evidence.get("backend_refresh") if isinstance(fresh_turn_evidence.get("backend_refresh"), dict) else {}
+    if source_agreement and source_agreement.get("same_conversation_id") is False:
+        return (
+            "submit_visible_but_wrong_conversation",
+            "submit_visible_but_wrong_conversation: post-submit transcript refresh read a different conversation than the protocol request expected",
+            "Protocol ask submit evidence was collected, but the task transcript source appears to point at a different conversation. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        )
     if not submit:
         return (
             "ask_submission_not_visible",
@@ -2835,11 +2908,17 @@ def _classify_protocol_submit_visibility_failure(
         )
     if dom_visible and not fresh_turn_evidence.get("fresh_user_turn_visible"):
         return (
-            "ask_submitted_dom_visible_backend_stale",
-            "ask_submitted_dom_visible_backend_stale: browser DOM shows the submitted user turn but backend/task transcript did not expose it after polling",
+            "submit_visible_but_task_reader_stale",
+            "submit_visible_but_task_reader_stale: browser DOM shows the submitted user turn but backend/task transcript did not expose it after polling",
             "Protocol ask was visible in the browser DOM, but not in the backend/task transcript. No artifact download, migration, adoption, or Project Source mutation was performed.",
         )
     composer_cleared = bool(submit.get("composer_cleared"))
+    if composer_cleared and backend_refresh and not backend_refresh.get("snapshot_changed"):
+        return (
+            "submit_visible_but_backend_snapshot_stale",
+            "submit_visible_but_backend_snapshot_stale: browser submit cleared the composer, but backend transcript snapshots did not change across refresh attempts",
+            "Protocol ask appears submitted because the composer cleared, but backend transcript snapshots stayed stale. No artifact download, migration, adoption, or Project Source mutation was performed.",
+        )
     before_user_turns = submit.get("before_user_turns") if isinstance(submit.get("before_user_turns"), dict) else {}
     before_generic = before_user_turns.get("generic_turns") if isinstance(before_user_turns.get("generic_turns"), dict) else {}
     if composer_cleared and not dom_visible and int(before_user_turns.get("count") or 0) == 0 and int(before_generic.get("count") or 0) > 0:
@@ -2860,6 +2939,7 @@ def _classify_protocol_submit_visibility_failure(
         "Protocol ask was submitted or attempted, but no fresh user turn was visible after post-submit refresh/poll. No artifact download, migration, adoption, or Project Source mutation was performed.",
     )
 
+
 def _emit_protocol_result(args: argparse.Namespace, result: dict[str, Any]) -> int:
     record_path = _persist_protocol_run_record(args, result)
     if record_path:
@@ -2867,6 +2947,10 @@ def _emit_protocol_result(args: argparse.Namespace, result: dict[str, Any]) -> i
         result["request_persisted"] = True
     else:
         result["request_persisted"] = False
+    debug_files = _persist_protocol_ask_debug_record(args, result)
+    if debug_files:
+        result["ask_debug_record_files"] = debug_files
+        result["ask_debug_record_dir"] = str(Path(next(iter(debug_files.values()))).parent)
     if getattr(args, "json", False):
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
@@ -2907,6 +2991,145 @@ def _latest_protocol_task_marker(payload: dict[str, Any]) -> dict[str, Any]:
         "latest_answer_turn_index": latest_answer.get("turn_index") if isinstance(latest_answer, dict) else None,
         "latest_answer_message_id": latest_answer_message.get("id") if isinstance(latest_answer_message, dict) else None,
         "latest_answer_message_index": latest_answer_message.get("index") if isinstance(latest_answer_message, dict) else None,
+    }
+
+
+def _protocol_prompt_prefix(envelope: dict[str, Any], *, max_length: int = 96) -> str:
+    intent = envelope.get("intent") if isinstance(envelope.get("intent"), dict) else {}
+    summary = str(intent.get("summary") or "").strip()
+    summary = re.sub(r"\s+", " ", summary)
+    return summary[:max_length]
+
+
+def _protocol_flat_turns(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    turns: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        turns.append({
+            "role": "user",
+            "id": message.get("id"),
+            "index": message.get("index"),
+            "turn_index": message.get("turn_index"),
+            "create_time": message.get("create_time"),
+            "preview": message.get("preview"),
+            "text": message.get("text"),
+        })
+        answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+        for answer in answers:
+            if not isinstance(answer, dict):
+                continue
+            turns.append({
+                "role": "assistant",
+                "id": answer.get("id"),
+                "index": answer.get("index"),
+                "turn_index": answer.get("turn_index"),
+                "create_time": answer.get("create_time"),
+                "status": answer.get("status"),
+                "preview": answer.get("preview"),
+                "text": answer.get("text"),
+            })
+    return turns
+
+
+def _protocol_transcript_fingerprint(turns: list[dict[str, Any]]) -> str:
+    stable: list[dict[str, Any]] = []
+    for turn in turns:
+        stable.append({
+            "role": turn.get("role"),
+            "id": turn.get("id"),
+            "index": turn.get("index"),
+            "turn_index": turn.get("turn_index"),
+            "create_time": turn.get("create_time"),
+            "status": turn.get("status"),
+            "text_hash": hashlib.sha256(str(turn.get("text") or turn.get("preview") or "").encode("utf-8", errors="replace")).hexdigest(),
+        })
+    blob = json.dumps(stable, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(blob.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _protocol_transcript_snapshot(
+    payload: dict[str, Any],
+    *,
+    source: str,
+    envelope: dict[str, Any] | None = None,
+    fetched_at: str | None = None,
+) -> dict[str, Any]:
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    turns = _protocol_flat_turns(messages)
+    user_turns = [turn for turn in turns if turn.get("role") == "user"]
+    assistant_turns = [turn for turn in turns if turn.get("role") == "assistant"]
+    latest_turn = turns[-1] if turns else None
+    latest_user = user_turns[-1] if user_turns else None
+    latest_assistant = assistant_turns[-1] if assistant_turns else None
+    request_id = str((envelope or {}).get("request_id") or "")
+    prompt_prefix = _protocol_prompt_prefix(envelope or {})
+    text_blob = "\n".join(str(message.get("text") or "") for message in messages if isinstance(message, dict))
+    return {
+        "available": True,
+        "source": source,
+        "fetched_at": fetched_at or utc_now(),
+        "conversation_url": payload.get("conversation_url"),
+        "conversation_id": payload.get("conversation_id"),
+        "title": payload.get("title"),
+        "message_count": len(messages),
+        "user_message_count": len(user_turns),
+        "assistant_message_count": len(assistant_turns),
+        "latest_message_id": latest_turn.get("id") if isinstance(latest_turn, dict) else None,
+        "latest_message_role": latest_turn.get("role") if isinstance(latest_turn, dict) else None,
+        "latest_create_time": latest_turn.get("create_time") if isinstance(latest_turn, dict) else None,
+        "latest_user_message_id": latest_user.get("id") if isinstance(latest_user, dict) else None,
+        "latest_user_message_index": latest_user.get("index") if isinstance(latest_user, dict) else None,
+        "latest_user_turn_index": latest_user.get("turn_index") if isinstance(latest_user, dict) else None,
+        "latest_user_create_time": latest_user.get("create_time") if isinstance(latest_user, dict) else None,
+        "latest_assistant_message_id": latest_assistant.get("id") if isinstance(latest_assistant, dict) else None,
+        "latest_assistant_message_index": latest_assistant.get("index") if isinstance(latest_assistant, dict) else None,
+        "latest_assistant_turn_index": latest_assistant.get("turn_index") if isinstance(latest_assistant, dict) else None,
+        "latest_assistant_create_time": latest_assistant.get("create_time") if isinstance(latest_assistant, dict) else None,
+        "message_ids_tail": [turn.get("id") for turn in turns[-8:]],
+        "roles_tail": [turn.get("role") for turn in turns[-8:]],
+        "turn_indexes_tail": [turn.get("turn_index") for turn in turns[-8:]],
+        "request_id_found": bool(request_id and request_id in text_blob),
+        "prompt_prefix": prompt_prefix,
+        "prompt_prefix_found": bool(prompt_prefix and prompt_prefix in text_blob),
+        "raw_fingerprint": _protocol_transcript_fingerprint(turns),
+    }
+
+
+def _compare_protocol_transcript_snapshots(before: dict[str, Any] | None, after: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(before, dict) or not before.get("available"):
+        return {"available": False, "reason": "before_snapshot_missing"}
+    if not isinstance(after, dict) or not after.get("available"):
+        return {"available": False, "reason": "after_snapshot_missing"}
+    message_count_before = _protocol_turn_number(before.get("message_count")) or 0
+    message_count_after = _protocol_turn_number(after.get("message_count")) or 0
+    return {
+        "available": True,
+        "same_conversation_id": before.get("conversation_id") == after.get("conversation_id"),
+        "message_count_before": message_count_before,
+        "message_count_after": message_count_after,
+        "message_count_delta": message_count_after - message_count_before,
+        "latest_message_id_changed": before.get("latest_message_id") != after.get("latest_message_id"),
+        "latest_user_message_id_changed": before.get("latest_user_message_id") != after.get("latest_user_message_id"),
+        "latest_assistant_message_id_changed": before.get("latest_assistant_message_id") != after.get("latest_assistant_message_id"),
+        "fingerprint_changed": before.get("raw_fingerprint") != after.get("raw_fingerprint"),
+    }
+
+
+def _protocol_backend_refresh_summary(attempts: list[dict[str, Any]], before_snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    comparisons = [attempt.get("snapshot_comparison") for attempt in attempts if isinstance(attempt.get("snapshot_comparison"), dict)]
+    available = [item for item in comparisons if item.get("available")]
+    last = available[-1] if available else {}
+    return {
+        "attempt_count": len(attempts),
+        "before_snapshot_available": bool(isinstance(before_snapshot, dict) and before_snapshot.get("available")),
+        "snapshot_changed": any(bool(item.get("fingerprint_changed")) for item in available),
+        "message_count_delta": last.get("message_count_delta"),
+        "latest_message_id_changed": any(bool(item.get("latest_message_id_changed")) for item in available),
+        "latest_user_message_id_changed": any(bool(item.get("latest_user_message_id_changed")) for item in available),
+        "latest_assistant_message_id_changed": any(bool(item.get("latest_assistant_message_id_changed")) for item in available),
+        "fingerprint_changed": any(bool(item.get("fingerprint_changed")) for item in available),
+        "latest_comparison": last or None,
     }
 
 
@@ -3024,6 +3247,7 @@ async def _capture_pre_ask_protocol_marker(backend: Any, args: argparse.Namespac
         payload = _task_messages_payload(chat)
         marker = _latest_protocol_task_marker(payload)
         marker["capture_status"] = "captured"
+        marker["transcript_snapshot"] = _protocol_transcript_snapshot(payload, source="pre_ask_task_messages", envelope=None)
         return marker
     except Exception as exc:
         return {
@@ -3084,6 +3308,7 @@ def _protocol_fresh_turn_evidence(
     pre_ask_marker: dict[str, Any] | None,
     envelope: dict[str, Any],
     attempts: list[dict[str, Any]] | None = None,
+    snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
     request_matches = _protocol_request_message_matches(messages, envelope)
@@ -3091,19 +3316,37 @@ def _protocol_fresh_turn_evidence(
     marker_count = _protocol_turn_number(pre_ask_marker.get("message_count") if isinstance(pre_ask_marker, dict) else None) if isinstance(pre_ask_marker, dict) else None
     message_count = len(messages)
     latest_marker = _latest_protocol_task_marker(payload)
+    transcript_snapshot = snapshot or _protocol_transcript_snapshot(payload, source="task_messages", envelope=envelope)
+    before_snapshot = pre_ask_marker.get("transcript_snapshot") if isinstance(pre_ask_marker, dict) and isinstance(pre_ask_marker.get("transcript_snapshot"), dict) else None
+    backend_refresh = _protocol_backend_refresh_summary(attempts or [], before_snapshot)
+    task = envelope.get("task") if isinstance(envelope.get("task"), dict) else {}
+    expected_conversation_id = str(task.get("conversation_id") or "")
+    actual_conversation_id = str(payload.get("conversation_id") or "")
+    prompt_prefix = _protocol_prompt_prefix(envelope)
+    prompt_prefix_matches = [message for message in messages if prompt_prefix and prompt_prefix in str(message.get("text") or "")]
     return {
-        "fresh_user_turn_visible": bool(request_matches or newer_messages),
+        "fresh_user_turn_visible": bool(request_matches or newer_messages or prompt_prefix_matches),
         "request_message_found": bool(request_matches),
+        "prompt_prefix_found": bool(prompt_prefix_matches),
         "newer_user_message_count": len(newer_messages),
         "request_message_count": len(request_matches),
+        "prompt_prefix_message_count": len(prompt_prefix_matches),
         "message_count_before": marker_count,
         "message_count_after": message_count,
         "message_count_delta": (message_count - marker_count) if marker_count is not None else None,
+        "expected_conversation_id": expected_conversation_id or None,
+        "actual_conversation_id": actual_conversation_id or None,
+        "source_agreement": {
+            "same_conversation_id": (not expected_conversation_id) or expected_conversation_id in {actual_conversation_id, "current"},
+            "expected_conversation_id": expected_conversation_id or None,
+            "actual_conversation_id": actual_conversation_id or None,
+        },
         "latest_marker": latest_marker,
+        "backend_refresh": backend_refresh,
+        "transcript_snapshot": transcript_snapshot,
         "attempt_count": len(attempts or []),
         "attempts": attempts or [],
     }
-
 
 async def _wait_for_protocol_fresh_turn(
     backend: Any,
@@ -3126,19 +3369,25 @@ async def _wait_for_protocol_fresh_turn(
         chat = await backend.get_chat(conversation_url, keep_open=getattr(args, "keep_open", False))
         payload = _task_messages_payload(chat)
         last_payload = payload
-        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts)
+        before_snapshot = pre_ask_marker.get("transcript_snapshot") if isinstance(pre_ask_marker, dict) and isinstance(pre_ask_marker.get("transcript_snapshot"), dict) else None
+        snapshot = _protocol_transcript_snapshot(payload, source="post_ask_task_messages", envelope=envelope)
+        comparison = _compare_protocol_transcript_snapshots(before_snapshot, snapshot)
+        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts, snapshot=snapshot)
         attempts.append({
             "attempt": attempt,
             "message_count_after": evidence.get("message_count_after"),
             "message_count_delta": evidence.get("message_count_delta"),
             "request_message_found": evidence.get("request_message_found"),
+            "prompt_prefix_found": evidence.get("prompt_prefix_found"),
             "newer_user_message_count": evidence.get("newer_user_message_count"),
             "fresh_user_turn_visible": evidence.get("fresh_user_turn_visible"),
+            "snapshot": snapshot,
+            "snapshot_comparison": comparison,
             "latest_user_message_id": (evidence.get("latest_marker") or {}).get("latest_user_message_id") if isinstance(evidence.get("latest_marker"), dict) else None,
             "latest_user_message_index": (evidence.get("latest_marker") or {}).get("latest_user_message_index") if isinstance(evidence.get("latest_marker"), dict) else None,
             "latest_answer_id": (evidence.get("latest_marker") or {}).get("latest_answer_id") if isinstance(evidence.get("latest_marker"), dict) else None,
         })
-        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts)
+        evidence = _protocol_fresh_turn_evidence(payload, pre_ask_marker=pre_ask_marker, envelope=envelope, attempts=attempts, snapshot=snapshot)
         if evidence["fresh_user_turn_visible"]:
             evidence["status"] = "fresh_turn_visible"
             evidence["timeout_seconds"] = timeout
@@ -3162,7 +3411,7 @@ def _protocol_ask_response_failure_result(
 ) -> dict[str, Any] | None:
     """Convert a service-returned ask failure into protocol-run JSON.
 
-    v0.0.215 relies on the browser service returning partial submit evidence
+    v0.0.216 relies on the browser service returning partial submit evidence
     when assistant response waiting times out. Such a response is a terminal
     protocol failure, not a reply to parse.
     """
@@ -3262,7 +3511,7 @@ async def _parse_protocol_reply_after_ask(
         if error_text.startswith("stale_answer_detected"):
             status = "stale_answer_detected"
         elif error_text.startswith("assistant_not_detected"):
-            status = "assistant_not_detected"
+            status = "fresh_user_turn_visible_reply_timeout"
         return {
             "ok": False,
             "action": "ask_protocol_run",
@@ -6137,7 +6386,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list.add_argument("--json", action="store_true")
 
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
-    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.215.zip.")
+    artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.216.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
@@ -6145,7 +6394,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Guardedly test/adopt a migrated candidate_release artifact.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.215. Used to select the candidate registry entry.")
+    artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.216. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Require exactly one matching Project Source before guarded adoption.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Run the fixed release-control --tests-only --adopt-if-green command for the selected candidate.")
@@ -6181,7 +6430,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
-    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.215 or 0.0.215.")
+    artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.216 or 0.0.216.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
