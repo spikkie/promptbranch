@@ -1,4 +1,4 @@
-# promptbranch v0.0.221
+# promptbranch v0.0.222.1
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -643,6 +643,20 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+
+## v0.0.222.1
+
+- Repair release adding `scripts/post-release-validation.sh`, a validation-only helper for the standard after-release check sequence.
+- The helper runs artifact-current inspection, protocol smoke, artifact-intake dry-run, full test/report, and release ZIP hygiene checks into one versioned log directory.
+- No Artifact Intake MVP slice was advanced; download, migration, adoption, source mutation, and MCP policy behavior remain unchanged.
+
+## v0.0.222
+
+- Adds Artifact Intake MVP inspection/classification from the latest validated protocol run.
+- `pb artifact intake --from-last-answer --dry-run --json` now reads `.pb_profile/ask_protocol_runs/` first and reports `no_artifact` or `artifact_candidates_found` without download, migration, adoption, Project Source mutation, or state advancement.
+- Keeps live latest-answer fallback for older callers when no protocol run exists.
+- Hardens release hygiene checks so `.pb_profile/` protocol/debug artifacts are forbidden in release ZIPs.
 
 ## v0.0.221
 

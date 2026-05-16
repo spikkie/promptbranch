@@ -485,3 +485,69 @@ def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp
     assert not (repo / "chatgpt_claudecode_workflow-abc1234.zip").exists()
     with zipfile.ZipFile(repo / artifact) as archive:
         assert archive.read("VERSION").decode("utf-8").strip() == version
+
+
+def test_post_release_validation_script_runs_standard_sequence_with_fake_promptbranch(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.9.1"
+    target = "v9.9.10"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    import zipfile
+
+    with zipfile.ZipFile(repo / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("promptbranch_version.py", "PACKAGE_VERSION = '9.9.9.1'\n")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    fake_promptbranch = fake_bin / "promptbranch"
+    fake_promptbranch.write_text(
+        "#!/usr/bin/env bash\n"
+        "echo promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2\" == \"artifact current\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_current\"}'; exit 0; fi\n"
+        "if [[ \"$1\" == \"ask\" ]]; then echo '{\"ok\": true, \"action\": \"ask_protocol_run\", \"status\": \"reply_validated\", \"reply_status\": \"no_artifact\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact intake\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_intake\", \"status\": \"no_artifact\", \"download_performed\": false}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected promptbranch args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    fake_promptbranch.chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "post-release-validation.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [str(script), "--version", version, "--target-version", target, "--test-timeout", "5"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "post-release validation passed" in result.stdout
+    log_dir = repo / ".pb_profile" / "release_logs" / version
+    summary = json.loads((log_dir / f"post_release_validation.{version}.summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["version"] == version
+    assert summary["target_version"] == target
+    assert (log_dir / f"pb_ask_protocol_smoke.{version}.json").is_file()
+    assert (log_dir / f"pb_artifact_intake_dry_run.{version}.json").is_file()
+    assert (log_dir / f"pb_test.full.{version}.report.json").is_file()
+    assert (log_dir / f"zip_hygiene.{version}.json").is_file()
+
+    call_text = calls.read_text(encoding="utf-8")
+    assert "promptbranch artifact current --json" in call_text
+    assert f"--target-version {target}" in call_text
+    assert "promptbranch artifact intake --from-last-answer --dry-run --json" in call_text
+    assert "promptbranch test full --json" in call_text
+    assert "promptbranch test report" in call_text
+    assert "artifact adopt" not in call_text
+    assert "src sync" not in call_text
