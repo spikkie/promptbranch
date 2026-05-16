@@ -1630,6 +1630,161 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+
+
+def _protocol_run_records_dir(profile_dir: str | Path) -> Path:
+    return Path(profile_dir).expanduser().resolve() / "ask_protocol_runs"
+
+
+def _protocol_run_is_validated(payload: dict[str, Any]) -> bool:
+    return bool(
+        payload.get("ok") is True
+        and payload.get("status") == "reply_validated"
+        and payload.get("reply_validation_ok") is True
+        and isinstance(payload.get("reply"), dict)
+    )
+
+
+def _load_latest_validated_protocol_run(profile_dir: str | Path) -> tuple[Path | None, dict[str, Any] | None, dict[str, Any]]:
+    """Return the newest validated protocol run persisted by pb ask --parse-reply.
+
+    Artifact intake must not scrape arbitrary assistant prose when a structured
+    protocol record is available. The persisted run is the host-validated source
+    of truth for the MVP inspection path.
+    """
+
+    root = _protocol_run_records_dir(profile_dir)
+    if not root.is_dir():
+        return None, None, {"status": "protocol_run_not_found", "record_count": 0, "records_dir": str(root)}
+    records = sorted((item for item in root.glob("*.json") if item.is_file()), key=lambda item: item.stat().st_mtime, reverse=True)
+    scanned = 0
+    latest_invalid: dict[str, Any] | None = None
+    latest_invalid_path: Path | None = None
+    for path in records:
+        scanned += 1
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            latest_invalid = {"status": "protocol_run_unreadable", "error": str(exc), "path": str(path)}
+            latest_invalid_path = path
+            continue
+        if not isinstance(payload, dict):
+            latest_invalid = {"status": "protocol_run_invalid_payload", "path": str(path)}
+            latest_invalid_path = path
+            continue
+        if _protocol_run_is_validated(payload):
+            return path, payload, {"status": "latest_validated_protocol_run", "record_count": len(records), "scanned_count": scanned, "records_dir": str(root)}
+        latest_invalid = {
+            "status": "latest_protocol_run_not_validated",
+            "path": str(path),
+            "run_status": payload.get("status"),
+            "ok": payload.get("ok"),
+            "reply_validation_ok": payload.get("reply_validation_ok"),
+        }
+        latest_invalid_path = path
+    diagnostic = {"status": "validated_protocol_run_not_found", "record_count": len(records), "scanned_count": scanned, "records_dir": str(root)}
+    if latest_invalid is not None:
+        diagnostic["latest_invalid"] = latest_invalid
+        diagnostic["latest_invalid_path"] = str(latest_invalid_path) if latest_invalid_path else None
+    return None, None, diagnostic
+
+
+def _candidate_expected_filename(repo: str | None, version: str | None) -> str | None:
+    if not repo or not version:
+        return None
+    return f"{repo}_{version}.zip"
+
+
+def _protocol_run_expectations(run: dict[str, Any]) -> dict[str, Any]:
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    artifact = request.get("artifact") if isinstance(request.get("artifact"), dict) else {}
+    repo = artifact.get("repo")
+    target_version = artifact.get("target_version") or (run.get("baseline") or {}).get("target_version")
+    if isinstance(run.get("baseline"), dict):
+        target_version = target_version or run["baseline"].get("output_version")
+    return {
+        "expected_repo": str(repo) if repo else None,
+        "expected_version": str(target_version) if target_version else None,
+        "expected_filename": _candidate_expected_filename(str(repo), str(target_version)) if repo and target_version else None,
+        "expected_input_artifact": artifact.get("current_baseline"),
+        "expected_input_version": artifact.get("current_version"),
+        "expected_source_ref": artifact.get("source_ref"),
+        "expected_source_version": artifact.get("source_version"),
+        "expected_release_type": artifact.get("release_type"),
+    }
+
+
+def _protocol_run_baseline_errors(run: dict[str, Any]) -> list[str]:
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    baseline = reply.get("baseline") if isinstance(reply.get("baseline"), dict) else {}
+    expectations = _protocol_run_expectations(run)
+    comparisons = (
+        ("input_artifact", baseline.get("input_artifact"), expectations.get("expected_input_artifact"), "baseline_artifact_mismatch"),
+        ("input_version", baseline.get("input_version"), expectations.get("expected_input_version"), "baseline_version_mismatch"),
+        ("source_ref", baseline.get("source_ref"), expectations.get("expected_source_ref"), "baseline_source_ref_mismatch"),
+        ("source_version", baseline.get("source_version"), expectations.get("expected_source_version"), "baseline_source_version_mismatch"),
+        ("release_type", baseline.get("release_type"), expectations.get("expected_release_type"), "baseline_release_type_mismatch"),
+    )
+    errors: list[str] = []
+    for _field, actual, expected, error in comparisons:
+        if expected is not None and actual != expected:
+            errors.append(error)
+    output_version = baseline.get("output_version") or baseline.get("target_version")
+    if expectations.get("expected_version") is not None and output_version not in {None, expectations.get("expected_version")}:
+        errors.append("baseline_target_version_mismatch")
+    return errors
+
+
+def _normalize_protocol_run_reply_for_intake(run: dict[str, Any]) -> dict[str, Any]:
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
+    text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply, ensure_ascii=False) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+    parsed = parse_promptbranch_reply(text)
+    baseline_errors = _protocol_run_baseline_errors(run)
+    if baseline_errors:
+        parsed = {
+            **parsed,
+            "ok": False,
+            "status": "baseline_mismatch",
+            "validation_errors": list(parsed.get("validation_errors") or []) + baseline_errors,
+        }
+    # Preserve the already-validated run identity even if parse revalidation fails.
+    parsed.setdefault("request_id", run.get("request_id"))
+    parsed.setdefault("correlation_id", run.get("correlation_id"))
+    parsed["protocol_run_status"] = run.get("status")
+    parsed["protocol_run_reply_validation_ok"] = run.get("reply_validation_ok")
+    parsed["protocol_run_artifact_candidate_count"] = len(artifacts)
+    return parsed
+
+
+def _artifact_intake_from_protocol_run_record(
+    run: dict[str, Any],
+    *,
+    run_path: Path | None = None,
+    expected_filename: str | None = None,
+    expected_version: str | None = None,
+    expected_repo: str | None = None,
+) -> dict[str, Any]:
+    expectations = _protocol_run_expectations(run)
+    parsed = _normalize_protocol_run_reply_for_intake(run)
+    result = _artifact_intake_from_parsed_answer(
+        parsed,
+        expected_filename=expected_filename or expectations.get("expected_filename"),
+        expected_version=expected_version or expectations.get("expected_version"),
+        expected_repo=expected_repo or expectations.get("expected_repo"),
+    )
+    result.update({
+        "source": "last_validated_protocol_reply",
+        "protocol_run_record_path": str(run_path) if run_path else None,
+        "protocol_run_request_id": run.get("request_id"),
+        "protocol_run_correlation_id": run.get("correlation_id"),
+        "request": run.get("request"),
+        "expectations": expectations,
+        "reply_validation_ok": run.get("reply_validation_ok"),
+        "artifact_candidates_source": "protocol_run.reply.artifacts",
+    })
+    return result
+
 def _artifact_intake_from_parsed_answer(
     parsed: dict[str, Any],
     *,
@@ -1638,28 +1793,80 @@ def _artifact_intake_from_parsed_answer(
     expected_repo: str | None = None,
 ) -> dict[str, Any]:
     candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
+    reply_status = parsed.get("reply_status")
+    result_type = parsed.get("result_type")
+    parse_ok = bool(parsed.get("ok"))
+    if parse_ok and reply_status == "no_artifact" and not candidates:
+        return {
+            "ok": True,
+            "action": "artifact_intake",
+            "mode": "dry_run",
+            "status": "no_artifact",
+            "source": "parsed_protocol_reply",
+            "reply_parse_status": parsed.get("status"),
+            "reply_parse_ok": True,
+            "reply_request_id": parsed.get("request_id"),
+            "reply_correlation_id": parsed.get("correlation_id"),
+            "reply_status": reply_status,
+            "result_type": result_type,
+            "baseline": parsed.get("baseline"),
+            "validation": parsed.get("validation"),
+            "next_step": parsed.get("next_step"),
+            "artifact_candidate_count": 0,
+            "zip_candidate_count": 0,
+            "valid_zip_candidate_count": 0,
+            "selected_candidate": None,
+            "artifact_candidates": [],
+            "candidates": [],
+            "next_action": "none",
+            "intake_stage": "candidate_extraction",
+            "automation_performed": False,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+            "operator_instruction": "Validated protocol reply declared no_artifact. No artifact download, migration, adoption, or state change is required.",
+        }
     classification = classify_artifact_candidates(
         candidates,
         expected_filename=expected_filename,
         expected_version=expected_version,
         expected_repo=expected_repo,
     )
-    parse_ok = bool(parsed.get("ok"))
-    status = classification.get("status") if parse_ok else parsed.get("status")
+    if not parse_ok:
+        status = parsed.get("status") or "invalid_reply"
+        if status == "reply_schema_missing":
+            status = "missing_reply"
+        elif status in {"reply_schema_invalid", "reply_schema_ambiguous"}:
+            status = "invalid_reply"
+        ok = False
+        next_action = "none"
+    elif classification.get("ok"):
+        status = "artifact_candidates_found"
+        ok = True
+        next_action = "download_verify"
+    else:
+        status = classification.get("status") or "artifact_candidate_invalid"
+        ok = False
+        next_action = "none"
     return {
         **classification,
-        "ok": bool(parse_ok and classification.get("ok")),
+        "candidates": classification.get("artifact_candidates") if isinstance(classification.get("artifact_candidates"), list) else [],
+        "ok": bool(ok),
         "action": "artifact_intake",
+        "mode": "dry_run",
         "status": status,
+        "source": "parsed_protocol_reply",
         "reply_parse_status": parsed.get("status"),
         "reply_parse_ok": parse_ok,
+        "validation_errors": parsed.get("validation_errors") if isinstance(parsed.get("validation_errors"), list) else [],
         "reply_request_id": parsed.get("request_id"),
         "reply_correlation_id": parsed.get("correlation_id"),
-        "reply_status": parsed.get("reply_status"),
-        "result_type": parsed.get("result_type"),
+        "reply_status": reply_status,
+        "result_type": result_type,
         "baseline": parsed.get("baseline"),
         "validation": parsed.get("validation"),
         "next_step": parsed.get("next_step"),
+        "next_action": next_action,
         "intake_stage": "candidate_extraction",
         "operator_instruction": "No artifact was downloaded or migrated. Use a later explicit download/verify/migrate intake step after candidate selection is valid.",
     }
@@ -1721,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.221"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.222.1"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2058,7 +2265,7 @@ def _download_selected_artifact_candidate(
     answer_id: Any,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    if result.get("status") != "candidate_selected" or not isinstance(result.get("selected_candidate"), dict):
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found"} or not isinstance(result.get("selected_candidate"), dict):
         return {
             **result,
             "ok": False,
@@ -2185,7 +2392,7 @@ def _verify_intake_artifact_candidate(
     """
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
-    if result.get("status") not in {"candidate_selected", "downloaded"} or candidate is None:
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded"} or candidate is None:
         return {
             **result,
             "ok": False,
@@ -2363,12 +2570,13 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
 
 
 async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
-    if not getattr(args, "from_last_answer", False):
+    use_protocol_record = bool(getattr(args, "from_last_protocol_run", False) or getattr(args, "from_last_answer", False))
+    if not use_protocol_record:
         payload = {
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.221 supports --from-last-answer only",
+            "error": "v0.0.222.1 supports --from-last-answer/--from-last-protocol-run only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2377,48 +2585,101 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.221 supports --from-last-answer only", file=sys.stderr)
+            print("error: v0.0.222.1 supports --from-last-answer/--from-last-protocol-run only", file=sys.stderr)
         return 1
-    try:
-        task_target = getattr(args, "target", None)
-        payload = await _fetch_task_messages_payload(backend, args, task_target)
-        message = _resolve_task_message(payload["messages"], "latest")
-        answer = _resolve_task_answer(message, answer_index="latest")
-    except ValueError as exc:
+
+    profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
+    run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_dir)
+    if run_record is not None:
+        result = _artifact_intake_from_protocol_run_record(
+            run_record,
+            run_path=run_path,
+            expected_filename=getattr(args, "expect_artifact", None),
+            expected_version=getattr(args, "expect_version", None),
+            expected_repo=getattr(args, "expect_repo", None),
+        )
+        result["lookup"] = lookup
+        request = run_record.get("request") if isinstance(run_record.get("request"), dict) else {}
+        workspace = request.get("workspace") if isinstance(request.get("workspace"), dict) else {}
+        task = request.get("task") if isinstance(request.get("task"), dict) else {}
+        message = run_record.get("message") if isinstance(run_record.get("message"), dict) else {}
+        answer = run_record.get("answer") if isinstance(run_record.get("answer"), dict) else {}
+        result.update({
+            "project_url": workspace.get("project_home_url"),
+            "conversation_url": run_record.get("conversation_url") or task.get("conversation_url"),
+            "conversation_id": run_record.get("conversation_id") or task.get("conversation_id"),
+            "title": run_record.get("title"),
+            "message": {key: value for key, value in message.items() if key != "text"},
+            "answer": {key: value for key, value in answer.items() if key != "text"},
+            "answer_text_length": int(run_record.get("answer_text_length") or 0),
+        })
+    elif getattr(args, "from_last_protocol_run", False):
         result = {
             "ok": False,
             "action": "artifact_intake",
-            "status": "answer_selection_failed",
-            "error": str(exc),
+            "mode": "dry_run",
+            "status": lookup.get("status") or "protocol_run_not_found",
+            "source": "last_validated_protocol_reply",
+            "lookup": lookup,
+            "artifact_candidate_count": 0,
+            "candidates": [],
+            "artifact_candidates": [],
+            "next_action": "none",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
             "adoption_performed": False,
+            "error": "no validated protocol run was found; run pb ask --protocol --parse-reply first",
         }
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
-            print(f"error: {exc}", file=sys.stderr)
+            print(_render_artifact_intake_result(result), end="")
         return 1
-
-    parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
-    result = _artifact_intake_from_parsed_answer(
-        parsed,
-        expected_filename=getattr(args, "expect_artifact", None),
-        expected_version=getattr(args, "expect_version", None),
-        expected_repo=getattr(args, "expect_repo", None),
-    )
-    result.update(
-        {
-            "project_url": payload.get("project_url"),
-            "conversation_url": payload.get("conversation_url"),
-            "conversation_id": payload.get("conversation_id"),
-            "title": payload.get("title"),
-            "message": {key: value for key, value in message.items() if key != "answers"},
-            "answer": {key: value for key, value in answer.items() if key != "text"},
-            "answer_text_length": len(str(answer.get("text") or "")),
-        }
-    )
+    else:
+        # Backward-compatible fallback for old --from-last-answer callers: read the
+        # live latest task answer only when no validated protocol run exists.
+        try:
+            task_target = getattr(args, "target", None)
+            payload = await _fetch_task_messages_payload(backend, args, task_target)
+            message = _resolve_task_message(payload["messages"], "latest")
+            answer = _resolve_task_answer(message, answer_index="latest")
+        except ValueError as exc:
+            result = {
+                "ok": False,
+                "action": "artifact_intake",
+                "status": "answer_selection_failed",
+                "error": str(exc),
+                "automation_performed": False,
+                "download_performed": False,
+                "migration_performed": False,
+                "adoption_performed": False,
+            }
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                print(f"error: {exc}", file=sys.stderr)
+            return 1
+        parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
+        result = _artifact_intake_from_parsed_answer(
+            parsed,
+            expected_filename=getattr(args, "expect_artifact", None),
+            expected_version=getattr(args, "expect_version", None),
+            expected_repo=getattr(args, "expect_repo", None),
+        )
+        result.update(
+            {
+                "source": "live_latest_task_answer_fallback",
+                "lookup": lookup,
+                "project_url": payload.get("project_url"),
+                "conversation_url": payload.get("conversation_url"),
+                "conversation_id": payload.get("conversation_id"),
+                "title": payload.get("title"),
+                "message": {key: value for key, value in message.items() if key != "answers"},
+                "answer": {key: value for key, value in answer.items() if key != "text"},
+                "answer_text_length": len(str(answer.get("text") or "")),
+            }
+        )
     if getattr(args, "download", False):
         result = _download_selected_artifact_candidate(
             result,
@@ -3853,7 +4114,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
@@ -6568,8 +6829,10 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify.add_argument("--json", action="store_true")
 
 
-    artifact_intake = artifact_subparsers.add_parser("intake", help="Extract candidate artifacts from a parsed Promptbranch ask/reply answer; optional explicit download/verification in .pb_profile/artifact_inbox/.")
-    artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest assistant answer from the current task and extract artifact candidates.")
+    artifact_intake = artifact_subparsers.add_parser("intake", help="Inspect/classify artifact candidates from the latest validated Promptbranch ask/reply protocol run; optional explicit download/verification in .pb_profile/artifact_inbox/.")
+    artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest validated protocol reply record and extract artifact candidates. Kept as the MVP operator-facing spelling.")
+    artifact_intake.add_argument("--from-last-protocol-run", action="store_true", help="Read the latest validated .pb_profile/ask_protocol_runs record and extract artifact candidates.")
+    artifact_intake.add_argument("--dry-run", action="store_true", help="Inspect/classify only. This is the default unless --download/--verify/--migrate is also supplied.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
     artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.221 or 0.0.221.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")

@@ -27,6 +27,12 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "old.zip").write_bytes(b"zip")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}", encoding="utf-8")
+    (repo / ".pb_profile" / "ask_records" / "req-demo").mkdir(parents=True)
+    (repo / ".pb_profile" / "ask_records" / "req-demo" / "reply.parsed.json").write_text("{}", encoding="utf-8")
+    (repo / ".pb_profile" / "ask_protocol_runs").mkdir(parents=True)
+    (repo / ".pb_profile" / "ask_protocol_runs" / "req-demo.json").write_text("{}", encoding="utf-8")
+    (repo / ".pb_profile" / "release_logs" / "v0.0.222").mkdir(parents=True)
+    (repo / ".pb_profile" / "release_logs" / "v0.0.222" / "pb_ask_protocol_smoke.v0.0.222.json").write_text("{}", encoding="utf-8")
     (repo / ".promptbranch-service-start.0.0.195.pid").write_text("12345\n", encoding="utf-8")
     (repo / "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt").write_text("transcript", encoding="utf-8")
     (repo / "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt").write_text("transcript", encoding="utf-8")
@@ -120,6 +126,9 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
     names = [
         "VERSION",
         "src/app.py",
+        ".pb_profile/ask_records/req-demo/reply.parsed.json",
+        ".pb_profile/ask_protocol_runs/req-demo.json",
+        ".pb_profile/release_logs/v0.0.222/pb_ask_protocol_smoke.v0.0.222.json",
         "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt",
         "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt",
         "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt",
@@ -138,6 +147,9 @@ def test_release_entry_hygiene_violations_flags_transcripts_logs_and_nested_arch
 
     assert "VERSION" not in bad
     assert "src/app.py" not in bad
+    assert ".pb_profile/ask_records/req-demo/reply.parsed.json" in bad
+    assert ".pb_profile/ask_protocol_runs/req-demo.json" in bad
+    assert ".pb_profile/release_logs/v0.0.222/pb_ask_protocol_smoke.v0.0.222.json" in bad
     assert "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt" in bad
     assert "task_show_69f85be3-db68-838a-b6c8-66a2c7c40be9_messages.txt" in bad
     assert "task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt" in bad

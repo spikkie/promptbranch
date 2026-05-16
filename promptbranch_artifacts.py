@@ -57,6 +57,7 @@ DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
 )
 
 DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
+    ".pb_profile/",
     "__pycache__/",
     "*.pyc",
     "*.pyo",
