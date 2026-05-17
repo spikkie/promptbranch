@@ -336,6 +336,20 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+
+## v0.0.225
+
+- Added `pb artifact candidate-test` as a migrated-candidate test gate that does not adopt or advance current artifact/source state.
+- The command selects a registered, verified, unaccepted candidate, rechecks SHA and ZIP hygiene, then runs release-control with `--tests-only` and without `--adopt-if-green`.
+- Candidate test results are written under `.pb_profile/artifact_candidate_tests/` and linked from `.pb_profile/artifact_candidates.json`.
+- Project Sources, artifact current state, source current state, and adoption remain unchanged.
+
+## v0.0.224
+
+- Added verified candidate migration with `pb artifact intake --from-last-answer --download --verify --migrate --json`.
+- Migration copies a verified artifact-inbox ZIP to the repo root and records it in `.pb_profile/artifact_candidates.json` as an unaccepted candidate.
+- Migration does not adopt, upload Project Sources, or advance artifact/source current state.
+
 ## v0.0.220
 
 - `pb test full` now uses more conservative rate-limit-safe pacing defaults for broad live-browser validation.
