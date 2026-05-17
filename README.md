@@ -1,4 +1,4 @@
-# promptbranch v0.0.223
+# promptbranch v0.0.224
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -644,6 +644,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.224
+
+- Advanced Artifact Intake MVP from download+verify to verified candidate migration.
+- `pb artifact intake --from-last-answer --download --verify --migrate --json` may now copy a verified candidate ZIP from `.pb_profile/artifact_inbox/` to the repo root and register it in `.pb_profile/artifact_candidates.json`.
+- Migration requires successful ZIP verification and never performs adoption, Project Source upload, artifact-current state advancement, or source-current state advancement.
+- Bad or unverified ZIPs fail closed before migration.
 
 ## v0.0.223
 
