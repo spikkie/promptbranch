@@ -26,10 +26,11 @@ Usage:
 
 Runs the standard post-release validation sequence:
   1. promptbranch artifact current --json
-  2. protocol smoke ask targeting the next version
-  3. artifact intake dry-run from the last validated protocol reply
-  4. promptbranch test full/report
-  5. release ZIP hygiene check
+  2. semantic artifact/source baseline check against --version
+  3. protocol smoke ask targeting the next version
+  4. artifact intake dry-run from the last validated protocol reply
+  5. promptbranch test full/report
+  6. release ZIP hygiene check
 
 Options:
   -v, --version VERSION          Release version under validation. Defaults to VERSION file.
@@ -199,6 +200,7 @@ echo "skip_zip_hygiene: ${skip_zip_hygiene}"
 
 failures=0
 rc_current=0
+rc_current_semantic=0
 rc_protocol=0
 rc_intake=0
 rc_test_full=0
@@ -206,7 +208,73 @@ rc_test_report=0
 rc_zip_hygiene=0
 
 artifact_current_log="${release_log_dir}/pb_artifact_current.${version}.json"
+artifact_current_semantic_log="${release_log_dir}/pb_artifact_current.${version}.semantic.json"
 run_step "artifact current" "${artifact_current_log}" "${pb_cmd}" artifact current --json || { rc_current=$?; failures=$((failures + 1)); }
+if [[ "${rc_current}" -eq 0 ]]; then
+  echo
+  echo "===== artifact current semantic check ====="
+  set +e
+  python3 - "${artifact_current_log}" "${version}" > "${artifact_current_semantic_log}" <<'PYSEMANTIC'
+import json
+import sys
+from pathlib import Path
+
+artifact_current_log = Path(sys.argv[1])
+expected_version = sys.argv[2]
+result = {
+    "ok": False,
+    "action": "artifact_current_semantic_check",
+    "expected_version": expected_version,
+    "checked_fields": {
+        "runtime.version": None,
+        "state.artifact_version": None,
+        "state.source_version": None,
+        "registry_current.version": None,
+    },
+    "mismatches": [],
+    "missing_fields": [],
+}
+try:
+    payload = json.loads(artifact_current_log.read_text(encoding="utf-8"))
+except Exception as exc:  # noqa: BLE001 - shell diagnostic path
+    result["error"] = f"artifact_current_json_unreadable: {exc}"
+    print(json.dumps(result, indent=2, sort_keys=True))
+    raise SystemExit(1)
+
+field_paths = {
+    "runtime.version": ("runtime", "version"),
+    "state.artifact_version": ("state", "artifact_version"),
+    "state.source_version": ("state", "source_version"),
+    "registry_current.version": ("registry_current", "version"),
+}
+for label, path in field_paths.items():
+    current = payload
+    for segment in path:
+        if not isinstance(current, dict) or segment not in current:
+            current = None
+            break
+        current = current[segment]
+    result["checked_fields"][label] = current
+    if current is None:
+        result["missing_fields"].append(label)
+    elif current != expected_version:
+        result["mismatches"].append({"field": label, "actual": current, "expected": expected_version})
+
+result["ok"] = not result["missing_fields"] and not result["mismatches"]
+print(json.dumps(result, indent=2, sort_keys=True))
+raise SystemExit(0 if result["ok"] else 1)
+PYSEMANTIC
+  rc_current_semantic=$?
+  set -u
+  cat "${artifact_current_semantic_log}"
+  echo "===== artifact current semantic check exit=${rc_current_semantic} ====="
+  if [[ "${rc_current_semantic}" -ne 0 ]]; then
+    failures=$((failures + 1))
+  fi
+else
+  printf '{"ok": false, "status": "skipped", "reason": "artifact_current_step_failed"}
+' > "${artifact_current_semantic_log}"
+fi
 
 protocol_log="${release_log_dir}/pb_ask_protocol_smoke.${version}.json"
 if [[ "${skip_protocol_smoke}" -eq 0 ]]; then
@@ -329,6 +397,7 @@ python3 - \
   "${session_log}" \
   "${failures}" \
   "${rc_current}" \
+  "${rc_current_semantic}" \
   "${rc_protocol}" \
   "${rc_intake}" \
   "${rc_test_full}" \
@@ -346,6 +415,7 @@ from pathlib import Path
     session_log,
     failures,
     rc_current,
+    rc_current_semantic,
     rc_protocol,
     rc_intake,
     rc_test_full,
@@ -363,6 +433,7 @@ summary = {
     "failure_count": int(failures),
     "steps": {
         "artifact_current": {"rc": int(rc_current)},
+        "artifact_current_semantic": {"rc": int(rc_current_semantic)},
         "protocol_smoke": {"rc": int(rc_protocol)},
         "artifact_intake_dry_run": {"rc": int(rc_intake)},
         "test_full": {"rc": int(rc_test_full)},
