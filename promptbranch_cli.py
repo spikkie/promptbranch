@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.223"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.224"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -2147,8 +2147,8 @@ def _path_is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any) -> dict[str, Any]:
-    if result.get("status") != "verified_candidate" or not result.get("verification_performed"):
-        return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
+    if result.get("status") not in {"verified_candidate", "download_verified"} or not result.get("verification_performed") or not result.get("ok"):
+        return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be successfully verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
     filename = _safe_artifact_filename((candidate or {}).get("filename"))
@@ -2233,6 +2233,7 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
             "status": "migrated_candidate",
             "migration_performed": True,
             "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed, "migrated_at": migrated_at},
+            "candidate_registry_updated": True,
             "candidate_registry_path": str(registry_path),
             "candidate_registry_entry": registry_record,
             "adoption_performed": False,
@@ -2240,7 +2241,7 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
         intake_record_path.parent.mkdir(parents=True, exist_ok=True)
         intake_record_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     except (OSError, json.JSONDecodeError) as exc:
-        return {**result, "ok": False, "status": "artifact_migration_metadata_failed", "migration_performed": True, "migration_error": str(exc), "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed}, "candidate_registry_path": str(registry_path), "candidate_registry_entry": registry_record, "intake_stage": "migrated", "adoption_performed": False}
+        return {**result, "ok": False, "status": "artifact_migration_metadata_failed", "migration_performed": True, "migration_error": str(exc), "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed}, "candidate_registry_updated": True, "candidate_registry_path": str(registry_path), "candidate_registry_entry": registry_record, "intake_stage": "migrated", "adoption_performed": False}
 
     return {
         **result,
@@ -2249,6 +2250,7 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
         "intake_stage": "migrated",
         "migration_performed": True,
         "migration": {"source_path": str(source_path), "target_path": str(target_path), "target_existed": target_existed, "copy_performed": copy_performed, "migrated_at": migrated_at},
+        "candidate_registry_updated": True,
         "candidate_registry_path": str(registry_path),
         "candidate_registry_entry": registry_record,
         "intake_record_path": str(intake_record_path),
@@ -2573,17 +2575,18 @@ def _verify_intake_artifact_candidate(
         "verification_performed": True,
         "migration_performed": False,
         "adoption_performed": False,
-        "operator_instruction": "Artifact ZIP was verified inside .pb_profile/artifact_inbox only. Migration and adoption are intentionally not performed in v0.0.223.",
+        "operator_instruction": "Artifact ZIP was verified inside .pb_profile/artifact_inbox only. Migration and adoption are intentionally not performed in v0.0.224.",
     }
 
 
 
 def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str, Any]:
-    """Make the v0.0.223 artifact-intake boundary explicit.
+    """Make the v0.0.224 artifact-intake boundary explicit.
 
-    Download/verification may create files under .pb_profile/artifact_inbox, but
-    must not migrate, adopt, upload to Project Sources, or advance artifact/source
-    state.
+    Download/verification may create files under .pb_profile/artifact_inbox and
+    migration may copy a verified candidate ZIP to the repo root plus update the
+    candidate registry. It must not adopt, upload to Project Sources, or advance
+    artifact/source state.
     """
 
     return {
@@ -2597,15 +2600,17 @@ def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str
 
 
 def _artifact_intake_migration_not_supported(result: dict[str, Any]) -> dict[str, Any]:
+    """Compatibility helper retained for older tests/callers; not used by v0.0.224 CLI."""
+
     return _artifact_intake_no_state_mutation_flags({
         **result,
         "ok": False,
-        "status": "artifact_migration_not_supported_in_mvp",
+        "status": "artifact_migration_not_supported_in_previous_mvp",
         "intake_stage": result.get("intake_stage") or "migration_requested",
         "migration_performed": False,
-        "migration_error": "v0.0.223 artifact intake supports explicit download and ZIP verification only; migration/adoption remains a later MVP stage.",
+        "migration_error": "v0.0.224 supports verified candidate migration; run with --verify --migrate and a valid repo path.",
         "adoption_performed": False,
-        "operator_instruction": "Use --download --verify only in v0.0.223. Candidate migration/adoption is intentionally blocked.",
+        "operator_instruction": "Use --download --verify --migrate to copy a verified candidate to the repo root. Adoption remains a later explicit step.",
     })
 
 def _render_artifact_intake_result(result: dict[str, Any]) -> str:
@@ -2654,7 +2659,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.223 supports --from-last-answer/--from-last-protocol-run only",
+            "error": "v0.0.224 supports --from-last-answer/--from-last-protocol-run only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -2663,10 +2668,12 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.223 supports --from-last-answer/--from-last-protocol-run only", file=sys.stderr)
+            print("error: v0.0.224 supports --from-last-answer/--from-last-protocol-run only", file=sys.stderr)
         return 1
 
     profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
+    conversation_id_for_artifact: Any = None
+    answer_id_for_artifact: Any = None
     run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_dir)
     if run_record is not None:
         result = _artifact_intake_from_protocol_run_record(
@@ -2682,6 +2689,8 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         task = request.get("task") if isinstance(request.get("task"), dict) else {}
         message = run_record.get("message") if isinstance(run_record.get("message"), dict) else {}
         answer = run_record.get("answer") if isinstance(run_record.get("answer"), dict) else {}
+        conversation_id_for_artifact = run_record.get("conversation_id") or task.get("conversation_id")
+        answer_id_for_artifact = answer.get("id")
         result.update({
             "project_url": workspace.get("project_home_url"),
             "conversation_url": run_record.get("conversation_url") or task.get("conversation_url"),
@@ -2745,6 +2754,8 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             expected_version=getattr(args, "expect_version", None),
             expected_repo=getattr(args, "expect_repo", None),
         )
+        conversation_id_for_artifact = payload.get("conversation_id")
+        answer_id_for_artifact = answer.get("id")
         result.update(
             {
                 "source": "live_latest_task_answer_fallback",
@@ -2762,19 +2773,25 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         result = _download_selected_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-            conversation_id=payload.get("conversation_id"),
-            answer_id=answer.get("id"),
+            conversation_id=conversation_id_for_artifact,
+            answer_id=answer_id_for_artifact,
             timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
         )
     if getattr(args, "verify", False):
         result = _verify_intake_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-            conversation_id=payload.get("conversation_id"),
-            answer_id=answer.get("id"),
+            conversation_id=conversation_id_for_artifact,
+            answer_id=answer_id_for_artifact,
         )
     if getattr(args, "migrate", False):
-        result = _artifact_intake_migration_not_supported(result)
+        result = _migrate_verified_intake_artifact_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            repo_path=getattr(args, "repo_path", ".") or ".",
+            conversation_id=conversation_id_for_artifact,
+            answer_id=answer_id_for_artifact,
+        )
     result = _artifact_intake_no_state_mutation_flags(result)
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -6902,7 +6919,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify.add_argument("--json", action="store_true")
 
 
-    artifact_intake = artifact_subparsers.add_parser("intake", help="Inspect/classify artifact candidates from the latest validated Promptbranch ask/reply protocol run; optional explicit download/verification in .pb_profile/artifact_inbox/.")
+    artifact_intake = artifact_subparsers.add_parser("intake", help="Inspect/classify artifact candidates from the latest validated Promptbranch ask/reply protocol run; optional explicit download, verification, and candidate migration.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest validated protocol reply record and extract artifact candidates. Kept as the MVP operator-facing spelling.")
     artifact_intake.add_argument("--from-last-protocol-run", action="store_true", help="Read the latest validated .pb_profile/ask_protocol_runs record and extract artifact candidates.")
     artifact_intake.add_argument("--dry-run", action="store_true", help="Inspect/classify only. This is the default unless --download/--verify is supplied.")
@@ -6913,8 +6930,8 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
     artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/.")
-    artifact_intake.add_argument("--migrate", action="store_true", help="Unsupported in v0.0.223. Artifact intake stops after explicit download and ZIP verification; migration/adoption are later MVP stages.")
-    artifact_intake.add_argument("--repo-path", default=".", help="Reserved for later migration MVP stages. Ignored except for diagnostics in v0.0.223.")
+    artifact_intake.add_argument("--migrate", action="store_true", help="Copy a successfully verified candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as a candidate. Does not adopt.")
+    artifact_intake.add_argument("--repo-path", default=".", help="Repo root for verified candidate migration. Defaults to current directory.")
     artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download/verification/migration result as JSON.")
     artifact_intake.add_argument("--keep-open", action="store_true")
 
