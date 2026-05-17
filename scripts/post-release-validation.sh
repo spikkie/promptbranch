@@ -2,8 +2,9 @@
 set -Euo pipefail
 
 # Run the standard post-release validation sequence for chatgpt_claudecode_workflow.
-# This script is intentionally validation-only: it does not adopt artifacts,
-# mutate Project Sources, migrate candidates, or advance release state.
+# This script is validation-only by default: it does not adopt artifacts,
+# mutate Project Sources, migrate candidates, or advance release state unless
+# --adopt-if-accepted is explicitly supplied.
 
 project_name="chatgpt_claudecode_workflow"
 version_arg=""
@@ -18,6 +19,8 @@ skip_protocol_smoke=0
 skip_artifact_intake=0
 skip_tests=0
 skip_zip_hygiene=0
+adopt_if_accepted=0
+require_adopted_baseline=0
 
 usage() {
   cat <<USAGE
@@ -26,11 +29,12 @@ Usage:
 
 Runs the standard post-release validation sequence:
   1. promptbranch artifact current --json
-  2. semantic artifact/source baseline check against --version
+  2. semantic artifact/source baseline check against --version (diagnostic by default)
   3. protocol smoke ask targeting the next version
   4. artifact intake dry-run from the last validated protocol reply
   5. promptbranch test full/report
   6. release ZIP hygiene check
+  7. optional adoption/recheck when --adopt-if-accepted is supplied
 
 Options:
   -v, --version VERSION          Release version under validation. Defaults to VERSION file.
@@ -42,10 +46,13 @@ Options:
       --skip-artifact-intake     Skip pb artifact intake dry-run.
       --skip-tests               Skip pb test full/report.
       --skip-zip-hygiene         Skip ZIP entry hygiene check.
+      --adopt-if-accepted        If validation passes, adopt --version as current baseline and re-check semantic state.
+      --require-adopted-baseline Fail if artifact/source baseline does not already match --version.
   -h, --help                     Show this help.
 
 Examples:
   scripts/post-release-validation.sh --version v0.0.222.1 --target-version v0.0.223
+  scripts/post-release-validation.sh --version v0.0.222.1 --target-version v0.0.223 --adopt-if-accepted
   PB_CMD=pb scripts/post-release-validation.sh --version v0.0.222.1
 USAGE
 }
@@ -159,6 +166,8 @@ while [[ $# -gt 0 ]]; do
     --skip-artifact-intake) skip_artifact_intake=1; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-zip-hygiene) skip_zip_hygiene=1; shift ;;
+    --adopt-if-accepted) adopt_if_accepted=1; shift ;;
+    --require-adopted-baseline) require_adopted_baseline=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -197,6 +206,8 @@ echo "skip_protocol:    ${skip_protocol_smoke}"
 echo "skip_intake:      ${skip_artifact_intake}"
 echo "skip_tests:       ${skip_tests}"
 echo "skip_zip_hygiene: ${skip_zip_hygiene}"
+echo "adopt_if_accepted: ${adopt_if_accepted}"
+echo "require_adopted:   ${require_adopted_baseline}"
 
 failures=0
 rc_current=0
@@ -206,6 +217,8 @@ rc_intake=0
 rc_test_full=0
 rc_test_report=0
 rc_zip_hygiene=0
+rc_adopt=0
+rc_adopt_semantic=0
 
 artifact_current_log="${release_log_dir}/pb_artifact_current.${version}.json"
 artifact_current_semantic_log="${release_log_dir}/pb_artifact_current.${version}.semantic.json"
@@ -267,8 +280,11 @@ PYSEMANTIC
   rc_current_semantic=$?
   set -u
   cat "${artifact_current_semantic_log}"
+  if [[ "${rc_current_semantic}" -ne 0 && "${require_adopted_baseline}" -eq 0 ]]; then
+    echo "artifact current semantic check is diagnostic: baseline does not yet match ${version}; adoption is pending but validation may continue"
+  fi
   echo "===== artifact current semantic check exit=${rc_current_semantic} ====="
-  if [[ "${rc_current_semantic}" -ne 0 ]]; then
+  if [[ "${rc_current_semantic}" -ne 0 && "${require_adopted_baseline}" -eq 1 ]]; then
     failures=$((failures + 1))
   fi
 else
@@ -389,6 +405,91 @@ else
   echo '{"ok": true, "status": "skipped"}' > "${zip_hygiene_log}"
 fi
 
+
+if [[ "${adopt_if_accepted}" -eq 1 && "${failures}" -eq 0 ]]; then
+  echo
+  echo "===== adopt if accepted ====="
+  artifact_zip="${project_name}_${version}.zip"
+  adopt_log="${release_log_dir}/pb_artifact_adopt.${version}.json"
+  adopt_current_log="${release_log_dir}/pb_artifact_current_after_adopt.${version}.json"
+  adopt_semantic_log="${release_log_dir}/pb_artifact_current_after_adopt.${version}.semantic.json"
+  if [[ ! -f "${artifact_zip}" ]]; then
+    printf '{"ok": false, "status": "artifact_zip_missing", "artifact_zip": "%s"}
+' "${artifact_zip}" > "${adopt_log}"
+    cat "${adopt_log}"
+    rc_adopt=1
+    failures=$((failures + 1))
+  else
+    run_step "artifact adopt" "${adopt_log}" \
+      "${pb_cmd}" artifact adopt "${artifact_zip}" --from-project-source --json || { rc_adopt=$?; failures=$((failures + 1)); }
+  fi
+  if [[ "${rc_adopt}" -eq 0 ]]; then
+    run_step "artifact current after adopt" "${adopt_current_log}" "${pb_cmd}" artifact current --json || { rc_adopt_semantic=$?; failures=$((failures + 1)); }
+    if [[ "${rc_adopt_semantic}" -eq 0 ]]; then
+      set +e
+      python3 - "${adopt_current_log}" "${version}" > "${adopt_semantic_log}" <<'PYSEMANTIC2'
+import json
+import sys
+from pathlib import Path
+
+artifact_current_log = Path(sys.argv[1])
+expected_version = sys.argv[2]
+result = {
+    "ok": False,
+    "action": "artifact_current_semantic_check_after_adopt",
+    "expected_version": expected_version,
+    "checked_fields": {
+        "runtime.version": None,
+        "state.artifact_version": None,
+        "state.source_version": None,
+        "registry_current.version": None,
+    },
+    "mismatches": [],
+    "missing_fields": [],
+}
+try:
+    payload = json.loads(artifact_current_log.read_text(encoding="utf-8"))
+except Exception as exc:  # noqa: BLE001 - shell diagnostic path
+    result["error"] = f"artifact_current_json_unreadable: {exc}"
+    print(json.dumps(result, indent=2, sort_keys=True))
+    raise SystemExit(1)
+field_paths = {
+    "runtime.version": ("runtime", "version"),
+    "state.artifact_version": ("state", "artifact_version"),
+    "state.source_version": ("state", "source_version"),
+    "registry_current.version": ("registry_current", "version"),
+}
+for label, path in field_paths.items():
+    current = payload
+    for segment in path:
+        if not isinstance(current, dict) or segment not in current:
+            current = None
+            break
+        current = current[segment]
+    result["checked_fields"][label] = current
+    if current is None:
+        result["missing_fields"].append(label)
+    elif current != expected_version:
+        result["mismatches"].append({"field": label, "actual": current, "expected": expected_version})
+result["ok"] = not result["missing_fields"] and not result["mismatches"]
+print(json.dumps(result, indent=2, sort_keys=True))
+raise SystemExit(0 if result["ok"] else 1)
+PYSEMANTIC2
+      rc_adopt_semantic=$?
+      set -u
+      cat "${adopt_semantic_log}"
+      echo "===== artifact current after adopt semantic check exit=${rc_adopt_semantic} ====="
+      if [[ "${rc_adopt_semantic}" -ne 0 ]]; then
+        failures=$((failures + 1))
+      fi
+    fi
+  fi
+else
+  echo
+  echo "===== adopt if accepted skipped ====="
+  echo "adopt_if_accepted=${adopt_if_accepted} failures_before_adopt=${failures}"
+fi
+
 python3 - \
   "${summary_json}" \
   "${version}" \
@@ -402,7 +503,11 @@ python3 - \
   "${rc_intake}" \
   "${rc_test_full}" \
   "${rc_test_report}" \
-  "${rc_zip_hygiene}" <<'PY'
+  "${rc_zip_hygiene}" \
+  "${rc_adopt}" \
+  "${rc_adopt_semantic}" \
+  "${adopt_if_accepted}" \
+  "${require_adopted_baseline}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -421,6 +526,10 @@ from pathlib import Path
     rc_test_full,
     rc_test_report,
     rc_zip_hygiene,
+    rc_adopt,
+    rc_adopt_semantic,
+    adopt_if_accepted,
+    require_adopted_baseline,
 ) = sys.argv[1:]
 summary = {
     "ok": int(failures) == 0,
@@ -431,6 +540,8 @@ summary = {
     "session_log": session_log,
     "summary_path": out,
     "failure_count": int(failures),
+    "adopt_if_accepted": bool(int(adopt_if_accepted)),
+    "require_adopted_baseline": bool(int(require_adopted_baseline)),
     "steps": {
         "artifact_current": {"rc": int(rc_current)},
         "artifact_current_semantic": {"rc": int(rc_current_semantic)},
@@ -439,6 +550,8 @@ summary = {
         "test_full": {"rc": int(rc_test_full)},
         "test_report": {"rc": int(rc_test_report)},
         "zip_hygiene": {"rc": int(rc_zip_hygiene)},
+        "artifact_adopt": {"rc": int(rc_adopt), "enabled": bool(int(adopt_if_accepted))},
+        "artifact_current_after_adopt_semantic": {"rc": int(rc_adopt_semantic), "enabled": bool(int(adopt_if_accepted))},
     },
 }
 Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")

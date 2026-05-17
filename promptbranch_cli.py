@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.225.1"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.225.2"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -7146,7 +7146,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_candidate_test = artifact_subparsers.add_parser("candidate-test", help="Run the migrated candidate test gate without adoption or state advancement.")
     artifact_candidate_test.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_candidate_test.add_argument("--version", help="Candidate version such as v0.0.225.1. Used to select the candidate registry entry.")
+    artifact_candidate_test.add_argument("--version", help="Candidate version such as v0.0.225.2. Used to select the candidate registry entry.")
     artifact_candidate_test.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_candidate_test.add_argument("--preflight-only", action="store_true", help="Verify candidate registry, ZIP presence, SHA, VERSION, and release-control availability without running tests.")
     artifact_candidate_test.add_argument("--test-timeout", type=float, default=3600.0, help="Timeout in seconds for release-control tests-only execution. Defaults to 3600.")
