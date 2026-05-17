@@ -1,4 +1,4 @@
-# promptbranch v0.0.225.1
+# promptbranch v0.0.225.2
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,12 +645,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.225.1
+## v0.0.225.2
 
 - Repair release for `scripts/post-release-validation.sh`.
-- Added semantic baseline-version validation after `pb artifact current --json`: runtime, state artifact, state source, and registry current versions must match `--version`.
-- The helper now fails if the command exits successfully but the adopted baseline still points at an older release.
-- No Artifact Intake MVP slice was advanced; protocol, candidate-test, source upload, Project Source mutation, and adoption behavior remain unchanged.
+- Treats artifact/source baseline mismatch as diagnostic by default instead of failing validation when the release has not been adopted yet.
+- Adds `--adopt-if-accepted` to adopt `chatgpt_claudecode_workflow_<version>.zip` only after all validation gates pass, then re-checks semantic artifact/source state.
+- Keeps `--require-adopted-baseline` for workflows that intentionally require the artifact/source baseline to match `--version` before validation continues.
+- No Artifact Intake MVP slice was advanced; protocol, candidate-test, source upload, Project Source mutation, and MCP policy behavior remain unchanged.
 
 ## v0.0.225
 
