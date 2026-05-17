@@ -626,6 +626,7 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
         return {"ok": False, "error": "bad_zip", "path": str(zip_path)}
     unsafe = [name for name in names if name.startswith("/") or ".." in Path(name).parts]
     hygiene_violations = release_entry_hygiene_violations(names)
+    nested_zip_entries = [name for name in names if name.lower().endswith(".zip")]
     top_levels = {name.split("/", 1)[0] for name in names if name and not name.endswith("/")}
     wrapper_folder = None
     if len(top_levels) == 1 and not any("/" not in name.rstrip("/") for name in names if name and not name.endswith("/")):
@@ -642,5 +643,7 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
         "unsafe_entries": unsafe,
         "hygiene_violations": hygiene_violations,
         "hygiene_violation_count": len(hygiene_violations),
+        "nested_zip_entries": nested_zip_entries,
+        "nested_zip_count": len(nested_zip_entries),
         "wrapper_folder": wrapper_folder,
     }
