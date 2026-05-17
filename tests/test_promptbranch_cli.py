@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.222.1"
+    assert captured.out.strip() == "promptbranch 0.0.223"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.222.1"
+    assert payload["version"] == "0.0.223"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -2403,6 +2403,10 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
     assert payload["verification_performed"] is False
     assert payload["migration_performed"] is False
     assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
     assert payload["download"]["filename"] == "chatgpt_claudecode_workflow_v0.0.205.zip"
     assert payload["download"]["size_bytes"] == len(b"candidate bytes")
     assert payload["download"]["sha256"] == expected_sha
@@ -2416,6 +2420,101 @@ def test_artifact_intake_downloads_selected_candidate_to_inbox_only(monkeypatch,
     assert intake_record["adoption_performed"] is False
 
 
+
+
+def test_artifact_intake_downloads_and_verifies_candidate_only(monkeypatch, capsys, tmp_path) -> None:
+    source_zip = tmp_path / "source-valid.zip"
+    artifact_name = "chatgpt_claudecode_workflow_v0.0.205.zip"
+    with zipfile.ZipFile(source_zip, "w") as archive:
+        archive.writestr("VERSION", "v0.0.205\n")
+        archive.writestr("README.md", "# demo\n")
+
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": "req-download-verify",
+        "correlation_id": "corr-download-verify",
+        "status": "completed",
+        "result_type": "release_candidate",
+        "summary": "Built candidate.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.204.zip",
+            "input_version": "v0.0.204",
+            "output_artifact": artifact_name,
+            "output_version": "v0.0.205",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [
+            {
+                "kind": "zip",
+                "filename": artifact_name,
+                "version": "v0.0.205",
+                "role": "candidate_release",
+                "download": {"available": True, "link_text": artifact_name, "url": source_zip.as_uri()},
+            }
+        ],
+        "validation": {"claimed": ["focused tests"], "not_claimed": ["full suite"]},
+        "next_step": {"operator_action": "download_verify"},
+    }
+    answer_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def get_chat(self, conversation_url: str, **kwargs):
+            return {
+                "ok": True,
+                "conversation_url": conversation_url,
+                "conversation_id": "abc",
+                "title": "Protocol chat",
+                "turns": [
+                    {"index": 1, "id": "u1", "role": "user", "text": "implement v0.0.205"},
+                    {"index": 2, "id": "a1", "role": "assistant", "text": answer_text},
+                ],
+            }
+
+    project_url = "https://chatgpt.com/g/g-p-demo-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-project/c/abc"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="demo-project")
+    store.remember(project_url, conversation_url, project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake", "--from-last-answer",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.0.205",
+        "--expect-repo", "chatgpt_claudecode_workflow",
+        "--download",
+        "--verify",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["action"] == "artifact_intake"
+    assert payload["status"] == "download_verified"
+    assert payload["intake_stage"] == "downloaded_verified"
+    assert payload["download_performed"] is True
+    assert payload["verification_performed"] is True
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
+    assert Path(payload["download"]["path"]).is_file()
+    assert payload["verification"]["ok"] is True
+    assert payload["zip_version"] == "v0.0.205"
+    intake_record = json.loads(Path(payload["intake_record_path"]).read_text(encoding="utf-8"))
+    assert intake_record["status"] == "download_verified"
+    assert intake_record["accepted"] is False
+    assert intake_record["migration_performed"] is False
+    assert intake_record["adoption_performed"] is False
 
 
 def test_artifact_intake_verifies_existing_inbox_candidate_without_download(monkeypatch, capsys, tmp_path) -> None:
@@ -2588,25 +2687,19 @@ def test_artifact_intake_migrates_verified_candidate_to_repo_root_only(monkeypat
     ])
 
     payload = json.loads(capsys.readouterr().out)
-    assert exit_code == 0
+    assert exit_code == 1
     assert payload["action"] == "artifact_intake"
-    assert payload["status"] == "migrated_candidate"
+    assert payload["status"] == "artifact_migration_not_supported_in_mvp"
     assert payload["verification_performed"] is True
-    assert payload["migration_performed"] is True
+    assert payload["migration_performed"] is False
     assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
     target = repo_root / artifact_name
-    assert target.is_file()
-    assert payload["migration"]["target_path"] == str(target.resolve())
-    assert payload["candidate_registry_entry"]["kind"] == "candidate_release"
-    assert payload["candidate_registry_entry"]["accepted"] is False
-    assert payload["candidate_registry_entry"]["path"] == str(target.resolve())
-    registry = json.loads(Path(payload["candidate_registry_path"]).read_text(encoding="utf-8"))
-    assert registry["candidates"][0]["filename"] == artifact_name
-    assert registry["candidates"][0]["status"] == "candidate_release"
-    intake_record = json.loads(Path(payload["intake_record_path"]).read_text(encoding="utf-8"))
-    assert intake_record["status"] == "migrated_candidate"
-    assert intake_record["migration_performed"] is True
-    assert not (tmp_path / ".pb_profile").exists()
+    assert not target.exists()
+    assert "download and ZIP verification only" in payload["migration_error"]
 
 
 def test_artifact_intake_migrate_requires_verified_candidate(monkeypatch, capsys, tmp_path) -> None:
@@ -2656,8 +2749,9 @@ def test_artifact_intake_migrate_requires_verified_candidate(monkeypatch, capsys
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 1
-    assert payload["status"] == "candidate_not_verified"
+    assert payload["status"] == "artifact_migration_not_supported_in_mvp"
     assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
     assert not (repo_root / artifact_name).exists()
 
 
@@ -3203,16 +3297,16 @@ def _write_candidate_registry(profile: Path, *, filename: str, zip_path: Path, v
 
 
 def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.222.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.223.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.222")
+    _write_test_release_zip(zip_path, "v0.0.223")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.222")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.223")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
     args = argparse.Namespace(
         artifact=filename,
@@ -3243,21 +3337,21 @@ def test_artifact_accept_candidate_preflight_requires_no_adoption(capsys, tmp_pa
 
 
 def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_accepted(monkeypatch, capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.222.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.223.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.222")
+    _write_test_release_zip(zip_path, "v0.0.223")
     script = repo / "chatgpt_claudecode_workflow_release_control.sh"
     script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.222")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.223")
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        assert command[:5] == [str(script), "--version", "v0.0.222", "--tests-only", "--adopt-if-green"]
+        assert command[:5] == [str(script), "--version", "v0.0.223", "--tests-only", "--adopt-if-green"]
         from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, utc_now, verify_zip_artifact
 
         registry = ArtifactRegistry(profile)
@@ -3266,7 +3360,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
             path=str(zip_path),
             filename=filename,
             kind="adopted_release",
-            version="v0.0.222",
+            version="v0.0.223",
             repo_path=None,
             sha256=str(zip_check.get("sha256") or ""),
             size_bytes=int(zip_check.get("size_bytes") or zip_path.stat().st_size),
@@ -3279,9 +3373,9 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
         backend.store.remember_artifact(
             project_url=project_url,
             artifact_ref=filename,
-            artifact_version="v0.0.222",
+            artifact_version="v0.0.223",
             source_ref=filename,
-            source_version="v0.0.222",
+            source_version="v0.0.223",
         )
         import subprocess
 
@@ -3290,7 +3384,7 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(
         artifact=None,
-        version="v0.0.222",
+        version="v0.0.223",
         repo_path=str(repo),
         from_project_source=True,
         run_release_control=True,
@@ -3319,13 +3413,13 @@ def test_artifact_accept_candidate_runs_release_control_and_marks_candidate_acce
 
 
 def test_artifact_accept_candidate_rejects_sha_mismatch_before_tests(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.222.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.223.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.222")
+    _write_test_release_zip(zip_path, "v0.0.223")
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.222")
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.223")
     registry = json.loads((profile / "artifact_candidates.json").read_text(encoding="utf-8"))
     registry["candidates"][0]["sha256"] = "0" * 64
     (profile / "artifact_candidates.json").write_text(json.dumps(registry), encoding="utf-8")

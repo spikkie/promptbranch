@@ -310,10 +310,16 @@ def _candidate_with_classification(
     repo_prefix = repo_prefix_from_artifact_filename(filename, version=filename_version)
     issues: list[str] = []
 
+    kind = str(classified.get("kind") or "").strip().lower()
+    role = str(classified.get("role") or "").strip()
     if not filename:
         issues.append("artifact_filename_missing")
     if filename and not filename.endswith(".zip"):
         issues.append("artifact_not_zip")
+    if kind and kind != "zip":
+        issues.append("unsupported_artifact_type")
+    if role and role not in {"candidate_release", "repair_candidate"}:
+        issues.append("unsupported_artifact_role")
     if declared_version and filename_version and str(declared_version) != filename_version:
         issues.append("artifact_declared_version_mismatch")
     if expected_filename and filename != expected_filename:
