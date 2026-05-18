@@ -1,4 +1,4 @@
-# promptbranch v0.0.226.1
+# promptbranch v0.0.226.2
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -644,6 +644,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.226.2
+
+- Repair-only release for protocol ask target-conversation hydration before submit.
+- Keeps the fail-closed invariant: Promptbranch still refuses to submit a protocol ask if the target conversation has no hydrated visible turns.
+- Extends the hydration gate with a longer default wait, two bounded recovery reloads, post-reload settle checks, and richer diagnostics (`reload_count`, `max_reload_attempts`, final DOM turn counts, timeout values).
+- Does not change ask/reply protocol schema, artifact intake, candidate-test, accept-candidate behavior, Project Source upload, source sync, or MCP policy behavior.
 
 ## v0.0.226.1
 

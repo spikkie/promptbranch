@@ -610,6 +610,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Destructive/write/source/artifact tools remain blocked.
 
 
+## v0.0.226.2
+
+- Repair-only release for protocol ask target-conversation hydration before submit.
+- Keeps the fail-closed invariant: Promptbranch still refuses to submit a protocol ask if the target conversation has no hydrated visible turns.
+- Extends the hydration gate with a longer default wait, two bounded recovery reloads, post-reload settle checks, and richer diagnostics (`reload_count`, `max_reload_attempts`, final DOM turn counts, timeout values).
+- Does not change ask/reply protocol schema, artifact intake, candidate-test, accept-candidate behavior, Project Source upload, source sync, or MCP policy behavior.
+
 ## v0.0.226.1
 
 - Repair-only release for `scripts/post-release-validation.sh --adopt-if-accepted`.
