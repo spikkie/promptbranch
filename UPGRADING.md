@@ -610,6 +610,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Destructive/write/source/artifact tools remain blocked.
 
 
+
+## v0.0.228
+
+- `pb artifact candidate-status --all --json` now provides a read-only inventory of all registered artifact candidates.
+- Use it when you need to see candidate lifecycle state across multiple candidates without triggering download, verification, migration, testing, adoption, Project Source mutation, or baseline advancement.
+
 ## v0.0.227
 
 - Repair-only release for protocol ask target-conversation hydration before submit.
