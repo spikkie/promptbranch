@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.226"
+    assert captured.out.strip() == "promptbranch 0.0.226.1"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.226"
+    assert payload["version"] == "0.0.226.1"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -3762,7 +3762,7 @@ def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_co
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        raise AssertionError("accept-candidate must not run release-control in v0.0.226")
+        raise AssertionError("accept-candidate must not run release-control in v0.0.226.1")
 
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(
