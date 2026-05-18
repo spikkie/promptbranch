@@ -611,9 +611,15 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.229
+
+- `pb artifact candidate-next --json` now provides a single read-only next operator action for the Artifact Intake MVP loop.
+- Use it after `candidate-status` or post-release validation when you want the CLI to select the next safe command from the current candidate lifecycle state.
+- It does not download, verify, migrate, test, adopt, upload Project Sources, or advance artifact/source state.
+
 ## v0.0.228
 
-- `pb artifact candidate-status --all --json` now provides a read-only inventory of all registered artifact candidates.
+- `pb artifact candidate-status --all --json` provides a read-only inventory of all registered artifact candidates.
 - Use it when you need to see candidate lifecycle state across multiple candidates without triggering download, verification, migration, testing, adoption, Project Source mutation, or baseline advancement.
 
 ## v0.0.227
