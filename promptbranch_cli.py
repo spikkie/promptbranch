@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.228"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.229"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -6261,6 +6261,161 @@ async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) 
     return 0
 
 
+
+def _candidate_next_priority(item: dict[str, Any]) -> tuple[int, int]:
+    """Sort candidate lifecycle reports by the next action that advances the MVP loop."""
+
+    lifecycle = item.get("lifecycle") if isinstance(item.get("lifecycle"), dict) else {}
+    recommendation = item.get("recommended_next_command") if isinstance(item.get("recommended_next_command"), dict) else {}
+    kind = str(recommendation.get("kind") or "")
+    if lifecycle.get("adoption_eligible") or kind == "accept_candidate":
+        return (0, int(item.get("index") or 0))
+    if (lifecycle.get("candidate_verified") and not lifecycle.get("candidate_test_passed")) or kind == "test_candidate":
+        return (1, int(item.get("index") or 0))
+    if (lifecycle.get("candidate_selected") and not lifecycle.get("candidate_verified")) or kind == "repair_or_remigrate_candidate":
+        return (2, int(item.get("index") or 0))
+    if not lifecycle.get("candidate_selected") or kind == "intake_candidate":
+        return (3, int(item.get("index") or 0))
+    if lifecycle.get("candidate_accepted") or kind == "candidate_already_accepted":
+        return (4, int(item.get("index") or 0))
+    return (5, int(item.get("index") or 0))
+
+
+def _candidate_next_status_from_kind(kind: str) -> str:
+    mapping = {
+        "accept_candidate": "candidate_next_acceptance_ready",
+        "test_candidate": "candidate_next_test_required",
+        "repair_or_remigrate_candidate": "candidate_next_repair_or_remigrate_required",
+        "intake_candidate": "candidate_next_intake_required",
+        "candidate_already_accepted": "candidate_next_already_accepted",
+        "inspect_candidate": "candidate_next_inspection_required",
+    }
+    return mapping.get(kind or "", "candidate_next_reported")
+
+
+def _candidate_next_from_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
+    recommendation = status_payload.get("recommended_next_command") if isinstance(status_payload.get("recommended_next_command"), dict) else {}
+    return {
+        "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
+        "recommended_next_command": recommendation,
+        "selected_candidate": {
+            "artifact_ref": status_payload.get("artifact_ref"),
+            "artifact_version": status_payload.get("artifact_version"),
+            "candidate_path": status_payload.get("candidate_path"),
+            "status": status_payload.get("status"),
+            "lifecycle": status_payload.get("lifecycle"),
+            "checks": status_payload.get("checks"),
+        },
+    }
+
+
+async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) -> int:
+    """Pick one read-only next operator action for the artifact candidate MVP loop."""
+
+    registry = _artifact_registry_from_args(args)
+    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    artifact_arg = str(getattr(args, "artifact", "") or "").strip() or None
+    version_arg = str(getattr(args, "version", "") or "").strip() or None
+    current_payload = _artifact_current_payload(backend, registry)
+    base = {
+        "ok": True,
+        "action": "artifact_candidate_next",
+        "repo_path": str(repo_root),
+        "candidate_registry_path": str(_artifact_candidates_registry_path(profile_root)),
+        "artifact_current": current_payload,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+    }
+
+    if artifact_arg or version_arg:
+        registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
+        selection = {**selection, "registry_path": str(registry_path)}
+        status_payload = _artifact_candidate_lifecycle_status(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            candidate=candidate,
+            selection=selection,
+        )
+        next_payload = _candidate_next_from_status_payload(status_payload)
+        payload = {
+            **base,
+            **next_payload,
+            "candidate_selection": selection,
+            "candidate_status": status_payload,
+            "candidate_count": 1 if candidate is not None else 0,
+            "operator_instruction": "Read-only next-step selector for one candidate. No download, verification write, migration, candidate-test, adoption, Project Source mutation, or state advancement was performed.",
+        }
+    else:
+        inventory = _artifact_candidate_lifecycle_status_all(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+        )
+        candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
+        selected = min(candidates, key=_candidate_next_priority) if candidates else None
+        if selected is None:
+            lifecycle = {
+                "candidate_selected": False,
+                "candidate_downloaded": False,
+                "candidate_verified": False,
+                "candidate_migrated": False,
+                "candidate_test_passed": False,
+                "candidate_accepted": False,
+                "adoption_eligible": False,
+            }
+            recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+            payload = {
+                **base,
+                "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
+                "candidate_count": 0,
+                "inventory": inventory,
+                "selected_candidate": None,
+                "recommended_next_command": recommendation,
+                "operator_instruction": "No registered candidates exist. Run artifact intake to download, verify, and migrate the latest validated protocol artifact candidate.",
+            }
+        else:
+            recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
+            payload = {
+                **base,
+                "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
+                "candidate_count": inventory.get("candidate_count"),
+                "inventory_summary": {
+                    "status": inventory.get("status"),
+                    "status_counts": inventory.get("status_counts"),
+                    "lifecycle_counts": inventory.get("lifecycle_counts"),
+                },
+                "selected_candidate": selected,
+                "recommended_next_command": recommendation,
+                "operator_instruction": "Read-only next-step selector across all registered candidates. No download, verification write, migration, candidate-test, adoption, Project Source mutation, or state advancement was performed.",
+            }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        selected = payload.get("selected_candidate") if isinstance(payload.get("selected_candidate"), dict) else {}
+        if selected:
+            print(f"artifact_ref={selected.get('artifact_ref') or 'none'}")
+            print(f"artifact_version={selected.get('artifact_version') or 'none'}")
+        command = payload.get("recommended_next_command") if isinstance(payload.get("recommended_next_command"), dict) else {}
+        if command.get("command"):
+            print(f"recommended_next_command={command.get('command')}")
+    return 0
+
+
 async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) -> int:
     """Adopt a previously tested migrated candidate_release artifact."""
 
@@ -6769,6 +6924,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_candidate_test(backend, args)
     if args.artifact_command == "candidate-status":
         return await cmd_artifact_candidate_status(backend, args)
+    if args.artifact_command == "candidate-next":
+        return await cmd_artifact_candidate_next(backend, args)
     if args.artifact_command == "accept-candidate":
         return await cmd_artifact_accept_candidate(backend, args)
     if args.artifact_command == "release":
@@ -7606,10 +7763,16 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_candidate_status = artifact_subparsers.add_parser("candidate-status", help="Report migrated candidate lifecycle status without download, test, adoption, or state mutation.")
     artifact_candidate_status.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_candidate_status.add_argument("--version", help="Candidate version such as v0.0.228. Used to select the candidate registry entry.")
+    artifact_candidate_status.add_argument("--version", help="Candidate version such as v0.0.229. Used to select the candidate registry entry.")
     artifact_candidate_status.add_argument("--all", action="store_true", help="Report read-only lifecycle status for every registered artifact candidate.")
     artifact_candidate_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_candidate_status.add_argument("--json", action="store_true")
+
+    artifact_candidate_next = artifact_subparsers.add_parser("candidate-next", help="Report the single next operator action for the artifact candidate MVP loop without mutating state.")
+    artifact_candidate_next.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional; when omitted the command selects the highest-priority candidate action from inventory.")
+    artifact_candidate_next.add_argument("--version", help="Candidate version such as v0.0.229. Used to select the candidate registry entry.")
+    artifact_candidate_next.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
+    artifact_candidate_next.add_argument("--json", action="store_true")
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Adopt a migrated candidate_release artifact only after candidate-test passed.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
