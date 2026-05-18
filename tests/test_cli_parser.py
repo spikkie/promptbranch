@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.227" in out
+    assert "0.0.228" in out
     assert "promptbranch" in out
 
 
@@ -374,17 +374,31 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
 
     artifact_candidate_status = parser.parse_args([
-        "artifact", "candidate-status", "chatgpt_claudecode_workflow_v0.0.227.zip",
-        "--version", "v0.0.227",
+        "artifact", "candidate-status", "chatgpt_claudecode_workflow_v0.0.228.zip",
+        "--version", "v0.0.228",
         "--repo-path", "/tmp/repo",
         "--json",
     ])
     assert artifact_candidate_status.command == "artifact"
     assert artifact_candidate_status.artifact_command == "candidate-status"
-    assert artifact_candidate_status.artifact == "chatgpt_claudecode_workflow_v0.0.227.zip"
-    assert artifact_candidate_status.version == "v0.0.227"
+    assert artifact_candidate_status.artifact == "chatgpt_claudecode_workflow_v0.0.228.zip"
+    assert artifact_candidate_status.version == "v0.0.228"
+    assert artifact_candidate_status.all is False
     assert artifact_candidate_status.repo_path == "/tmp/repo"
     assert artifact_candidate_status.json is True
+
+    artifact_candidate_status_all = parser.parse_args([
+        "artifact", "candidate-status",
+        "--all",
+        "--repo-path", "/tmp/repo",
+        "--json",
+    ])
+    assert artifact_candidate_status_all.command == "artifact"
+    assert artifact_candidate_status_all.artifact_command == "candidate-status"
+    assert artifact_candidate_status_all.artifact is None
+    assert artifact_candidate_status_all.all is True
+    assert artifact_candidate_status_all.repo_path == "/tmp/repo"
+    assert artifact_candidate_status_all.json is True
 
     artifact_accept_candidate = parser.parse_args([
         "artifact", "accept-candidate", "chatgpt_claudecode_workflow_v0.0.209.zip",

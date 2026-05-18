@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.227"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.228"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -6087,6 +6087,136 @@ def _artifact_candidate_lifecycle_status(
     }
 
 
+def _artifact_candidate_lifecycle_status_all(
+    backend: Any,
+    *,
+    registry: ArtifactRegistry,
+    profile_root: Path,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Return a read-only lifecycle inventory for every registered candidate."""
+
+    registry_path = _artifact_candidates_registry_path(profile_root)
+    payload = _load_artifact_candidate_registry(profile_root)
+    candidates = [item for item in payload.get("candidates", []) if isinstance(item, dict)]
+    reports: list[dict[str, Any]] = []
+    status_counts: dict[str, int] = {}
+    lifecycle_counts = {
+        "selected": 0,
+        "downloaded": 0,
+        "zip_exists": 0,
+        "verified": 0,
+        "migrated": 0,
+        "tested": 0,
+        "accepted": 0,
+        "adoption_eligible": 0,
+    }
+
+    for index, candidate in enumerate(candidates, start=1):
+        filename = str(candidate.get("filename") or Path(str(candidate.get("path") or "")).name)
+        version = _candidate_version_normalized(
+            candidate.get("version")
+            or candidate.get("zip_version")
+            or candidate.get("filename_version")
+            or _artifact_version_from_filename(filename)
+        )
+        selection = {
+            "status": "candidate_selected",
+            "candidate_count": len(candidates),
+            "match_count": 1,
+            "index": index,
+            "registry_path": str(registry_path),
+        }
+        report = _artifact_candidate_lifecycle_status(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            candidate=candidate,
+            selection=selection,
+        )
+        compact = {
+            "index": index,
+            "status": report.get("status"),
+            "artifact_ref": report.get("artifact_ref") or filename or None,
+            "artifact_version": report.get("artifact_version") or version,
+            "candidate_path": report.get("candidate_path"),
+            "lifecycle": report.get("lifecycle"),
+            "checks": report.get("checks"),
+            "recommended_next_command": report.get("recommended_next_command"),
+        }
+        reports.append(compact)
+        status_text = str(compact.get("status") or "unknown")
+        status_counts[status_text] = status_counts.get(status_text, 0) + 1
+        lifecycle = compact.get("lifecycle") if isinstance(compact.get("lifecycle"), dict) else {}
+        if lifecycle.get("candidate_selected"):
+            lifecycle_counts["selected"] += 1
+        if lifecycle.get("candidate_downloaded"):
+            lifecycle_counts["downloaded"] += 1
+        if lifecycle.get("candidate_zip_exists"):
+            lifecycle_counts["zip_exists"] += 1
+        if lifecycle.get("candidate_verified"):
+            lifecycle_counts["verified"] += 1
+        if lifecycle.get("candidate_migrated"):
+            lifecycle_counts["migrated"] += 1
+        if lifecycle.get("candidate_test_passed"):
+            lifecycle_counts["tested"] += 1
+        if lifecycle.get("candidate_accepted"):
+            lifecycle_counts["accepted"] += 1
+        if lifecycle.get("adoption_eligible"):
+            lifecycle_counts["adoption_eligible"] += 1
+
+    if not reports:
+        lifecycle = {
+            "candidate_selected": False,
+            "candidate_downloaded": False,
+            "candidate_verified": False,
+            "candidate_migrated": False,
+            "candidate_test_passed": False,
+            "candidate_accepted": False,
+            "adoption_eligible": False,
+        }
+        recommended = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+        status = "candidate_registry_empty"
+    elif lifecycle_counts["adoption_eligible"] > 0:
+        recommended = next(
+            (item.get("recommended_next_command") for item in reports if isinstance(item.get("lifecycle"), dict) and item["lifecycle"].get("adoption_eligible")),
+            {"kind": "inspect_candidate", "command": "pb artifact candidate-status --all --json", "reason": "inspect candidate lifecycle inventory"},
+        )
+        status = "candidate_inventory_has_adoption_ready"
+    else:
+        recommended = next(
+            (item.get("recommended_next_command") for item in reports if isinstance(item.get("recommended_next_command"), dict)),
+            {"kind": "inspect_candidate", "command": "pb artifact candidate-status --all --json", "reason": "inspect candidate lifecycle inventory"},
+        )
+        status = "candidate_inventory_reported"
+
+    return {
+        "ok": True,
+        "action": "artifact_candidate_status",
+        "status": status,
+        "repo_path": str(repo_root),
+        "candidate_registry_path": str(registry_path),
+        "candidate_count": len(candidates),
+        "status_counts": status_counts,
+        "lifecycle_counts": lifecycle_counts,
+        "candidates": reports,
+        "artifact_current": _artifact_current_payload(backend, registry),
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "recommended_next_command": recommended,
+        "operator_instruction": "Read-only candidate lifecycle inventory. No download, verification write, migration, candidate-test, adoption, Project Source mutation, or state advancement was performed.",
+    }
+
 async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) -> int:
     """Report candidate lifecycle state without mutating anything."""
 
@@ -6095,25 +6225,36 @@ async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     artifact_arg = str(getattr(args, "artifact", "") or "").strip() or None
     version_arg = str(getattr(args, "version", "") or "").strip() or None
-    registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
-    selection = {**selection, "registry_path": str(registry_path)}
-    payload = _artifact_candidate_lifecycle_status(
-        backend,
-        registry=registry,
-        profile_root=profile_root,
-        repo_root=repo_root,
-        candidate=candidate,
-        selection=selection,
-    )
+    if getattr(args, "all", False):
+        payload = _artifact_candidate_lifecycle_status_all(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+        )
+    else:
+        registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
+        selection = {**selection, "registry_path": str(registry_path)}
+        payload = _artifact_candidate_lifecycle_status(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            candidate=candidate,
+            selection=selection,
+        )
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(f"status={payload.get('status')}")
+        if "candidate_count" in payload:
+            print(f"candidate_count={payload.get('candidate_count')}")
         print(f"artifact_ref={payload.get('artifact_ref') or 'none'}")
         print(f"artifact_version={payload.get('artifact_version') or 'none'}")
         lifecycle = payload.get("lifecycle") if isinstance(payload.get("lifecycle"), dict) else {}
-        print(f"candidate_test_passed={lifecycle.get('candidate_test_passed')}")
-        print(f"adoption_eligible={lifecycle.get('adoption_eligible')}")
+        if lifecycle:
+            print(f"candidate_test_passed={lifecycle.get('candidate_test_passed')}")
+            print(f"adoption_eligible={lifecycle.get('adoption_eligible')}")
         command = payload.get("recommended_next_command") if isinstance(payload.get("recommended_next_command"), dict) else {}
         if command.get("command"):
             print(f"recommended_next_command={command.get('command')}")
@@ -7465,7 +7606,8 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_candidate_status = artifact_subparsers.add_parser("candidate-status", help="Report migrated candidate lifecycle status without download, test, adoption, or state mutation.")
     artifact_candidate_status.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
-    artifact_candidate_status.add_argument("--version", help="Candidate version such as v0.0.227. Used to select the candidate registry entry.")
+    artifact_candidate_status.add_argument("--version", help="Candidate version such as v0.0.228. Used to select the candidate registry entry.")
+    artifact_candidate_status.add_argument("--all", action="store_true", help="Report read-only lifecycle status for every registered artifact candidate.")
     artifact_candidate_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_candidate_status.add_argument("--json", action="store_true")
 
