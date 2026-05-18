@@ -510,6 +510,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
         "if [[ \"$1 $2\" == \"artifact current\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_current\"}'; exit 0; fi\n"
         "if [[ \"$1\" == \"ask\" ]]; then echo '{\"ok\": true, \"action\": \"ask_protocol_run\", \"status\": \"reply_validated\", \"reply_status\": \"no_artifact\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"artifact intake\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_intake\", \"status\": \"no_artifact\", \"download_performed\": false}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact candidate-run\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_candidate_run\", \"status\": \"candidate_next_inspection_required\", \"mode\": \"plan_only\", \"mutating_actions_executed\": false}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
         "echo unexpected promptbranch args >&2\n"
@@ -540,6 +541,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert summary["target_version"] == target
     assert (log_dir / f"pb_ask_protocol_smoke.{version}.json").is_file()
     assert (log_dir / f"pb_artifact_intake_dry_run.{version}.json").is_file()
+    assert (log_dir / f"pb_artifact_candidate_run.{version}.json").is_file()
     assert (log_dir / f"pb_test.full.{version}.report.json").is_file()
     assert (log_dir / f"zip_hygiene.{version}.json").is_file()
 
@@ -547,6 +549,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert "promptbranch artifact current --json" in call_text
     assert f"--target-version {target}" in call_text
     assert "promptbranch artifact intake --from-last-answer --dry-run --json" in call_text
+    assert "promptbranch artifact candidate-run --json" in call_text
     assert "promptbranch test full --json" in call_text
     assert "promptbranch test report" in call_text
     assert "artifact adopt" not in call_text

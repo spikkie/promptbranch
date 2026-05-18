@@ -17,6 +17,7 @@ fresh_turn_poll_seconds="${PROMPTBRANCH_PROTOCOL_FRESH_TURN_POLL_SECONDS:-2}"
 pb_cmd_arg="${PB_CMD:-}"
 skip_protocol_smoke=0
 skip_artifact_intake=0
+skip_candidate_run=0
 skip_tests=0
 skip_zip_hygiene=0
 adopt_if_accepted=0
@@ -34,9 +35,10 @@ Runs the standard post-release validation sequence:
      - default mode: before local test/report gates
      - --adopt-if-accepted mode: after successful adoption, so --from-current-baseline uses --version
   4. artifact intake dry-run from the last validated protocol reply
-  5. promptbranch test full/report
-  6. release ZIP hygiene check
-  7. optional adoption/recheck when --adopt-if-accepted is supplied
+  5. artifact candidate-run plan-only smoke for the MVP lifecycle command
+  6. promptbranch test full/report
+  7. release ZIP hygiene check
+  8. optional adoption/recheck when --adopt-if-accepted is supplied
 
 Options:
   -v, --version VERSION          Release version under validation. Defaults to VERSION file.
@@ -46,6 +48,7 @@ Options:
       --test-timeout SEC         Timeout wrapper for pb test full. Default: ${test_timeout_seconds}.
       --skip-protocol-smoke      Skip pb ask --protocol smoke.
       --skip-artifact-intake     Skip pb artifact intake dry-run.
+      --skip-candidate-run       Skip pb artifact candidate-run plan-only smoke.
       --skip-tests               Skip pb test full/report.
       --skip-zip-hygiene         Skip ZIP entry hygiene check.
       --adopt-if-accepted        If validation passes, adopt --version as current baseline and re-check semantic state.
@@ -166,6 +169,7 @@ while [[ $# -gt 0 ]]; do
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
     --skip-protocol-smoke) skip_protocol_smoke=1; shift ;;
     --skip-artifact-intake) skip_artifact_intake=1; shift ;;
+    --skip-candidate-run) skip_candidate_run=1; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-zip-hygiene) skip_zip_hygiene=1; shift ;;
     --adopt-if-accepted) adopt_if_accepted=1; shift ;;
@@ -186,7 +190,7 @@ if [[ -z "${target_version}" ]]; then
 else
   target_version="$(normalize_version "${target_version}")" || { echo "ERROR: invalid target version: ${target_version_arg}" >&2; exit 2; }
 fi
-pb_cmd="$(select_pb_cmd)"
+pb_cmd="$(select_pb_cmd)" || exit 2
 
 release_log_dir="${release_log_root%/}/${version}"
 mkdir -p "${release_log_dir}"
@@ -206,6 +210,7 @@ echo "pb_cmd:           ${pb_cmd}"
 echo "test_timeout:     ${test_timeout_seconds}"
 echo "skip_protocol:    ${skip_protocol_smoke}"
 echo "skip_intake:      ${skip_artifact_intake}"
+echo "skip_candidate_run: ${skip_candidate_run}"
 echo "skip_tests:       ${skip_tests}"
 echo "skip_zip_hygiene: ${skip_zip_hygiene}"
 echo "adopt_if_accepted: ${adopt_if_accepted}"
@@ -216,6 +221,7 @@ rc_current=0
 rc_current_semantic=0
 rc_protocol=0
 rc_intake=0
+rc_candidate_run=0
 rc_test_full=0
 rc_test_report=0
 rc_zip_hygiene=0
@@ -225,6 +231,7 @@ adopt_performed=0
 adopt_semantic_performed=0
 protocol_phase="not_run"
 intake_phase="not_run"
+candidate_run_phase="not_run"
 
 artifact_current_log="${release_log_dir}/pb_artifact_current.${version}.json"
 artifact_current_semantic_log="${release_log_dir}/pb_artifact_current.${version}.semantic.json"
@@ -300,6 +307,7 @@ fi
 
 protocol_log="${release_log_dir}/pb_ask_protocol_smoke.${version}.json"
 intake_log="${release_log_dir}/pb_artifact_intake_dry_run.${version}.json"
+candidate_run_log="${release_log_dir}/pb_artifact_candidate_run.${version}.json"
 
 run_protocol_smoke_step() {
   local phase="$1"
@@ -336,15 +344,39 @@ run_artifact_intake_step() {
   fi
 }
 
+run_artifact_candidate_run_step() {
+  local phase="$1"
+  candidate_run_phase="${phase}"
+  if [[ "${skip_candidate_run}" -eq 0 ]]; then
+    if [[ "${skip_protocol_smoke}" -eq 0 && "${rc_protocol}" -ne 0 ]]; then
+      printf '{"ok": true, "status": "skipped_due_to_protocol_smoke_failure", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
+      echo "artifact candidate-run plan skipped because protocol smoke failed"
+      return 0
+    fi
+    if [[ "${skip_artifact_intake}" -eq 0 && "${rc_intake}" -ne 0 ]]; then
+      printf '{"ok": true, "status": "skipped_due_to_artifact_intake_failure", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
+      echo "artifact candidate-run plan skipped because artifact intake dry-run failed"
+      return 0
+    fi
+    run_step "artifact candidate-run plan (${phase})" "${candidate_run_log}" \
+      "${pb_cmd}" artifact candidate-run --json || { rc_candidate_run=$?; failures=$((failures + 1)); }
+  else
+    printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
+  fi
+}
+
+
 if [[ "${adopt_if_accepted}" -eq 0 ]]; then
   run_protocol_smoke_step "pre_adoption"
   run_artifact_intake_step "pre_adoption"
+  run_artifact_candidate_run_step "pre_adoption"
 else
   echo
   echo "===== protocol smoke deferred ====="
   echo "--adopt-if-accepted defers baseline-dependent protocol smoke until after adoption so --from-current-baseline can resolve to ${version}."
   echo '{"ok": true, "status": "deferred_until_after_adopt", "reason": "adopt_if_accepted_requires_post_adoption_baseline"}' > "${protocol_log}"
   echo '{"ok": true, "status": "deferred_until_after_protocol_smoke", "reason": "adopt_if_accepted_requires_post_adoption_protocol_smoke"}' > "${intake_log}"
+  echo '{"ok": true, "status": "deferred_until_after_artifact_intake", "reason": "candidate_run_plan_uses_post_adoption_lifecycle_state"}' > "${candidate_run_log}"
 fi
 
 test_full_log="${release_log_dir}/pb_test.full.${version}.log"
@@ -520,6 +552,7 @@ PYSEMANTIC2
   if [[ "${failures}" -eq 0 ]]; then
     run_protocol_smoke_step "post_adoption"
     run_artifact_intake_step "post_adoption"
+    run_artifact_candidate_run_step "post_adoption"
   else
     echo
     echo "===== post-adoption protocol smoke skipped ====="
@@ -529,6 +562,9 @@ PYSEMANTIC2
     fi
     if [[ "${skip_artifact_intake}" -eq 0 && "${intake_phase}" == "not_run" ]]; then
       echo '{"ok": true, "status": "skipped_due_to_pre_protocol_failure", "phase": "post_adoption"}' > "${intake_log}"
+    fi
+    if [[ "${skip_candidate_run}" -eq 0 && "${candidate_run_phase}" == "not_run" ]]; then
+      echo '{"ok": true, "status": "skipped_due_to_pre_protocol_failure", "phase": "post_adoption"}' > "${candidate_run_log}"
     fi
   fi
 else
@@ -548,6 +584,7 @@ python3 - \
   "${rc_current_semantic}" \
   "${rc_protocol}" \
   "${rc_intake}" \
+  "${rc_candidate_run}" \
   "${rc_test_full}" \
   "${rc_test_report}" \
   "${rc_zip_hygiene}" \
@@ -558,7 +595,8 @@ python3 - \
   "${adopt_performed}" \
   "${adopt_semantic_performed}" \
   "${protocol_phase}" \
-  "${intake_phase}" <<'PY'
+  "${intake_phase}" \
+  "${candidate_run_phase}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -574,6 +612,7 @@ from pathlib import Path
     rc_current_semantic,
     rc_protocol,
     rc_intake,
+    rc_candidate_run,
     rc_test_full,
     rc_test_report,
     rc_zip_hygiene,
@@ -585,6 +624,7 @@ from pathlib import Path
     adopt_semantic_performed,
     protocol_phase,
     intake_phase,
+    candidate_run_phase,
 ) = sys.argv[1:]
 summary = {
     "ok": int(failures) == 0,
@@ -602,6 +642,7 @@ summary = {
         "artifact_current_semantic": {"rc": int(rc_current_semantic)},
         "protocol_smoke": {"rc": int(rc_protocol), "phase": protocol_phase},
         "artifact_intake_dry_run": {"rc": int(rc_intake), "phase": intake_phase},
+        "artifact_candidate_run_plan": {"rc": int(rc_candidate_run), "phase": candidate_run_phase},
         "test_full": {"rc": int(rc_test_full)},
         "test_report": {"rc": int(rc_test_report)},
         "zip_hygiene": {"rc": int(rc_zip_hygiene)},
