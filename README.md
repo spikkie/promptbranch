@@ -1,4 +1,4 @@
-# promptbranch v0.0.225.2
+# promptbranch v0.0.226
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,7 +645,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.225.2
+## v0.0.226
 
 - Repair release for `scripts/post-release-validation.sh`.
 - Treats artifact/source baseline mismatch as diagnostic by default instead of failing validation when the release has not been adopted yet.

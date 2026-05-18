@@ -608,3 +608,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - `pb agent run "run smoke tests" --path . --json` now plans `test.smoke` through the Promptbranch-native MCP stdio boundary.
 - `test.smoke` runs only fixed local Promptbranch smoke selectors by default (`mcp_smoke`, `mcp_host_smoke`) with hard timeout, stdout/stderr capture, exit code capture, and parsed JSON when available.
 - Destructive/write/source/artifact tools remain blocked.
+
+
+## v0.0.226
+
+- Changed `pb artifact accept-candidate` into a tested-candidate adoption gate.
+- `accept-candidate` now requires an existing passing `candidate-test` record before adoption.
+- `accept-candidate` no longer runs release-control itself; `--run-release-control` is rejected for this command in this release.
+- Adoption updates local artifact/source baseline state only after candidate ZIP verification, candidate-test verification, and artifact-current verification.
+- No Project Source upload or source-sync behavior was added; `--from-project-source` remains optional verification only.
+
