@@ -1,4 +1,4 @@
-# promptbranch v0.0.230
+# promptbranch v0.0.231
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,6 +645,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.231
+
+- Added `pb artifact candidate-run --json` to `scripts/post-release-validation.sh` as a plan-only MVP lifecycle gate.
+- The post-release summary now includes `artifact_candidate_run_plan` with phase and return code.
+- `--adopt-if-accepted` mode runs candidate-run after adoption, post-adoption protocol smoke, and artifact-intake dry-run, so the candidate lifecycle command is validated against the adopted baseline context.
+- Added `--skip-candidate-run` for rare diagnostics where only lower-level gates should run.
 
 ## v0.0.230
 

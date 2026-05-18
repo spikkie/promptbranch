@@ -611,6 +611,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.231
+
+- `scripts/post-release-validation.sh` now validates `pb artifact candidate-run --json` in plan-only mode.
+- The script remains non-mutating by default; it does not pass `--execute-next` during post-release validation.
+- Use `--skip-candidate-run` only for isolated diagnostics. Normal release acceptance should keep the candidate-run gate enabled.
+
 ## v0.0.230
 
 - Added `pb artifact candidate-run` as the final Artifact Intake MVP operator command.

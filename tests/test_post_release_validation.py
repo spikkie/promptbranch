@@ -62,6 +62,9 @@ def _write_fake_promptbranch(
         "if args == ['artifact', 'intake', '--from-last-answer', '--dry-run', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact'}))\n"
         "    raise SystemExit(0)\n"
+        "if args == ['artifact', 'candidate-run', '--json']:\n"
+        "    print(json.dumps({'ok': True, 'action': 'artifact_candidate_run', 'status': 'candidate_next_inspection_required', 'mode': 'plan_only', 'mutating_actions_executed': False}))\n"
+        "    raise SystemExit(0)\n"
         "if args == ['test', 'full', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'test_suite'}))\n"
         "    raise SystemExit(0)\n"
@@ -140,6 +143,7 @@ def test_post_release_validation_treats_unadopted_baseline_as_diagnostic_by_defa
     assert summary["ok"] is True
     assert summary["steps"]["artifact_current"]["rc"] == 0
     assert summary["steps"]["artifact_current_semantic"]["rc"] == 1
+    assert summary["steps"]["artifact_candidate_run_plan"] == {"phase": "pre_adoption", "rc": 0}
     assert summary["steps"]["artifact_adopt"] == {"enabled": False, "performed": False, "rc": 0}
 
     semantic = _semantic(repo, "v0.0.225.2")
@@ -213,9 +217,11 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     assert summary["steps"]["artifact_current_after_adopt_semantic"] == {"enabled": True, "performed": True, "rc": 0}
     assert summary["steps"]["protocol_smoke"] == {"phase": "post_adoption", "rc": 0}
     assert summary["steps"]["artifact_intake_dry_run"] == {"phase": "post_adoption", "rc": 0}
+    assert summary["steps"]["artifact_candidate_run_plan"] == {"phase": "post_adoption", "rc": 0}
 
     calls_path = tmp_path / "bin" / "calls.jsonl"
     calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
     adopt_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "adopt"])
     ask_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask")
-    assert adopt_index < ask_index
+    candidate_run_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "candidate-run"])
+    assert adopt_index < ask_index < candidate_run_index
