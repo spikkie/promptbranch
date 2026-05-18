@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.226.2"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.227"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -5907,6 +5907,219 @@ def _candidate_latest_test_gate(candidate: dict[str, Any], *, profile_dir: str |
     return ok, diagnostic
 
 
+def _candidate_status_recommended_command(*, candidate_version: str | None, lifecycle: dict[str, Any]) -> dict[str, Any]:
+    """Return the next readably actionable command for the candidate lifecycle."""
+
+    if not lifecycle.get("candidate_selected"):
+        return {
+            "kind": "intake_candidate",
+            "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
+            "reason": "no migrated candidate is selected yet",
+        }
+    version_flag = f" --version {candidate_version}" if candidate_version else ""
+    if lifecycle.get("candidate_zip_exists") is False or not lifecycle.get("candidate_verified"):
+        return {
+            "kind": "repair_or_remigrate_candidate",
+            "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
+            "reason": "candidate ZIP is missing or no longer verifies",
+        }
+    if not lifecycle.get("candidate_test_passed"):
+        return {
+            "kind": "test_candidate",
+            "command": f"pb artifact candidate-test{version_flag} --json",
+            "reason": "candidate is migrated and verified but has no passing candidate-test record",
+        }
+    if not lifecycle.get("candidate_accepted"):
+        return {
+            "kind": "accept_candidate",
+            "command": f"pb artifact accept-candidate{version_flag} --adopt-if-green --json",
+            "reason": "candidate is migrated, verified, and tested but not yet accepted",
+        }
+    return {
+        "kind": "candidate_already_accepted",
+        "command": "pb artifact current --json",
+        "reason": "candidate already appears accepted; inspect current baseline before continuing",
+    }
+
+
+def _artifact_candidate_lifecycle_status(
+    backend: Any,
+    *,
+    registry: ArtifactRegistry,
+    profile_root: Path,
+    repo_root: Path,
+    candidate: dict[str, Any] | None,
+    selection: dict[str, Any],
+) -> dict[str, Any]:
+    current_payload = _artifact_current_payload(backend, registry)
+    base = {
+        "ok": True,
+        "action": "artifact_candidate_status",
+        "status": selection.get("status") or "candidate_not_found",
+        "repo_path": str(repo_root),
+        "candidate_registry_path": str(_artifact_candidates_registry_path(profile_root)),
+        "candidate_selection": selection,
+        "artifact_current": current_payload,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+    }
+
+    if candidate is None:
+        lifecycle = {
+            "candidate_selected": False,
+            "candidate_downloaded": False,
+            "candidate_verified": False,
+            "candidate_migrated": False,
+            "candidate_test_passed": False,
+            "candidate_accepted": False,
+            "adoption_eligible": False,
+        }
+        return {
+            **base,
+            "ok": True,
+            "status": selection.get("status") or "candidate_not_found",
+            "candidate": None,
+            "lifecycle": lifecycle,
+            "recommended_next_command": _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle),
+            "operator_instruction": "No migrated candidate was selected. Run artifact intake to download, verify, and migrate a candidate first.",
+        }
+
+    filename = _safe_artifact_filename(candidate.get("filename") or Path(str(candidate.get("path") or "")).name)
+    candidate_version = _candidate_version_normalized(candidate.get("version") or candidate.get("zip_version") or candidate.get("filename_version") or _artifact_version_from_filename(filename or ""))
+    candidate_path_value = str(candidate.get("path") or "")
+    candidate_path = Path(candidate_path_value).expanduser().resolve() if candidate_path_value else ((repo_root / filename).resolve() if filename else repo_root)
+    candidate_zip_exists = bool(filename and candidate_path.is_file())
+    candidate_file: dict[str, Any] | None = None
+    sha_matches_registry = False
+    zip_check: dict[str, Any] | None = None
+    zip_version: str | None = None
+    zip_version_matches_candidate = False
+    if candidate_zip_exists:
+        candidate_file = _artifact_file_metadata(candidate_path)
+        expected_sha = str(candidate.get("sha256") or "")
+        sha_matches_registry = not expected_sha or candidate_file.get("sha256") == expected_sha
+        zip_check = verify_zip_artifact(candidate_path)
+        zip_version = _read_zip_version_file(candidate_path)
+        zip_version_matches_candidate = bool(candidate_version and zip_version == candidate_version)
+
+    inbox_path = Path(str(candidate.get("source_inbox_path") or "")).expanduser() if candidate.get("source_inbox_path") else None
+    candidate_downloaded = bool(inbox_path and inbox_path.is_file())
+    candidate_migrated = bool(candidate.get("migration_performed") is True and candidate_zip_exists and candidate_path.parent == repo_root)
+    candidate_verified = bool(candidate.get("verified") is True and zip_check and zip_check.get("ok") and sha_matches_registry and zip_version_matches_candidate)
+    test_gate_ok, test_gate = _candidate_latest_test_gate(candidate, profile_dir=profile_root)
+    current_match_ok, current_checks = _report_artifact_current_matches_candidate(
+        current_payload,
+        filename=filename or "",
+        version=candidate_version or "",
+        require_runtime_code_match=False,
+    )
+    candidate_accepted = bool(candidate.get("accepted") is True or candidate.get("adoption_performed") is True or current_match_ok)
+    adoption_eligible = bool(
+        filename
+        and candidate_version
+        and candidate.get("kind") == "candidate_release"
+        and not candidate_accepted
+        and candidate_migrated
+        and candidate_verified
+        and test_gate_ok
+    )
+    lifecycle = {
+        "candidate_selected": True,
+        "candidate_downloaded": candidate_downloaded,
+        "candidate_zip_exists": candidate_zip_exists,
+        "candidate_verified": candidate_verified,
+        "candidate_migrated": candidate_migrated,
+        "candidate_test_passed": test_gate_ok,
+        "candidate_accepted": candidate_accepted,
+        "adoption_eligible": adoption_eligible,
+    }
+    checks = {
+        "candidate_filename_valid": bool(filename),
+        "candidate_version_valid": bool(candidate_version),
+        "candidate_kind_is_release": candidate.get("kind") == "candidate_release",
+        "candidate_unaccepted": not candidate_accepted,
+        "candidate_zip_exists": candidate_zip_exists,
+        "candidate_zip_in_repo_root": bool(candidate_zip_exists and candidate_path.parent == repo_root),
+        "candidate_sha_matches_registry": sha_matches_registry,
+        "zip_verified": bool(zip_check and zip_check.get("ok")),
+        "zip_version_matches_candidate": zip_version_matches_candidate,
+        "candidate_test_passed": test_gate_ok,
+        "current_matches_candidate": current_match_ok,
+    }
+    status = "candidate_status_reported"
+    if candidate_accepted:
+        status = "candidate_already_accepted"
+    elif adoption_eligible:
+        status = "candidate_ready_for_acceptance"
+    elif test_gate_ok:
+        status = "candidate_tested_not_ready" if not candidate_verified else "candidate_tested_pending_acceptance"
+    elif candidate_verified:
+        status = "candidate_verified_pending_test"
+    elif candidate_migrated:
+        status = "candidate_migrated_needs_verification"
+
+    return {
+        **base,
+        "status": status,
+        "candidate": candidate,
+        "artifact_ref": filename,
+        "artifact_version": candidate_version,
+        "candidate_path": str(candidate_path) if filename else None,
+        "candidate_file": candidate_file,
+        "source_inbox_path": str(inbox_path) if inbox_path else None,
+        "zip": zip_check,
+        "zip_version": zip_version,
+        "candidate_test_gate": test_gate,
+        "current_checks": current_checks,
+        "checks": checks,
+        "lifecycle": lifecycle,
+        "recommended_next_command": _candidate_status_recommended_command(candidate_version=candidate_version, lifecycle=lifecycle),
+        "operator_instruction": "Read-only candidate lifecycle status report. No download, verification write, migration, candidate-test, adoption, Project Source mutation, or state advancement was performed.",
+    }
+
+
+async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) -> int:
+    """Report candidate lifecycle state without mutating anything."""
+
+    registry = _artifact_registry_from_args(args)
+    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    artifact_arg = str(getattr(args, "artifact", "") or "").strip() or None
+    version_arg = str(getattr(args, "version", "") or "").strip() or None
+    registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
+    selection = {**selection, "registry_path": str(registry_path)}
+    payload = _artifact_candidate_lifecycle_status(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+        candidate=candidate,
+        selection=selection,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"artifact_ref={payload.get('artifact_ref') or 'none'}")
+        print(f"artifact_version={payload.get('artifact_version') or 'none'}")
+        lifecycle = payload.get("lifecycle") if isinstance(payload.get("lifecycle"), dict) else {}
+        print(f"candidate_test_passed={lifecycle.get('candidate_test_passed')}")
+        print(f"adoption_eligible={lifecycle.get('adoption_eligible')}")
+        command = payload.get("recommended_next_command") if isinstance(payload.get("recommended_next_command"), dict) else {}
+        if command.get("command"):
+            print(f"recommended_next_command={command.get('command')}")
+    return 0
+
+
 async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) -> int:
     """Adopt a previously tested migrated candidate_release artifact."""
 
@@ -6413,6 +6626,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_adopt(backend, args)
     if args.artifact_command == "candidate-test":
         return await cmd_artifact_candidate_test(backend, args)
+    if args.artifact_command == "candidate-status":
+        return await cmd_artifact_candidate_status(backend, args)
     if args.artifact_command == "accept-candidate":
         return await cmd_artifact_accept_candidate(backend, args)
     if args.artifact_command == "release":
@@ -7247,6 +7462,12 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_test.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Do not pass --prune-release-logs to release-control.")
     artifact_candidate_test.set_defaults(prune_release_logs=True)
     artifact_candidate_test.add_argument("--json", action="store_true")
+
+    artifact_candidate_status = artifact_subparsers.add_parser("candidate-status", help="Report migrated candidate lifecycle status without download, test, adoption, or state mutation.")
+    artifact_candidate_status.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
+    artifact_candidate_status.add_argument("--version", help="Candidate version such as v0.0.227. Used to select the candidate registry entry.")
+    artifact_candidate_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
+    artifact_candidate_status.add_argument("--json", action="store_true")
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Adopt a migrated candidate_release artifact only after candidate-test passed.")
     artifact_accept_candidate.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")

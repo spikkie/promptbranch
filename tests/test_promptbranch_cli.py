@@ -15,7 +15,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence
 from promptbranch_state import ConversationStateStore
 
 
@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.226.2"
+    assert captured.out.strip() == "promptbranch 0.0.227"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.226.2"
+    assert payload["version"] == "0.0.227"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -3668,6 +3668,75 @@ def test_artifact_candidate_test_rejects_accepted_candidate(capsys, tmp_path) ->
     assert not (profile / "promptbranch_artifacts.json").exists()
 
 
+
+def test_artifact_candidate_status_reports_ready_candidate_without_mutation(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v0.0.227.zip"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    zip_path = repo / filename
+    _write_test_release_zip(zip_path, "v0.0.227")
+    profile = tmp_path / "profile"
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.227", tested=True)
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(
+        artifact=None,
+        version="v0.0.227",
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_status(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "artifact_candidate_status"
+    assert payload["status"] == "candidate_ready_for_acceptance"
+    assert payload["read_only"] is True
+    assert payload["mutating_actions_executed"] is False
+    assert payload["download_performed"] is False
+    assert payload["candidate_test_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
+    assert payload["project_source_mutated"] is False
+    assert payload["lifecycle"]["candidate_verified"] is True
+    assert payload["lifecycle"]["candidate_migrated"] is True
+    assert payload["lifecycle"]["candidate_test_passed"] is True
+    assert payload["lifecycle"]["adoption_eligible"] is True
+    assert payload["recommended_next_command"]["kind"] == "accept_candidate"
+    assert "accept-candidate --version v0.0.227 --adopt-if-green" in payload["recommended_next_command"]["command"]
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_artifact_candidate_status_reports_missing_candidate_without_error(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(
+        artifact=None,
+        version=None,
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_status(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "candidate_not_found"
+    assert payload["candidate"] is None
+    assert payload["lifecycle"]["candidate_selected"] is False
+    assert payload["recommended_next_command"]["kind"] == "intake_candidate"
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
 def test_artifact_accept_candidate_preflight_requires_tested_candidate_and_no_adoption(capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
@@ -3762,7 +3831,7 @@ def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_co
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        raise AssertionError("accept-candidate must not run release-control in v0.0.226.2")
+        raise AssertionError("accept-candidate must not run release-control in v0.0.227")
 
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(

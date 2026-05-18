@@ -1,4 +1,4 @@
-# promptbranch v0.0.226.2
+# promptbranch v0.0.227
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,7 +645,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.226.2
+## v0.0.227
 
 - Repair-only release for protocol ask target-conversation hydration before submit.
 - Keeps the fail-closed invariant: Promptbranch still refuses to submit a protocol ask if the target conversation has no hydrated visible turns.
