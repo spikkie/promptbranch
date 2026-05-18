@@ -1260,14 +1260,68 @@ class ChatGPTBrowserClient:
             "state": state,
         }
 
+    async def _wait_for_conversation_hydration_phase(
+        self,
+        page: Any,
+        *,
+        phase: str,
+        attempts: list[dict[str, Any]],
+        timeout_ms: int,
+        poll_interval_ms: int,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Wait for visible conversation turns during one hydration phase.
+
+        Returns ``(presence, last_presence)``. ``presence`` is populated only
+        when hydration succeeds. ``last_presence`` is always the final sampled
+        state, so callers can report useful fail-closed diagnostics.
+        """
+
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        phase_attempt = 0
+        last_presence: dict[str, Any] = {}
+        while True:
+            phase_attempt += 1
+            presence = await self._conversation_turn_presence_state(page)
+            last_presence = presence
+            attempts.append({
+                "attempt": len(attempts) + 1,
+                "phase": phase,
+                "phase_attempt": phase_attempt,
+                "user_turn_count": presence.get("user_turn_count"),
+                "generic_turn_count": presence.get("generic_turn_count"),
+                "hydrated": presence.get("hydrated"),
+            })
+            if presence.get("hydrated"):
+                return presence, last_presence
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None, last_presence
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
+    async def _post_reload_hydration_settle(self, page: Any, *, label: str, timeout_ms: int) -> None:
+        """Give ChatGPT a chance to materialize the target conversation after reload."""
+
+        try:
+            if hasattr(page, "wait_for_load_state"):
+                await page.wait_for_load_state("domcontentloaded", timeout=min(max(timeout_ms, 1_000), 10_000))
+        except Exception as exc:
+            self._log("hydration", "domcontentloaded settle after reload failed", label=label, error=str(exc))
+        try:
+            if hasattr(page, "wait_for_load_state"):
+                await page.wait_for_load_state("networkidle", timeout=min(max(timeout_ms, 1_000), 10_000))
+        except Exception as exc:
+            self._log("hydration", "networkidle settle after reload skipped or failed", label=label, error=str(exc))
+        await self._wait_for_rate_limit_modal_to_clear(page, label=label, timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 10_000))
+
     async def _ensure_target_conversation_hydrated(
         self,
         page: Any,
         *,
         target_url: str,
         label: str,
-        timeout_ms: int = 8_000,
+        timeout_ms: int = 20_000,
         poll_interval_ms: int = 500,
+        max_reload_attempts: int = 2,
     ) -> dict[str, Any]:
         """Block protocol submits when an existing conversation has not hydrated.
 
@@ -1275,92 +1329,98 @@ class ChatGPTBrowserClient:
         hazard: a conversation URL may be current while the DOM still has zero
         conversation turns. Submitting from that transient state can clear the
         composer without the backend persisting the new user turn.
+
+        v0.0.226.2 keeps that fail-closed invariant but makes recovery less
+        brittle for large/slow conversations: wait longer, perform bounded
+        recovery reloads, and return richer diagnostics instead of submitting
+        against an unhydrated target.
         """
 
         if not self._is_conversation_url(target_url):
             return {"status": "not_required", "target_url": target_url, "label": label}
 
-        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         attempts: list[dict[str, Any]] = []
-        attempt = 0
-        last_state: dict[str, Any] = {}
-        while True:
-            attempt += 1
-            presence = await self._conversation_turn_presence_state(page)
-            last_state = presence
-            attempts.append({
-                "attempt": attempt,
-                "phase": "initial_wait",
-                "user_turn_count": presence.get("user_turn_count"),
-                "generic_turn_count": presence.get("generic_turn_count"),
-                "hydrated": presence.get("hydrated"),
-            })
-            if presence.get("hydrated"):
-                result = {
-                    "status": "target_conversation_hydrated",
-                    "target_url": target_url,
-                    "label": label,
-                    "attempt_count": attempt,
-                    "reload_performed": False,
-                    "attempts": attempts,
-                    "state": presence.get("state"),
-                }
-                self._log("hydration", "target conversation hydrated before submit", **{k: v for k, v in result.items() if k != "state"})
-                return result
-            remaining = deadline - asyncio.get_running_loop().time()
-            if remaining <= 0:
-                break
-            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+        reload_count = 0
+        last_presence: dict[str, Any] = {}
 
-        self._log(
-            "hydration",
-            "target conversation not hydrated; forcing one reload before submit",
-            target_url=target_url,
-            label=label,
+        presence, last_presence = await self._wait_for_conversation_hydration_phase(
+            page,
+            phase="initial_wait",
             attempts=attempts,
+            timeout_ms=timeout_ms,
+            poll_interval_ms=poll_interval_ms,
         )
-        await page.goto(target_url, wait_until="domcontentloaded")
-        await self._wait_for_rate_limit_modal_to_clear(page, label=f"{label}-hydration-reload")
+        if presence is not None:
+            result = {
+                "status": "target_conversation_hydrated",
+                "target_url": target_url,
+                "label": label,
+                "attempt_count": len(attempts),
+                "reload_performed": False,
+                "reload_count": reload_count,
+                "timeout_ms": timeout_ms,
+                "poll_interval_ms": poll_interval_ms,
+                "attempts": attempts,
+                "state": presence.get("state"),
+            }
+            self._log("hydration", "target conversation hydrated before submit", **{k: v for k, v in result.items() if k != "state"})
+            return result
 
-        reload_deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
-        reload_attempt = 0
-        while True:
-            reload_attempt += 1
-            presence = await self._conversation_turn_presence_state(page)
-            last_state = presence
-            attempts.append({
-                "attempt": reload_attempt,
-                "phase": "after_reload",
-                "user_turn_count": presence.get("user_turn_count"),
-                "generic_turn_count": presence.get("generic_turn_count"),
-                "hydrated": presence.get("hydrated"),
-            })
-            if presence.get("hydrated"):
+        for reload_index in range(max(0, int(max_reload_attempts))):
+            reload_count += 1
+            phase = f"after_reload_{reload_count}"
+            self._log(
+                "hydration",
+                "target conversation not hydrated; forcing bounded reload before submit",
+                target_url=target_url,
+                label=label,
+                reload_count=reload_count,
+                max_reload_attempts=max_reload_attempts,
+                previous_attempts=attempts,
+            )
+            await page.goto(target_url, wait_until="domcontentloaded")
+            await self._post_reload_hydration_settle(page, label=f"{label}-hydration-reload-{reload_count}", timeout_ms=timeout_ms)
+            presence, last_presence = await self._wait_for_conversation_hydration_phase(
+                page,
+                phase=phase,
+                attempts=attempts,
+                timeout_ms=timeout_ms,
+                poll_interval_ms=poll_interval_ms,
+            )
+            if presence is not None:
                 result = {
                     "status": "target_conversation_hydrated_after_reload",
                     "target_url": target_url,
                     "label": label,
                     "attempt_count": len(attempts),
                     "reload_performed": True,
+                    "reload_count": reload_count,
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
                     "attempts": attempts,
                     "state": presence.get("state"),
                 }
-                self._log("hydration", "target conversation hydrated after forced reload", **{k: v for k, v in result.items() if k != "state"})
+                self._log("hydration", "target conversation hydrated after bounded reload", **{k: v for k, v in result.items() if k != "state"})
                 return result
-            remaining = reload_deadline - asyncio.get_running_loop().time()
-            if remaining <= 0:
-                result = {
-                    "status": "target_conversation_not_hydrated_before_submit",
-                    "target_url": target_url,
-                    "label": label,
-                    "attempt_count": len(attempts),
-                    "reload_performed": True,
-                    "attempts": attempts,
-                    "state": last_state.get("state") if isinstance(last_state, dict) else None,
-                }
-                self._log("hydration", "target conversation not hydrated before submit; refusing to submit", **{k: v for k, v in result.items() if k != "state"})
-                return result
-            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
+        state = last_presence.get("state") if isinstance(last_presence, dict) else None
+        result = {
+            "status": "target_conversation_not_hydrated_before_submit",
+            "target_url": target_url,
+            "label": label,
+            "attempt_count": len(attempts),
+            "reload_performed": reload_count > 0,
+            "reload_count": reload_count,
+            "max_reload_attempts": max_reload_attempts,
+            "timeout_ms": timeout_ms,
+            "poll_interval_ms": poll_interval_ms,
+            "final_user_turn_count": last_presence.get("user_turn_count") if isinstance(last_presence, dict) else None,
+            "final_generic_turn_count": last_presence.get("generic_turn_count") if isinstance(last_presence, dict) else None,
+            "attempts": attempts,
+            "state": state,
+        }
+        self._log("hydration", "target conversation not hydrated before submit; refusing to submit", **{k: v for k, v in result.items() if k != "state"})
+        return result
 
     async def _upload_chat_attachments(self, page: Any, file_paths: list[str]) -> None:
         normalized_paths = [str(Path(path)) for path in file_paths]

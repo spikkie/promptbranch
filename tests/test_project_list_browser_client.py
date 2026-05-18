@@ -1535,7 +1535,68 @@ def test_ensure_target_conversation_hydrated_forces_reload_before_failure(tmp_pa
 
     assert result["status"] == "target_conversation_not_hydrated_before_submit"
     assert result["reload_performed"] is True
-    assert page.goto_calls == [("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded")]
+    assert result["reload_count"] == 2
+    assert result["max_reload_attempts"] == 2
+    assert result["final_user_turn_count"] == 0
+    assert result["final_generic_turn_count"] == 0
+    assert page.goto_calls == [
+        ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
+        ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
+    ]
+
+
+def test_ensure_target_conversation_hydrated_accepts_after_second_reload(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+        def __init__(self) -> None:
+            self.goto_calls: list[tuple[str, str]] = []
+            self.waits: list[int] = []
+
+        async def goto(self, url: str, *, wait_until: str):
+            self.goto_calls.append((url, wait_until))
+            self.url = url
+
+        async def wait_for_timeout(self, ms: int):
+            self.waits.append(ms)
+
+    page = DummyPage()
+    samples = [
+        {"count": 0, "generic_turns": {"count": 0}, "last_text_length": 0},
+        {"count": 0, "generic_turns": {"count": 0}, "last_text_length": 0},
+        {"count": 1, "generic_turns": {"count": 1}, "last_text_length": 12},
+    ]
+
+    async def fake_turn_state(page, *, prompt=None):
+        return samples.pop(0) if samples else {"count": 1, "generic_turns": {"count": 1}, "last_text_length": 12}
+
+    async def fake_wait_rate_limit(page, *, label: str, timeout_ms: int | None = None):
+        return False
+
+    client._capture_user_turn_state = fake_turn_state
+    client._wait_for_rate_limit_modal_to_clear = fake_wait_rate_limit
+
+    import asyncio
+
+    result = asyncio.run(
+        client._ensure_target_conversation_hydrated(
+            page,
+            target_url="https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            label="chat-home-after-login",
+            timeout_ms=0,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["status"] == "target_conversation_hydrated_after_reload"
+    assert result["reload_performed"] is True
+    assert result["reload_count"] == 2
+    assert page.goto_calls == [
+        ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
+        ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
+    ]
 
 
 def test_ensure_target_conversation_hydrated_accepts_existing_turns(tmp_path: Path) -> None:
