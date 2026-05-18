@@ -9,7 +9,12 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "post-release-validation.sh"
 
 
-def _write_fake_promptbranch(bin_dir: Path, initial_artifact_version: str, adopted_version: str | None = None) -> Path:
+def _write_fake_promptbranch(
+    bin_dir: Path,
+    initial_artifact_version: str,
+    adopted_version: str | None = None,
+    fail_protocol_until_adopted: bool = False,
+) -> Path:
     exe = bin_dir / "promptbranch"
     adopted_version = adopted_version or initial_artifact_version
     exe.write_text(
@@ -18,7 +23,11 @@ def _write_fake_promptbranch(bin_dir: Path, initial_artifact_version: str, adopt
         "from pathlib import Path\n"
         f"initial = {initial_artifact_version!r}\n"
         f"adopted = {adopted_version!r}\n"
+        f"fail_protocol_until_adopted = {fail_protocol_until_adopted!r}\n"
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
+        "calls_file = Path(__file__).with_name('calls.jsonl')\n"
+        "def record(args):\n"
+        "    calls_file.write_text(calls_file.read_text() + json.dumps(args) + '\\n' if calls_file.exists() else json.dumps(args) + '\\n')\n"
         "def current_version():\n"
         "    return state_file.read_text().strip() if state_file.exists() else initial\n"
         "def current_payload():\n"
@@ -36,12 +45,28 @@ def _write_fake_promptbranch(bin_dir: Path, initial_artifact_version: str, adopt
         "        'registry_current': {'version': version, 'filename': f'chatgpt_claudecode_workflow_{version}.zip'},\n"
         "    }\n"
         "args = sys.argv[1:]\n"
+        "record(args)\n"
         "if args == ['artifact', 'current', '--json']:\n"
         "    print(json.dumps(current_payload()))\n"
         "    raise SystemExit(0)\n"
         "if len(args) == 5 and args[:2] == ['artifact', 'adopt'] and args[3:] == ['--from-project-source', '--json']:\n"
         "    state_file.write_text(adopted)\n"
         "    print(json.dumps({'ok': True, 'action': 'artifact_adopt', 'artifact_ref': args[2], 'artifact_version': adopted}))\n"
+        "    raise SystemExit(0)\n"
+        "if args and args[0] == 'ask':\n"
+        "    if fail_protocol_until_adopted and current_version() != adopted:\n"
+        "        print(json.dumps({'ok': False, 'action': 'ask_protocol_run', 'error': 'wrong_baseline', 'current_version': current_version(), 'expected': adopted}))\n"
+        "        raise SystemExit(7)\n"
+        "    print(json.dumps({'ok': True, 'action': 'ask_protocol_run', 'status': 'reply_validated', 'reply_validation_ok': True, 'baseline': {'input_version': current_version()}}))\n"
+        "    raise SystemExit(0)\n"
+        "if args == ['artifact', 'intake', '--from-last-answer', '--dry-run', '--json']:\n"
+        "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact'}))\n"
+        "    raise SystemExit(0)\n"
+        "if args == ['test', 'full', '--json']:\n"
+        "    print(json.dumps({'ok': True, 'action': 'test_suite'}))\n"
+        "    raise SystemExit(0)\n"
+        "if len(args) == 4 and args[:2] == ['test', 'report'] and args[3] == '--json':\n"
+        "    print(json.dumps({'ok': True, 'action': 'test_report', 'status': 'verified'}))\n"
         "    raise SystemExit(0)\n"
         "print(json.dumps({'ok': False, 'error': 'unexpected_args', 'argv': args}))\n"
         "raise SystemExit(2)\n",
@@ -50,13 +75,16 @@ def _write_fake_promptbranch(bin_dir: Path, initial_artifact_version: str, adopt
     exe.chmod(0o755)
     return exe
 
-
 def _run_validation(
     tmp_path: Path,
     artifact_version: str,
     requested_version: str,
     *extra_args: str,
     adopted_version: str | None = None,
+    fail_protocol_until_adopted: bool = False,
+    skip_protocol: bool = True,
+    skip_artifact_intake: bool = True,
+    skip_tests: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -64,7 +92,12 @@ def _run_validation(
     bin_dir.mkdir()
     (repo / "VERSION").write_text(requested_version + "\n", encoding="utf-8")
     (repo / f"chatgpt_claudecode_workflow_{requested_version}.zip").write_text("fake zip for adopt command selection\n", encoding="utf-8")
-    _write_fake_promptbranch(bin_dir, artifact_version, adopted_version=adopted_version or requested_version)
+    _write_fake_promptbranch(
+        bin_dir,
+        artifact_version,
+        adopted_version=adopted_version or requested_version,
+        fail_protocol_until_adopted=fail_protocol_until_adopted,
+    )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     return subprocess.run(
@@ -72,9 +105,9 @@ def _run_validation(
             str(SCRIPT),
             "--version",
             requested_version,
-            "--skip-protocol-smoke",
-            "--skip-artifact-intake",
-            "--skip-tests",
+            *( ["--skip-protocol-smoke"] if skip_protocol else [] ),
+            *( ["--skip-artifact-intake"] if skip_artifact_intake else [] ),
+            *( ["--skip-tests"] if skip_tests else [] ),
             "--skip-zip-hygiene",
             *extra_args,
         ],
@@ -107,7 +140,7 @@ def test_post_release_validation_treats_unadopted_baseline_as_diagnostic_by_defa
     assert summary["ok"] is True
     assert summary["steps"]["artifact_current"]["rc"] == 0
     assert summary["steps"]["artifact_current_semantic"]["rc"] == 1
-    assert summary["steps"]["artifact_adopt"] == {"enabled": False, "rc": 0}
+    assert summary["steps"]["artifact_adopt"] == {"enabled": False, "performed": False, "rc": 0}
 
     semantic = _semantic(repo, "v0.0.225.2")
     assert semantic["ok"] is False
@@ -148,10 +181,41 @@ def test_post_release_validation_adopts_after_success_when_requested(tmp_path: P
     assert summary["ok"] is True
     assert summary["adopt_if_accepted"] is True
     assert summary["steps"]["artifact_current_semantic"]["rc"] == 1
-    assert summary["steps"]["artifact_adopt"] == {"enabled": True, "rc": 0}
-    assert summary["steps"]["artifact_current_after_adopt_semantic"] == {"enabled": True, "rc": 0}
+    assert summary["steps"]["artifact_adopt"] == {"enabled": True, "performed": True, "rc": 0}
+    assert summary["steps"]["artifact_current_after_adopt_semantic"] == {"enabled": True, "performed": True, "rc": 0}
 
     after_adopt = json.loads(
         (repo / ".pb_profile" / "release_logs" / "v0.0.225.2" / "pb_artifact_current_after_adopt.v0.0.225.2.semantic.json").read_text(encoding="utf-8")
     )
     assert after_adopt["ok"] is True
+
+
+
+def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.225.2",
+        "v0.0.226",
+        "--adopt-if-accepted",
+        adopted_version="v0.0.226",
+        fail_protocol_until_adopted=True,
+        skip_protocol=False,
+        skip_artifact_intake=False,
+        skip_tests=True,
+    )
+
+    assert result.returncode == 0, result.stdout
+    repo = tmp_path / "repo"
+    summary = _summary(repo, "v0.0.226")
+    assert summary["ok"] is True
+    assert summary["steps"]["artifact_current_semantic"]["rc"] == 1
+    assert summary["steps"]["artifact_adopt"] == {"enabled": True, "performed": True, "rc": 0}
+    assert summary["steps"]["artifact_current_after_adopt_semantic"] == {"enabled": True, "performed": True, "rc": 0}
+    assert summary["steps"]["protocol_smoke"] == {"phase": "post_adoption", "rc": 0}
+    assert summary["steps"]["artifact_intake_dry_run"] == {"phase": "post_adoption", "rc": 0}
+
+    calls_path = tmp_path / "bin" / "calls.jsonl"
+    calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
+    adopt_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "adopt"])
+    ask_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask")
+    assert adopt_index < ask_index

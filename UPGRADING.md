@@ -610,6 +610,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Destructive/write/source/artifact tools remain blocked.
 
 
+## v0.0.226.1
+
+- Repair-only release for `scripts/post-release-validation.sh --adopt-if-accepted`.
+- Defers baseline-dependent protocol smoke until after successful adoption so `--from-current-baseline` resolves to the version under validation.
+- Adds explicit `performed` fields for adoption and post-adoption semantic checks, so skipped adoption is not reported as successful adoption.
+- Does not change artifact intake, candidate-test, or accept-candidate behavior.
+
 ## v0.0.226
 
 - Changed `pb artifact accept-candidate` into a tested-candidate adoption gate.
