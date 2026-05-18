@@ -611,7 +611,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.229
+## v0.0.230
+
+- Added `pb artifact candidate-run` as the final Artifact Intake MVP operator command.
+- Plan-only by default; use `--execute-next` to execute exactly one allowlisted next lifecycle step and stop.
+- Reuses existing intake, candidate-test, and accept-candidate gates; no new source upload, protocol schema, browser automation, or unchecked mutation behavior was added.
+
 
 - `pb artifact candidate-next --json` now provides a single read-only next operator action for the Artifact Intake MVP loop.
 - Use it after `candidate-status` or post-release validation when you want the CLI to select the next safe command from the current candidate lifecycle state.
