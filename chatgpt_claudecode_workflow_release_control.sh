@@ -31,7 +31,7 @@ downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
 work_parent="${TMPDIR:-/tmp}/${project_name}_release_import"
 container_id="${PROMPTBRANCH_CONTAINER_ID:-}"
 owner_user="${PROMPTBRANCH_OWNER_USER:-${SUDO_USER:-${USER}}}"
-owner_group="${PROMPTBRANCH_OWNER_GROUP:-${owner_user}}"
+owner_group="${PROMPTBRANCH_OWNER_GROUP:-$(id -gn "${owner_user}" 2>/dev/null || printf '%s' "${owner_user}")}"
 version_arg="${PB_RELEASE_VERSION:-}"
 release_log_root_arg="${PROMPTBRANCH_RELEASE_LOG_DIR:-}"
 release_log_keep="${PROMPTBRANCH_RELEASE_LOG_KEEP:-12}"
@@ -51,6 +51,7 @@ skip_service=0
 skip_tests=1
 skip_docker_logs=0
 keep_workdir=0
+import_plan=0
 tests_only=0
 adopt_current=0
 adopt_if_green=0
@@ -70,6 +71,7 @@ Usage:
   $(basename "$0") --version v0.0.239 [options]
   $(basename "$0") v0.0.239 [options]
   $(basename "$0") --install-from-zip ~/Downloads/chatgpt_claudecode_workflow_v0.0.239.zip
+  $(basename "$0") --version v0.0.240.1 --import-plan
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
@@ -77,16 +79,20 @@ Options:
       --downloads-dir DIR     Directory containing the downloaded candidate ZIP. Default: ~/Downloads.
       --install-from-zip ZIP   Install this candidate ZIP into the working tree before commit/package.
       --skip-zip-import       Do not install a candidate ZIP; operate on the current working tree.
+      --import-plan,
+      --dry-run-import        Validate and describe the candidate ZIP import without modifying
+                              the working tree, committing, packaging, uploading, installing,
+                              starting services, or running tests.
       --allow-dirty           Allow automatic ZIP import over a dirty working tree. Default: fail closed.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
-      --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
+      --owner USER[:GROUP]    Owner for generated repo-local state (.pb_profile and debug_artifacts). Default: ${owner_user}:${owner_group}.
       --packager PATH         Packaging helper. Default: ${default_packager}.
       --skip-compare          Deprecated compatibility no-op. Beyond Compare is no longer used.
       --skip-commit           Skip git add/commit/push.
       --no-push               Commit but do not git push.
       --skip-source-add       Skip promptbranch src add.
       --skip-install          Skip pipx reinstall from generated ZIP.
-      --skip-chown            Skip chown of .pb_profile.
+      --skip-chown            Skip ownership normalization of .pb_profile and debug_artifacts.
       --skip-service          Skip ./run_chatgpt_service.sh.
       --service-mode MODE     detached or foreground. Default: detached.
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
@@ -131,6 +137,7 @@ Typical use:
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
   $(basename "$0") --skip-zip-import --run-tests
+  $(basename "$0") --version v0.0.240.1 --import-plan
 USAGE
 }
 
@@ -187,7 +194,7 @@ find_stage0_install_zip_arg() {
   while [[ $# -gt 0 ]]; do
     arg="$1"
     case "${arg}" in
-      -h|--help|--tests-only|--run-tests-only|--adopt-current)
+      -h|--help|--tests-only|--run-tests-only|--adopt-current|--import-plan|--dry-run-import)
         return 1
         ;;
       --skip-zip-import)
@@ -267,16 +274,17 @@ if [[ "${PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0:-0}" != "1" ]]; then
     need_cmd unzip
 
     candidate_stage0_script="$(mktemp "${TMPDIR:-/tmp}/promptbranch-release-candidate-workflow.XXXXXX.sh")"
-    if unzip -p "${candidate_stage0_zip}" chatgpt_claudecode_workflow_release_control.sh > "${candidate_stage0_script}" 2>/dev/null; then
-      chmod +x "${candidate_stage0_script}"
-      echo "== Delegate to workflow runner from candidate ZIP =="
-      echo "candidate_zip: ${candidate_stage0_zip}"
-      echo "stage0_script: ${candidate_stage0_script}"
-      export PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT="${repo_root}"
-      export PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0=1
-      exec "${candidate_stage0_script}" "$@"
+    if ! unzip -p "${candidate_stage0_zip}" chatgpt_claudecode_workflow_release_control.sh > "${candidate_stage0_script}" 2>/dev/null; then
+      rm -f "${candidate_stage0_script}"
+      fail "candidate ZIP does not contain chatgpt_claudecode_workflow_release_control.sh"
     fi
-    rm -f "${candidate_stage0_script}"
+    chmod +x "${candidate_stage0_script}"
+    echo "== Delegate to workflow runner from candidate ZIP =="
+    echo "candidate_zip: ${candidate_stage0_zip}"
+    echo "stage0_script: ${candidate_stage0_script}"
+    export PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT="${repo_root}"
+    export PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0=1
+    exec "${candidate_stage0_script}" "$@"
   fi
 fi
 
@@ -306,6 +314,18 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --skip-zip-import) skip_zip_import=1; shift ;;
+    --import-plan|--dry-run-import)
+      import_plan=1
+      skip_commit=1
+      skip_push=1
+      skip_source_add=1
+      skip_install=1
+      skip_chown=1
+      skip_service=1
+      skip_tests=1
+      skip_docker_logs=1
+      shift
+      ;;
     --allow-dirty) allow_dirty=1; shift ;;
     --release-log-dir)
       [[ $# -ge 2 ]] || fail "--release-log-dir requires a value"
@@ -437,6 +457,13 @@ if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
   fail "--adopt-if-green requires --tests-only to run the full test/report block"
 fi
 
+if [[ ${import_plan} -eq 1 && ${skip_zip_import} -eq 1 ]]; then
+  fail "--import-plan requires a candidate ZIP; do not combine it with --skip-zip-import"
+fi
+if [[ ${import_plan} -eq 1 && ${adopt_current} -eq 1 ]]; then
+  fail "--import-plan cannot be combined with --adopt-current"
+fi
+
 if [[ -z "${version_arg}" ]]; then
   if [[ ${install_from_zip} -eq 1 ]]; then
     version_arg="${install_zip}"
@@ -480,11 +507,13 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
 fi
 
 need_cmd python3
-need_cmd promptbranch
+if [[ ${import_plan} -eq 0 ]]; then
+  need_cmd promptbranch
+fi
 if [[ ${skip_tests} -eq 0 || ${adopt_current} -eq 1 ]]; then
   need_cmd pb
 fi
-if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
+if [[ ${import_plan} -eq 0 && ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   need_cmd unzip
   need_cmd git
   need_cmd pipx
@@ -498,6 +527,143 @@ fi
 if [[ ${skip_docker_logs} -eq 0 ]]; then
   need_cmd docker
 fi
+
+if [[ ${import_plan} -eq 1 ]]; then
+  need_cmd unzip
+fi
+
+release_import_plan_json() {
+  local zip_path="$1"
+  local expected_version="$2"
+  local repo_path="$3"
+  local preserved_csv=".git,.env,.generated,.pb_profile,profile,debug_artifacts"
+  python3 - "$zip_path" "$expected_version" "$repo_path" "$preserved_csv" <<'INNERPY'
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1]).expanduser().resolve()
+expected_version = sys.argv[2]
+repo_path = Path(sys.argv[3]).expanduser().resolve()
+preserved_paths = sys.argv[4].split(",")
+script_name = "chatgpt_claudecode_workflow_release_control.sh"
+payload = {
+    "ok": False,
+    "action": "release_zip_import_plan",
+    "version": expected_version,
+    "candidate_zip": str(zip_path),
+    "repo_root": str(repo_path),
+    "zip_exists": zip_path.is_file(),
+    "zip_crc_ok": False,
+    "zip_version": None,
+    "zip_root_layout": "unknown",
+    "candidate_script_present": False,
+    "preserved_paths": preserved_paths,
+    "would_install": False,
+    "errors": [],
+    "root_entries_sample": [],
+    "would_remove_root_entries_sample": [],
+    "would_install_root_entries_sample": [],
+}
+if not zip_path.is_file():
+    payload["errors"].append("candidate_zip_missing")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    raise SystemExit(1)
+try:
+    with zipfile.ZipFile(zip_path) as archive:
+        bad_crc = archive.testzip()
+        if bad_crc:
+            payload["errors"].append(f"zip_crc_failure:{bad_crc}")
+        else:
+            payload["zip_crc_ok"] = True
+        names = [name for name in archive.namelist() if name and not name.endswith("/")]
+        top_entries = sorted({name.split("/", 1)[0] for name in names})
+        payload["root_entries_sample"] = top_entries[:40]
+        wrapper = bool(top_entries) and len(top_entries) == 1 and all("/" in name for name in names)
+        if wrapper:
+            payload["zip_root_layout"] = "wrapper_folder"
+            payload["errors"].append("wrapper_folder")
+        elif "VERSION" in names:
+            payload["zip_root_layout"] = "repo_root"
+        else:
+            payload["zip_root_layout"] = "missing_root_VERSION"
+            payload["errors"].append("missing_root_VERSION")
+        if "VERSION" in names:
+            payload["zip_version"] = archive.read("VERSION").decode("utf-8", errors="replace").strip()
+            if payload["zip_version"] != expected_version:
+                payload["errors"].append("version_mismatch")
+        payload["candidate_script_present"] = script_name in names
+        if not payload["candidate_script_present"]:
+            payload["errors"].append("candidate_script_missing")
+        bad_generated = [name for name in names if ".pytest_cache" in name or "__pycache__" in name or name.endswith((".pyc", ".pyo"))]
+        if bad_generated:
+            payload["errors"].append("generated_cache_entries_present")
+            payload["bad_generated_entries_sample"] = bad_generated[:20]
+        payload["would_install_root_entries_sample"] = top_entries[:40]
+except zipfile.BadZipFile:
+    payload["errors"].append("bad_zip_file")
+if repo_path.is_dir():
+    preserved = set(preserved_paths)
+    removable = sorted(path.name for path in repo_path.iterdir() if path.name not in preserved)
+    payload["would_remove_root_entries_sample"] = removable[:40]
+else:
+    payload["errors"].append("repo_root_missing")
+payload["would_install"] = not payload["errors"]
+payload["ok"] = payload["would_install"]
+print(json.dumps(payload, indent=2, sort_keys=True))
+raise SystemExit(0 if payload["ok"] else 1)
+INNERPY
+}
+
+validate_release_import_plan() {
+  local zip_path="$1"
+  local expected_version="$2"
+  local repo_path="$3"
+  release_import_plan_json "$zip_path" "$expected_version" "$repo_path" >/dev/null
+}
+
+owner_uid_for_user() {
+  local user_name="$1"
+  id -u "${user_name}" 2>/dev/null || return 1
+}
+
+ownership_normalization_targets() {
+  local candidate
+  for candidate in "${repo_root}/.pb_profile" "${repo_root}/debug_artifacts"; do
+    if [[ -e "${candidate}" ]]; then
+      printf '%s
+' "${candidate}"
+    fi
+  done
+}
+
+normalize_generated_ownership() {
+  local phase="$1"
+  [[ ${skip_chown} -eq 0 ]] || return 0
+
+  owner_uid_for_user "${owner_user}" >/dev/null || fail "could not resolve owner user for chown: ${owner_user}"
+
+  mapfile -t chown_targets < <(ownership_normalization_targets)
+  if [[ ${#chown_targets[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "== Normalize generated artifact ownership (${phase}) =="
+  printf 'owner: %s:%s
+' "${owner_user}" "${owner_group}"
+  printf 'targets:
+'
+  printf '  %s
+' "${chown_targets[@]}"
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown -R "${owner_user}:${owner_group}" "${chown_targets[@]}"
+  else
+    need_cmd sudo
+    sudo chown -R "${owner_user}:${owner_group}" "${chown_targets[@]}"
+  fi
+}
 
 printf '\n== Release control ==\n'
 printf 'repo_root:      %s\n' "${repo_root}"
@@ -515,7 +681,14 @@ printf 'tests_only:     %s\n' "${tests_only}"
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
+printf 'import_plan:    %s\n' "${import_plan}"
 printf '\n'
+
+if [[ ${import_plan} -eq 1 ]]; then
+  [[ -f "${download_zip}" ]] || fail "import plan ZIP not found: ${download_zip}"
+  release_import_plan_json "${download_zip}" "${ver}" "${repo_root}"
+  exit $?
+fi
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "install ZIP not found: ${download_zip}"
@@ -527,9 +700,8 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
 
   echo
   echo "== Verify install ZIP =="
-  unzip -t "${download_zip}"
-  zip_version="$(unzip -p "${download_zip}" VERSION | tr -d '[:space:]')"
-  [[ "${zip_version}" == "${ver}" ]] || fail "ZIP VERSION mismatch: expected ${ver}, got ${zip_version}"
+  release_import_plan_json "${download_zip}" "${ver}" "${repo_root}"
+  validate_release_import_plan "${download_zip}" "${ver}" "${repo_root}"
 
   rm -rf "${work_dir}"
   mkdir -p "${work_dir}"
@@ -538,9 +710,10 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
 
   echo
   echo "== Install ZIP into working tree =="
-  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     -exec rm -rf {} +
+  normalize_generated_ownership "pre-import"
+  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
 
   cp "${download_zip}" "${repo_root}/${artifact_zip}"
   chmod +x "${repo_root}/chatgpt_claudecode_workflow_release_control.sh" "${repo_root}"/scripts/*.sh 2>/dev/null || true
@@ -721,10 +894,8 @@ if [[ ${skip_install} -eq 0 ]]; then
   pipx install "./${artifact_zip}"
 fi
 
-# Restore ownership of Promptbranch profile if needed.
-if [[ ${skip_chown} -eq 0 && -d "${repo_root}/.pb_profile" ]]; then
-  sudo chown -R "${owner_user}:${owner_group}" "${repo_root}/.pb_profile/"
-fi
+# Restore ownership of generated repo-local state if needed.
+normalize_generated_ownership "post-release"
 fi
 
 

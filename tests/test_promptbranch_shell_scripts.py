@@ -80,6 +80,7 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
     env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-tests-only.log"
 
     result = subprocess.run(
@@ -158,6 +159,7 @@ def test_release_control_adopt_current_verifies_and_adopts_without_running_tests
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
 
     result = subprocess.run(
         [str(script), "--adopt-current", "--version", version],
@@ -219,6 +221,8 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     (repo / ".env").write_text("LOCAL=1\n", encoding="utf-8")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}\n", encoding="utf-8")
+    (repo / "debug_artifacts").mkdir()
+    (repo / "debug_artifacts" / "trace.zip").write_text("preserve debug trace\n", encoding="utf-8")
 
     downloads = tmp_path / "downloads"
     downloads.mkdir()
@@ -228,6 +232,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
         archive.writestr("VERSION", f"{version}\n")
         archive.writestr("fresh.txt", "installed\n")
         archive.writestr("scripts/example.sh", "#!/usr/bin/env bash\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -262,6 +267,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
 
     result = subprocess.run(
         [
@@ -292,7 +298,135 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     assert not (repo / "stale.txt").exists()
     assert (repo / ".env").read_text(encoding="utf-8") == "LOCAL=1\n"
     assert (repo / ".pb_profile" / "state.json").is_file()
+    assert (repo / "debug_artifacts" / "trace.zip").read_text(encoding="utf-8") == "preserve debug trace\n"
     assert (repo / artifact).is_file()
+
+
+def _extract_first_json_object(text: str) -> dict:
+    start = text.find("{")
+    assert start >= 0, text
+    return json.loads(text[start:])
+
+
+def _write_release_candidate_zip(path: Path, *, version: str, include_version: bool = True, include_script: bool = True, wrapper: bool = False) -> None:
+    import zipfile
+
+    prefix = "wrapped/" if wrapper else ""
+    with zipfile.ZipFile(path, "w") as archive:
+        if include_version:
+            archive.writestr(f"{prefix}VERSION", f"{version}\n")
+        archive.writestr(f"{prefix}fresh.txt", "installed\n")
+        if include_script:
+            archive.writestr(f"{prefix}chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
+
+
+def test_release_control_import_plan_validates_candidate_without_mutating_repo(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v0.0.0\n", encoding="utf-8")
+    (repo / "stale.txt").write_text("keep until real import\n", encoding="utf-8")
+    version = "v9.9.12"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    artifact = downloads / f"chatgpt_claudecode_workflow_{version}.zip"
+    _write_release_candidate_zip(artifact, version=version)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    result = subprocess.run(
+        [str(script), "--version", version, "--downloads-dir", str(downloads), "--import-plan"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = _extract_first_json_object(result.stdout)
+    assert payload["ok"] is True
+    assert payload["action"] == "release_zip_import_plan"
+    assert payload["zip_version"] == version
+    assert payload["zip_root_layout"] == "repo_root"
+    assert payload["candidate_script_present"] is True
+    assert payload["would_install"] is True
+    assert ".git" in payload["preserved_paths"]
+    assert "debug_artifacts" in payload["preserved_paths"]
+    assert "stale.txt" in payload["would_remove_root_entries_sample"]
+    assert (repo / "stale.txt").read_text(encoding="utf-8") == "keep until real import\n"
+    assert not (repo / "fresh.txt").exists()
+
+
+def test_release_control_import_plan_rejects_wrong_version(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.13"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    artifact = downloads / f"chatgpt_claudecode_workflow_{version}.zip"
+    _write_release_candidate_zip(artifact, version="v9.9.12")
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    result = subprocess.run(
+        [str(script), "--version", version, "--downloads-dir", str(downloads), "--import-plan"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    payload = _extract_first_json_object(result.stdout)
+    assert payload["ok"] is False
+    assert "version_mismatch" in payload["errors"]
+
+
+def test_release_control_import_plan_rejects_wrapper_missing_version_and_missing_script(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+
+    scenarios = [
+        ("v9.9.14", {"wrapper": True}, "wrapper_folder"),
+        ("v9.9.15", {"include_version": False}, "missing_root_VERSION"),
+        ("v9.9.16", {"include_script": False}, "candidate_script_missing"),
+    ]
+    for version, options, expected_error in scenarios:
+        downloads = tmp_path / f"downloads-{version}"
+        downloads.mkdir()
+        artifact = downloads / f"chatgpt_claudecode_workflow_{version}.zip"
+        _write_release_candidate_zip(artifact, version=version, **options)
+        result = subprocess.run(
+            [str(script), "--version", version, "--downloads-dir", str(downloads), "--import-plan"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode != 0
+        payload = _extract_first_json_object(result.stdout)
+        assert payload["ok"] is False
+        assert expected_error in payload["errors"]
+
+
+def test_release_control_stage0_fails_when_candidate_script_missing(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.17\n", encoding="utf-8")
+    version = "v9.9.17"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    artifact = downloads / f"chatgpt_claudecode_workflow_{version}.zip"
+    _write_release_candidate_zip(artifact, version=version, include_script=False)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    result = subprocess.run(
+        [str(script), "--version", version, "--downloads-dir", str(downloads)],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "candidate ZIP does not contain chatgpt_claudecode_workflow_release_control.sh" in result.stderr
 
 
 def test_release_control_delegates_to_candidate_script_before_install(tmp_path: Path):
@@ -322,6 +456,32 @@ def test_release_control_delegates_to_candidate_script_before_install(tmp_path: 
     assert "== Delegate to workflow runner from candidate ZIP ==" in result.stdout
     assert f"candidate-stage0:1:{repo}" in result.stdout
 
+def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_filter() -> None:
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,profile,debug_artifacts"' in text
+    assert '! -name "debug_artifacts"' in text
+    assert "--exclude='debug_artifacts/'" in text
+    assert 'normalize_generated_ownership "pre-import"' in text
+    assert 'normalize_generated_ownership "post-release"' in text
+
+
+def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> None:
+    root = Path(__file__).resolve().parents[1]
+    compose = (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+    run_script = (root / "run_chatgpt_service.sh").read_text(encoding="utf-8")
+    dev_script = (root / "run_chatgpt_service_dev.sh").read_text(encoding="utf-8")
+    container_script = (root / "docker" / "run-chatgpt-service-in-container.sh").read_text(encoding="utf-8")
+
+    assert 'user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"' in compose
+    assert 'PYTHONDONTWRITEBYTECODE: "1"' in compose
+    assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in run_script
+    assert 'export PROMPTBRANCH_DOCKER_GID="${PROMPTBRANCH_DOCKER_GID:-$(id -g)}"' in run_script
+    assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in dev_script
+    assert 'mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/debug_artifacts' in container_script
+
+
 def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -334,6 +494,7 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
 
     with zipfile.ZipFile(downloads / artifact, "w") as archive:
         archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -358,6 +519,7 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
     env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-docker-missing.log"
 
     result = subprocess.run(
@@ -542,6 +704,7 @@ def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp
 
     with zipfile.ZipFile(downloads / artifact, "w") as archive:
         archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -571,6 +734,7 @@ def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
 
     result = subprocess.run(
         [
