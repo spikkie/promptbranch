@@ -64,14 +64,24 @@ def _write_fake_promptbranch(
         "if args == ['artifact', 'intake', '--from-last-answer', '--dry-run', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact'}))\n"
         "    raise SystemExit(0)\n"
-        "if args in (['artifact', 'candidate-run', '--json'], ['artifact', 'candidate-run', '--require-complete', '--json']):\n"
+        "if args[:2] == ['artifact', 'candidate-run']:\n"
         "    require_complete = '--require-complete' in args\n"
+        "    execute_until_blocked = '--execute-until-blocked' in args\n"
+        "    mode = 'execute_until_blocked' if execute_until_blocked else 'plan_only'\n"
         "    payload = {\n"
         "        'ok': True,\n"
         "        'action': 'artifact_candidate_run',\n"
         "        'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_next_inspection_required',\n"
-        "        'mode': 'plan_only',\n"
-        "        'mutating_actions_executed': False,\n"
+        "        'mode': mode,\n"
+        "        'execute_until_blocked': execute_until_blocked,\n"
+        "        'mutating_actions_executed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'download_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'verification_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'migration_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'candidate_test_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'adoption_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
+        "        'cycle_step_count': 4 if execute_until_blocked and candidate_mvp_complete else 0,\n"
+        "        'stopped_reason': 'accepted_candidate' if execute_until_blocked and candidate_mvp_complete else None,\n"
         "        'mvp_complete': candidate_mvp_complete,\n"
         "        'mvp_completion': {'ok': candidate_mvp_complete, 'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_mvp_intake_pending'},\n"
         "    }\n"
@@ -220,8 +230,8 @@ def test_post_release_validation_adopts_after_success_when_requested(tmp_path: P
 def test_post_release_validation_can_require_candidate_mvp_completion_success(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.234",
-        "v0.0.234",
+        "v0.0.235",
+        "v0.0.235",
         "--require-candidate-mvp-complete",
         skip_protocol=True,
         skip_artifact_intake=True,
@@ -230,7 +240,7 @@ def test_post_release_validation_can_require_candidate_mvp_completion_success(tm
     )
 
     assert result.returncode == 0, result.stdout
-    summary = _summary(tmp_path / "repo", "v0.0.234")
+    summary = _summary(tmp_path / "repo", "v0.0.235")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["require_candidate_mvp_complete"] is True
     assert step["require_complete"] is True
@@ -242,8 +252,8 @@ def test_post_release_validation_can_require_candidate_mvp_completion_success(tm
 def test_post_release_validation_can_require_candidate_mvp_completion_failure(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.234",
-        "v0.0.234",
+        "v0.0.235",
+        "v0.0.235",
         "--require-candidate-mvp-complete",
         skip_protocol=True,
         skip_artifact_intake=True,
@@ -252,7 +262,7 @@ def test_post_release_validation_can_require_candidate_mvp_completion_failure(tm
     )
 
     assert result.returncode == 1
-    summary = _summary(tmp_path / "repo", "v0.0.234")
+    summary = _summary(tmp_path / "repo", "v0.0.235")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["ok"] is False
     assert summary["require_candidate_mvp_complete"] is True
@@ -261,6 +271,62 @@ def test_post_release_validation_can_require_candidate_mvp_completion_failure(tm
     assert step["mvp_complete"] is False
     assert step["mvp_completion_status"] == "candidate_mvp_intake_pending"
 
+
+
+
+def test_post_release_validation_can_complete_candidate_mvp_cycle_success(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.235",
+        "v0.0.235",
+        "--complete-candidate-mvp",
+        "--candidate-mvp-max-steps",
+        "6",
+        "--candidate-run-step-timeout",
+        "42",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+        candidate_mvp_complete=True,
+    )
+
+    assert result.returncode == 0, result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.235")
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    assert summary["complete_candidate_mvp"] is True
+    assert summary["require_candidate_mvp_complete"] is True
+    assert summary["candidate_mvp_max_steps"] == 6
+    assert summary["candidate_run_step_timeout_seconds"] == 42.0
+    assert step["mode"] == "execute_until_blocked"
+    assert step["require_complete"] is True
+    assert step["execute_until_blocked"] is True
+    assert step["mutating_actions_executed"] is True
+    assert step["mvp_complete"] is True
+    assert step["mvp_completion_status"] == "candidate_mvp_complete"
+    assert step["adoption_performed"] is True
+
+
+def test_post_release_validation_complete_candidate_mvp_cycle_fails_closed_when_incomplete(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.235",
+        "v0.0.235",
+        "--complete-candidate-mvp",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+        candidate_mvp_complete=False,
+    )
+
+    assert result.returncode == 1
+    summary = _summary(tmp_path / "repo", "v0.0.235")
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    assert summary["ok"] is False
+    assert summary["complete_candidate_mvp"] is True
+    assert step["mode"] == "execute_until_blocked"
+    assert step["rc"] == 1
+    assert step["mvp_complete"] is False
+    assert step["mvp_completion_status"] == "candidate_mvp_intake_pending"
 
 def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(tmp_path: Path) -> None:
     result = _run_validation(
