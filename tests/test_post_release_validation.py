@@ -15,6 +15,7 @@ def _write_fake_promptbranch(
     adopted_version: str | None = None,
     fail_protocol_until_adopted: bool = False,
     candidate_mvp_complete: bool = False,
+    candidate_no_artifact_precondition: bool = False,
 ) -> Path:
     exe = bin_dir / "promptbranch"
     adopted_version = adopted_version or initial_artifact_version
@@ -26,6 +27,7 @@ def _write_fake_promptbranch(
         f"adopted = {adopted_version!r}\n"
         f"fail_protocol_until_adopted = {fail_protocol_until_adopted!r}\n"
         f"candidate_mvp_complete = {candidate_mvp_complete!r}\n"
+        f"candidate_no_artifact_precondition = {candidate_no_artifact_precondition!r}\n"
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
         "calls_file = Path(__file__).with_name('calls.jsonl')\n"
         "def record(args):\n"
@@ -68,10 +70,11 @@ def _write_fake_promptbranch(
         "    require_complete = '--require-complete' in args\n"
         "    execute_until_blocked = '--execute-until-blocked' in args\n"
         "    mode = 'execute_until_blocked' if execute_until_blocked else 'plan_only'\n"
+        "    mvp_status = 'candidate_mvp_no_artifact_candidate' if candidate_no_artifact_precondition else ('candidate_mvp_complete' if candidate_mvp_complete else 'candidate_mvp_intake_pending')\n"
         "    payload = {\n"
         "        'ok': True,\n"
         "        'action': 'artifact_candidate_run',\n"
-        "        'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_next_inspection_required',\n"
+        "        'status': 'candidate_run_cycle_precondition_failed' if candidate_no_artifact_precondition and execute_until_blocked else ('candidate_mvp_complete' if candidate_mvp_complete else 'candidate_next_inspection_required'),\n"
         "        'mode': mode,\n"
         "        'execute_until_blocked': execute_until_blocked,\n"
         "        'mutating_actions_executed': bool(execute_until_blocked and candidate_mvp_complete),\n"
@@ -80,10 +83,11 @@ def _write_fake_promptbranch(
         "        'migration_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
         "        'candidate_test_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
         "        'adoption_performed': bool(execute_until_blocked and candidate_mvp_complete),\n"
-        "        'cycle_step_count': 4 if execute_until_blocked and candidate_mvp_complete else 0,\n"
-        "        'stopped_reason': 'accepted_candidate' if execute_until_blocked and candidate_mvp_complete else None,\n"
+        "        'cycle_step_count': 1 if candidate_no_artifact_precondition and execute_until_blocked else (4 if execute_until_blocked and candidate_mvp_complete else 0),\n"
+        "        'stopped_reason': 'no_artifact_candidate' if candidate_no_artifact_precondition and execute_until_blocked else ('accepted_candidate' if execute_until_blocked and candidate_mvp_complete else None),\n"
+        "        'recommended_next_command': {'kind': 'no_artifact_candidate' if candidate_no_artifact_precondition else ('continue_from_adopted_baseline' if candidate_mvp_complete else 'intake_candidate')},\n"
         "        'mvp_complete': candidate_mvp_complete,\n"
-        "        'mvp_completion': {'ok': candidate_mvp_complete, 'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_mvp_intake_pending'},\n"
+        "        'mvp_completion': {'ok': candidate_mvp_complete, 'status': mvp_status},\n"
         "    }\n"
         "    if require_complete and not candidate_mvp_complete:\n"
         "        payload['ok'] = False\n"
@@ -116,6 +120,7 @@ def _run_validation(
     skip_artifact_intake: bool = True,
     skip_tests: bool = True,
     candidate_mvp_complete: bool = False,
+    candidate_no_artifact_precondition: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -129,6 +134,7 @@ def _run_validation(
         adopted_version=adopted_version or requested_version,
         fail_protocol_until_adopted=fail_protocol_until_adopted,
         candidate_mvp_complete=candidate_mvp_complete,
+        candidate_no_artifact_precondition=candidate_no_artifact_precondition,
     )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
@@ -304,6 +310,38 @@ def test_post_release_validation_can_complete_candidate_mvp_cycle_success(tmp_pa
     assert step["mvp_complete"] is True
     assert step["mvp_completion_status"] == "candidate_mvp_complete"
     assert step["adoption_performed"] is True
+
+
+def test_post_release_validation_complete_candidate_mvp_cycle_reports_no_artifact_precondition(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.236",
+        "v0.0.236",
+        "--complete-candidate-mvp",
+        skip_protocol=False,
+        skip_artifact_intake=False,
+        skip_tests=True,
+        candidate_mvp_complete=False,
+        candidate_no_artifact_precondition=True,
+    )
+
+    assert result.returncode == 1
+    summary = _summary(tmp_path / "repo", "v0.0.236")
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    assert summary["ok"] is False
+    assert summary["complete_candidate_mvp"] is True
+    assert step["mode"] == "execute_until_blocked"
+    assert step["rc"] == 1
+    assert step["status"] == "candidate_run_cycle_precondition_failed"
+    assert step["mvp_complete"] is False
+    assert step["mvp_completion_status"] == "candidate_mvp_no_artifact_candidate"
+    assert step["recommended_next_kind"] == "no_artifact_candidate"
+    assert step["stopped_reason"] == "no_artifact_candidate"
+    assert step["mutating_actions_executed"] is False
+    assert step["download_performed"] is False
+    assert step["verification_performed"] is False
+    assert step["migration_performed"] is False
+    assert step["adoption_performed"] is False
 
 
 def test_post_release_validation_complete_candidate_mvp_cycle_fails_closed_when_incomplete(tmp_path: Path) -> None:

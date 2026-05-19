@@ -1,4 +1,4 @@
-# promptbranch v0.0.236
+# promptbranch v0.0.237
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,6 +645,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.237
+
+- Added candidate-run/finalizer precondition handling for validated `no_artifact` protocol replies with zero artifact candidates.
+- `pb artifact candidate-run --execute-until-blocked --require-complete` now reports `candidate_mvp_no_artifact_candidate` / `candidate_run_cycle_precondition_failed` without executing artifact intake when the latest protocol reply explicitly has no artifact.
+- `pb artifact candidate-next` reports `candidate_next_no_artifact_candidate` for the same precondition.
+- No protocol schema, source upload, candidate intake, candidate-test, adoption, or Project Source mutation semantics were changed.
 
 ## v0.0.236
 

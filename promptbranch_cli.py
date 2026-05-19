@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.236"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.237"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -6289,8 +6289,57 @@ def _candidate_next_status_from_kind(kind: str) -> str:
         "intake_candidate": "candidate_next_intake_required",
         "candidate_already_accepted": "candidate_next_already_accepted",
         "inspect_candidate": "candidate_next_inspection_required",
+        "no_artifact_candidate": "candidate_next_no_artifact_candidate",
     }
     return mapping.get(kind or "", "candidate_next_reported")
+
+
+def _latest_protocol_artifact_candidate_precondition(profile_root: Path) -> dict[str, Any]:
+    """Summarize whether the latest validated protocol reply can seed candidate intake."""
+
+    run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_root)
+    base: dict[str, Any] = {
+        "lookup": lookup,
+        "protocol_run_record_path": str(run_path) if run_path else None,
+        "has_validated_protocol_run": run_record is not None,
+    }
+    if run_record is None:
+        return {
+            **base,
+            "status": "protocol_run_not_found",
+            "candidate_available": False,
+            "artifact_candidate_count": 0,
+            "blocks_intake": False,
+        }
+
+    parsed = _normalize_protocol_run_reply_for_intake(run_record)
+    candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
+    reply_status = parsed.get("reply_status")
+    result_type = parsed.get("result_type")
+    parse_ok = bool(parsed.get("ok"))
+    no_artifact = parse_ok and reply_status == "no_artifact" and not candidates
+    return {
+        **base,
+        "status": "candidate_mvp_no_artifact_candidate" if no_artifact else ("artifact_candidate_available" if candidates else "artifact_candidate_not_found"),
+        "candidate_available": bool(candidates),
+        "artifact_candidate_count": len(candidates),
+        "reply_status": reply_status,
+        "result_type": result_type,
+        "reply_parse_ok": parse_ok,
+        "reply_parse_status": parsed.get("status"),
+        "request_id": parsed.get("request_id"),
+        "correlation_id": parsed.get("correlation_id"),
+        "blocks_intake": bool(no_artifact),
+    }
+
+
+def _no_artifact_candidate_recommendation(precondition: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "no_artifact_candidate",
+        "command": None,
+        "reason": "latest validated protocol reply declared no_artifact and contains zero artifact candidates; run a real release-candidate protocol ask before candidate intake",
+        "precondition_status": precondition.get("status"),
+    }
 
 
 def _candidate_next_from_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
@@ -6367,6 +6416,7 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
         candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
         selected = min(candidates, key=_candidate_next_priority) if candidates else None
         if selected is None:
+            precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
             lifecycle = {
                 "candidate_selected": False,
                 "candidate_downloaded": False,
@@ -6376,7 +6426,12 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
                 "candidate_accepted": False,
                 "adoption_eligible": False,
             }
-            recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+            if precondition.get("blocks_intake"):
+                recommendation = _no_artifact_candidate_recommendation(precondition)
+                instruction = "No registered candidates exist and the latest validated protocol reply declared no_artifact. Candidate intake is not applicable until a release-candidate protocol ask produces an artifact."
+            else:
+                recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+                instruction = "No registered candidates exist. Run artifact intake to download, verify, and migrate the latest validated protocol artifact candidate."
             payload = {
                 **base,
                 "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
@@ -6384,7 +6439,8 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
                 "inventory": inventory,
                 "selected_candidate": None,
                 "recommended_next_command": recommendation,
-                "operator_instruction": "No registered candidates exist. Run artifact intake to download, verify, and migrate the latest validated protocol artifact candidate.",
+                "candidate_intake_precondition": precondition,
+                "operator_instruction": instruction,
             }
         else:
             recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
@@ -6453,6 +6509,7 @@ def _candidate_run_next_payload(
     selected = min(candidates, key=_candidate_next_priority) if candidates else None
     candidate_count = int(inventory.get("candidate_count") or 0)
     if selected is None:
+        precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
         lifecycle = {
             "candidate_selected": False,
             "candidate_downloaded": False,
@@ -6462,11 +6519,15 @@ def _candidate_run_next_payload(
             "candidate_accepted": False,
             "adoption_eligible": False,
         }
-        recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+        if precondition.get("blocks_intake"):
+            recommendation = _no_artifact_candidate_recommendation(precondition)
+        else:
+            recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
         next_payload = {
             "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
             "recommended_next_command": recommendation,
             "selected_candidate": None,
+            "candidate_intake_precondition": precondition,
         }
     else:
         recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
@@ -6593,12 +6654,17 @@ def _candidate_run_mvp_completion_report(
             "reason": "the requested candidate scope did not match any registered candidate",
         }
     else:
-        status = "candidate_mvp_intake_pending"
-        recommended = {
-            "kind": "intake_candidate",
-            "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
-            "reason": "no accepted candidate completion proof is available",
-        }
+        precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
+        if precondition.get("blocks_intake"):
+            status = "candidate_mvp_no_artifact_candidate"
+            recommended = _no_artifact_candidate_recommendation(precondition)
+        else:
+            status = "candidate_mvp_intake_pending"
+            recommended = {
+                "kind": "intake_candidate",
+                "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
+                "reason": "no accepted candidate completion proof is available",
+            }
 
     return {
         "ok": mvp_complete,
@@ -6614,6 +6680,7 @@ def _candidate_run_mvp_completion_report(
         "checks": checks,
         "artifact_current": artifact_current,
         "recommended_next_command": recommended,
+        "candidate_intake_precondition": locals().get("precondition"),
         "operator_instruction": "Read-only MVP completion proof for the artifact-candidate lifecycle. No download, test, adoption, Project Source mutation, or state advancement was performed by this report.",
     }
 
@@ -6803,8 +6870,8 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
                 break
             if loop_command is None:
                 cycle_steps.append({**step_plan, "status": "candidate_run_cycle_blocked", "executed": False})
-                stopped_reason = "no_allowlisted_step"
-                cycle_status = "candidate_run_cycle_blocked"
+                stopped_reason = "no_artifact_candidate" if loop_kind == "no_artifact_candidate" else "no_allowlisted_step"
+                cycle_status = "candidate_run_cycle_precondition_failed" if loop_kind == "no_artifact_candidate" else "candidate_run_cycle_blocked"
                 cycle_ok = loop_kind in {"", "candidate_not_found"}
                 break
             result = _run_candidate_lifecycle_command(loop_command, repo_root=repo_root, timeout_seconds=timeout_seconds)
