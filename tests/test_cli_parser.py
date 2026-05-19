@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.231" in out
+    assert "0.0.232" in out
     assert "promptbranch" in out
 
 
@@ -421,6 +421,8 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
         "--version", "v0.0.230",
         "--repo-path", "/tmp/repo",
         "--execute-next",
+        "--execute-until-blocked",
+        "--max-steps", "3",
         "--step-timeout", "123",
         "--json",
     ])
@@ -430,6 +432,8 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_candidate_run.version == "v0.0.230"
     assert artifact_candidate_run.repo_path == "/tmp/repo"
     assert artifact_candidate_run.execute_next is True
+    assert artifact_candidate_run.execute_until_blocked is True
+    assert artifact_candidate_run.max_steps == 3
     assert artifact_candidate_run.step_timeout == 123.0
     assert artifact_candidate_run.json is True
 
