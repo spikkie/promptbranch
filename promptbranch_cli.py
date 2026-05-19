@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.231"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.232"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -6418,6 +6418,66 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
 
 
 
+def _candidate_run_next_payload(
+    backend: Any,
+    *,
+    registry: ArtifactRegistry,
+    profile_root: Path,
+    repo_root: Path,
+    artifact_arg: str | None = None,
+    version_arg: str | None = None,
+) -> tuple[dict[str, Any], int, dict[str, Any] | None]:
+    """Compute the current candidate-run recommendation without mutating state."""
+
+    if artifact_arg or version_arg:
+        registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
+        selection = {**selection, "registry_path": str(registry_path)}
+        status_payload = _artifact_candidate_lifecycle_status(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            candidate=candidate,
+            selection=selection,
+        )
+        next_payload = _candidate_next_from_status_payload(status_payload)
+        return next_payload, (1 if candidate is not None else 0), None
+
+    inventory = _artifact_candidate_lifecycle_status_all(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+    )
+    candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
+    selected = min(candidates, key=_candidate_next_priority) if candidates else None
+    candidate_count = int(inventory.get("candidate_count") or 0)
+    if selected is None:
+        lifecycle = {
+            "candidate_selected": False,
+            "candidate_downloaded": False,
+            "candidate_verified": False,
+            "candidate_migrated": False,
+            "candidate_test_passed": False,
+            "candidate_accepted": False,
+            "adoption_eligible": False,
+        }
+        recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
+        next_payload = {
+            "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
+            "recommended_next_command": recommendation,
+            "selected_candidate": None,
+        }
+    else:
+        recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
+        next_payload = {
+            "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
+            "recommended_next_command": recommendation,
+            "selected_candidate": selected,
+        }
+    return next_payload, candidate_count, inventory
+
+
 def _candidate_run_safe_command(kind: str, *, candidate_version: str | None, repo_root: Path) -> list[str] | None:
     """Build the one allowlisted command that may advance the MVP lifecycle."""
 
@@ -6482,7 +6542,7 @@ def _run_candidate_lifecycle_command(command: list[str], *, repo_root: Path, tim
 
 
 async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> int:
-    """Plan or execute exactly one allowlisted artifact-candidate lifecycle step."""
+    """Plan, execute one step, or execute a bounded artifact-candidate lifecycle cycle."""
 
     registry = _artifact_registry_from_args(args)
     profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
@@ -6490,15 +6550,19 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     artifact_arg = str(getattr(args, "artifact", "") or "").strip() or None
     version_arg = str(getattr(args, "version", "") or "").strip() or None
     execute = bool(getattr(args, "execute_next", False))
+    execute_until_blocked = bool(getattr(args, "execute_until_blocked", False))
     timeout_seconds = float(getattr(args, "step_timeout", 3600.0) or 3600.0)
+    max_steps = max(1, int(getattr(args, "max_steps", 4) or 4))
 
     base = {
         "ok": True,
         "action": "artifact_candidate_run",
         "repo_path": str(repo_root),
         "candidate_registry_path": str(_artifact_candidates_registry_path(profile_root)),
-        "mode": "execute_next" if execute else "plan_only",
+        "mode": "execute_until_blocked" if execute_until_blocked else ("execute_next" if execute else "plan_only"),
         "execute_next": execute,
+        "execute_until_blocked": execute_until_blocked,
+        "max_steps": max_steps,
         "download_performed": False,
         "verification_performed": False,
         "migration_performed": False,
@@ -6510,54 +6574,14 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "state_source_updated": False,
     }
 
-    if artifact_arg or version_arg:
-        registry_path, candidate, selection = _select_artifact_candidate_record(profile_root, artifact=artifact_arg, version=version_arg)
-        selection = {**selection, "registry_path": str(registry_path)}
-        status_payload = _artifact_candidate_lifecycle_status(
-            backend,
-            registry=registry,
-            profile_root=profile_root,
-            repo_root=repo_root,
-            candidate=candidate,
-            selection=selection,
-        )
-        next_payload = _candidate_next_from_status_payload(status_payload)
-        candidate_count = 1 if candidate is not None else 0
-        inventory = None
-    else:
-        inventory = _artifact_candidate_lifecycle_status_all(
-            backend,
-            registry=registry,
-            profile_root=profile_root,
-            repo_root=repo_root,
-        )
-        candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
-        selected = min(candidates, key=_candidate_next_priority) if candidates else None
-        candidate_count = int(inventory.get("candidate_count") or 0)
-        if selected is None:
-            lifecycle = {
-                "candidate_selected": False,
-                "candidate_downloaded": False,
-                "candidate_verified": False,
-                "candidate_migrated": False,
-                "candidate_test_passed": False,
-                "candidate_accepted": False,
-                "adoption_eligible": False,
-            }
-            recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
-            next_payload = {
-                "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
-                "recommended_next_command": recommendation,
-                "selected_candidate": None,
-            }
-        else:
-            recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
-            next_payload = {
-                "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
-                "recommended_next_command": recommendation,
-                "selected_candidate": selected,
-            }
-
+    next_payload, candidate_count, inventory = _candidate_run_next_payload(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+        artifact_arg=artifact_arg,
+        version_arg=version_arg,
+    )
     recommendation = next_payload.get("recommended_next_command") if isinstance(next_payload.get("recommended_next_command"), dict) else {}
     selected_candidate = next_payload.get("selected_candidate") if isinstance(next_payload.get("selected_candidate"), dict) else None
     kind = str(recommendation.get("kind") or "")
@@ -6579,10 +6603,116 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
             "status_counts": inventory.get("status_counts"),
             "lifecycle_counts": inventory.get("lifecycle_counts"),
         } if isinstance(inventory, dict) else None,
-        "operator_instruction": "Plan-only candidate lifecycle runner. Re-run with --execute-next to execute exactly one allowlisted next MVP step and stop.",
+        "operator_instruction": "Plan-only candidate lifecycle runner. Re-run with --execute-next for one step or --execute-until-blocked for a bounded lifecycle cycle.",
     }
 
-    if execute:
+    if execute and execute_until_blocked:
+        payload.update({
+            "ok": False,
+            "status": "candidate_run_invalid_mode",
+            "error": "use either --execute-next or --execute-until-blocked, not both",
+            "mutating_actions_executed": False,
+        })
+        code = 2
+    elif execute_until_blocked:
+        cycle_steps: list[dict[str, Any]] = []
+        aggregate = {
+            "download_performed": False,
+            "verification_performed": False,
+            "migration_performed": False,
+            "candidate_test_performed": False,
+            "adoption_performed": False,
+            "project_source_mutated": False,
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+        }
+        stopped_reason = "max_steps_reached"
+        cycle_ok = False
+        cycle_status = "candidate_run_cycle_max_steps_reached"
+        for step_index in range(1, max_steps + 1):
+            loop_next_payload, loop_candidate_count, loop_inventory = _candidate_run_next_payload(
+                backend,
+                registry=registry,
+                profile_root=profile_root,
+                repo_root=repo_root,
+                artifact_arg=artifact_arg,
+                version_arg=version_arg,
+            )
+            loop_recommendation = loop_next_payload.get("recommended_next_command") if isinstance(loop_next_payload.get("recommended_next_command"), dict) else {}
+            loop_selected_candidate = loop_next_payload.get("selected_candidate") if isinstance(loop_next_payload.get("selected_candidate"), dict) else None
+            loop_kind = str(loop_recommendation.get("kind") or "")
+            loop_candidate_version = None
+            if isinstance(loop_selected_candidate, dict):
+                loop_candidate_version = _candidate_version_normalized(loop_selected_candidate.get("artifact_version") or loop_selected_candidate.get("version"))
+            loop_command = _candidate_run_safe_command(loop_kind, candidate_version=loop_candidate_version, repo_root=repo_root)
+            step_plan = {
+                "step_index": step_index,
+                "kind": loop_kind,
+                "candidate_count": loop_candidate_count,
+                "selected_candidate": loop_selected_candidate,
+                "recommended_next_command": loop_recommendation,
+                "safe_command": loop_command,
+                "inventory_summary": {
+                    "status": loop_inventory.get("status"),
+                    "status_counts": loop_inventory.get("status_counts"),
+                    "lifecycle_counts": loop_inventory.get("lifecycle_counts"),
+                } if isinstance(loop_inventory, dict) else None,
+            }
+            if loop_kind == "candidate_already_accepted":
+                cycle_steps.append({**step_plan, "status": "candidate_run_cycle_already_accepted", "executed": False})
+                stopped_reason = "candidate_already_accepted"
+                cycle_status = "candidate_run_cycle_completed"
+                cycle_ok = True
+                break
+            if loop_command is None:
+                cycle_steps.append({**step_plan, "status": "candidate_run_cycle_blocked", "executed": False})
+                stopped_reason = "no_allowlisted_step"
+                cycle_status = "candidate_run_cycle_blocked"
+                cycle_ok = loop_kind in {"", "candidate_not_found"}
+                break
+            result = _run_candidate_lifecycle_command(loop_command, repo_root=repo_root, timeout_seconds=timeout_seconds)
+            parsed = result.get("parsed_json") if isinstance(result.get("parsed_json"), dict) else {}
+            aggregate["download_performed"] = aggregate["download_performed"] or bool(parsed.get("download_performed"))
+            aggregate["verification_performed"] = aggregate["verification_performed"] or bool(parsed.get("verification_performed"))
+            aggregate["migration_performed"] = aggregate["migration_performed"] or bool(parsed.get("migration_performed"))
+            aggregate["candidate_test_performed"] = aggregate["candidate_test_performed"] or bool(parsed.get("action") == "artifact_candidate_test" and parsed.get("ok"))
+            aggregate["adoption_performed"] = aggregate["adoption_performed"] or bool(parsed.get("adoption_performed"))
+            aggregate["project_source_mutated"] = aggregate["project_source_mutated"] or bool(parsed.get("project_source_mutated"))
+            aggregate["artifact_registry_updated"] = aggregate["artifact_registry_updated"] or bool(parsed.get("artifact_registry_updated"))
+            aggregate["state_artifact_updated"] = aggregate["state_artifact_updated"] or bool(parsed.get("state_artifact_updated"))
+            aggregate["state_source_updated"] = aggregate["state_source_updated"] or bool(parsed.get("state_source_updated"))
+            cycle_steps.append({
+                **step_plan,
+                "status": "candidate_run_cycle_step_completed" if result.get("ok") else "candidate_run_cycle_step_failed",
+                "executed": True,
+                "step_result": result,
+            })
+            if not result.get("ok"):
+                stopped_reason = "step_failed"
+                cycle_status = "candidate_run_cycle_step_failed"
+                cycle_ok = False
+                break
+            if loop_kind == "accept_candidate" and parsed.get("adoption_performed"):
+                stopped_reason = "accepted_candidate"
+                cycle_status = "candidate_run_cycle_completed"
+                cycle_ok = True
+                break
+        else:
+            cycle_ok = False
+
+        payload.update({
+            "ok": cycle_ok,
+            "status": cycle_status,
+            "stopped_reason": stopped_reason,
+            "cycle_step_count": len(cycle_steps),
+            "cycle_steps": cycle_steps,
+            "mutating_actions_executed": any(bool(step.get("executed")) for step in cycle_steps),
+            **aggregate,
+            "operator_instruction": "Executed allowlisted artifact-candidate MVP lifecycle steps until completion, failure, block, or max-step limit. Inspect cycle_steps before running again.",
+        })
+        code = 0 if cycle_ok else 1
+    elif execute:
         if command is None:
             payload.update({
                 "ok": False,
@@ -6628,6 +6758,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         if payload.get("error"):
             print(f"error={payload.get('error')}")
     return code
+
 
 async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) -> int:
     """Adopt a previously tested migrated candidate_release artifact."""
@@ -7994,7 +8125,9 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_run.add_argument("--version", help="Candidate version such as v0.0.230. Used to select the candidate registry entry.")
     artifact_candidate_run.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_candidate_run.add_argument("--execute-next", action="store_true", help="Execute exactly one allowlisted recommended lifecycle command and stop. Without this flag the command is plan-only.")
-    artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for the one executed lifecycle step. Defaults to 3600.")
+    artifact_candidate_run.add_argument("--execute-until-blocked", action="store_true", help="Execute allowlisted lifecycle commands until accepted, blocked, failed, or --max-steps is reached.")
+    artifact_candidate_run.add_argument("--max-steps", type=int, default=4, help="Maximum number of lifecycle steps for --execute-until-blocked. Defaults to 4.")
+    artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for each executed lifecycle step. Defaults to 3600.")
     artifact_candidate_run.add_argument("--json", action="store_true")
 
     artifact_accept_candidate = artifact_subparsers.add_parser("accept-candidate", help="Adopt a migrated candidate_release artifact only after candidate-test passed.")

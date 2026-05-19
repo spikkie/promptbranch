@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.231"
+    assert captured.out.strip() == "promptbranch 0.0.232"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.231"
+    assert payload["version"] == "0.0.232"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -4020,6 +4020,134 @@ def test_artifact_candidate_run_execute_next_runs_one_allowlisted_step(monkeypat
     assert payload["adoption_performed"] is False
     assert payload["project_source_mutated"] is False
     assert payload["step_result"]["parsed_json"]["status"] == "candidate_test_passed"
+
+
+def test_artifact_candidate_run_execute_until_blocked_runs_test_then_accept(monkeypatch, capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v0.0.232.zip"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    zip_path = repo / filename
+    _write_test_release_zip(zip_path, "v0.0.232")
+    profile = tmp_path / "profile"
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.232")
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    calls = []
+
+    def mark_test_passed() -> None:
+        registry_path = profile / "artifact_candidates.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        candidate = registry["candidates"][0]
+        record_dir = profile / "artifact_candidate_tests" / "v0.0.232"
+        record_dir.mkdir(parents=True, exist_ok=True)
+        record_path = record_dir / "candidate_test.fake.json"
+        record = {
+            "schema": "promptbranch.artifact.candidate_test",
+            "schema_version": "1.0",
+            "candidate": candidate,
+            "result": {"ok": True, "status": "candidate_test_passed", "adoption_performed": False},
+            "adoption_performed": False,
+            "project_source_mutated": False,
+        }
+        record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        candidate["latest_test"] = {
+            "ok": True,
+            "status": "candidate_test_passed",
+            "record_path": str(record_path),
+            "tested_at": "2026-05-18T00:00:00Z",
+            "adoption_performed": False,
+        }
+        candidate["tested"] = True
+        candidate["test_status"] = "candidate_test_passed"
+        registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+    def fake_run(command, cwd, stdout, stderr, text, timeout, check):
+        calls.append(command)
+        import subprocess
+
+        if command[2:5] == ["artifact", "candidate-test", "--version"]:
+            mark_test_passed()
+            payload = {
+                "ok": True,
+                "action": "artifact_candidate_test",
+                "status": "candidate_test_passed",
+                "adoption_performed": False,
+                "project_source_mutated": False,
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[2:5] == ["artifact", "accept-candidate", "--version"]:
+            payload = {
+                "ok": True,
+                "action": "artifact_accept_candidate",
+                "status": "accepted_candidate",
+                "adoption_performed": True,
+                "project_source_mutated": False,
+                "artifact_registry_updated": True,
+                "state_artifact_updated": True,
+                "state_source_updated": True,
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
+    args = argparse.Namespace(
+        artifact=None,
+        version="v0.0.232",
+        repo_path=str(repo),
+        execute_next=False,
+        execute_until_blocked=True,
+        max_steps=4,
+        step_timeout=123.0,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_run(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert len(calls) == 2
+    assert payload["ok"] is True
+    assert payload["status"] == "candidate_run_cycle_completed"
+    assert payload["stopped_reason"] == "accepted_candidate"
+    assert payload["cycle_step_count"] == 2
+    assert [step["kind"] for step in payload["cycle_steps"]] == ["test_candidate", "accept_candidate"]
+    assert payload["mutating_actions_executed"] is True
+    assert payload["candidate_test_performed"] is True
+    assert payload["adoption_performed"] is True
+    assert payload["project_source_mutated"] is False
+    assert payload["artifact_registry_updated"] is True
+    assert payload["state_artifact_updated"] is True
+    assert payload["state_source_updated"] is True
+
+
+def test_artifact_candidate_run_rejects_two_execute_modes(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v0.0.232.zip"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    zip_path = repo / filename
+    _write_test_release_zip(zip_path, "v0.0.232")
+    profile = tmp_path / "profile"
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.232", tested=True)
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(
+        artifact=None,
+        version="v0.0.232",
+        repo_path=str(repo),
+        execute_next=True,
+        execute_until_blocked=True,
+        max_steps=4,
+        step_timeout=123.0,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_run(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "candidate_run_invalid_mode"
+    assert payload["mutating_actions_executed"] is False
 
 def test_artifact_accept_candidate_preflight_requires_tested_candidate_and_no_adoption(capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
