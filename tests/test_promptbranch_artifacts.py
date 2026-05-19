@@ -25,6 +25,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     (repo / "app.py").write_text("print('ok')\n", encoding="utf-8")
     (repo / ".env").write_text("SECRET=1\n", encoding="utf-8")
     (repo / "old.zip").write_bytes(b"zip")
+    (repo / "6a062d16-35f4-8387-9217-1d2bd9dde63f.task.show").write_text("task transcript\n", encoding="utf-8")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}", encoding="utf-8")
     (repo / ".pb_profile" / "ask_records" / "req-demo").mkdir(parents=True)
@@ -64,6 +65,7 @@ def test_create_repo_snapshot_excludes_generated_and_profile_files(tmp_path: Pat
     assert "pkg/module.py" in included
     assert ".env" not in included
     assert "old.zip" not in included
+    assert "6a062d16-35f4-8387-9217-1d2bd9dde63f.task.show" not in included
     assert ".pb_profile/state.json" not in included
     assert ".promptbranch-service-start.0.0.195.pid" not in included
     assert "task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt" not in included

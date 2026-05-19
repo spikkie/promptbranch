@@ -138,6 +138,7 @@ def _run_validation(
     )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["POST_RELEASE_VALIDATION_DISABLE_SESSION_TEE"] = "1"
     return subprocess.run(
         [
             str(SCRIPT),
@@ -325,13 +326,14 @@ def test_post_release_validation_complete_candidate_mvp_cycle_reports_no_artifac
         candidate_no_artifact_precondition=True,
     )
 
-    assert result.returncode == 1
+    assert result.returncode == 0, result.stdout
     summary = _summary(tmp_path / "repo", "v0.0.236")
     step = summary["steps"]["artifact_candidate_run_plan"]
-    assert summary["ok"] is False
+    assert summary["ok"] is True
+    assert summary["failure_count"] == 0
     assert summary["complete_candidate_mvp"] is True
     assert step["mode"] == "execute_until_blocked"
-    assert step["rc"] == 1
+    assert step["rc"] == 0
     assert step["status"] == "candidate_run_cycle_precondition_failed"
     assert step["mvp_complete"] is False
     assert step["mvp_completion_status"] == "candidate_mvp_no_artifact_candidate"

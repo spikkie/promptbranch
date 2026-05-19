@@ -611,7 +611,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.237
+## v0.0.238
 
 - Added candidate-run/finalizer precondition handling for validated `no_artifact` protocol replies with zero artifact candidates.
 - `pb artifact candidate-run --execute-until-blocked --require-complete` now reports `candidate_mvp_no_artifact_candidate` / `candidate_run_cycle_precondition_failed` without executing artifact intake when the latest protocol reply explicitly has no artifact.
