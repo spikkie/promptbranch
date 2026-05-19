@@ -18,6 +18,7 @@ pb_cmd_arg="${PB_CMD:-}"
 skip_protocol_smoke=0
 skip_artifact_intake=0
 skip_candidate_run=0
+require_candidate_mvp_complete=0
 skip_tests=0
 skip_zip_hygiene=0
 adopt_if_accepted=0
@@ -36,6 +37,7 @@ Runs the standard post-release validation sequence:
      - --adopt-if-accepted mode: after successful adoption, so --from-current-baseline uses --version
   4. artifact intake dry-run from the last validated protocol reply
   5. artifact candidate-run plan-only smoke for the MVP lifecycle command
+     - optionally with --require-complete for artifact-candidate MVP completion proof
   6. promptbranch test full/report
   7. release ZIP hygiene check
   8. optional adoption/recheck when --adopt-if-accepted is supplied
@@ -49,6 +51,9 @@ Options:
       --skip-protocol-smoke      Skip pb ask --protocol smoke.
       --skip-artifact-intake     Skip pb artifact intake dry-run.
       --skip-candidate-run       Skip pb artifact candidate-run plan-only smoke.
+      --require-candidate-mvp-complete
+                              Run candidate-run with --require-complete and fail unless the
+                              artifact-candidate MVP completion proof is satisfied.
       --skip-tests               Skip pb test full/report.
       --skip-zip-hygiene         Skip ZIP entry hygiene check.
       --adopt-if-accepted        If validation passes, adopt --version as current baseline and re-check semantic state.
@@ -170,6 +175,7 @@ while [[ $# -gt 0 ]]; do
     --skip-protocol-smoke) skip_protocol_smoke=1; shift ;;
     --skip-artifact-intake) skip_artifact_intake=1; shift ;;
     --skip-candidate-run) skip_candidate_run=1; shift ;;
+    --require-candidate-mvp-complete) require_candidate_mvp_complete=1; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-zip-hygiene) skip_zip_hygiene=1; shift ;;
     --adopt-if-accepted) adopt_if_accepted=1; shift ;;
@@ -211,6 +217,7 @@ echo "test_timeout:     ${test_timeout_seconds}"
 echo "skip_protocol:    ${skip_protocol_smoke}"
 echo "skip_intake:      ${skip_artifact_intake}"
 echo "skip_candidate_run: ${skip_candidate_run}"
+echo "require_candidate_mvp_complete: ${require_candidate_mvp_complete}"
 echo "skip_tests:       ${skip_tests}"
 echo "skip_zip_hygiene: ${skip_zip_hygiene}"
 echo "adopt_if_accepted: ${adopt_if_accepted}"
@@ -358,8 +365,14 @@ run_artifact_candidate_run_step() {
       echo "artifact candidate-run plan skipped because artifact intake dry-run failed"
       return 0
     fi
-    run_step "artifact candidate-run plan (${phase})" "${candidate_run_log}" \
-      "${pb_cmd}" artifact candidate-run --json || { rc_candidate_run=$?; failures=$((failures + 1)); }
+    local candidate_run_args=(artifact candidate-run --json)
+    local candidate_run_label="artifact candidate-run plan (${phase})"
+    if [[ "${require_candidate_mvp_complete}" -eq 1 ]]; then
+      candidate_run_args=(artifact candidate-run --require-complete --json)
+      candidate_run_label="artifact candidate-run require-complete (${phase})"
+    fi
+    run_step "${candidate_run_label}" "${candidate_run_log}" \
+      "${pb_cmd}" "${candidate_run_args[@]}" || { rc_candidate_run=$?; failures=$((failures + 1)); }
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
   fi
@@ -592,11 +605,13 @@ python3 - \
   "${rc_adopt_semantic}" \
   "${adopt_if_accepted}" \
   "${require_adopted_baseline}" \
+  "${require_candidate_mvp_complete}" \
   "${adopt_performed}" \
   "${adopt_semantic_performed}" \
   "${protocol_phase}" \
   "${intake_phase}" \
-  "${candidate_run_phase}" <<'PY'
+  "${candidate_run_phase}" \
+  "${candidate_run_log}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -620,12 +635,48 @@ from pathlib import Path
     rc_adopt_semantic,
     adopt_if_accepted,
     require_adopted_baseline,
+    require_candidate_mvp_complete,
     adopt_performed,
     adopt_semantic_performed,
     protocol_phase,
     intake_phase,
     candidate_run_phase,
+    candidate_run_log,
 ) = sys.argv[1:]
+def _load_candidate_run_summary(path: str) -> dict:
+    payload: dict = {}
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    text = text.strip()
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                payload = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                payload = {}
+    if not isinstance(payload, dict):
+        return {}
+    completion = payload.get("mvp_completion") if isinstance(payload.get("mvp_completion"), dict) else {}
+    return {
+        "status": payload.get("status"),
+        "mode": payload.get("mode"),
+        "mvp_complete": payload.get("mvp_complete"),
+        "mvp_completion_status": completion.get("status"),
+        "mvp_completion_ok": completion.get("ok"),
+        "recommended_next_kind": (payload.get("recommended_next_command") or {}).get("kind") if isinstance(payload.get("recommended_next_command"), dict) else None,
+        "mutating_actions_executed": payload.get("mutating_actions_executed"),
+    }
+
+candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
+
 summary = {
     "ok": int(failures) == 0,
     "action": "post_release_validation",
@@ -637,12 +688,18 @@ summary = {
     "failure_count": int(failures),
     "adopt_if_accepted": bool(int(adopt_if_accepted)),
     "require_adopted_baseline": bool(int(require_adopted_baseline)),
+    "require_candidate_mvp_complete": bool(int(require_candidate_mvp_complete)),
     "steps": {
         "artifact_current": {"rc": int(rc_current)},
         "artifact_current_semantic": {"rc": int(rc_current_semantic)},
         "protocol_smoke": {"rc": int(rc_protocol), "phase": protocol_phase},
         "artifact_intake_dry_run": {"rc": int(rc_intake), "phase": intake_phase},
-        "artifact_candidate_run_plan": {"rc": int(rc_candidate_run), "phase": candidate_run_phase},
+        "artifact_candidate_run_plan": {
+            "rc": int(rc_candidate_run),
+            "phase": candidate_run_phase,
+            "require_complete": bool(int(require_candidate_mvp_complete)),
+            **candidate_run_summary,
+        },
         "test_full": {"rc": int(rc_test_full)},
         "test_report": {"rc": int(rc_test_report)},
         "zip_hygiene": {"rc": int(rc_zip_hygiene)},

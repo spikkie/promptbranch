@@ -1,4 +1,4 @@
-# promptbranch v0.0.233
+# promptbranch v0.0.234
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,6 +645,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.234
+
+- Wired artifact-candidate MVP completion proof into `scripts/post-release-validation.sh` through `--require-candidate-mvp-complete`.
+- The default post-release path still runs `pb artifact candidate-run --json` in plan-only mode; strict completion is opt-in so normal release validation does not require an active accepted candidate record.
+- Post-release summaries now surface candidate-run MVP proof fields such as `mvp_complete`, `mvp_completion_status`, and `require_complete`.
+- No new Project Source upload, protocol schema, browser automation, or unchecked mutation behavior was added.
 
 ## v0.0.233
 

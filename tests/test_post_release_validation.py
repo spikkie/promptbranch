@@ -14,6 +14,7 @@ def _write_fake_promptbranch(
     initial_artifact_version: str,
     adopted_version: str | None = None,
     fail_protocol_until_adopted: bool = False,
+    candidate_mvp_complete: bool = False,
 ) -> Path:
     exe = bin_dir / "promptbranch"
     adopted_version = adopted_version or initial_artifact_version
@@ -24,6 +25,7 @@ def _write_fake_promptbranch(
         f"initial = {initial_artifact_version!r}\n"
         f"adopted = {adopted_version!r}\n"
         f"fail_protocol_until_adopted = {fail_protocol_until_adopted!r}\n"
+        f"candidate_mvp_complete = {candidate_mvp_complete!r}\n"
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
         "calls_file = Path(__file__).with_name('calls.jsonl')\n"
         "def record(args):\n"
@@ -62,8 +64,23 @@ def _write_fake_promptbranch(
         "if args == ['artifact', 'intake', '--from-last-answer', '--dry-run', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact'}))\n"
         "    raise SystemExit(0)\n"
-        "if args == ['artifact', 'candidate-run', '--json']:\n"
-        "    print(json.dumps({'ok': True, 'action': 'artifact_candidate_run', 'status': 'candidate_next_inspection_required', 'mode': 'plan_only', 'mutating_actions_executed': False}))\n"
+        "if args in (['artifact', 'candidate-run', '--json'], ['artifact', 'candidate-run', '--require-complete', '--json']):\n"
+        "    require_complete = '--require-complete' in args\n"
+        "    payload = {\n"
+        "        'ok': True,\n"
+        "        'action': 'artifact_candidate_run',\n"
+        "        'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_next_inspection_required',\n"
+        "        'mode': 'plan_only',\n"
+        "        'mutating_actions_executed': False,\n"
+        "        'mvp_complete': candidate_mvp_complete,\n"
+        "        'mvp_completion': {'ok': candidate_mvp_complete, 'status': 'candidate_mvp_complete' if candidate_mvp_complete else 'candidate_mvp_intake_pending'},\n"
+        "    }\n"
+        "    if require_complete and not candidate_mvp_complete:\n"
+        "        payload['ok'] = False\n"
+        "        payload['error'] = 'artifact candidate MVP completion proof is required but not satisfied'\n"
+        "        print(json.dumps(payload))\n"
+        "        raise SystemExit(1)\n"
+        "    print(json.dumps(payload))\n"
         "    raise SystemExit(0)\n"
         "if args == ['test', 'full', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'test_suite'}))\n"
@@ -88,6 +105,7 @@ def _run_validation(
     skip_protocol: bool = True,
     skip_artifact_intake: bool = True,
     skip_tests: bool = True,
+    candidate_mvp_complete: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -100,6 +118,7 @@ def _run_validation(
         artifact_version,
         adopted_version=adopted_version or requested_version,
         fail_protocol_until_adopted=fail_protocol_until_adopted,
+        candidate_mvp_complete=candidate_mvp_complete,
     )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
@@ -143,7 +162,10 @@ def test_post_release_validation_treats_unadopted_baseline_as_diagnostic_by_defa
     assert summary["ok"] is True
     assert summary["steps"]["artifact_current"]["rc"] == 0
     assert summary["steps"]["artifact_current_semantic"]["rc"] == 1
-    assert summary["steps"]["artifact_candidate_run_plan"] == {"phase": "pre_adoption", "rc": 0}
+    assert summary["steps"]["artifact_candidate_run_plan"]["phase"] == "pre_adoption"
+    assert summary["steps"]["artifact_candidate_run_plan"]["rc"] == 0
+    assert summary["steps"]["artifact_candidate_run_plan"]["require_complete"] is False
+    assert summary["steps"]["artifact_candidate_run_plan"]["mvp_complete"] is False
     assert summary["steps"]["artifact_adopt"] == {"enabled": False, "performed": False, "rc": 0}
 
     semantic = _semantic(repo, "v0.0.225.2")
@@ -195,6 +217,51 @@ def test_post_release_validation_adopts_after_success_when_requested(tmp_path: P
 
 
 
+def test_post_release_validation_can_require_candidate_mvp_completion_success(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.234",
+        "v0.0.234",
+        "--require-candidate-mvp-complete",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+        candidate_mvp_complete=True,
+    )
+
+    assert result.returncode == 0, result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.234")
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    assert summary["require_candidate_mvp_complete"] is True
+    assert step["require_complete"] is True
+    assert step["rc"] == 0
+    assert step["mvp_complete"] is True
+    assert step["mvp_completion_status"] == "candidate_mvp_complete"
+
+
+def test_post_release_validation_can_require_candidate_mvp_completion_failure(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.234",
+        "v0.0.234",
+        "--require-candidate-mvp-complete",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+        candidate_mvp_complete=False,
+    )
+
+    assert result.returncode == 1
+    summary = _summary(tmp_path / "repo", "v0.0.234")
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    assert summary["ok"] is False
+    assert summary["require_candidate_mvp_complete"] is True
+    assert step["require_complete"] is True
+    assert step["rc"] == 1
+    assert step["mvp_complete"] is False
+    assert step["mvp_completion_status"] == "candidate_mvp_intake_pending"
+
+
 def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
@@ -217,7 +284,9 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     assert summary["steps"]["artifact_current_after_adopt_semantic"] == {"enabled": True, "performed": True, "rc": 0}
     assert summary["steps"]["protocol_smoke"] == {"phase": "post_adoption", "rc": 0}
     assert summary["steps"]["artifact_intake_dry_run"] == {"phase": "post_adoption", "rc": 0}
-    assert summary["steps"]["artifact_candidate_run_plan"] == {"phase": "post_adoption", "rc": 0}
+    assert summary["steps"]["artifact_candidate_run_plan"]["phase"] == "post_adoption"
+    assert summary["steps"]["artifact_candidate_run_plan"]["rc"] == 0
+    assert summary["steps"]["artifact_candidate_run_plan"]["require_complete"] is False
 
     calls_path = tmp_path / "bin" / "calls.jsonl"
     calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
