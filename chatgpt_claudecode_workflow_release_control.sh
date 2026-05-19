@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ChatGPT Claude Code Workflow release ZIP / compare / commit / install / source-control workflow.
+# ChatGPT Claude Code Workflow release ZIP / automatic import / commit / install / source-control workflow.
 # Run from the repository root: /home/spikkie/git/chatgpt_claudecode_workflow
 #
 # Version precedence, highest first:
@@ -10,7 +10,7 @@ set -Eeuo pipefail
 #   3. VERSION file in the repo root
 #
 # This script uses real commands instead of shell aliases:
-#   bc      -> bcompare
+#   downloaded ZIP -> automatic overwrite import, no Beyond Compare/manual merge
 #   ga .    -> git add .
 #   gcm ... -> git commit -m ...
 #   gp      -> git push
@@ -21,7 +21,11 @@ set -Eeuo pipefail
 # workflow does not hang forever on a foreground service process.
 
 project_name="chatgpt_claudecode_workflow"
-repo_root="$(pwd)"
+if [[ -n "${PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT:-}" ]]; then
+  repo_root="${PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT}"
+else
+  repo_root="$(pwd)"
+fi
 version_file="${repo_root}/VERSION"
 downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
 work_parent="${TMPDIR:-/tmp}/${project_name}_release_import"
@@ -33,7 +37,11 @@ release_log_root_arg="${PROMPTBRANCH_RELEASE_LOG_DIR:-}"
 release_log_keep="${PROMPTBRANCH_RELEASE_LOG_KEEP:-12}"
 prune_release_logs=0
 
-skip_compare=0
+skip_compare=1  # deprecated no-op; Beyond Compare is no longer used.
+skip_zip_import=0
+install_from_zip=0
+install_zip=""
+allow_dirty=0
 skip_commit=0
 skip_push=0
 skip_source_add=0
@@ -59,17 +67,21 @@ packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 usage() {
   cat <<USAGE
 Usage:
-  $(basename "$0") --version v0.0.196 [options]
-  $(basename "$0") v0.0.196 [options]
+  $(basename "$0") --version v0.0.239 [options]
+  $(basename "$0") v0.0.239 [options]
+  $(basename "$0") --install-from-zip ~/Downloads/chatgpt_claudecode_workflow_v0.0.239.zip
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.196, v0.0.196.1, 0.0.196, 0.0.196.1, or ${project_name}_v0.0.196.zip.
-      --downloads-dir DIR     Directory containing the downloaded baseline ZIP. Default: ~/Downloads.
+                              Accepts v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or ${project_name}_v0.0.239.zip.
+      --downloads-dir DIR     Directory containing the downloaded candidate ZIP. Default: ~/Downloads.
+      --install-from-zip ZIP   Install this candidate ZIP into the working tree before commit/package.
+      --skip-zip-import       Do not install a candidate ZIP; operate on the current working tree.
+      --allow-dirty           Allow automatic ZIP import over a dirty working tree. Default: fail closed.
       --container-id ID       Docker container id/name for service logs. Auto-detected if omitted.
       --owner USER[:GROUP]    Owner for .pb_profile after install. Default: ${owner_user}:${owner_group}.
       --packager PATH         Packaging helper. Default: ${default_packager}.
-      --skip-compare          Skip Beyond Compare import comparison.
+      --skip-compare          Deprecated compatibility no-op. Beyond Compare is no longer used.
       --skip-commit           Skip git add/commit/push.
       --no-push               Commit but do not git push.
       --skip-source-add       Skip promptbranch src add.
@@ -86,11 +98,11 @@ Options:
                               Does not imply adoption. Use --tests-only --adopt-if-green for
                               guarded adoption of an already uploaded Project Source ZIP.
       --tests-only            Run only the logged pb test full/report block for the selected
-                              version. Implies --run-tests and skips import/compare,
+                              version. Implies --run-tests and skips ZIP import,
                               commit, packaging, source add, install, service, and docker logs.
       --adopt-current         Adopt the selected local ZIP as the current Project Source/artifact
                               baseline after verifying the ZIP and Project Source. Skips release
-                              import/compare, commit, packaging, source add, install, service,
+                              ZIP import, commit, packaging, source add, install, service,
                               and docker logs.
       --adopt-if-green        With --tests-only, adopt the selected ZIP only when pb test report
                               is ok:true, status:verified, and failure_count:0. Not valid with
@@ -101,18 +113,24 @@ Options:
       --release-log-keep N     Number of version log directories to keep when pruning. Default: 12.
       --prune-release-logs     After the workflow, prune old release log directories under the
                               release log root. The current version directory is always kept.
-      --keep-workdir          Keep temporary extracted comparison directory.
+      --keep-workdir          Keep temporary extracted candidate directory.
   -h, --help                  Show this help.
 
 Version precedence:
   CLI argument > PB_RELEASE_VERSION > VERSION file
 
+Automatic ZIP import:
+  By default this script installs ${project_name}_VERSION.zip from --downloads-dir
+  into the repository before commit/package. This is an overwrite import, not a
+  merge. It preserves .git/, .env, .generated/, .pb_profile/, and profile/.
+
 Typical use:
-  $(basename "$0") --version v0.0.196
+  $(basename "$0") --version v0.0.239
   $(basename "$0") --tests-only
   $(basename "$0") --tests-only --adopt-if-green
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
+  $(basename "$0") --skip-zip-import --run-tests
 USAGE
 }
 
@@ -140,6 +158,128 @@ normalize_version() {
   return 1
 }
 
+
+resolve_download_zip() {
+  local ver_value="$1"
+  local dir="$2"
+  local canonical="${dir}/${project_name}_${ver_value}.zip"
+  local fallback="${dir}/${ver_value}.zip"
+
+  if [[ -f "${canonical}" ]]; then
+    printf '%s\n' "${canonical}"
+    return 0
+  fi
+  if [[ -f "${fallback}" ]]; then
+    printf '%s\n' "${fallback}"
+    return 0
+  fi
+  printf '%s\n' "${canonical}"
+  return 1
+}
+
+find_stage0_install_zip_arg() {
+  local parsed_ver="${PB_RELEASE_VERSION:-}"
+  local parsed_downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
+  local explicit_zip=""
+  local disable_import=0
+  local arg
+
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    case "${arg}" in
+      -h|--help|--tests-only|--run-tests-only|--adopt-current)
+        return 1
+        ;;
+      --skip-zip-import)
+        disable_import=1
+        shift
+        ;;
+      --install-from-zip)
+        [[ $# -ge 2 ]] || return 1
+        explicit_zip="$2"
+        shift 2
+        ;;
+      --install-from-zip=*)
+        explicit_zip="${arg#*=}"
+        shift
+        ;;
+      -v|--version)
+        [[ $# -ge 2 ]] || return 1
+        parsed_ver="$2"
+        shift 2
+        ;;
+      --version=*)
+        parsed_ver="${arg#*=}"
+        shift
+        ;;
+      --downloads-dir)
+        [[ $# -ge 2 ]] || return 1
+        parsed_downloads_dir="$2"
+        shift 2
+        ;;
+      --downloads-dir=*)
+        parsed_downloads_dir="${arg#*=}"
+        shift
+        ;;
+      --)
+        shift
+        if [[ $# -ge 1 && -z "${parsed_ver}" ]]; then
+          parsed_ver="$1"
+        fi
+        break
+        ;;
+      --*)
+        shift
+        ;;
+      *)
+        if [[ -z "${parsed_ver}" ]]; then
+          parsed_ver="${arg}"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  (( disable_import == 0 )) || return 1
+
+  if [[ -n "${explicit_zip}" ]]; then
+    [[ -f "${explicit_zip}" ]] || return 1
+    printf '%s\n' "${explicit_zip}"
+    return 0
+  fi
+
+  if [[ -z "${parsed_ver}" ]]; then
+    [[ -f "${version_file}" ]] || return 1
+    parsed_ver="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
+  fi
+
+  parsed_ver="$(normalize_version "${parsed_ver}" 2>/dev/null)" || return 1
+  local resolved
+  resolved="$(resolve_download_zip "${parsed_ver}" "${parsed_downloads_dir}" 2>/dev/null)" || return 1
+  [[ -f "${resolved}" ]] || return 1
+  printf '%s\n' "${resolved}"
+}
+
+if [[ "${PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0:-0}" != "1" ]]; then
+  if candidate_stage0_zip="$(find_stage0_install_zip_arg "$@" 2>/dev/null)"; then
+    [[ -n "${candidate_stage0_zip}" ]] || fail "could not resolve candidate ZIP for Stage-0 delegation"
+    [[ -f "${candidate_stage0_zip}" ]] || fail "candidate ZIP not found: ${candidate_stage0_zip}"
+    need_cmd unzip
+
+    candidate_stage0_script="$(mktemp "${TMPDIR:-/tmp}/promptbranch-release-candidate-workflow.XXXXXX.sh")"
+    if unzip -p "${candidate_stage0_zip}" chatgpt_claudecode_workflow_release_control.sh > "${candidate_stage0_script}" 2>/dev/null; then
+      chmod +x "${candidate_stage0_script}"
+      echo "== Delegate to workflow runner from candidate ZIP =="
+      echo "candidate_zip: ${candidate_stage0_zip}"
+      echo "stage0_script: ${candidate_stage0_script}"
+      export PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT="${repo_root}"
+      export PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0=1
+      exec "${candidate_stage0_script}" "$@"
+    fi
+    rm -f "${candidate_stage0_script}"
+  fi
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version)
@@ -154,6 +294,19 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --downloads-dir=*) downloads_dir="${1#*=}"; shift ;;
+    --install-from-zip)
+      [[ $# -ge 2 ]] || fail "--install-from-zip requires a ZIP path"
+      install_from_zip=1
+      install_zip="$2"
+      shift 2
+      ;;
+    --install-from-zip=*)
+      install_from_zip=1
+      install_zip="${1#*=}"
+      shift
+      ;;
+    --skip-zip-import) skip_zip_import=1; shift ;;
+    --allow-dirty) allow_dirty=1; shift ;;
     --release-log-dir)
       [[ $# -ge 2 ]] || fail "--release-log-dir requires a value"
       release_log_root_arg="$2"
@@ -194,7 +347,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --packager=*) packager="${1#*=}"; shift ;;
-    --skip-compare) skip_compare=1; shift ;;
+    --skip-compare) skip_compare=1; shift ;; # deprecated no-op
     --skip-commit) skip_commit=1; shift ;;
     --no-push) skip_push=1; shift ;;
     --skip-source-add) skip_source_add=1; shift ;;
@@ -224,6 +377,7 @@ while [[ $# -gt 0 ]]; do
       tests_only=1
       skip_tests=0
       skip_compare=1
+      skip_zip_import=1
       skip_commit=1
       skip_push=1
       skip_source_add=1
@@ -236,6 +390,7 @@ while [[ $# -gt 0 ]]; do
     --adopt-current)
       adopt_current=1
       skip_compare=1
+      skip_zip_import=1
       skip_commit=1
       skip_push=1
       skip_source_add=1
@@ -283,14 +438,24 @@ if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
 fi
 
 if [[ -z "${version_arg}" ]]; then
-  [[ -f "${version_file}" ]] || fail "VERSION file not found and no --version supplied: ${version_file}"
-  version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
+  if [[ ${install_from_zip} -eq 1 ]]; then
+    version_arg="${install_zip}"
+  else
+    [[ -f "${version_file}" ]] || fail "VERSION file not found and no --version supplied: ${version_file}"
+    version_arg="$(head -n 1 "${version_file}" | tr -d '[:space:]')"
+  fi
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.196, v0.0.196.1, 0.0.196, 0.0.196.1, or ${project_name}_v0.0.196.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or ${project_name}_v0.0.239.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
 artifact_zip="${project_name}_${ver}.zip"
-download_zip="${downloads_dir}/${artifact_zip}"
+if [[ ${install_from_zip} -eq 1 ]]; then
+  [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"
+  [[ -f "${install_zip}" ]] || fail "install ZIP not found: ${install_zip}"
+else
+  install_zip="$(resolve_download_zip "${ver}" "${downloads_dir}" 2>/dev/null || true)"
+fi
+download_zip="${install_zip}"
 work_dir="${work_parent}/${project_name}_${ver}"
 release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"
 release_log_dir="${release_log_root}/${ver}"
@@ -310,8 +475,8 @@ service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"
 service_start_log="${release_log_dir}/promptbranch-service-start.${ver_plain}.log"
 service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid"
 
-if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
-  [[ -f "${download_zip}" ]] || fail "Download ZIP not found: ${download_zip}"
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
+  [[ -f "${download_zip}" ]] || fail "Download ZIP not found. Expected ${downloads_dir}/${artifact_zip} or ${downloads_dir}/${ver}.zip; use --install-from-zip ZIP or --skip-zip-import."
 fi
 
 need_cmd python3
@@ -323,12 +488,12 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
   need_cmd unzip
   need_cmd git
   need_cmd pipx
+  if [[ ${skip_zip_import} -eq 0 ]]; then
+    need_cmd rsync
+  fi
 fi
 if [[ ${skip_tests} -eq 0 || ${skip_service} -eq 0 ]]; then
   need_cmd timeout
-fi
-if [[ ${skip_compare} -eq 0 ]]; then
-  need_cmd bcompare
 fi
 if [[ ${skip_docker_logs} -eq 0 ]]; then
   need_cmd docker
@@ -349,27 +514,41 @@ printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
+printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
 printf '\n'
 
-if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
-  # Import downloaded baseline ZIP into a temporary directory and visually compare it to the repo.
+if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
+  [[ -f "${download_zip}" ]] || fail "install ZIP not found: ${download_zip}"
+
+  if [[ ${allow_dirty} -eq 0 ]]; then
+    dirty="$(git status --porcelain --untracked-files=all)"
+    [[ -z "${dirty}" ]] || fail "working tree has tracked/untracked changes; commit/stash first or use --allow-dirty"
+  fi
+
+  echo
+  echo "== Verify install ZIP =="
+  unzip -t "${download_zip}"
+  zip_version="$(unzip -p "${download_zip}" VERSION | tr -d '[:space:]')"
+  [[ "${zip_version}" == "${ver}" ]] || fail "ZIP VERSION mismatch: expected ${ver}, got ${zip_version}"
+
   rm -rf "${work_dir}"
   mkdir -p "${work_dir}"
-  cp "${download_zip}" "${work_dir}/${artifact_zip}"
-  (
-    cd "${work_dir}"
-    unzip -q "${artifact_zip}"
-    rm -f "${artifact_zip}"
-  )
-fi
+  unzip -q "${download_zip}" -d "${work_dir}"
+  [[ -f "${work_dir}/VERSION" ]] || fail "candidate ZIP must contain repository contents at ZIP root"
 
-if [[ ${skip_compare} -eq 0 ]]; then
-  # Beyond Compare may return non-zero for differences; differences are the point here.
-  bcompare "${work_dir}" "${repo_root}" || true
-fi
+  echo
+  echo "== Install ZIP into working tree =="
+  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     -exec rm -rf {} +
 
-if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${keep_workdir} -eq 0 ]]; then
-  rm -rf "${work_dir}"
+  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     "${work_dir}/" "${repo_root}/"
+
+  cp "${download_zip}" "${repo_root}/${artifact_zip}"
+  chmod +x "${repo_root}/chatgpt_claudecode_workflow_release_control.sh" "${repo_root}"/scripts/*.sh 2>/dev/null || true
+  echo "Installed ${download_zip} into ${repo_root}"
+
+  if [[ ${keep_workdir} -eq 0 ]]; then
+    rm -rf "${work_dir}"
+  fi
 fi
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
@@ -466,17 +645,16 @@ PY
 fi
 
 # Normalize possible packager output names to canonical artifact name.
+matched_packager_output=0
 for candidate in \
   "source_${ver}.zip" \
   "source_${ver_plain}.zip" \
   "source_${project_name}_${ver}.zip" \
-  "source_${project_name}_${ver_plain}.zip" \
-  "${project_name}_${ver}.zip"
+  "source_${project_name}_${ver_plain}.zip"
 do
   if [[ -f "${candidate}" ]]; then
-    if [[ "${candidate}" != "${artifact_zip}" ]]; then
-      mv -f "${candidate}" "${artifact_zip}"
-    fi
+    mv -f "${candidate}" "${artifact_zip}"
+    matched_packager_output=1
     break
   fi
 done
@@ -486,8 +664,10 @@ done
 # git-hash artifact name like chatgpt_claudecode_workflow-f8f6bf5.zip. Accept
 # that transport filename only when it matches the current git HEAD hash; the
 # canonical ZIP verification below still validates the embedded VERSION before
-# the artifact is used.
-if [[ ! -f "${artifact_zip}" ]]; then
+# the artifact is used. This check runs even when a copied install ZIP already
+# exists at the canonical path, because a packager output must supersede the
+# transported input artifact.
+if [[ ${matched_packager_output} -eq 0 ]]; then
   current_git_short="$(git rev-parse --short HEAD 2>/dev/null || true)"
   if [[ -n "${current_git_short}" ]]; then
     for candidate in \
@@ -496,6 +676,7 @@ if [[ ! -f "${artifact_zip}" ]]; then
     do
       if [[ -f "${candidate}" ]]; then
         mv -f "${candidate}" "${artifact_zip}"
+        matched_packager_output=1
         break
       fi
     done
