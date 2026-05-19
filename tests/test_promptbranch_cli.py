@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.236"
+    assert captured.out.strip() == "promptbranch 0.0.237"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.236"
+    assert payload["version"] == "0.0.237"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -4119,6 +4119,139 @@ def test_artifact_candidate_run_execute_until_blocked_runs_test_then_accept(monk
     assert payload["state_artifact_updated"] is True
     assert payload["state_source_updated"] is True
 
+
+
+
+def _write_no_artifact_protocol_run(profile: Path, *, request_id: str = "req-no-artifact") -> Path:
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "status": "no_artifact",
+        "result_type": "no_change",
+        "summary": "Protocol smoke only; no artifact was produced.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.236.zip",
+            "input_version": "v0.0.236",
+            "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
+            "source_version": "v0.0.236",
+            "output_artifact": None,
+            "output_version": "v0.0.237",
+            "target_version": "v0.0.237",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [],
+        "validation": {"claimed": ["protocol reply only"], "not_claimed": ["artifact creation"]},
+        "next_step": {"operator_action": "none"},
+    }
+    run = {
+        "ok": True,
+        "status": "reply_validated",
+        "reply_validation_ok": True,
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "reply": reply,
+        "artifact_candidate_count": 0,
+        "request": {
+            "workspace": {"project_home_url": "https://chatgpt.com/g/g-p-demo/project"},
+            "task": {"conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc", "conversation_id": "abc"},
+            "artifact": {
+                "repo": "chatgpt_claudecode_workflow",
+                "current_baseline": "chatgpt_claudecode_workflow_v0.0.236.zip",
+                "current_version": "v0.0.236",
+                "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
+                "source_version": "v0.0.236",
+                "target_version": "v0.0.237",
+                "release_type": "normal",
+            },
+        },
+    }
+    records = profile / "ask_protocol_runs"
+    records.mkdir(parents=True, exist_ok=True)
+    path = records / f"{request_id}.json"
+    path.write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def test_artifact_candidate_run_no_artifact_protocol_reply_blocks_intake_precondition(monkeypatch, capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    profile = tmp_path / "profile"
+    _write_no_artifact_protocol_run(profile)
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    calls: list[list[str]] = []
+
+    def fake_run(command, cwd, stdout, stderr, text, timeout, check):
+        calls.append(command)
+        raise AssertionError(f"candidate-run must not execute intake for no_artifact protocol replies: {command!r}")
+
+    monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
+    args = argparse.Namespace(
+        artifact=None,
+        version=None,
+        repo_path=str(repo),
+        execute_next=False,
+        execute_until_blocked=True,
+        max_steps=4,
+        require_complete=True,
+        step_timeout=123.0,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_run(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert calls == []
+    assert payload["ok"] is False
+    assert payload["status"] == "candidate_run_cycle_precondition_failed"
+    assert payload["stopped_reason"] == "no_artifact_candidate"
+    assert payload["cycle_step_count"] == 1
+    assert payload["cycle_steps"][0]["kind"] == "no_artifact_candidate"
+    assert payload["cycle_steps"][0]["executed"] is False
+    assert payload["mutating_actions_executed"] is False
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["mvp_completion"]["status"] == "candidate_mvp_no_artifact_candidate"
+    precondition = payload["mvp_completion"]["candidate_intake_precondition"]
+    assert precondition["blocks_intake"] is True
+    assert precondition["reply_status"] == "no_artifact"
+    assert precondition["artifact_candidate_count"] == 0
+    assert payload["recommended_next_command"]["kind"] == "no_artifact_candidate"
+    assert payload["safe_command"] is None
+
+
+def test_artifact_candidate_next_no_artifact_protocol_reply_reports_precondition(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    profile = tmp_path / "profile"
+    _write_no_artifact_protocol_run(profile)
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(
+        artifact=None,
+        version=None,
+        repo_path=str(repo),
+        all=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_next(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "candidate_next_no_artifact_candidate"
+    assert payload["candidate_count"] == 0
+    assert payload["recommended_next_command"]["kind"] == "no_artifact_candidate"
+    assert payload["recommended_next_command"]["command"] is None
+    assert payload["candidate_intake_precondition"]["status"] == "candidate_mvp_no_artifact_candidate"
+    assert payload["candidate_intake_precondition"]["blocks_intake"] is True
+    assert payload["mutating_actions_executed"] is False
 
 
 def test_artifact_candidate_run_require_complete_fails_when_lifecycle_incomplete(capsys, tmp_path) -> None:
