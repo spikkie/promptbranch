@@ -19,6 +19,9 @@ skip_protocol_smoke=0
 skip_artifact_intake=0
 skip_candidate_run=0
 require_candidate_mvp_complete=0
+complete_candidate_mvp=0
+candidate_mvp_max_steps="${PROMPTBRANCH_CANDIDATE_MVP_MAX_STEPS:-4}"
+candidate_run_step_timeout_seconds="${PROMPTBRANCH_CANDIDATE_RUN_STEP_TIMEOUT_SECONDS:-3600}"
 skip_tests=0
 skip_zip_hygiene=0
 adopt_if_accepted=0
@@ -54,6 +57,16 @@ Options:
       --require-candidate-mvp-complete
                               Run candidate-run with --require-complete and fail unless the
                               artifact-candidate MVP completion proof is satisfied.
+      --complete-candidate-mvp
+                              Run candidate-run with --execute-until-blocked --require-complete
+                              after protocol/intake gates. This can execute existing allowlisted
+                              candidate lifecycle steps and stops fail-closed.
+      --candidate-mvp-max-steps N
+                              Maximum candidate-run lifecycle steps for --complete-candidate-mvp.
+                              Default: ${candidate_mvp_max_steps}.
+      --candidate-run-step-timeout SEC
+                              Per-step timeout for candidate-run lifecycle execution.
+                              Default: ${candidate_run_step_timeout_seconds}.
       --skip-tests               Skip pb test full/report.
       --skip-zip-hygiene         Skip ZIP entry hygiene check.
       --adopt-if-accepted        If validation passes, adopt --version as current baseline and re-check semantic state.
@@ -176,6 +189,19 @@ while [[ $# -gt 0 ]]; do
     --skip-artifact-intake) skip_artifact_intake=1; shift ;;
     --skip-candidate-run) skip_candidate_run=1; shift ;;
     --require-candidate-mvp-complete) require_candidate_mvp_complete=1; shift ;;
+    --complete-candidate-mvp) complete_candidate_mvp=1; require_candidate_mvp_complete=1; shift ;;
+    --candidate-mvp-max-steps)
+      [[ $# -ge 2 ]] || { echo "ERROR: --candidate-mvp-max-steps requires a value" >&2; exit 2; }
+      candidate_mvp_max_steps="$2"
+      shift 2
+      ;;
+    --candidate-mvp-max-steps=*) candidate_mvp_max_steps="${1#*=}"; shift ;;
+    --candidate-run-step-timeout)
+      [[ $# -ge 2 ]] || { echo "ERROR: --candidate-run-step-timeout requires seconds" >&2; exit 2; }
+      candidate_run_step_timeout_seconds="$2"
+      shift 2
+      ;;
+    --candidate-run-step-timeout=*) candidate_run_step_timeout_seconds="${1#*=}"; shift ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-zip-hygiene) skip_zip_hygiene=1; shift ;;
     --adopt-if-accepted) adopt_if_accepted=1; shift ;;
@@ -198,6 +224,27 @@ else
 fi
 pb_cmd="$(select_pb_cmd)" || exit 2
 
+if [[ "${complete_candidate_mvp}" -eq 1 && "${skip_candidate_run}" -eq 1 ]]; then
+  echo "ERROR: --complete-candidate-mvp cannot be combined with --skip-candidate-run" >&2
+  exit 2
+fi
+if ! [[ "${candidate_mvp_max_steps}" =~ ^[0-9]+$ ]] || [[ "${candidate_mvp_max_steps}" -lt 1 ]]; then
+  echo "ERROR: --candidate-mvp-max-steps must be a positive integer: ${candidate_mvp_max_steps}" >&2
+  exit 2
+fi
+if ! python3 - "${candidate_run_step_timeout_seconds}" <<'PYTIMEOUT'
+import sys
+try:
+    value = float(sys.argv[1])
+except ValueError:
+    raise SystemExit(1)
+raise SystemExit(0 if value > 0 else 1)
+PYTIMEOUT
+then
+  echo "ERROR: --candidate-run-step-timeout must be a positive number: ${candidate_run_step_timeout_seconds}" >&2
+  exit 2
+fi
+
 release_log_dir="${release_log_root%/}/${version}"
 mkdir -p "${release_log_dir}"
 session_log="${release_log_dir}/post_release_validation.${version}.session.log"
@@ -218,6 +265,9 @@ echo "skip_protocol:    ${skip_protocol_smoke}"
 echo "skip_intake:      ${skip_artifact_intake}"
 echo "skip_candidate_run: ${skip_candidate_run}"
 echo "require_candidate_mvp_complete: ${require_candidate_mvp_complete}"
+echo "complete_candidate_mvp: ${complete_candidate_mvp}"
+echo "candidate_mvp_max_steps: ${candidate_mvp_max_steps}"
+echo "candidate_run_step_timeout: ${candidate_run_step_timeout_seconds}"
 echo "skip_tests:       ${skip_tests}"
 echo "skip_zip_hygiene: ${skip_zip_hygiene}"
 echo "adopt_if_accepted: ${adopt_if_accepted}"
@@ -367,7 +417,10 @@ run_artifact_candidate_run_step() {
     fi
     local candidate_run_args=(artifact candidate-run --json)
     local candidate_run_label="artifact candidate-run plan (${phase})"
-    if [[ "${require_candidate_mvp_complete}" -eq 1 ]]; then
+    if [[ "${complete_candidate_mvp}" -eq 1 ]]; then
+      candidate_run_args=(artifact candidate-run --execute-until-blocked --max-steps "${candidate_mvp_max_steps}" --step-timeout "${candidate_run_step_timeout_seconds}" --require-complete --json)
+      candidate_run_label="artifact candidate-run complete-candidate-mvp (${phase})"
+    elif [[ "${require_candidate_mvp_complete}" -eq 1 ]]; then
       candidate_run_args=(artifact candidate-run --require-complete --json)
       candidate_run_label="artifact candidate-run require-complete (${phase})"
     fi
@@ -606,6 +659,9 @@ python3 - \
   "${adopt_if_accepted}" \
   "${require_adopted_baseline}" \
   "${require_candidate_mvp_complete}" \
+  "${complete_candidate_mvp}" \
+  "${candidate_mvp_max_steps}" \
+  "${candidate_run_step_timeout_seconds}" \
   "${adopt_performed}" \
   "${adopt_semantic_performed}" \
   "${protocol_phase}" \
@@ -636,6 +692,9 @@ from pathlib import Path
     adopt_if_accepted,
     require_adopted_baseline,
     require_candidate_mvp_complete,
+    complete_candidate_mvp,
+    candidate_mvp_max_steps,
+    candidate_run_step_timeout_seconds,
     adopt_performed,
     adopt_semantic_performed,
     protocol_phase,
@@ -673,6 +732,14 @@ def _load_candidate_run_summary(path: str) -> dict:
         "mvp_completion_ok": completion.get("ok"),
         "recommended_next_kind": (payload.get("recommended_next_command") or {}).get("kind") if isinstance(payload.get("recommended_next_command"), dict) else None,
         "mutating_actions_executed": payload.get("mutating_actions_executed"),
+        "execute_until_blocked": payload.get("execute_until_blocked"),
+        "cycle_step_count": payload.get("cycle_step_count"),
+        "stopped_reason": payload.get("stopped_reason"),
+        "download_performed": payload.get("download_performed"),
+        "verification_performed": payload.get("verification_performed"),
+        "migration_performed": payload.get("migration_performed"),
+        "candidate_test_performed": payload.get("candidate_test_performed"),
+        "adoption_performed": payload.get("adoption_performed"),
     }
 
 candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
@@ -689,6 +756,9 @@ summary = {
     "adopt_if_accepted": bool(int(adopt_if_accepted)),
     "require_adopted_baseline": bool(int(require_adopted_baseline)),
     "require_candidate_mvp_complete": bool(int(require_candidate_mvp_complete)),
+    "complete_candidate_mvp": bool(int(complete_candidate_mvp)),
+    "candidate_mvp_max_steps": int(candidate_mvp_max_steps),
+    "candidate_run_step_timeout_seconds": float(candidate_run_step_timeout_seconds),
     "steps": {
         "artifact_current": {"rc": int(rc_current)},
         "artifact_current_semantic": {"rc": int(rc_current_semantic)},

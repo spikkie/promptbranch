@@ -611,11 +611,18 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.235
+
+- `scripts/post-release-validation.sh` now accepts `--complete-candidate-mvp` to run the full bounded Artifact Intake MVP lifecycle through `pb artifact candidate-run --execute-until-blocked --require-complete --json`.
+- This mode can execute existing allowlisted lifecycle gates, so use it only when you intentionally want the validator to complete candidate intake/test/adoption until blocked or complete.
+- Use `--candidate-mvp-max-steps` and `--candidate-run-step-timeout` to keep the lifecycle cycle bounded.
+- The default validation path remains plan-only and non-mutating; no Project Source upload, protocol schema, or browser automation behavior changed.
+
 ## v0.0.234
 
-- `scripts/post-release-validation.sh` now accepts `--require-candidate-mvp-complete` to run `pb artifact candidate-run --require-complete --json` as a strict Artifact Intake MVP completion gate.
+- `scripts/post-release-validation.sh` accepts `--require-candidate-mvp-complete` to run `pb artifact candidate-run --require-complete --json` as a strict Artifact Intake MVP completion gate.
 - The default post-release validation path remains plan-only and non-mutating; strict completion is opt-in.
-- Summary JSON now includes `require_candidate_mvp_complete` and candidate-run MVP proof fields when available.
+- Summary JSON includes `require_candidate_mvp_complete` and candidate-run MVP proof fields when available.
 
 ## v0.0.233
 
