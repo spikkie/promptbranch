@@ -554,3 +554,72 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert "promptbranch test report" in call_text
     assert "artifact adopt" not in call_text
     assert "src sync" not in call_text
+
+
+def test_finalize_artifact_intake_mvp_wraps_post_release_validation(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    fake = tmp_path / "post-release-validation.sh"
+    calls = tmp_path / "post_release_calls.json"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'PY' \"$@\"\n"
+        "import json, sys\n"
+        f"from pathlib import Path\nPath({str(calls)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
+    env = os.environ.copy()
+    env["POST_RELEASE_VALIDATION_SCRIPT"] = str(fake)
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version",
+            "v9.9.9",
+            "--target-version",
+            "v9.9.10",
+            "--candidate-mvp-max-steps",
+            "6",
+            "--candidate-run-step-timeout",
+            "42",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "final Artifact Intake MVP validation starting" in result.stdout
+    assert "final Artifact Intake MVP validation passed" in result.stdout
+    args = json.loads(calls.read_text(encoding="utf-8"))
+    assert args == [
+        "--version",
+        "v9.9.9",
+        "--target-version",
+        "v9.9.10",
+        "--candidate-mvp-max-steps",
+        "6",
+        "--candidate-run-step-timeout",
+        "42",
+        "--adopt-if-accepted",
+        "--complete-candidate-mvp",
+    ]
+
+
+def test_finalize_artifact_intake_mvp_rejects_conflicting_flags(tmp_path: Path):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
+
+    result = subprocess.run(
+        [str(script), "--version", "v9.9.9", "--target-version", "v9.9.10", "--skip-candidate-run"],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2
+    assert "conflicts with final Artifact Intake MVP completion validation" in result.stderr
+
