@@ -611,6 +611,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.234
+
+- `scripts/post-release-validation.sh` now accepts `--require-candidate-mvp-complete` to run `pb artifact candidate-run --require-complete --json` as a strict Artifact Intake MVP completion gate.
+- The default post-release validation path remains plan-only and non-mutating; strict completion is opt-in.
+- Summary JSON now includes `require_candidate_mvp_complete` and candidate-run MVP proof fields when available.
+
 ## v0.0.233
 
 - `pb artifact candidate-run` now emits `mvp_completion` and `mvp_complete` proof fields.
