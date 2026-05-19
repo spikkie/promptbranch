@@ -4,6 +4,10 @@ set -euo pipefail
 app_module="${CHATGPT_UVICORN_APP:-promptbranch_container_api:app}"
 port="${PORT:-8000}"
 reload_setting="${CHATGPT_UVICORN_RELOAD:-0}"
+container_home="${HOME:-/tmp/promptbranch-home}"
+container_cache="${XDG_CACHE_HOME:-/tmp/promptbranch-cache}"
+container_config="${XDG_CONFIG_HOME:-/tmp/promptbranch-config}"
+mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/debug_artifacts
 
 cmd=(
   xvfb-run

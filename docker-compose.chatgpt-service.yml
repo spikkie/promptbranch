@@ -3,11 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.0.239
+    image: promptbranch-service:0.0.240.1
     init: true
+    user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"
     ports:
       - "8000:8000"
     environment:
+      HOME: ${PROMPTBRANCH_CONTAINER_HOME:-/tmp/promptbranch-home}
+      XDG_CACHE_HOME: ${PROMPTBRANCH_CONTAINER_XDG_CACHE_HOME:-/tmp/promptbranch-cache}
+      XDG_CONFIG_HOME: ${PROMPTBRANCH_CONTAINER_XDG_CONFIG_HOME:-/tmp/promptbranch-config}
+      PYTHONDONTWRITEBYTECODE: "1"
       CHATGPT_UVICORN_APP: promptbranch_container_api:app
       CHATGPT_UVICORN_RELOAD: ${CHATGPT_UVICORN_RELOAD:-0}
       CHATGPT_PROJECT_URL: ${CHATGPT_PROJECT_URL:-https://chatgpt.com/}

@@ -1,4 +1,4 @@
-# promptbranch v0.0.239
+# promptbranch v0.0.240.1
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,6 +645,21 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.240.1
+
+- Repair for `v0.0.240`: release-control automatic import now preserves `debug_artifacts/` instead of attempting to delete root-owned trace artifacts during overwrite import.
+- Ownership normalization now covers generated repo-local state: `.pb_profile/` and `debug_artifacts/` are chowned to the configured `--owner` before import and after release steps unless `--skip-chown` is used.
+- Docker Compose now runs `chatgpt-service` with the invoking host UID/GID by default via `PROMPTBRANCH_DOCKER_UID` / `PROMPTBRANCH_DOCKER_GID`, preventing newly generated bind-mounted artifacts from being written as `root`.
+- The container service startup redirects HOME/XDG cache/config paths to `/tmp` and disables Python bytecode generation to reduce root-owned generated surfaces.
+
+## v0.0.240
+
+- Added `chatgpt_claudecode_workflow_release_control.sh --import-plan` / `--dry-run-import` to validate and describe a candidate ZIP import without modifying the working tree.
+- Import plans now report candidate ZIP path, embedded VERSION, root-layout classification, candidate script presence, preserved paths, and root entries that would be removed/installed.
+- Automatic ZIP import now reuses the same preflight validation before deleting or rsyncing repository contents.
+- Stage-0 delegation now fails closed when the candidate ZIP does not contain `chatgpt_claudecode_workflow_release_control.sh` instead of silently continuing with the older installed script.
+- Added focused regression coverage for wrong VERSION, wrapper-folder ZIPs, missing root VERSION, missing candidate script, and the non-mutating import-plan path.
 
 ## v0.0.239
 
