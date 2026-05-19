@@ -1,4 +1,4 @@
-# promptbranch v0.0.238
+# promptbranch v0.0.239
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -645,6 +645,13 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
+
+## v0.0.239
+
+- Upgraded `chatgpt_claudecode_workflow_release_control.sh` to install downloaded candidate ZIPs automatically instead of requiring Beyond Compare/manual merge.
+- Added Stage-0 delegation so a newer release-control script inside the candidate ZIP can safely run before the working tree is overwritten.
+- Added `--install-from-zip`, `--skip-zip-import`, and `--allow-dirty`; `--skip-compare` remains accepted as a deprecated no-op.
+- The automatic import is overwrite-based, not a merge, while preserving `.git/`, `.env`, `.generated/`, `.pb_profile/`, and `profile/`.
 
 ## v0.0.238
 

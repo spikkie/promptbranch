@@ -611,6 +611,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.239
+
+- Upgraded `chatgpt_claudecode_workflow_release_control.sh` to install downloaded candidate ZIPs automatically instead of requiring Beyond Compare/manual merge.
+- Added Stage-0 delegation so a newer release-control script inside the candidate ZIP can safely run before the working tree is overwritten.
+- Added `--install-from-zip`, `--skip-zip-import`, and `--allow-dirty`; `--skip-compare` remains accepted as a deprecated no-op.
+- The automatic import is overwrite-based, not a merge, while preserving `.git/`, `.env`, `.generated/`, `.pb_profile/`, and `profile/`.
+
 ## v0.0.238
 
 - Added candidate-run/finalizer precondition handling for validated `no_artifact` protocol replies with zero artifact candidates.

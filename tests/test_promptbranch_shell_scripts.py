@@ -208,6 +208,120 @@ def test_release_control_rejects_run_tests_adopt_if_green_without_tests_only(tmp
     assert not calls.exists()
 
 
+
+def test_release_control_automatically_imports_candidate_zip_without_bcompare(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.10"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text("v0.0.0\n", encoding="utf-8")
+    (repo / "stale.txt").write_text("remove me\n", encoding="utf-8")
+    (repo / ".env").write_text("LOCAL=1\n", encoding="utf-8")
+    (repo / ".pb_profile").mkdir()
+    (repo / ".pb_profile" / "state.json").write_text("{}\n", encoding="utf-8")
+
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    import zipfile
+
+    with zipfile.ZipFile(downloads / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("fresh.txt", "installed\n")
+        archive.writestr("scripts/example.sh", "#!/usr/bin/env bash\n")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "pipx").write_text("#!/usr/bin/env bash\necho pipx \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "pipx").chmod(0o755)
+    (fake_bin / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo git \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1\" == \"status\" ]]; then exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"rev-parse --short HEAD\" ]]; then echo abc1234; exit 0; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "git").chmod(0o755)
+    packager = tmp_path / "packager.sh"
+    packager.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'INNERPY'\n"
+        "import zipfile\n"
+        f"with zipfile.ZipFile('{artifact}', 'w') as archive:\n"
+        f"    archive.writestr('VERSION', '{version}\\n')\n"
+        "    archive.writestr('fresh.txt', 'installed\\n')\n"
+        "INNERPY\n",
+        encoding="utf-8",
+    )
+    packager.chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version", version,
+            "--downloads-dir", str(downloads),
+            "--packager", str(packager),
+            "--skip-compare",
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--skip-docker-logs",
+            "--skip-tests",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "zip_import:     1" in result.stdout
+    assert "== Install ZIP into working tree ==" in result.stdout
+    assert "bcompare" not in result.stdout + result.stderr
+    assert (repo / "fresh.txt").read_text(encoding="utf-8") == "installed\n"
+    assert not (repo / "stale.txt").exists()
+    assert (repo / ".env").read_text(encoding="utf-8") == "LOCAL=1\n"
+    assert (repo / ".pb_profile" / "state.json").is_file()
+    assert (repo / artifact).is_file()
+
+
+def test_release_control_delegates_to_candidate_script_before_install(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.11\n", encoding="utf-8")
+    version = "v9.9.11"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    import zipfile
+
+    candidate_script = "#!/usr/bin/env bash\necho candidate-stage0:${PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0}:${PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT}\n"
+    with zipfile.ZipFile(downloads / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", candidate_script)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    result = subprocess.run(
+        [str(script), "--version", version, "--downloads-dir", str(downloads)],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "== Delegate to workflow runner from candidate ZIP ==" in result.stdout
+    assert f"candidate-stage0:1:{repo}" in result.stdout
+
 def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
