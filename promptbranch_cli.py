@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.232"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.233"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -6494,6 +6494,130 @@ def _candidate_run_safe_command(kind: str, *, candidate_version: str | None, rep
     return None
 
 
+def _candidate_run_mvp_completion_report(
+    backend: Any,
+    *,
+    registry: ArtifactRegistry,
+    profile_root: Path,
+    repo_root: Path,
+    artifact_arg: str | None = None,
+    version_arg: str | None = None,
+) -> dict[str, Any]:
+    """Return a read-only proof report for whether the candidate MVP loop is complete."""
+
+    inventory = _artifact_candidate_lifecycle_status_all(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+    )
+    candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
+    requested_artifact = Path(str(artifact_arg or "")).name if artifact_arg else None
+    requested_version = _candidate_version_normalized(version_arg)
+    if requested_artifact or requested_version:
+        filtered: list[dict[str, Any]] = []
+        for item in candidates:
+            if requested_artifact and item.get("artifact_ref") != requested_artifact:
+                continue
+            if requested_version and item.get("artifact_version") != requested_version:
+                continue
+            filtered.append(item)
+        candidates = filtered
+
+    accepted_matches = []
+    adoption_ready = []
+    tested_pending = []
+    verified_pending = []
+    for item in candidates:
+        lifecycle = item.get("lifecycle") if isinstance(item.get("lifecycle"), dict) else {}
+        checks = item.get("checks") if isinstance(item.get("checks"), dict) else {}
+        if lifecycle.get("candidate_accepted") and checks.get("current_matches_candidate") is True:
+            accepted_matches.append(item)
+        if lifecycle.get("adoption_eligible"):
+            adoption_ready.append(item)
+        elif lifecycle.get("candidate_test_passed") and not lifecycle.get("candidate_accepted"):
+            tested_pending.append(item)
+        elif lifecycle.get("candidate_verified") and not lifecycle.get("candidate_test_passed"):
+            verified_pending.append(item)
+
+    artifact_current = inventory.get("artifact_current") if isinstance(inventory.get("artifact_current"), dict) else {}
+    consistency = artifact_current.get("consistency") if isinstance(artifact_current.get("consistency"), dict) else {}
+    selected_accepted = accepted_matches[0] if accepted_matches else None
+    checks = {
+        "candidate_scope_resolved": bool(candidates) if (requested_artifact or requested_version) else True,
+        "accepted_candidate_present": selected_accepted is not None,
+        "accepted_candidate_matches_current": selected_accepted is not None,
+        "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact") is True,
+        "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact") is True,
+        "no_adoption_ready_candidate_pending": not adoption_ready,
+        "no_tested_candidate_pending_acceptance": not tested_pending,
+        "no_verified_candidate_pending_test": not verified_pending,
+    }
+    mvp_complete = all(checks.values())
+    if mvp_complete:
+        status = "candidate_mvp_complete"
+        recommended = {
+            "kind": "continue_from_adopted_baseline",
+            "command": "pb artifact current --json",
+            "reason": "candidate lifecycle is complete; verify the adopted baseline before the next protocol ask",
+        }
+    elif adoption_ready:
+        status = "candidate_mvp_acceptance_pending"
+        version = adoption_ready[0].get("artifact_version")
+        recommended = {
+            "kind": "accept_candidate",
+            "command": f"pb artifact accept-candidate --version {version} --adopt-if-green --json" if version else "pb artifact accept-candidate --adopt-if-green --json",
+            "reason": "a candidate is tested and adoption eligible",
+        }
+    elif tested_pending:
+        status = "candidate_mvp_acceptance_pending"
+        version = tested_pending[0].get("artifact_version")
+        recommended = {
+            "kind": "accept_candidate",
+            "command": f"pb artifact accept-candidate --version {version} --adopt-if-green --json" if version else "pb artifact accept-candidate --adopt-if-green --json",
+            "reason": "a candidate has a passing test record but is not accepted",
+        }
+    elif verified_pending:
+        status = "candidate_mvp_test_pending"
+        version = verified_pending[0].get("artifact_version")
+        recommended = {
+            "kind": "test_candidate",
+            "command": f"pb artifact candidate-test --version {version} --json" if version else "pb artifact candidate-test --json",
+            "reason": "a candidate is verified but has no passing candidate-test record",
+        }
+    elif not candidates and (requested_artifact or requested_version):
+        status = "candidate_mvp_scope_not_found"
+        recommended = {
+            "kind": "inspect_candidate",
+            "command": "pb artifact candidate-status --all --json",
+            "reason": "the requested candidate scope did not match any registered candidate",
+        }
+    else:
+        status = "candidate_mvp_intake_pending"
+        recommended = {
+            "kind": "intake_candidate",
+            "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
+            "reason": "no accepted candidate completion proof is available",
+        }
+
+    return {
+        "ok": mvp_complete,
+        "status": status,
+        "candidate_count": len(candidates),
+        "accepted_candidate": selected_accepted,
+        "accepted_candidate_count": len(accepted_matches),
+        "pending_counts": {
+            "adoption_ready": len(adoption_ready),
+            "tested_pending_acceptance": len(tested_pending),
+            "verified_pending_test": len(verified_pending),
+        },
+        "checks": checks,
+        "artifact_current": artifact_current,
+        "recommended_next_command": recommended,
+        "operator_instruction": "Read-only MVP completion proof for the artifact-candidate lifecycle. No download, test, adoption, Project Source mutation, or state advancement was performed by this report.",
+    }
+
+
 def _run_candidate_lifecycle_command(command: list[str], *, repo_root: Path, timeout_seconds: float) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -6553,6 +6677,16 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     execute_until_blocked = bool(getattr(args, "execute_until_blocked", False))
     timeout_seconds = float(getattr(args, "step_timeout", 3600.0) or 3600.0)
     max_steps = max(1, int(getattr(args, "max_steps", 4) or 4))
+    require_complete = bool(getattr(args, "require_complete", False))
+
+    completion_report = _candidate_run_mvp_completion_report(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+        artifact_arg=artifact_arg,
+        version_arg=version_arg,
+    )
 
     base = {
         "ok": True,
@@ -6563,6 +6697,8 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "execute_next": execute,
         "execute_until_blocked": execute_until_blocked,
         "max_steps": max_steps,
+        "require_complete": require_complete,
+        "mvp_completion": completion_report,
         "download_performed": False,
         "verification_performed": False,
         "migration_performed": False,
@@ -6701,12 +6837,28 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         else:
             cycle_ok = False
 
+        final_completion_report = _candidate_run_mvp_completion_report(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            artifact_arg=artifact_arg,
+            version_arg=version_arg,
+        )
+        if require_complete and not final_completion_report.get("ok"):
+            cycle_ok = False
+            if cycle_status == "candidate_run_cycle_completed":
+                cycle_status = "candidate_run_cycle_incomplete"
+                stopped_reason = "mvp_completion_required_not_met"
+
         payload.update({
             "ok": cycle_ok,
             "status": cycle_status,
             "stopped_reason": stopped_reason,
             "cycle_step_count": len(cycle_steps),
             "cycle_steps": cycle_steps,
+            "mvp_completion": final_completion_report,
+            "mvp_complete": bool(final_completion_report.get("ok")),
             "mutating_actions_executed": any(bool(step.get("executed")) for step in cycle_steps),
             **aggregate,
             "operator_instruction": "Executed allowlisted artifact-candidate MVP lifecycle steps until completion, failure, block, or max-step limit. Inspect cycle_steps before running again.",
@@ -6724,12 +6876,26 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         else:
             result = _run_candidate_lifecycle_command(command, repo_root=repo_root, timeout_seconds=timeout_seconds)
             parsed = result.get("parsed_json") if isinstance(result.get("parsed_json"), dict) else {}
+            final_completion_report = _candidate_run_mvp_completion_report(
+                backend,
+                registry=registry,
+                profile_root=profile_root,
+                repo_root=repo_root,
+                artifact_arg=artifact_arg,
+                version_arg=version_arg,
+            )
+            step_ok = bool(result.get("ok"))
+            if require_complete and not final_completion_report.get("ok"):
+                step_ok = False
+
             payload.update({
-                "ok": bool(result.get("ok")),
+                "ok": step_ok,
                 "status": "candidate_run_step_completed" if result.get("ok") else "candidate_run_step_failed",
                 "step_kind": kind,
                 "executed_command": command,
                 "step_result": result,
+                "mvp_completion": final_completion_report,
+                "mvp_complete": bool(final_completion_report.get("ok")),
                 "mutating_actions_executed": True,
                 "download_performed": bool(parsed.get("download_performed")),
                 "verification_performed": bool(parsed.get("verification_performed")),
@@ -6742,10 +6908,17 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
                 "state_source_updated": bool(parsed.get("state_source_updated")),
                 "operator_instruction": "Executed exactly one allowlisted artifact-candidate MVP lifecycle step and stopped. Inspect step_result before running candidate-run again.",
             })
-            code = 0 if result.get("ok") else 1
+            code = 0 if step_ok else 1
     else:
         payload["mutating_actions_executed"] = False
-        code = 0
+        payload["mvp_complete"] = bool(completion_report.get("ok"))
+        if require_complete and not completion_report.get("ok"):
+            payload["ok"] = False
+            payload["status"] = "candidate_run_mvp_incomplete"
+            payload["error"] = "artifact candidate MVP completion proof is required but not satisfied"
+            code = 1
+        else:
+            code = 0
 
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -8127,6 +8300,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_run.add_argument("--execute-next", action="store_true", help="Execute exactly one allowlisted recommended lifecycle command and stop. Without this flag the command is plan-only.")
     artifact_candidate_run.add_argument("--execute-until-blocked", action="store_true", help="Execute allowlisted lifecycle commands until accepted, blocked, failed, or --max-steps is reached.")
     artifact_candidate_run.add_argument("--max-steps", type=int, default=4, help="Maximum number of lifecycle steps for --execute-until-blocked. Defaults to 4.")
+    artifact_candidate_run.add_argument("--require-complete", action="store_true", help="Return nonzero unless the artifact-candidate MVP lifecycle completion proof is satisfied after planning or execution.")
     artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for each executed lifecycle step. Defaults to 3600.")
     artifact_candidate_run.add_argument("--json", action="store_true")
 

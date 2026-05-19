@@ -611,9 +611,20 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.233
+
+- `pb artifact candidate-run` now emits `mvp_completion` and `mvp_complete` proof fields.
+- Use `--require-complete` when a script must fail unless a candidate has been accepted and the current artifact/source baseline matches it.
+- `--require-complete` is compatible with plan-only, `--execute-next`, and `--execute-until-blocked`; it does not add Project Source upload or unchecked adoption behavior.
+
 ## v0.0.232
 
-- `scripts/post-release-validation.sh` now validates `pb artifact candidate-run --json` in plan-only mode.
+- Added `pb artifact candidate-run --execute-until-blocked` to execute existing allowlisted candidate lifecycle steps until accepted, blocked, failed, or max-steps is reached.
+- Keep using explicit operator intent for lifecycle execution; post-release validation remains plan-only.
+
+## v0.0.231
+
+- `scripts/post-release-validation.sh` validates `pb artifact candidate-run --json` in plan-only mode.
 - The script remains non-mutating by default; it does not pass `--execute-next` during post-release validation.
 - Use `--skip-candidate-run` only for isolated diagnostics. Normal release acceptance should keep the candidate-run gate enabled.
 
