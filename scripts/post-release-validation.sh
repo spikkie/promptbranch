@@ -153,6 +153,11 @@ run_step_with_stdin() {
   return "${rc}"
 }
 
+candidate_run_no_artifact_precondition() {
+  local payload_path="$1"
+  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('status') == 'candidate_run_cycle_precondition_failed', completion.get('status') == 'candidate_mvp_no_artifact_candidate', payload.get('stopped_reason') == 'no_artifact_candidate', payload.get('mutating_actions_executed') is False, payload.get('download_performed') is False, payload.get('verification_performed') is False, payload.get('migration_performed') is False, payload.get('adoption_performed') is False]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version)
@@ -251,7 +256,13 @@ session_log="${release_log_dir}/post_release_validation.${version}.session.log"
 summary_json="${release_log_dir}/post_release_validation.${version}.summary.json"
 
 # Keep the caller's terminal unaffected: exec is scoped to this script process.
-exec > >(tee -a "${session_log}") 2>&1
+# Tests and other subprocess-capture harnesses can disable process-substitution
+# teeing to avoid stdout-pipe lifecycle hangs while still writing step artifacts.
+if [[ "${POST_RELEASE_VALIDATION_DISABLE_SESSION_TEE:-0}" == "1" ]]; then
+  : > "${session_log}"
+else
+  exec > >(tee -a "${session_log}") 2>&1
+fi
 
 echo "== promptbranch post-release validation =="
 echo "repo_root:        $(pwd)"
@@ -424,8 +435,22 @@ run_artifact_candidate_run_step() {
       candidate_run_args=(artifact candidate-run --require-complete --json)
       candidate_run_label="artifact candidate-run require-complete (${phase})"
     fi
+    set +e
     run_step "${candidate_run_label}" "${candidate_run_log}" \
-      "${pb_cmd}" "${candidate_run_args[@]}" || { rc_candidate_run=$?; failures=$((failures + 1)); }
+      "${pb_cmd}" "${candidate_run_args[@]}"
+    local candidate_rc=$?
+    set -u
+    if [[ "${candidate_rc}" -ne 0 ]]; then
+      if [[ "${complete_candidate_mvp}" -eq 1 ]] && candidate_run_no_artifact_precondition "${candidate_run_log}"; then
+        echo "artifact candidate-run complete-candidate-mvp stopped at no_artifact precondition; treating this as a valid no-candidate terminal state for post-release validation"
+        rc_candidate_run=0
+      else
+        rc_candidate_run="${candidate_rc}"
+        failures=$((failures + 1))
+      fi
+    else
+      rc_candidate_run=0
+    fi
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
   fi
