@@ -230,8 +230,8 @@ def test_post_release_validation_adopts_after_success_when_requested(tmp_path: P
 def test_post_release_validation_can_require_candidate_mvp_completion_success(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.235",
-        "v0.0.235",
+        "v0.0.236",
+        "v0.0.236",
         "--require-candidate-mvp-complete",
         skip_protocol=True,
         skip_artifact_intake=True,
@@ -240,7 +240,7 @@ def test_post_release_validation_can_require_candidate_mvp_completion_success(tm
     )
 
     assert result.returncode == 0, result.stdout
-    summary = _summary(tmp_path / "repo", "v0.0.235")
+    summary = _summary(tmp_path / "repo", "v0.0.236")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["require_candidate_mvp_complete"] is True
     assert step["require_complete"] is True
@@ -252,8 +252,8 @@ def test_post_release_validation_can_require_candidate_mvp_completion_success(tm
 def test_post_release_validation_can_require_candidate_mvp_completion_failure(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.235",
-        "v0.0.235",
+        "v0.0.236",
+        "v0.0.236",
         "--require-candidate-mvp-complete",
         skip_protocol=True,
         skip_artifact_intake=True,
@@ -262,7 +262,7 @@ def test_post_release_validation_can_require_candidate_mvp_completion_failure(tm
     )
 
     assert result.returncode == 1
-    summary = _summary(tmp_path / "repo", "v0.0.235")
+    summary = _summary(tmp_path / "repo", "v0.0.236")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["ok"] is False
     assert summary["require_candidate_mvp_complete"] is True
@@ -277,8 +277,8 @@ def test_post_release_validation_can_require_candidate_mvp_completion_failure(tm
 def test_post_release_validation_can_complete_candidate_mvp_cycle_success(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.235",
-        "v0.0.235",
+        "v0.0.236",
+        "v0.0.236",
         "--complete-candidate-mvp",
         "--candidate-mvp-max-steps",
         "6",
@@ -291,7 +291,7 @@ def test_post_release_validation_can_complete_candidate_mvp_cycle_success(tmp_pa
     )
 
     assert result.returncode == 0, result.stdout
-    summary = _summary(tmp_path / "repo", "v0.0.235")
+    summary = _summary(tmp_path / "repo", "v0.0.236")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["complete_candidate_mvp"] is True
     assert summary["require_candidate_mvp_complete"] is True
@@ -309,8 +309,8 @@ def test_post_release_validation_can_complete_candidate_mvp_cycle_success(tmp_pa
 def test_post_release_validation_complete_candidate_mvp_cycle_fails_closed_when_incomplete(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,
-        "v0.0.235",
-        "v0.0.235",
+        "v0.0.236",
+        "v0.0.236",
         "--complete-candidate-mvp",
         skip_protocol=True,
         skip_artifact_intake=True,
@@ -319,7 +319,7 @@ def test_post_release_validation_complete_candidate_mvp_cycle_fails_closed_when_
     )
 
     assert result.returncode == 1
-    summary = _summary(tmp_path / "repo", "v0.0.235")
+    summary = _summary(tmp_path / "repo", "v0.0.236")
     step = summary["steps"]["artifact_candidate_run_plan"]
     assert summary["ok"] is False
     assert summary["complete_candidate_mvp"] is True
