@@ -611,7 +611,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.241
+## v0.0.241.1
 
 - Built from repair baseline `v0.0.240.1`.
 - Release control now performs deterministic Docker service recreation in detached mode: `docker compose down --remove-orphans`, `docker compose build --pull`, and `docker compose up -d --force-recreate --remove-orphans`.

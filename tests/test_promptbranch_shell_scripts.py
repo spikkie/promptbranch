@@ -456,6 +456,41 @@ def test_release_control_delegates_to_candidate_script_before_install(tmp_path: 
     assert "== Delegate to workflow runner from candidate ZIP ==" in result.stdout
     assert f"candidate-stage0:1:{repo}" in result.stdout
 
+def test_dockerfile_normalizes_app_permissions_for_non_root_runtime() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "COPY . ." in dockerfile
+    assert "Normalize application source permissions for non-root runtime users" in dockerfile
+    assert "find /app -type d -exec chmod 755" in dockerfile
+    assert "find /app -type f -exec chmod 644" in dockerfile
+    assert "chmod +x /app/docker/run-chatgpt-service-in-container.sh" in dockerfile
+    assert "find /app -maxdepth 1 -type f -name '*.sh' -exec chmod +x" in dockerfile
+    assert "find /app/scripts -type f -name '*.sh' -exec chmod +x" in dockerfile
+
+
+def test_dockerignore_excludes_repo_generated_state_and_python_artifacts() -> None:
+    root = Path(__file__).resolve().parents[1]
+    patterns = set((root / ".dockerignore").read_text(encoding="utf-8").splitlines())
+
+    expected = {
+        ".pb_profile",
+        "debug_artifacts",
+        "profile",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "*.pyc",
+        "*.pyo",
+        "*.log",
+        "*.zip",
+        "session_*.log",
+        "task_*.show",
+    }
+    assert expected <= patterns
+
+
 def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_filter() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")

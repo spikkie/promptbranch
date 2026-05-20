@@ -1,4 +1,4 @@
-# promptbranch v0.0.241
+# promptbranch v0.0.241.1
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -646,7 +646,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.241
+## v0.0.241.1
 
 - Built from repair baseline `v0.0.240.1`.
 - Release control now performs deterministic Docker service recreation in detached mode: `docker compose down --remove-orphans`, `docker compose build --pull`, and `docker compose up -d --force-recreate --remove-orphans`.
