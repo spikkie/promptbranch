@@ -7801,9 +7801,11 @@ class ChatGPTBrowserClient:
             watch["started"] = int(watch.get("started") or 0) + 1
             watch["saw_relevant"] = True
             is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
+            activity_time = loop.time()
             if is_commit:
                 watch["saw_commit"] = True
-            watch["last_activity"] = loop.time()
+                watch["commit_seen_at"] = activity_time
+            watch["last_activity"] = activity_time
             self._log(
                 "project-source-add",
                 "observed project source save request start",
@@ -7844,9 +7846,11 @@ class ChatGPTBrowserClient:
             watch["failed"] = int(watch.get("failed") or 0) + 1
             watch["saw_relevant"] = True
             is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
+            activity_time = loop.time()
             if is_commit:
                 watch["saw_commit"] = True
-            watch["last_activity"] = loop.time()
+                watch["commit_seen_at"] = activity_time
+            watch["last_activity"] = activity_time
             failure_text = None
             try:
                 failure = req.failure
@@ -7906,6 +7910,7 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 15_000,
         observation_window_ms: int = 8_000,
         quiet_window_ms: int = 2_000,
+        stale_inflight_after_commit_grace_ms: int = 3_000,
         poll_interval_ms: int = 150,
     ) -> dict[str, Any]:
         if watch is None:
@@ -7924,6 +7929,7 @@ class ChatGPTBrowserClient:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         observation_deadline = min(deadline, asyncio.get_running_loop().time() + (observation_window_ms / 1000))
         quiet_window_s = quiet_window_ms / 1000
+        stale_inflight_after_commit_grace_s = stale_inflight_after_commit_grace_ms / 1000
         last_state: dict[str, Any] = {}
 
         while asyncio.get_running_loop().time() < deadline:
@@ -7935,11 +7941,25 @@ class ChatGPTBrowserClient:
             finished = int(watch.get("finished") or 0)
             failed = int(watch.get("failed") or 0)
             last_activity = watch.get("last_activity")
+            commit_seen_at_raw = watch.get("commit_seen_at")
+            commit_seen_at = commit_seen_at_raw if commit_seen_at_raw is not None else (last_activity if saw_commit else None)
             idle_for_s = None if last_activity is None else max(0.0, now - float(last_activity))
+            commit_age_s = None if commit_seen_at is None else max(0.0, now - float(commit_seen_at))
             observation_window_elapsed = now >= observation_deadline
             quiet_enough = (idle_for_s is not None and idle_for_s >= quiet_window_s)
             waiting_for_late_commit = source_kind in {"text", "file"} and saw_relevant and not saw_commit
-            quiet_now = not inflight and (
+            stale_inflight_after_commit = (
+                source_kind in {"text", "file"}
+                and saw_relevant
+                and saw_commit
+                and bool(inflight)
+                and failed == 0
+                and finished >= 1
+                and quiet_enough
+                and commit_age_s is not None
+                and commit_age_s >= stale_inflight_after_commit_grace_s
+            )
+            normal_quiet = not inflight and (
                 (
                     saw_relevant
                     and quiet_enough
@@ -7947,6 +7967,12 @@ class ChatGPTBrowserClient:
                 )
                 or (not saw_relevant and observation_window_elapsed)
             )
+            quiet_now = normal_quiet or stale_inflight_after_commit
+            quiet_reason = None
+            if normal_quiet:
+                quiet_reason = "no_inflight_quiet" if saw_relevant else "observation_window_no_relevant_requests"
+            elif stale_inflight_after_commit:
+                quiet_reason = "committed_with_stale_inflight_grace"
             last_state = {
                 "source_kind": source_kind,
                 "saw_relevant": saw_relevant,
@@ -7956,9 +7982,13 @@ class ChatGPTBrowserClient:
                 "failed": failed,
                 "inflight": len(inflight),
                 "idle_for_s": idle_for_s,
+                "commit_age_s": commit_age_s,
                 "observation_window_elapsed": observation_window_elapsed,
                 "waiting_for_late_commit": waiting_for_late_commit,
+                "stale_inflight_after_commit": stale_inflight_after_commit,
+                "stale_inflight_after_commit_grace_ms": stale_inflight_after_commit_grace_ms,
                 "quiet_now": quiet_now,
+                "quiet_reason": quiet_reason,
             }
             self._log(
                 "project-source-add",
@@ -7976,7 +8006,10 @@ class ChatGPTBrowserClient:
             f"(source_kind={source_kind}, saw_relevant={last_state.get('saw_relevant')}, "
             f"saw_commit={last_state.get('saw_commit')}, started={last_state.get('started')}, "
             f"finished={last_state.get('finished')}, failed={last_state.get('failed')}, "
-            f"inflight={last_state.get('inflight')})"
+            f"inflight={last_state.get('inflight')}, idle_for_s={last_state.get('idle_for_s')}, "
+            f"commit_age_s={last_state.get('commit_age_s')}, "
+            f"stale_inflight_after_commit={last_state.get('stale_inflight_after_commit')}, "
+            f"quiet_reason={last_state.get('quiet_reason')})"
         )
 
     async def _verify_project_source_persistence(

@@ -342,6 +342,60 @@ def test_wait_for_project_source_save_request_quiet_requires_relevant_requests_t
     assert page.wait_calls
 
 
+
+
+def test_wait_for_project_source_save_request_quiet_accepts_committed_stale_inflight(browser_client: ChatGPTBrowserClient) -> None:
+    class _QuietPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _QuietPage()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        now = loop.time()
+        watch = {
+            "installed": True,
+            "source_kind": "text",
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": True,
+            "commit_seen_at": now - 1.0,
+            "inflight": {1},
+            "last_activity": now - 1.0,
+        }
+
+        settled = loop.run_until_complete(
+            browser_client._wait_for_project_source_save_request_quiet(
+                page,
+                watch,
+                source_kind="text",
+                timeout_ms=1000,
+                observation_window_ms=200,
+                quiet_window_ms=50,
+                stale_inflight_after_commit_grace_ms=100,
+                poll_interval_ms=10,
+            )
+        )
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+    assert settled["saw_relevant"] is True
+    assert settled["saw_commit"] is True
+    assert settled["started"] == 2
+    assert settled["finished"] == 1
+    assert settled["inflight"] == 1
+    assert settled["stale_inflight_after_commit"] is True
+    assert settled["quiet_now"] is True
+    assert settled["quiet_reason"] == "committed_with_stale_inflight_grace"
+
 def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_window(browser_client: ChatGPTBrowserClient) -> None:
     class _QuietPage:
         def __init__(self) -> None:
