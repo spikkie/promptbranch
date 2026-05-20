@@ -128,7 +128,9 @@ Version precedence:
 Automatic ZIP import:
   By default this script installs ${project_name}_VERSION.zip from --downloads-dir
   into the repository before commit/package. This is an overwrite import, not a
-  merge. It preserves .git/, .env, .generated/, .pb_profile/, and profile/.
+  merge. It preserves .git/, .env, .generated/, .pb_profile/, profile/, and debug_artifacts/.
+  It requires candidate ZIP control files (.gitignore and .not_to_zip) and
+  refuses to stage local secrets or generated artifacts.
 
 Typical use:
   $(basename "$0") --version v0.0.239
@@ -548,6 +550,8 @@ expected_version = sys.argv[2]
 repo_path = Path(sys.argv[3]).expanduser().resolve()
 preserved_paths = sys.argv[4].split(",")
 script_name = "chatgpt_claudecode_workflow_release_control.sh"
+required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]
+protected_zip_roots = [".env", ".generated", ".pb_profile", "profile", "debug_artifacts"]
 payload = {
     "ok": False,
     "action": "release_zip_import_plan",
@@ -559,6 +563,9 @@ payload = {
     "zip_version": None,
     "zip_root_layout": "unknown",
     "candidate_script_present": False,
+    "required_root_files": required_root_files,
+    "missing_required_root_files": [],
+    "protected_zip_entries_sample": [],
     "preserved_paths": preserved_paths,
     "would_install": False,
     "errors": [],
@@ -594,8 +601,22 @@ try:
             if payload["zip_version"] != expected_version:
                 payload["errors"].append("version_mismatch")
         payload["candidate_script_present"] = script_name in names
+        missing_required = [item for item in required_root_files if item not in names]
+        payload["missing_required_root_files"] = missing_required
+        if missing_required:
+            payload["errors"].append("missing_required_root_files")
         if not payload["candidate_script_present"]:
             payload["errors"].append("candidate_script_missing")
+        protected_entries = []
+        for name in names:
+            if name == ".env" or name.startswith(".env."):
+                protected_entries.append(name)
+                continue
+            if any(name == root or name.startswith(root + "/") for root in protected_zip_roots):
+                protected_entries.append(name)
+        if protected_entries:
+            payload["protected_zip_entries_sample"] = protected_entries[:20]
+            payload["errors"].append("protected_zip_entries_present")
         bad_generated = [name for name in names if ".pytest_cache" in name or "__pycache__" in name or name.endswith((".pyc", ".pyo"))]
         if bad_generated:
             payload["errors"].append("generated_cache_entries_present")
@@ -621,6 +642,89 @@ validate_release_import_plan() {
   local expected_version="$2"
   local repo_path="$3"
   release_import_plan_json "$zip_path" "$expected_version" "$repo_path" >/dev/null
+}
+
+verify_release_import_copied_entries() {
+  local zip_path="$1"
+  local repo_path="$2"
+  python3 - "$zip_path" "$repo_path" <<'INNERPY'
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1]).expanduser().resolve()
+repo_path = Path(sys.argv[2]).expanduser().resolve()
+protected_roots = {".git", ".env", ".generated", ".pb_profile", "profile", "debug_artifacts"}
+missing = []
+checked = 0
+with zipfile.ZipFile(zip_path) as archive:
+    for info in archive.infolist():
+        name = info.filename.strip("/")
+        if not name or info.is_dir():
+            continue
+        root = name.split("/", 1)[0]
+        if root in protected_roots or name == ".env" or name.startswith(".env."):
+            continue
+        checked += 1
+        if not (repo_path / name).exists():
+            missing.append(name)
+if missing:
+    print(json.dumps({
+        "ok": False,
+        "action": "release_zip_import_copy_verification",
+        "checked_count": checked,
+        "missing_count": len(missing),
+        "missing_sample": missing[:40],
+    }, indent=2, sort_keys=True), file=sys.stderr)
+    raise SystemExit(1)
+print(json.dumps({
+    "ok": True,
+    "action": "release_zip_import_copy_verification",
+    "checked_count": checked,
+    "missing_count": 0,
+}, indent=2, sort_keys=True))
+INNERPY
+}
+
+force_add_intentional_ignored_release_paths() {
+  local path
+  for path in \
+    "ollama_mcp_verification_harness" \
+    "ollama_mcp_verification_harness_v2" \
+    "promptbranch.egg-info"
+  do
+    if [[ -e "${repo_root}/${path}" ]]; then
+      git add -f -- "${path}"
+    fi
+  done
+}
+
+assert_release_staging_safe() {
+  local bad=()
+  local status path rest
+  while IFS=$'\t' read -r status path rest; do
+    [[ -n "${status}" && -n "${path}" ]] || continue
+    case "${path}" in
+      .env|.env.*|.generated|.generated/*|.pb_profile|.pb_profile/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
+        bad+=("${status}${IFS}${path}")
+        ;;
+    esac
+    if [[ "${status}" == D* ]]; then
+      case "${path}" in
+        .gitignore|.not_to_zip)
+          bad+=("${status}${IFS}${path}")
+          ;;
+      esac
+    fi
+  done < <(git diff --cached --name-status)
+
+  if [[ ${#bad[@]} -gt 0 ]]; then
+    printf 'ERROR: unsafe release-control staged paths detected:\n' >&2
+    printf '  %s\n' "${bad[@]}" >&2
+    printf 'ERROR: refusing to commit local secrets/generated artifacts/control-file deletion.\n' >&2
+    return 1
+  fi
 }
 
 owner_uid_for_user() {
@@ -713,7 +817,9 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   normalize_generated_ownership "pre-import"
   find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+
+  verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
   cp "${download_zip}" "${repo_root}/${artifact_zip}"
   chmod +x "${repo_root}/chatgpt_claudecode_workflow_release_control.sh" "${repo_root}"/scripts/*.sh 2>/dev/null || true
@@ -727,7 +833,9 @@ fi
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
 # Commit current working tree with the release ZIP name as commit message.
 if [[ ${skip_commit} -eq 0 ]]; then
-  git add .
+  git add -A .
+  force_add_intentional_ignored_release_paths
+  assert_release_staging_safe
   if git diff --cached --quiet; then
     echo "No staged git changes; skipping git commit."
   else

@@ -100,10 +100,14 @@ promptbranch-project-list.json
 
 # temp ignore 
 chatgpt_claudecode_workflow_v0.0.146/
-ollama_mcp_verification_harness.zip
-ollama_mcp_verification_harness/
-ollama_mcp_verification_harness_v2.zip
-ollama_mcp_verification_harness_v2/
+# ollama_mcp_verification_harness.zip  # covered by *.zip
+# ollama_mcp_verification_harness/  # intentionally tracked release verification harness
+# ollama_mcp_verification_harness_v2.zip  # covered by *.zip
+# ollama_mcp_verification_harness_v2/  # intentionally tracked release verification harness
 
 # promptbranch services pid
 .promptbranch-service-start.*.pid
+
+# Project package metadata is intentionally tracked for version/API regression tests.
+!promptbranch.egg-info/
+!promptbranch.egg-info/**
