@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.241.2"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.242"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -4330,7 +4330,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
@@ -6262,6 +6262,100 @@ async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) 
 
 
 
+
+async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int:
+    """Report the Artifact Intake MVP cockpit state without mutating anything."""
+
+    registry = _artifact_registry_from_args(args)
+    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    artifact_arg = str(getattr(args, "artifact", "") or "").strip() or None
+    version_arg = str(getattr(args, "version", "") or "").strip() or None
+
+    completion = _candidate_run_mvp_completion_report(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+        artifact_arg=artifact_arg,
+        version_arg=version_arg,
+    )
+    next_payload, candidate_count, inventory = _candidate_run_next_payload(
+        backend,
+        registry=registry,
+        profile_root=profile_root,
+        repo_root=repo_root,
+        artifact_arg=artifact_arg,
+        version_arg=version_arg,
+    )
+    precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
+    current_payload = _artifact_current_payload(backend, registry)
+
+    finalizer_command = None
+    if current_payload.get("artifact_version"):
+        finalizer_command = (
+            "scripts/finalize-artifact-intake-mvp.sh "
+            f"--version {current_payload.get('artifact_version')} --target-version <next-version>"
+        )
+
+    inventory_summary = {
+        "candidate_count": inventory.get("candidate_count") if isinstance(inventory, dict) else candidate_count,
+        "status": inventory.get("status") if isinstance(inventory, dict) else "scoped_candidate_next",
+        "registry_path": inventory.get("candidate_registry_path") if isinstance(inventory, dict) else str(_artifact_candidates_registry_path(profile_root)),
+    }
+
+    payload = {
+        "ok": True,
+        "action": "artifact_mvp_status",
+        "status": completion.get("status"),
+        "mvp_complete": bool(completion.get("ok")),
+        "repo_path": str(repo_root),
+        "profile_dir": str(profile_root),
+        "candidate_registry_path": str(_artifact_candidates_registry_path(profile_root)),
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "artifact_current": current_payload,
+        "candidate_count": candidate_count,
+        "candidate_intake_precondition": precondition,
+        "candidate_next": next_payload,
+        "mvp_completion": completion,
+        "inventory_summary": inventory_summary,
+        "commands": {
+            "inspect_current": "pb artifact current --json",
+            "inspect_candidates": "pb artifact candidate-status --all --json",
+            "inspect_next": "pb artifact candidate-next --json",
+            "execute_until_blocked": "pb artifact candidate-run --execute-until-blocked --require-complete --json",
+            "finalize_mvp": finalizer_command,
+        },
+        "operator_instruction": (
+            "Read-only Artifact Intake MVP cockpit. Use candidate_next.recommended_next_command "
+            "for the next manual step, or execute the bounded lifecycle with candidate-run."
+        ),
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"mvp_complete={str(payload.get('mvp_complete')).lower()}")
+        print(f"candidate_count={payload.get('candidate_count')}")
+        recommended = next_payload.get("recommended_next_command") if isinstance(next_payload, dict) else {}
+        if isinstance(recommended, dict):
+            print(f"next_kind={recommended.get('kind')}")
+            if recommended.get("command"):
+                print(f"next_command={recommended.get('command')}")
+    return 0
+
+
 def _candidate_next_priority(item: dict[str, Any]) -> tuple[int, int]:
     """Sort candidate lifecycle reports by the next action that advances the MVP loop."""
 
@@ -7508,6 +7602,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_candidate_test(backend, args)
     if args.artifact_command == "candidate-status":
         return await cmd_artifact_candidate_status(backend, args)
+    if args.artifact_command == "mvp-status":
+        return await cmd_artifact_mvp_status(backend, args)
     if args.artifact_command == "candidate-next":
         return await cmd_artifact_candidate_next(backend, args)
     if args.artifact_command == "candidate-run":
@@ -8353,6 +8449,12 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_status.add_argument("--all", action="store_true", help="Report read-only lifecycle status for every registered artifact candidate.")
     artifact_candidate_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_candidate_status.add_argument("--json", action="store_true")
+
+    artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
+    artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.242.")
+    artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
+    artifact_mvp_status.add_argument("--json", action="store_true")
 
     artifact_candidate_next = artifact_subparsers.add_parser("candidate-next", help="Report the single next operator action for the artifact candidate MVP loop without mutating state.")
     artifact_candidate_next.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional; when omitted the command selects the highest-priority candidate action from inventory.")
