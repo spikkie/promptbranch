@@ -107,3 +107,7 @@ ollama_mcp_verification_harness_v2/
 
 # promptbranch services pid
 .promptbranch-service-start.*.pid
+
+
+# temp files
+temp/
