@@ -87,7 +87,7 @@ def test_build_persistence_source_candidates_prefers_rendered_identity(browser_c
     ]
 
 
-def test_verify_project_source_persistence_refreshes_sources_url(browser_client: ChatGPTBrowserClient) -> None:
+def test_verify_project_source_persistence_checks_current_surface_before_refresh(browser_client: ChatGPTBrowserClient) -> None:
     page = object()
     calls: list[tuple[str, object]] = []
 
@@ -110,17 +110,18 @@ def test_verify_project_source_persistence_refreshes_sources_url(browser_client:
     )
 
     assert persisted == {"identity": "pasted.txt Document"}
-    assert calls[0] == (
-        "goto",
-        page,
-        "https://chatgpt.com/g/g-p-123/project?tab=sources",
-        "project-source-add-persistence-refresh",
-    )
-    assert calls[1][0] == "wait"
-    assert calls[1][1] is page
-    assert calls[1][2]["source_match_candidates"] == ["pasted.txt Document"]
-    assert calls[1][2]["before_sources"] is None
-    assert calls[1][2]["accept_single_new_card"] is False
+    assert calls == [
+        (
+            "wait",
+            page,
+            {
+                "source_match_candidates": ["pasted.txt Document"],
+                "before_sources": None,
+                "accept_single_new_card": False,
+                "timeout_ms": 10_000,
+            },
+        )
+    ]
 
 
 class _PersistenceRetryPage:
@@ -132,7 +133,7 @@ class _PersistenceRetryPage:
         await asyncio.sleep(0)
 
 
-def test_verify_project_source_persistence_retries_after_timeout(browser_client: ChatGPTBrowserClient) -> None:
+def test_verify_project_source_persistence_refreshes_after_pre_refresh_timeout(browser_client: ChatGPTBrowserClient) -> None:
     page = _PersistenceRetryPage()
     calls: list[tuple[str, object]] = []
     attempts = {"count": 0}
@@ -156,11 +157,19 @@ def test_verify_project_source_persistence_retries_after_timeout(browser_client:
     async def fake_safe_page_url(_page) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
 
+    async def fake_write_json(_path, _payload) -> None:
+        return None
+
+    async def fake_write_text(_path, _text) -> None:
+        return None
+
     browser_client._goto = fake_goto  # type: ignore[method-assign]
     browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
     browser_client._project_sources_empty_state_visible = fake_empty_state_visible  # type: ignore[method-assign]
     browser_client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._write_json = fake_write_json  # type: ignore[method-assign]
+    browser_client._write_text = fake_write_text  # type: ignore[method-assign]
 
     persisted = asyncio.run(
         browser_client._verify_project_source_persistence(
@@ -172,19 +181,124 @@ def test_verify_project_source_persistence_retries_after_timeout(browser_client:
     )
 
     assert persisted == {"identity": "pasted.txt Document"}
-    assert calls[0] == (
+    assert calls[0][0] == "wait"
+    assert calls[0][3] == 1
+    assert calls[1] == (
         "goto",
         page,
         "https://chatgpt.com/g/g-p-123/project?tab=sources",
         "project-source-add-persistence-refresh",
     )
-    assert calls[2] == (
-        "goto",
-        page,
-        "https://chatgpt.com/g/g-p-123/project?tab=sources",
-        "project-source-add-persistence-refresh-retry-2",
+    assert calls[2][0] == "wait"
+    assert calls[2][3] == 2
+    assert page.wait_calls == []
+
+
+def test_build_persistence_source_candidates_adds_text_generic_fallback_when_new(browser_client: ChatGPTBrowserClient) -> None:
+    candidates = browser_client._build_persistence_source_candidates(
+        requested_match="Integration note for run 123",
+        source_match_candidates=["Integration note for run 123", "itest-text-123"],
+        matched_card=None,
+        source_kind="text",
+        before_sources=[],
     )
-    assert page.wait_calls == [25]
+
+    assert candidates == [
+        "Integration note for run 123",
+        "itest-text-123",
+        "pasted.txt Document",
+        "pasted.txt",
+    ]
+
+
+def test_build_persistence_source_candidates_does_not_match_old_generic_text_source(browser_client: ChatGPTBrowserClient) -> None:
+    candidates = browser_client._build_persistence_source_candidates(
+        requested_match="Integration note for run 123",
+        source_match_candidates=["Integration note for run 123", "itest-text-123"],
+        matched_card=None,
+        source_kind="text",
+        before_sources=[{"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt Document"}],
+    )
+
+    assert "pasted.txt Document" not in candidates
+    assert "pasted.txt" not in candidates
+
+
+def test_add_project_source_operation_defers_text_presence_timeout_to_persistence(browser_client: ChatGPTBrowserClient) -> None:
+    page = object()
+    call_order: list[str] = []
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_textual_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        call_order.append("initial_presence_timeout")
+        raise ResponseTimeoutError("Timed out waiting for project source to appear: Integration note for run 123")
+
+    async def fake_wait_for_post_save_settle(*_args, **kwargs):
+        call_order.append("settle")
+        assert kwargs["source_kind"] == "text"
+        return {"dialog_visible": False, "add_button_visible": True, "source_card_count": 0, "empty_state_visible": True}
+
+    async def fake_wait_for_save_quiet(*_args, **kwargs):
+        call_order.append("save_quiet")
+        assert kwargs["source_kind"] == "text"
+        return {"saw_relevant": True, "saw_commit": True, "started": 2, "finished": 1, "failed": 0, "inflight": 1}
+
+    async def fake_verify_persistence(*_args, **kwargs):
+        call_order.append("verify")
+        assert kwargs["source_match_candidates"] == [
+            "Integration note for run 123",
+            "itest-text-123",
+            "pasted.txt Document",
+            "pasted.txt",
+        ]
+        return {"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt Document"}
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_textual_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value="Integration note for run 123",
+            file_path=None,
+            display_name="itest-text-123",
+            keep_open=False,
+        )
+    )
+
+    assert call_order == ["initial_presence_timeout", "settle", "save_quiet", "verify"]
+    assert result["ok"] is True
+    assert result["source_match"] == "pasted.txt Document"
+    assert result["persistence_verified"] is True
 
 
 def test_add_project_source_operation_requires_post_refresh_persistence(browser_client: ChatGPTBrowserClient) -> None:
