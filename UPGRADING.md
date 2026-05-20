@@ -611,7 +611,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.243
+## v0.0.244
 
 - `pb artifact mvp-status --json` now includes explicit operator lifecycle fields:
   - `operator_verdict`

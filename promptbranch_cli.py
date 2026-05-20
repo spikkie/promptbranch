@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.243"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.244"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -5834,6 +5834,175 @@ def _artifact_mvp_operator_classification(
     }
 
 
+def _read_only_action(kind: str, command: str, reason: str, *, priority: int = 50) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "command": command,
+        "priority": priority,
+        "mutates_state": False,
+        "risk": "read",
+        "reason": reason,
+    }
+
+
+def _decision_action(kind: str, reason: str, *, priority: int = 90) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "command": None,
+        "priority": priority,
+        "mutates_state": False,
+        "risk": "operator_decision",
+        "reason": reason,
+    }
+
+
+def _artifact_mvp_remediation_plan(
+    *,
+    lifecycle_classification: dict[str, Any],
+    current_payload: dict[str, Any],
+    completion: dict[str, Any],
+    next_payload: dict[str, Any],
+    precondition: dict[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Return a read-only remediation plan for the Artifact Intake MVP cockpit.
+
+    The plan may point at later mutating workflows conceptually, but every
+    concrete command emitted here is inspection-only. This keeps
+    ``pb artifact mvp-status`` safe as an operator cockpit command.
+    """
+
+    operator_verdict = str(lifecycle_classification.get("operator_verdict") or "unknown")
+    candidate_verdict = str(lifecycle_classification.get("candidate_verdict") or "unknown")
+    severity = str(lifecycle_classification.get("severity") or "unknown")
+    versions = lifecycle_classification.get("versions") if isinstance(lifecycle_classification.get("versions"), dict) else {}
+    warning_codes = [str(item) for item in lifecycle_classification.get("warning_codes") or []]
+    blocker_codes = [str(item) for item in lifecycle_classification.get("blocker_codes") or []]
+    recommended = next_payload.get("recommended_next_command") if isinstance(next_payload.get("recommended_next_command"), dict) else {}
+    recommended_kind = str(recommended.get("kind") or lifecycle_classification.get("recommended_next_kind") or "")
+
+    actions: list[dict[str, Any]] = [
+        _read_only_action(
+            "inspect_current_artifact_state",
+            "pb artifact current --json",
+            "Show runtime, adopted artifact/source, registry current, and consistency checks.",
+            priority=10,
+        ),
+        _read_only_action(
+            "inspect_candidate_inventory",
+            "pb artifact candidate-status --all --json",
+            "Show candidate registry inventory before deciding whether intake, test, or adoption is possible.",
+            priority=20,
+        ),
+        _read_only_action(
+            "inspect_next_candidate_step",
+            "pb artifact candidate-next --json",
+            "Show the next deterministic candidate lifecycle step without executing it.",
+            priority=30,
+        ),
+        _read_only_action(
+            "inspect_project_sources",
+            "pb src list --json",
+            "Confirm which ZIP/source artifacts are currently visible in the ChatGPT Project Sources.",
+            priority=40,
+        ),
+    ]
+
+    if "runtime_source_baseline_mismatch" in warning_codes:
+        actions.append(_decision_action(
+            "decide_runtime_source_reconciliation",
+            "Runtime code differs from adopted Project Source. Decide whether to publish/adopt the current runtime release, keep the older Project Source intentionally, or produce a new protocol release candidate.",
+            priority=50,
+        ))
+    if recommended_kind == "no_artifact_candidate" or candidate_verdict == "no_candidate_available":
+        actions.append(_decision_action(
+            "create_release_candidate_protocol_turn",
+            "No artifact candidate is available. Run a real release-candidate protocol ask before using artifact intake.",
+            priority=60,
+        ))
+    elif recommended.get("command"):
+        actions.append(_decision_action(
+            f"review_{recommended_kind or 'candidate_next_command'}",
+            f"candidate-next recommends a lifecycle command: {recommended.get('command')}. Review it before executing because mvp-status remains read-only.",
+            priority=60,
+        ))
+    if blocker_codes:
+        actions.append(_decision_action(
+            "resolve_state_blockers_first",
+            "State integrity blockers are present. Do not run artifact intake/adoption until blockers are inspected and resolved.",
+            priority=5,
+        ))
+
+    actions = sorted(actions, key=lambda item: int(item.get("priority") or 999))
+    next_safe_actions = [dict(item, priority=None) for item in actions]
+    for item in next_safe_actions:
+        item.pop("priority", None)
+
+    if blocker_codes:
+        kind = "state_blocked"
+        safe_action = "inspect_blockers"
+        summary = "State blockers exist; inspect state before any candidate lifecycle execution."
+    elif "runtime_source_baseline_mismatch" in warning_codes:
+        kind = "runtime_source_baseline_mismatch"
+        safe_action = "inspect_and_decide_reconciliation"
+        summary = "Runtime code differs from the adopted Project Source baseline; inspect sources and decide reconciliation before the next release."
+    elif candidate_verdict == "no_candidate_available":
+        kind = "no_artifact_candidate_available"
+        safe_action = "inspect_then_run_protocol_release_candidate_ask"
+        summary = "No artifact candidate is available; inspect state, then create a real protocol release-candidate turn."
+    elif candidate_verdict == "candidate_mvp_complete":
+        kind = "candidate_mvp_complete"
+        safe_action = "continue_from_adopted_baseline"
+        summary = "Candidate MVP is complete; continue from the adopted baseline after confirming current state."
+    else:
+        kind = candidate_verdict
+        safe_action = "inspect_candidate_next"
+        summary = "Candidate lifecycle has an inspectable next step."
+
+    return {
+        "kind": kind,
+        "safe_action": safe_action,
+        "summary": summary,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "operator_verdict": operator_verdict,
+        "candidate_verdict": candidate_verdict,
+        "severity": severity,
+        "warning_codes": warning_codes,
+        "blocker_codes": blocker_codes,
+        "versions": {
+            "runtime_code_version": versions.get("runtime_code_version"),
+            "adopted_project_source_version": versions.get("adopted_project_source_version"),
+            "adopted_artifact_version": versions.get("adopted_artifact_version"),
+            "registry_current_version": versions.get("registry_current_version"),
+            "runtime_vs_adopted_source": versions.get("runtime_vs_adopted_source"),
+            "selected_candidate_version": versions.get("selected_candidate_version"),
+            "accepted_candidate_version": versions.get("accepted_candidate_version"),
+        },
+        "context": {
+            "repo_path": str(repo_root),
+            "status": completion.get("status"),
+            "mvp_complete": bool(completion.get("ok")),
+            "candidate_available": not bool(precondition.get("blocks_intake")),
+            "candidate_count": lifecycle_classification.get("counts", {}).get("candidate_count"),
+            "recommended_next_kind": recommended_kind or None,
+        },
+        "next_safe_actions": next_safe_actions,
+        "not_performed": [
+            "download",
+            "zip_verification_write",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+        ],
+        "requires_operator_decision": any(item.get("risk") == "operator_decision" for item in next_safe_actions),
+    }
+
+
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     payload = _artifact_current_payload(backend, registry)
@@ -6456,6 +6625,14 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         precondition=precondition,
         candidate_count=candidate_count,
     )
+    remediation_plan = _artifact_mvp_remediation_plan(
+        lifecycle_classification=lifecycle_classification,
+        current_payload=current_payload,
+        completion=completion,
+        next_payload=next_payload,
+        precondition=precondition,
+        repo_root=repo_root,
+    )
 
     finalizer_command = None
     if current_payload.get("artifact_version"):
@@ -6495,6 +6672,8 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "state_source_updated": False,
         "artifact_current": current_payload,
         "lifecycle_classification": lifecycle_classification,
+        "remediation_plan": remediation_plan,
+        "next_safe_actions": remediation_plan.get("next_safe_actions"),
         "candidate_count": candidate_count,
         "candidate_intake_precondition": precondition,
         "candidate_next": next_payload,
@@ -6521,6 +6700,10 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         print(f"severity={payload.get('severity')}")
         print(f"mvp_complete={str(payload.get('mvp_complete')).lower()}")
         print(f"candidate_count={payload.get('candidate_count')}")
+        plan = payload.get("remediation_plan") if isinstance(payload.get("remediation_plan"), dict) else {}
+        if plan:
+            print(f"remediation_kind={plan.get('kind')}")
+            print(f"safe_action={plan.get('safe_action')}")
         recommended = next_payload.get("recommended_next_command") if isinstance(next_payload, dict) else {}
         if isinstance(recommended, dict):
             print(f"next_kind={recommended.get('kind')}")
@@ -8625,7 +8808,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.243.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.244.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 

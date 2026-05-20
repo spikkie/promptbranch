@@ -1,4 +1,4 @@
-# promptbranch v0.0.243
+# promptbranch v0.0.244
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 
@@ -646,7 +646,7 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 
 
 
-## v0.0.243
+## v0.0.244
 
 - Added operator-facing lifecycle classification to `pb artifact mvp-status --json`.
 - Added top-level `operator_verdict`, `severity`, `warning_codes`, and `blocker_codes`.
