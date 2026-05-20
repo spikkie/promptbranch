@@ -1928,7 +1928,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.242"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.243"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -5675,6 +5675,165 @@ def _artifact_current_payload(backend: Any, registry: ArtifactRegistry) -> dict[
     }
 
 
+def _version_tuple_for_operator_order(value: Any) -> tuple[int, ...] | None:
+    normalized = _candidate_version_normalized(value)
+    if not normalized:
+        return None
+    try:
+        return tuple(int(part) for part in normalized.removeprefix("v").split("."))
+    except ValueError:
+        return None
+
+
+def _compare_operator_versions(left: Any, right: Any) -> str:
+    left_tuple = _version_tuple_for_operator_order(left)
+    right_tuple = _version_tuple_for_operator_order(right)
+    if left_tuple is None or right_tuple is None:
+        return "unknown"
+    max_len = max(len(left_tuple), len(right_tuple))
+    left_padded = left_tuple + (0,) * (max_len - len(left_tuple))
+    right_padded = right_tuple + (0,) * (max_len - len(right_tuple))
+    if left_padded == right_padded:
+        return "equal"
+    return "left_newer" if left_padded > right_padded else "right_newer"
+
+
+def _artifact_mvp_operator_classification(
+    *,
+    current_payload: dict[str, Any],
+    completion: dict[str, Any],
+    next_payload: dict[str, Any],
+    precondition: dict[str, Any],
+    candidate_count: int,
+) -> dict[str, Any]:
+    """Derive an operator-facing lifecycle classification from raw cockpit data."""
+
+    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    completion_status = str(completion.get("status") or "unknown")
+    recommended = next_payload.get("recommended_next_command") if isinstance(next_payload.get("recommended_next_command"), dict) else {}
+    recommended_kind = str(recommended.get("kind") or "")
+    accepted_candidate = completion.get("accepted_candidate") if isinstance(completion.get("accepted_candidate"), dict) else None
+    selected_candidate = next_payload.get("selected_candidate") if isinstance(next_payload.get("selected_candidate"), dict) else None
+
+    runtime_version = baseline_roles.get("runtime_code_version")
+    adopted_source_version = baseline_roles.get("adopted_source_version")
+    adopted_artifact_version = baseline_roles.get("adopted_artifact_version")
+    registry_current_version = baseline_roles.get("registry_current_version")
+    code_matches_adopted_source = bool(baseline_roles.get("code_matches_adopted_source"))
+    runtime_vs_adopted_source = _compare_operator_versions(runtime_version, adopted_source_version)
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    has_artifact_state = bool(adopted_artifact_version or baseline_roles.get("adopted_artifact_ref"))
+    has_source_state = bool(adopted_source_version or baseline_roles.get("adopted_source_ref"))
+    has_registry_current = bool(registry_current_version or baseline_roles.get("registry_current_ref"))
+    if has_registry_current and has_artifact_state and not consistency.get("registry_current_matches_state_artifact"):
+        blockers.append({
+            "code": "registry_current_state_artifact_mismatch",
+            "severity": "blocked",
+            "message": "Artifact registry current does not match Promptbranch artifact state.",
+        })
+    if has_artifact_state and has_source_state and not consistency.get("state_source_matches_state_artifact"):
+        blockers.append({
+            "code": "state_source_artifact_mismatch",
+            "severity": "blocked",
+            "message": "Promptbranch source state does not match artifact state.",
+        })
+    if adopted_source_version and not code_matches_adopted_source:
+        warnings.append({
+            "code": "runtime_source_baseline_mismatch",
+            "severity": "warning",
+            "message": "Runtime code version differs from the adopted Project Source baseline.",
+            "runtime_code_version": runtime_version,
+            "adopted_source_version": adopted_source_version,
+            "version_relation": runtime_vs_adopted_source,
+        })
+    if precondition.get("blocks_intake"):
+        warnings.append({
+            "code": "no_artifact_candidate_available",
+            "severity": "warning",
+            "message": "Latest validated protocol reply declared no_artifact and contains zero artifact candidates.",
+            "reply_status": precondition.get("reply_status"),
+            "result_type": precondition.get("result_type"),
+        })
+
+    candidate_verdict = "candidate_state_unknown"
+    if completion.get("ok") is True or completion_status == "candidate_mvp_complete":
+        candidate_verdict = "candidate_mvp_complete"
+    elif completion_status == "candidate_mvp_no_artifact_candidate" or recommended_kind == "no_artifact_candidate":
+        candidate_verdict = "no_candidate_available"
+    elif completion_status == "candidate_mvp_test_pending" or recommended_kind == "test_candidate":
+        candidate_verdict = "candidate_pending_test"
+    elif completion_status == "candidate_mvp_acceptance_pending" or recommended_kind == "accept_candidate":
+        candidate_verdict = "candidate_ready_for_adoption"
+    elif completion_status == "candidate_mvp_intake_pending" or recommended_kind == "intake_candidate":
+        candidate_verdict = "candidate_ready_for_intake"
+    elif completion_status == "candidate_mvp_scope_not_found":
+        candidate_verdict = "candidate_scope_not_found"
+
+    operator_verdict = candidate_verdict
+    if blockers:
+        operator_verdict = "state_blocked"
+    elif any(item.get("code") == "runtime_source_baseline_mismatch" for item in warnings):
+        operator_verdict = "runtime_source_baseline_mismatch"
+
+    severity_order = {"ok": 0, "info": 1, "warning": 2, "blocked": 3}
+    severity = "ok"
+    if warnings:
+        severity = "warning"
+    if blockers:
+        severity = "blocked"
+    warning_codes = [str(item.get("code")) for item in warnings]
+    blocker_codes = [str(item.get("code")) for item in blockers]
+
+    return {
+        "operator_verdict": operator_verdict,
+        "candidate_verdict": candidate_verdict,
+        "severity": severity,
+        "status": completion_status,
+        "recommended_next_kind": recommended_kind or None,
+        "versions": {
+            "runtime_code_version": runtime_version,
+            "adopted_project_source_version": adopted_source_version,
+            "adopted_artifact_version": adopted_artifact_version,
+            "registry_current_version": registry_current_version,
+            "selected_candidate_version": selected_candidate.get("artifact_version") if selected_candidate else None,
+            "accepted_candidate_version": accepted_candidate.get("artifact_version") if accepted_candidate else None,
+            "runtime_vs_adopted_source": runtime_vs_adopted_source,
+        },
+        "counts": {
+            "candidate_count": candidate_count,
+            "accepted_candidate_count": completion.get("accepted_candidate_count"),
+            "pending_counts": completion.get("pending_counts") if isinstance(completion.get("pending_counts"), dict) else {},
+        },
+        "checks": {
+            "runtime_code_matches_adopted_source": code_matches_adopted_source,
+            "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact"),
+            "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact"),
+            "project_home_url_present": consistency.get("project_home_url_present"),
+            "candidate_available": not bool(precondition.get("blocks_intake")),
+            "mvp_complete": bool(completion.get("ok")),
+        },
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": warning_codes,
+        "blocker_codes": blocker_codes,
+        "operator_message": (
+            "State integrity is blocked; inspect blockers before running artifact intake."
+            if blockers else
+            "Runtime code is newer or different than the adopted Project Source baseline; this may be intentional after local install, but it should be explicit before the next release."
+            if operator_verdict == "runtime_source_baseline_mismatch" else
+            "No artifact candidate is available; run a real release-candidate protocol ask before candidate intake."
+            if candidate_verdict == "no_candidate_available" else
+            "Candidate lifecycle has a clear next manual step."
+            if severity == "warning" else
+            "Artifact Intake MVP state is consistent."
+        ),
+    }
+
+
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     payload = _artifact_current_payload(backend, registry)
@@ -6290,6 +6449,13 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
     )
     precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
     current_payload = _artifact_current_payload(backend, registry)
+    lifecycle_classification = _artifact_mvp_operator_classification(
+        current_payload=current_payload,
+        completion=completion,
+        next_payload=next_payload,
+        precondition=precondition,
+        candidate_count=candidate_count,
+    )
 
     finalizer_command = None
     if current_payload.get("artifact_version"):
@@ -6308,6 +6474,10 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "ok": True,
         "action": "artifact_mvp_status",
         "status": completion.get("status"),
+        "operator_verdict": lifecycle_classification.get("operator_verdict"),
+        "severity": lifecycle_classification.get("severity"),
+        "warning_codes": lifecycle_classification.get("warning_codes"),
+        "blocker_codes": lifecycle_classification.get("blocker_codes"),
         "mvp_complete": bool(completion.get("ok")),
         "repo_path": str(repo_root),
         "profile_dir": str(profile_root),
@@ -6324,6 +6494,7 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "state_artifact_updated": False,
         "state_source_updated": False,
         "artifact_current": current_payload,
+        "lifecycle_classification": lifecycle_classification,
         "candidate_count": candidate_count,
         "candidate_intake_precondition": precondition,
         "candidate_next": next_payload,
@@ -6346,6 +6517,8 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(f"status={payload.get('status')}")
+        print(f"operator_verdict={payload.get('operator_verdict')}")
+        print(f"severity={payload.get('severity')}")
         print(f"mvp_complete={str(payload.get('mvp_complete')).lower()}")
         print(f"candidate_count={payload.get('candidate_count')}")
         recommended = next_payload.get("recommended_next_command") if isinstance(next_payload, dict) else {}
@@ -8452,7 +8625,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.242.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.243.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 
