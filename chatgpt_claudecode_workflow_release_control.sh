@@ -71,7 +71,7 @@ Usage:
   $(basename "$0") --version v0.0.239 [options]
   $(basename "$0") v0.0.239 [options]
   $(basename "$0") --install-from-zip ~/Downloads/chatgpt_claudecode_workflow_v0.0.239.zip
-  $(basename "$0") --version v0.0.240.1 --import-plan
+  $(basename "$0") --version v0.0.241 --import-plan
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
@@ -137,7 +137,7 @@ Typical use:
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
   $(basename "$0") --skip-zip-import --run-tests
-  $(basename "$0") --version v0.0.240.1 --import-plan
+  $(basename "$0") --version v0.0.241 --import-plan
 USAGE
 }
 
@@ -1097,61 +1097,151 @@ stop_test_session_log() {
   test_session_logging_mode="none"
 }
 
-wait_for_promptbranch_service() {
+compose_file="docker-compose.chatgpt-service.yml"
+service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"
+service_container_before_json="${release_log_dir}/docker_container_before.${ver}.json"
+service_container_after_json="${release_log_dir}/docker_container_after.${ver}.json"
+service_compose_ps_json="${release_log_dir}/docker_compose_ps.${ver}.json"
+
+compose_service_container_id() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  docker compose -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
+}
+
+write_container_inspect_json() {
+  local container="$1"
+  local output="$2"
+  if [[ -z "${container}" ]]; then
+    printf '{"ok":false,"status":"container_not_found"}
+' > "${output}"
+    return 0
+  fi
+  if docker inspect "${container}" > "${output}" 2>"${output}.stderr"; then
+    rm -f "${output}.stderr"
+  else
+    printf '{"ok":false,"status":"docker_inspect_failed","container":"%s"}
+' "${container}" > "${output}"
+  fi
+}
+
+service_health_probe() {
+  local expected_version_plain="${ver#v}"
+  python3 - "${expected_version_plain}" "${service_health_json}" <<'INNERPY'
+import json
+import sys
+import urllib.request
+
+expected = sys.argv[1]
+out_path = sys.argv[2]
+last_error = None
+for path in ("/healthz", "/health"):
+    url = "http://127.0.0.1:8000" + path
+    try:
+        with urllib.request.urlopen(url, timeout=2.0) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = {"raw": raw}
+            payload.setdefault("url", url)
+            payload.setdefault("http_status", response.status)
+            with open(out_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("
+")
+            actual = str(payload.get("version") or "")
+            if actual == expected:
+                raise SystemExit(0)
+            raise SystemExit(f"service version mismatch: expected {expected}, got {actual!r}")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        last_error = f"{url}: {exc}"
+with open(out_path, "w", encoding="utf-8") as handle:
+    json.dump({"ok": False, "status": "health_probe_failed", "expected_version": expected, "error": last_error}, handle, indent=2, sort_keys=True)
+    handle.write("
+")
+raise SystemExit(last_error or "service health probe failed")
+INNERPY
+}
+
+wait_for_promptbranch_service_version() {
   local deadline=$((SECONDS + service_timeout_seconds))
   local detected=""
-  echo "Waiting up to ${service_timeout_seconds}s for Promptbranch service to be observable..."
+  echo "Waiting up to ${service_timeout_seconds}s for Promptbranch service version ${ver#v}..."
   while (( SECONDS < deadline )); do
-    if command -v docker >/dev/null 2>&1; then
-      detected="$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk '/promptbranch|chatgpt/ {print $1; exit}' || true)"
-      if [[ -n "${detected}" ]]; then
-        container_id="${container_id:-${detected}}"
-        echo "Detected service container: ${container_id}"
-        return 0
-      fi
+    detected="$(compose_service_container_id)"
+    if [[ -n "${detected}" ]]; then
+      container_id="${detected}"
     fi
-    # Service may run without a recognizable Docker name. Probe the common local port gently.
-    if python3 -c '
-import urllib.request
-for path in ["/healthz", "/health", "/"]:
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:8000" + path, timeout=1.0) as response:
-            if response.status < 500:
-                raise SystemExit(0)
-    except Exception:
-        pass
-raise SystemExit(1)
-' >/dev/null 2>&1
-    then
-      echo "Promptbranch service responded on http://127.0.0.1:8000"
+    if service_health_probe >/dev/null 2>"${service_health_json}.stderr"; then
+      rm -f "${service_health_json}.stderr"
+      echo "Promptbranch service health/version verified: ${ver#v}"
+      if [[ -n "${container_id}" ]]; then
+        echo "Detected service container: ${container_id}"
+      fi
       return 0
     fi
     sleep 2
   done
-  echo "WARN: service readiness was not confirmed within ${service_timeout_seconds}s; continuing." >&2
-  echo "WARN: inspect service_start_log=${service_start_log} if later commands fail." >&2
-  return 0
+  echo "ERROR: service did not report expected version ${ver#v} within ${service_timeout_seconds}s" >&2
+  echo "ERROR: inspect service_start_log=${service_start_log}" >&2
+  echo "ERROR: inspect service_health_json=${service_health_json}" >&2
+  [[ ! -s "${service_health_json}.stderr" ]] || cat "${service_health_json}.stderr" >&2
+  return 1
 }
 
-# Start/restart ChatGPT service using repo script.
+deploy_promptbranch_service_detached() {
+  need_cmd docker
+  [[ -f "${compose_file}" ]] || fail "compose file not found: ${compose_file}"
+
+  local before_container
+  before_container="$(compose_service_container_id)"
+  write_container_inspect_json "${before_container}" "${service_container_before_json}"
+
+  {
+    echo "== Docker service recreate =="
+    echo "compose_file: ${compose_file}"
+    echo "expected_version: ${ver#v}"
+    echo "+ docker compose -f ${compose_file} down --remove-orphans"
+    docker compose -f "${compose_file}" down --remove-orphans
+    echo "+ docker compose -f ${compose_file} build --pull"
+    docker compose -f "${compose_file}" build --pull
+    echo "+ docker compose -f ${compose_file} up -d --force-recreate --remove-orphans"
+    docker compose -f "${compose_file}" up -d --force-recreate --remove-orphans
+    echo "+ docker compose -f ${compose_file} ps"
+    docker compose -f "${compose_file}" ps
+    docker compose -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+  } >"${service_start_log}" 2>&1
+
+  container_id="$(compose_service_container_id)"
+  write_container_inspect_json "${container_id}" "${service_container_after_json}"
+
+  if [[ -n "${before_container}" && -n "${container_id}" && "${before_container}" == "${container_id}" ]]; then
+    echo "ERROR: Docker container was not recreated; before and after container IDs are both ${container_id}" >&2
+    echo "ERROR: inspect service_start_log=${service_start_log}" >&2
+    return 1
+  fi
+
+  wait_for_promptbranch_service_version
+}
+
+# Start/restart ChatGPT service using deterministic Docker Compose recreation.
 if [[ ${skip_service} -eq 0 ]]; then
   [[ -x "./run_chatgpt_service.sh" ]] || fail "service script not executable: ./run_chatgpt_service.sh"
   if [[ "${service_mode}" == "detached" ]]; then
-    echo "Starting ./run_chatgpt_service.sh detached; output -> ${service_start_log}"
+    echo "Recreating Docker service detached; output -> ${service_start_log}"
     rm -f "${service_pid_file}"
-    nohup ./run_chatgpt_service.sh >"${service_start_log}" 2>&1 &
-    service_pid=$!
-    echo "${service_pid}" > "${service_pid_file}"
-    disown "${service_pid}" 2>/dev/null || true
-    echo "Service start process PID: ${service_pid}"
-    echo "PID file: ${service_pid_file}"
-    wait_for_promptbranch_service
+    deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"
   else
     echo "Running ./run_chatgpt_service.sh in foreground with ${service_timeout_seconds}s timeout."
-    if ! timeout --foreground "${service_timeout_seconds}" ./run_chatgpt_service.sh; then
+    if ! timeout --foreground "${service_timeout_seconds}" ./run_chatgpt_service.sh --build --force-recreate --remove-orphans; then
       echo "WARN: service foreground command exited non-zero or timed out." >&2
       workflow_rc=1
     fi
+    wait_for_promptbranch_service_version || fail "service version verification failed"
   fi
 fi
 
@@ -1325,6 +1415,8 @@ adopt_if_green: ${adopt_if_green}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")
 service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")
 service_start: $(summary_value "${service_summary_active}" "${service_start_log}")
+service_health: $(summary_value "${service_summary_active}" "${service_health_json}")
+compose_ps:     $(summary_value "${service_summary_active}" "${service_compose_ps_json}")
 service_pid:   $(summary_value "${service_summary_active}" "${service_pid_file}")
 exit_code:     ${workflow_rc}
 DONE
