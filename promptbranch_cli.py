@@ -4,6 +4,7 @@ import argparse
 import copy
 import asyncio
 import hashlib
+import importlib.metadata
 import json
 import io
 import os
@@ -1928,7 +1929,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.244"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -4331,6 +4332,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
+        "release": ["doctor", "--version", "--target-version", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
@@ -5856,6 +5858,238 @@ def _decision_action(kind: str, reason: str, *, priority: int = 90) -> dict[str,
     }
 
 
+
+
+def _release_doctor_version_from_file(repo_root: Path) -> dict[str, Any]:
+    version_file = repo_root / "VERSION"
+    payload: dict[str, Any] = {
+        "path": str(version_file),
+        "present": version_file.is_file(),
+        "version": None,
+        "normalized_version": None,
+    }
+    if not version_file.is_file():
+        payload["status"] = "missing"
+        return payload
+    try:
+        value = version_file.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        payload.update({"status": "read_error", "error": str(exc)})
+        return payload
+    payload["version"] = value
+    payload["normalized_version"] = _candidate_version_normalized(value)
+    payload["status"] = "verified" if payload["normalized_version"] else "invalid"
+    return payload
+
+
+def _release_doctor_installed_distribution() -> dict[str, Any]:
+    try:
+        value = importlib.metadata.version("promptbranch")
+    except importlib.metadata.PackageNotFoundError:
+        return {"present": False, "version": None, "normalized_version": None, "status": "not_installed"}
+    except Exception as exc:  # pragma: no cover - defensive metadata guard
+        return {"present": False, "version": None, "normalized_version": None, "status": "read_error", "error": str(exc)}
+    return {
+        "present": True,
+        "version": value,
+        "normalized_version": _candidate_version_normalized(value),
+        "status": "verified" if value else "missing",
+    }
+
+
+def _release_doctor_git_status(repo_root: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "repo_path": str(repo_root),
+        "is_git_repo": False,
+        "dirty": None,
+        "branch": None,
+        "short_sha": None,
+        "upstream": None,
+        "status_lines": [],
+        "status": "unknown",
+    }
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=3.0, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        payload.update({"status": "git_unavailable", "error": str(exc)})
+        return payload
+    if top.returncode != 0:
+        payload.update({"status": "not_git_repo", "error": top.stderr.strip()})
+        return payload
+    payload["is_git_repo"] = True
+    payload["git_root"] = top.stdout.strip()
+    try:
+        branch = subprocess.run(["git", "branch", "--show-current"], cwd=str(repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3.0, check=False)
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3.0, check=False)
+        upstream = subprocess.run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd=str(repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3.0, check=False)
+        status = subprocess.run(["git", "status", "--short", "--branch"], cwd=str(repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5.0, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        payload.update({"status": "git_status_error", "error": str(exc)})
+        return payload
+    lines = [line for line in status.stdout.splitlines() if line.strip()]
+    dirty_lines = [line for line in lines if not line.startswith("##")]
+    payload.update({
+        "branch": branch.stdout.strip() if branch.returncode == 0 else None,
+        "short_sha": sha.stdout.strip() if sha.returncode == 0 else None,
+        "upstream": upstream.stdout.strip() if upstream.returncode == 0 else None,
+        "dirty": bool(dirty_lines),
+        "status_lines": lines[:80],
+        "dirty_count": len(dirty_lines),
+        "status": "verified" if status.returncode == 0 else "git_status_error",
+    })
+    if status.returncode != 0:
+        payload["error"] = status.stderr.strip()
+    return payload
+
+
+def _release_doctor_http_json(url: str, *, timeout_seconds: float) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "url": url,
+        "attempted": True,
+        "ok": False,
+        "status": "unavailable",
+        "http_status": None,
+        "version": None,
+        "normalized_version": None,
+    }
+    try:
+        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=max(0.2, float(timeout_seconds))) as response:
+            body = response.read(256 * 1024)
+            payload["http_status"] = getattr(response, "status", None)
+    except Exception as exc:
+        payload.update({"error": str(exc), "status": "request_failed"})
+        return payload
+    try:
+        parsed = json.loads(body.decode("utf-8"))
+    except Exception as exc:
+        payload.update({"error": f"invalid json: {exc}", "body_preview": body[:300].decode("utf-8", errors="replace"), "status": "invalid_json"})
+        return payload
+    version = parsed.get("version") or parsed.get("service_version") or parsed.get("package_version")
+    payload.update({
+        "ok": bool(parsed.get("ok", True)),
+        "status": "verified",
+        "payload": parsed,
+        "version": version,
+        "normalized_version": _candidate_version_normalized(version),
+    })
+    return payload
+
+
+def _release_doctor_source_versions(sources: list[dict[str, Any]]) -> dict[str, Any]:
+    versions: list[dict[str, Any]] = []
+    seen: set[tuple[str | None, str | None]] = set()
+    version_re = re.compile(r"(?P<version>v?\d+\.\d+\.\d+(?:\.\d+)?)")
+    for item in sources:
+        fields = [
+            str(item.get("title") or ""),
+            str(item.get("name") or ""),
+            str(item.get("identity") or ""),
+            str(item.get("filename") or ""),
+            str(item.get("source_name") or ""),
+        ]
+        joined = " ".join(value for value in fields if value)
+        match = version_re.search(joined)
+        if not match:
+            continue
+        raw_version = match.group("version")
+        normalized = _candidate_version_normalized(raw_version)
+        title = next((value for value in fields if value), None)
+        key = (title, normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        versions.append({
+            "title": title,
+            "version": raw_version,
+            "normalized_version": normalized,
+            "identity": item.get("identity"),
+            "kind": item.get("kind") or item.get("source_kind") or item.get("type"),
+        })
+    return {
+        "count": len(sources),
+        "detected_version_count": len(versions),
+        "detected_versions": versions,
+    }
+
+
+def _release_doctor_expected_versions(*, requested_version: str | None, target_version: str | None, runtime_version: str | None) -> dict[str, Any]:
+    return {
+        "requested_version": requested_version,
+        "requested_version_normalized": _candidate_version_normalized(requested_version),
+        "target_version": target_version,
+        "target_version_normalized": _candidate_version_normalized(target_version),
+        "runtime_version": runtime_version,
+        "runtime_version_normalized": _candidate_version_normalized(runtime_version),
+    }
+
+
+def _release_doctor_consistency(
+    *,
+    expected: dict[str, Any],
+    version_file: dict[str, Any],
+    installed_distribution: dict[str, Any],
+    service_health: dict[str, Any],
+    artifact_current: dict[str, Any],
+    git_status: dict[str, Any],
+    project_sources: dict[str, Any],
+) -> dict[str, Any]:
+    runtime_version = expected.get("runtime_version_normalized")
+    requested_version = expected.get("requested_version_normalized")
+    version_file_value = version_file.get("normalized_version")
+    installed_value = installed_distribution.get("normalized_version")
+    service_value = service_health.get("normalized_version") if service_health.get("attempted") else None
+    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    adopted_source = baseline_roles.get("adopted_source_version")
+    adopted_artifact = baseline_roles.get("adopted_artifact_version")
+    registry_current = baseline_roles.get("registry_current_version")
+    source_versions = [item.get("normalized_version") for item in project_sources.get("detected_versions", []) if item.get("normalized_version")]
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if requested_version and runtime_version and requested_version != runtime_version:
+        warn("requested_runtime_version_mismatch", "Requested doctor version differs from runtime code version.", requested_version=requested_version, runtime_version=runtime_version)
+    if runtime_version and version_file_value and runtime_version != version_file_value:
+        block("runtime_version_file_mismatch", "Runtime code version differs from VERSION file.", runtime_version=runtime_version, version_file_version=version_file_value)
+    if runtime_version and installed_value and runtime_version != installed_value:
+        warn("runtime_installed_distribution_mismatch", "Runtime code version differs from installed promptbranch distribution metadata.", runtime_version=runtime_version, installed_distribution_version=installed_value)
+    if service_value and runtime_version and service_value != runtime_version:
+        warn("service_runtime_version_mismatch", "Docker/service health version differs from CLI runtime version.", service_version=service_value, runtime_version=runtime_version)
+    if adopted_source and runtime_version and adopted_source != runtime_version:
+        warn("runtime_source_baseline_mismatch", "Runtime code version differs from adopted Project Source baseline.", runtime_version=runtime_version, adopted_source_version=adopted_source, version_relation=_compare_operator_versions(runtime_version, adopted_source))
+    if adopted_artifact and registry_current and adopted_artifact != registry_current:
+        block("adopted_artifact_registry_mismatch", "Adopted artifact state differs from artifact registry current.", adopted_artifact_version=adopted_artifact, registry_current_version=registry_current)
+    if bool(git_status.get("dirty")):
+        warn("git_worktree_dirty", "Git working tree has uncommitted or untracked files.", dirty_count=git_status.get("dirty_count"), status_lines=git_status.get("status_lines"))
+    if project_sources.get("attempted") and runtime_version and runtime_version not in source_versions:
+        warn("runtime_version_not_visible_in_project_sources", "Runtime version was not detected in the visible Project Sources list.", runtime_version=runtime_version, detected_versions=source_versions)
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "severity": severity,
+        "ok": not blockers,
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "checks": {
+            "runtime_matches_requested": not requested_version or not runtime_version or requested_version == runtime_version,
+            "runtime_matches_version_file": not runtime_version or not version_file_value or runtime_version == version_file_value,
+            "runtime_matches_installed_distribution": not runtime_version or not installed_value or runtime_version == installed_value,
+            "service_matches_runtime": not service_value or not runtime_version or service_value == runtime_version,
+            "runtime_matches_adopted_source": not adopted_source or not runtime_version or adopted_source == runtime_version,
+            "git_worktree_clean": git_status.get("dirty") is False,
+            "runtime_visible_in_project_sources": (not project_sources.get("attempted")) or (not runtime_version) or runtime_version in source_versions,
+        },
+    }
+
 def _artifact_mvp_remediation_plan(
     *,
     lifecycle_classification: dict[str, Any],
@@ -6002,6 +6236,173 @@ def _artifact_mvp_remediation_plan(
         "requires_operator_decision": any(item.get("risk") == "operator_decision" for item in next_safe_actions),
     }
 
+
+
+
+async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
+    """Read-only release lifecycle reconciliation doctor."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    registry = _artifact_registry_from_args(args)
+    runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
+    expected = _release_doctor_expected_versions(
+        requested_version=str(getattr(args, "version", "") or "").strip() or None,
+        target_version=str(getattr(args, "target_version", "") or "").strip() or None,
+        runtime_version=runtime_version,
+    )
+    version_file = _release_doctor_version_from_file(repo_root)
+    installed_distribution = _release_doctor_installed_distribution()
+    git_status = _release_doctor_git_status(repo_root)
+    artifact_current = _artifact_current_payload(backend, registry)
+
+    health_url = str(getattr(args, "health_url", "") or "").strip()
+    if not health_url:
+        base_url = str(getattr(args, "service_base_url", "") or "http://127.0.0.1:8000").rstrip("/")
+        health_url = f"{base_url}/healthz"
+    if getattr(args, "skip_service_health", False):
+        service_health = {"attempted": False, "ok": None, "status": "skipped", "url": health_url, "version": None, "normalized_version": None}
+    else:
+        service_health = _release_doctor_http_json(health_url, timeout_seconds=float(getattr(args, "health_timeout", 3.0) or 3.0))
+
+    project_sources: dict[str, Any]
+    if getattr(args, "skip_project_sources", False):
+        project_sources = {"attempted": False, "ok": None, "status": "skipped", "sources": [], "count": 0, "detected_versions": [], "detected_version_count": 0}
+    else:
+        try:
+            result = await asyncio.wait_for(
+                backend.list_project_sources(keep_open=getattr(args, "keep_open", False)),
+                timeout=float(getattr(args, "source_timeout", 60.0) or 60.0),
+            )
+            sources, source_payload = _project_source_list_payload(result)
+            version_summary = _release_doctor_source_versions(sources)
+            project_sources = {
+                "attempted": True,
+                "ok": bool(source_payload.get("ok", True)),
+                "status": source_payload.get("status") or "verified",
+                "count": version_summary["count"],
+                "detected_version_count": version_summary["detected_version_count"],
+                "detected_versions": version_summary["detected_versions"],
+                "source_payload_keys": sorted(source_payload.keys()),
+            }
+        except Exception as exc:
+            project_sources = {
+                "attempted": True,
+                "ok": False,
+                "status": "source_list_failed",
+                "error": str(exc),
+                "sources": [],
+                "count": 0,
+                "detected_versions": [],
+                "detected_version_count": 0,
+            }
+
+    candidate_precondition = _latest_protocol_artifact_candidate_precondition(resolve_profile_dir(getattr(args, "profile_dir", None)))
+    try:
+        next_payload, candidate_count, inventory = _candidate_run_next_payload(
+            backend,
+            registry=registry,
+            profile_root=resolve_profile_dir(getattr(args, "profile_dir", None)),
+            repo_root=repo_root,
+            artifact_arg=None,
+            version_arg=None,
+        )
+    except Exception as exc:
+        next_payload = {"ok": False, "status": "candidate_next_failed", "error": str(exc)}
+        candidate_count = 0
+        inventory = {"status": "candidate_inventory_failed", "error": str(exc)}
+
+    consistency = _release_doctor_consistency(
+        expected=expected,
+        version_file=version_file,
+        installed_distribution=installed_distribution,
+        service_health=service_health,
+        artifact_current=artifact_current,
+        git_status=git_status,
+        project_sources=project_sources,
+    )
+
+    next_safe_actions = [
+        _read_only_action("inspect_artifact_current", "pb artifact current --json", "Inspect runtime/adopted artifact/source state.", priority=10),
+        _read_only_action("inspect_mvp_status", "pb artifact mvp-status --json", "Inspect candidate MVP cockpit and remediation plan.", priority=20),
+        _read_only_action("inspect_candidate_next", "pb artifact candidate-next --json", "Inspect next candidate step without executing it.", priority=30),
+        _read_only_action("inspect_project_sources", "pb src list --json", "Inspect visible Project Sources.", priority=40),
+    ]
+    if consistency.get("warning_codes"):
+        next_safe_actions.append(_decision_action("review_release_doctor_warnings", "Review release doctor warnings before declaring the runtime/source lifecycle reconciled.", priority=50))
+    if consistency.get("blocker_codes"):
+        next_safe_actions.append(_decision_action("resolve_release_doctor_blockers", "Resolve release doctor blockers before lifecycle mutation/adoption.", priority=5))
+    next_safe_actions = sorted(next_safe_actions, key=lambda item: int(item.get("priority") or 999))
+    next_safe_actions = [{k: v for k, v in item.items() if k != "priority"} for item in next_safe_actions]
+
+    payload = {
+        "ok": bool(consistency.get("ok")),
+        "action": "release_doctor",
+        "status": "verified" if consistency.get("ok") else "blocked",
+        "severity": consistency.get("severity"),
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "repo_path": str(repo_root),
+        "profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
+        "expected": expected,
+        "runtime": {
+            "cli_version": CLI_VERSION,
+            "runtime_code_version": runtime_version,
+        },
+        "version_file": version_file,
+        "installed_distribution": installed_distribution,
+        "service_health": service_health,
+        "artifact_current": artifact_current,
+        "project_sources": project_sources,
+        "candidate_intake_precondition": candidate_precondition,
+        "candidate_next": next_payload,
+        "candidate_inventory_summary": {
+            "candidate_count": candidate_count,
+            "status": inventory.get("status") if isinstance(inventory, dict) else None,
+            "candidate_registry_path": inventory.get("candidate_registry_path") if isinstance(inventory, dict) else None,
+        },
+        "git": git_status,
+        "consistency": consistency,
+        "warning_codes": consistency.get("warning_codes"),
+        "blocker_codes": consistency.get("blocker_codes"),
+        "next_safe_actions": next_safe_actions,
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+        "operator_instruction": "Read-only release lifecycle doctor. Inspect warnings/blockers before running any mutating release, source, or adoption command.",
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"runtime={runtime_version}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
+async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "doctor":
+        return await cmd_release_doctor(backend, args)
+    raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
@@ -8771,6 +9172,20 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
     src_sync.add_argument("--keep-open", action="store_true")
 
+    release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
+    release_subparsers = release.add_subparsers(dest="release_command", required=True)
+    release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
+    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.")
+    release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
+    release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
+    release_doctor.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds. Defaults to 3.")
+    release_doctor.add_argument("--source-timeout", type=float, default=60.0, help="Project Source listing timeout in seconds. Defaults to 60.")
+    release_doctor.add_argument("--skip-service-health", action="store_true", help="Skip Docker/service /healthz read-only probe.")
+    release_doctor.add_argument("--skip-project-sources", action="store_true", help="Skip read-only Project Sources listing.")
+    release_doctor.add_argument("--keep-open", action="store_true")
+    release_doctor.add_argument("--json", action="store_true")
+
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
 
@@ -8808,7 +9223,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.244.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 
@@ -9348,6 +9763,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_src(backend, args)
     if args.command == "artifact":
         return await cmd_artifact(backend, args)
+    if args.command == "release":
+        return await cmd_release(backend, args)
     if args.command == "agent":
         return await cmd_agent(backend, args)
     if args.command == "skill":
