@@ -2765,26 +2765,7 @@ class ChatGPTBrowserClient:
             source_match_candidates,
             exact_safe=True,
         )
-        if existing_source is None:
-            # Some ChatGPT cards render files as "<filename> Document" or as
-            # a multiline row whose exact-safe identity differs from the
-            # requested basename.  Before declaring the preflight inconclusive,
-            # perform a broader read-only card match against the same snapshot.
-            existing_source = self._match_source_card(
-                initial_sources,
-                source_match_candidates,
-                exact_safe=False,
-                anchor_safe=True,
-            )
         if existing_source is not None:
-            self._log(
-                "project-source-add",
-                "existing file source detected from initial overwrite snapshot",
-                project_url=project_url,
-                source_match_candidates=source_match_candidates,
-                source_match=self._preferred_source_card_identity(existing_source),
-                initial_source_count=len(initial_sources),
-            )
             return existing_source
 
         self._log(
@@ -6554,19 +6535,8 @@ class ChatGPTBrowserClient:
                 candidates.append(normalized)
 
         if source_kind == "file":
-            normalized_display = self._normalize_file_source_display_name(display_name, file_path)
-            normalized_path_name = Path(file_path).name if file_path else None
-            add(normalized_display)
-            add(normalized_path_name)
-            # ChatGPT commonly renders uploaded files with an added generic
-            # document/type suffix, for example "release.zip Document".
-            # Include those identities during overwrite preflight so a verified
-            # existing file source is not misclassified as a fresh add merely
-            # because the card identity is richer than the filesystem basename.
-            for file_label in (normalized_display, normalized_path_name):
-                normalized_label = self._normalize_source_match_text(file_label)
-                if normalized_label and not normalized_label.lower().endswith(" document"):
-                    add(f"{normalized_label} Document")
+            add(self._normalize_file_source_display_name(display_name, file_path))
+            add(Path(file_path).name if file_path else None)
             return candidates
 
         normalized_value = self._normalize_source_match_text(value)
