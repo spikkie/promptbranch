@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.242" in out
+    assert "0.0.243" in out
     assert "promptbranch" in out
 
 
@@ -403,15 +403,15 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
     artifact_mvp_status = parser.parse_args([
         "artifact", "mvp-status",
-        "chatgpt_claudecode_workflow_v0.0.242.zip",
-        "--version", "v0.0.242",
+        "chatgpt_claudecode_workflow_v0.0.243.zip",
+        "--version", "v0.0.243",
         "--repo-path", "/tmp/repo",
         "--json",
     ])
     assert artifact_mvp_status.command == "artifact"
     assert artifact_mvp_status.artifact_command == "mvp-status"
-    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.242.zip"
-    assert artifact_mvp_status.version == "v0.0.242"
+    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.243.zip"
+    assert artifact_mvp_status.version == "v0.0.243"
     assert artifact_mvp_status.repo_path == "/tmp/repo"
     assert artifact_mvp_status.json is True
 

@@ -611,6 +611,17 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.243
+
+- `pb artifact mvp-status --json` now includes explicit operator lifecycle fields:
+  - `operator_verdict`
+  - `severity`
+  - `warning_codes`
+  - `blocker_codes`
+  - `lifecycle_classification`
+- Runtime-vs-adopted-Project-Source mismatches are now surfaced as `runtime_source_baseline_mismatch` warnings instead of being buried in nested baseline role fields.
+- The command remains read-only and does not perform candidate intake, adoption, source mutation, or state advancement.
+
 ## v0.0.242
 
 - New read-only command: `pb artifact mvp-status --json`.
