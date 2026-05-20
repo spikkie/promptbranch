@@ -1929,7 +1929,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245.1"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245.2"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -3205,10 +3205,15 @@ def _validate_protocol_reply_against_request(parsed: dict[str, Any], envelope: d
     expected_target_version = artifact.get("target_version")
     baseline_output_version = baseline.get("output_version")
     baseline_target_version = baseline.get("target_version")
+    reply = parsed.get("reply") if isinstance(parsed.get("reply"), dict) else {}
     artifacts = parsed.get("artifacts") if isinstance(parsed.get("artifacts"), list) else []
+    if "artifacts" not in parsed and isinstance(reply.get("artifacts"), list):
+        artifacts = reply.get("artifacts") or []
+    reply_status = parsed.get("reply_status") or reply.get("status") or parsed.get("status")
+    result_type = parsed.get("result_type") or reply.get("result_type")
     no_artifact_no_change = (
-        parsed.get("status") == "no_artifact"
-        and parsed.get("result_type") == "no_change"
+        reply_status == "no_artifact"
+        and result_type == "no_change"
         and not artifacts
     )
     if expected_target_version:
@@ -9193,7 +9198,7 @@ def make_parser() -> argparse.ArgumentParser:
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
-    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.1.")
+    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.2.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
     release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
@@ -9241,7 +9246,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.1.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.2.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 
