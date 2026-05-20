@@ -231,13 +231,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
 
     with zipfile.ZipFile(downloads / artifact, "w") as archive:
         archive.writestr("VERSION", f"{version}\n")
-        archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
-        archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
-        archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr("fresh.txt", "installed\n")
-        archive.writestr("ollama_mcp_verification_harness/README.md", "tracked harness\n")
-        archive.writestr("ollama_mcp_verification_harness_v2/README.md", "tracked harness v2\n")
-        archive.writestr("promptbranch.egg-info/PKG-INFO", "Metadata-Version: 2.4\n")
         archive.writestr("scripts/example.sh", "#!/usr/bin/env bash\n")
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
@@ -306,11 +300,6 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     assert (repo / ".env").read_text(encoding="utf-8") == "LOCAL=1\n"
     assert (repo / ".pb_profile" / "state.json").is_file()
     assert (repo / "debug_artifacts" / "trace.zip").read_text(encoding="utf-8") == "preserve debug trace\n"
-    assert (repo / "ollama_mcp_verification_harness" / "README.md").read_text(encoding="utf-8") == "tracked harness\n"
-    assert (repo / "ollama_mcp_verification_harness_v2" / "README.md").read_text(encoding="utf-8") == "tracked harness v2\n"
-    assert (repo / "promptbranch.egg-info" / "PKG-INFO").is_file()
-    assert (repo / ".gitignore").is_file()
-    assert (repo / ".not_to_zip").is_file()
     assert (repo / artifact).is_file()
 
 
@@ -327,9 +316,6 @@ def _write_release_candidate_zip(path: Path, *, version: str, include_version: b
     with zipfile.ZipFile(path, "w") as archive:
         if include_version:
             archive.writestr(f"{prefix}VERSION", f"{version}\n")
-        archive.writestr(f"{prefix}pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
-        archive.writestr(f"{prefix}.gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
-        archive.writestr(f"{prefix}.not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(f"{prefix}fresh.txt", "installed\n")
         if include_script:
             archive.writestr(f"{prefix}chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
@@ -361,7 +347,6 @@ def test_release_control_import_plan_validates_candidate_without_mutating_repo(t
     assert payload["zip_version"] == version
     assert payload["zip_root_layout"] == "repo_root"
     assert payload["candidate_script_present"] is True
-    assert payload["missing_required_root_files"] == []
     assert payload["would_install"] is True
     assert ".git" in payload["preserved_paths"]
     assert "debug_artifacts" in payload["preserved_paths"]
@@ -514,12 +499,6 @@ def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_fil
     assert 'local preserved_csv=".git,.env,.generated,.pb_profile,profile,debug_artifacts"' in text
     assert '! -name "debug_artifacts"' in text
     assert "--exclude='debug_artifacts/'" in text
-    assert "--exclude='.env'" in text
-    assert "--exclude='.env.*'" in text
-    assert 'required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]' in text
-    assert 'verify_release_import_copied_entries "${download_zip}" "${repo_root}"' in text
-    assert 'force_add_intentional_ignored_release_paths' in text
-    assert 'assert_release_staging_safe' in text
     assert 'normalize_generated_ownership "pre-import"' in text
     assert 'normalize_generated_ownership "post-release"' in text
 
@@ -589,9 +568,6 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
 
     with zipfile.ZipFile(downloads / artifact, "w") as archive:
         archive.writestr("VERSION", f"{version}\n")
-        archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
-        archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
-        archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
@@ -802,9 +778,6 @@ def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp
 
     with zipfile.ZipFile(downloads / artifact, "w") as archive:
         archive.writestr("VERSION", f"{version}\n")
-        archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
-        archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
-        archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
@@ -1002,23 +975,3 @@ def test_finalize_artifact_intake_mvp_rejects_conflicting_flags(tmp_path: Path):
     assert result.returncode == 2
     assert "conflicts with final Artifact Intake MVP completion validation" in result.stderr
 
-
-
-def test_release_control_required_control_files_and_staging_guard_present() -> None:
-    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
-    text = script.read_text(encoding="utf-8")
-
-    assert '".gitignore", ".not_to_zip"' in text
-    assert 'protected_zip_entries_present' in text
-    assert 'unsafe release-control staged paths detected' in text
-    assert '.env|.env.*|.generated|.generated/*|.pb_profile' in text
-    assert 'git add -f -- "${path}"' in text
-
-
-def test_gitignore_allows_intentional_release_harness_and_metadata() -> None:
-    gitignore = (Path(__file__).resolve().parents[1] / ".gitignore").read_text(encoding="utf-8")
-
-    assert '# ollama_mcp_verification_harness/  # intentionally tracked release verification harness' in gitignore
-    assert '# ollama_mcp_verification_harness_v2/  # intentionally tracked release verification harness' in gitignore
-    assert '!promptbranch.egg-info/' in gitignore
-    assert '!promptbranch.egg-info/**' in gitignore

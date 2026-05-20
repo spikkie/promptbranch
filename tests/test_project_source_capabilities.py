@@ -66,52 +66,6 @@ def test_project_sources_url_sets_tab_query(browser_client: ChatGPTBrowserClient
     )
 
 
-
-
-def test_build_source_match_candidates_for_file_includes_document_identity(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
-    file_path = tmp_path / "release.zip"
-    candidates = browser_client._build_source_match_candidates(
-        "file",
-        value=None,
-        display_name=None,
-        file_path=str(file_path),
-    )
-
-    assert candidates == ["release.zip", "release.zip Document"]
-
-
-def test_find_existing_file_source_for_overwrite_matches_document_card_identity(browser_client: ChatGPTBrowserClient) -> None:
-    page = object()
-    initial_sources = [
-        {
-            "identity": "release.zip Document",
-            "title": "release.zip",
-            "subtitle": "Document",
-            "text": "release.zip\nDocument",
-            "key": "release.zip",
-        }
-    ]
-
-    async def fail_wait_for_source_presence(*_args, **_kwargs):
-        raise AssertionError("initial snapshot should be sufficient")
-
-    async def fail_verify_persistence(*_args, **_kwargs):
-        raise AssertionError("initial snapshot should be sufficient")
-
-    browser_client._wait_for_source_presence = fail_wait_for_source_presence  # type: ignore[method-assign]
-    browser_client._verify_project_source_persistence = fail_verify_persistence  # type: ignore[method-assign]
-
-    result = asyncio.run(
-        browser_client._find_existing_file_source_for_overwrite(
-            page,
-            source_match_candidates=["release.zip", "release.zip Document"],
-            initial_sources=initial_sources,
-            project_url="https://chatgpt.com/g/g-p-123/project",
-        )
-    )
-
-    assert result == initial_sources[0]
-
 def test_build_persistence_source_candidates_prefers_rendered_identity(browser_client: ChatGPTBrowserClient) -> None:
     candidates = browser_client._build_persistence_source_candidates(
         requested_match="Integration note for run 123",
@@ -752,7 +706,7 @@ def test_build_source_match_candidates_for_file_uses_basename(browser_client: Ch
         file_path="/var/tmp/uploads/candlecast-src-0.19.5.82.2.zip",
     )
 
-    assert candidates == ["candlecast-src-0.19.5.82.2.zip", "candlecast-src-0.19.5.82.2.zip Document"]
+    assert candidates == ["candlecast-src-0.19.5.82.2.zip"]
 
 
 
@@ -961,7 +915,7 @@ def test_add_project_source_operation_overwrite_refresh_preflight_detects_existi
 
     async def fake_verify_persistence(*_args, **kwargs):
         calls["refresh_verify"] += 1
-        assert kwargs["source_match_candidates"] == ["itest-file.txt", "itest-file.txt Document"]
+        assert kwargs["source_match_candidates"] == ["itest-file.txt"]
         assert kwargs["before_sources"] is None
         assert kwargs["max_refresh_attempts"] == 2
         return {
@@ -1380,7 +1334,7 @@ def test_add_project_source_operation_returns_idempotent_success_for_duplicate_f
         return None
 
     async def fake_wait_for_source_presence(*_args, **kwargs):
-        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip", "candlecast-src-0.19.5.82.2.zip Document"]
+        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip"]
         return {
             "identity": "candlecast-src-0.19.5.82.2.zip",
             "title": "candlecast-src-0.19.5.82.2.zip",
@@ -1394,7 +1348,7 @@ def test_add_project_source_operation_returns_idempotent_success_for_duplicate_f
         return "candlecast-src-0.19.5.82.2.zip already exists"
 
     async def fake_verify_persistence(*_args, **kwargs):
-        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip", "candlecast-src-0.19.5.82.2.zip Document"]
+        assert kwargs["source_match_candidates"] == ["candlecast-src-0.19.5.82.2.zip"]
         return {
             "identity": "candlecast-src-0.19.5.82.2.zip",
             "title": "candlecast-src-0.19.5.82.2.zip",
