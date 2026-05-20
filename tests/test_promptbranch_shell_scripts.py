@@ -482,6 +482,28 @@ def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> Non
     assert 'mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/debug_artifacts' in container_script
 
 
+
+def test_release_control_recreates_docker_service_and_verifies_version() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    run_script = (root / "run_chatgpt_service.sh").read_text(encoding="utf-8")
+
+    assert 'docker compose -f "${compose_file}" down --remove-orphans' in script
+    assert 'docker compose -f "${compose_file}" build --pull' in script
+    assert 'docker compose -f "${compose_file}" up -d --force-recreate --remove-orphans' in script
+    assert 'service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"' in script
+    assert 'service version mismatch: expected {expected}, got {actual!r}' in script
+    assert 'Docker container was not recreated' in script
+    assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
+    assert 'up --build --force-recreate "$@"' in run_script
+
+
+def test_release_control_summary_mentions_service_health_artifact() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'service_health: $(summary_value "${service_summary_active}" "${service_health_json}")' in script
+    assert 'compose_ps:     $(summary_value "${service_summary_active}" "${service_compose_ps_json}")' in script
+
 def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -13,4 +13,4 @@ if [[ ! -f "${CHATGPT_PASSWORD_SECRET_FILE}" ]]; then
   exit 1
 fi
 
-exec docker compose -f docker-compose.chatgpt-service.yml up --build "$@"
+exec docker compose -f docker-compose.chatgpt-service.yml up --build --force-recreate "$@"

@@ -611,12 +611,13 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
-## v0.0.240.1
+## v0.0.241
 
-- Repair for `v0.0.240`: release-control automatic import now preserves `debug_artifacts/` instead of attempting to delete root-owned trace artifacts during overwrite import.
-- Ownership normalization now covers generated repo-local state: `.pb_profile/` and `debug_artifacts/` are chowned to the configured `--owner` before import and after release steps unless `--skip-chown` is used.
-- Docker Compose now runs `chatgpt-service` with the invoking host UID/GID by default via `PROMPTBRANCH_DOCKER_UID` / `PROMPTBRANCH_DOCKER_GID`, preventing newly generated bind-mounted artifacts from being written as `root`.
-- The container service startup redirects HOME/XDG cache/config paths to `/tmp` and disables Python bytecode generation to reduce root-owned generated surfaces.
+- Built from repair baseline `v0.0.240.1`.
+- Release control now performs deterministic Docker service recreation in detached mode: `docker compose down --remove-orphans`, `docker compose build --pull`, and `docker compose up -d --force-recreate --remove-orphans`.
+- Release control now verifies `/healthz` reports the expected service/package version before accepting service startup.
+- Release control writes service health, Compose ps, and before/after container inspect diagnostics under `.pb_profile/release_logs/<version>/`.
+- Direct `run_chatgpt_service.sh` usage now passes `--force-recreate` by default.
 
 ## v0.0.240
 

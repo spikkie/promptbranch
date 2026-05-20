@@ -1515,7 +1515,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.240.1"
+    assert captured.out.strip() == "promptbranch 0.0.241"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -1964,7 +1964,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.240.1"
+    assert payload["version"] == "0.0.241"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -4137,8 +4137,8 @@ def _write_no_artifact_protocol_run(profile: Path, *, request_id: str = "req-no-
             "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
             "source_version": "v0.0.236",
             "output_artifact": None,
-            "output_version": "v0.0.240.1",
-            "target_version": "v0.0.240.1",
+            "output_version": "v0.0.241",
+            "target_version": "v0.0.241",
             "release_type": "normal",
         },
         "changes": [],
@@ -4163,7 +4163,7 @@ def _write_no_artifact_protocol_run(profile: Path, *, request_id: str = "req-no-
                 "current_version": "v0.0.236",
                 "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
                 "source_version": "v0.0.236",
-                "target_version": "v0.0.240.1",
+                "target_version": "v0.0.241",
                 "release_type": "normal",
             },
         },
