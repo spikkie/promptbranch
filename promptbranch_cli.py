@@ -1929,7 +1929,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245.1"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -3202,8 +3202,26 @@ def _validate_protocol_reply_against_request(parsed: dict[str, Any], envelope: d
         errors.append("baseline_artifact_mismatch")
     if artifact.get("current_version") and baseline.get("input_version") != artifact.get("current_version"):
         errors.append("baseline_version_mismatch")
-    if artifact.get("target_version") and baseline.get("output_version") != artifact.get("target_version"):
-        errors.append("target_version_mismatch")
+    expected_target_version = artifact.get("target_version")
+    baseline_output_version = baseline.get("output_version")
+    baseline_target_version = baseline.get("target_version")
+    artifacts = parsed.get("artifacts") if isinstance(parsed.get("artifacts"), list) else []
+    no_artifact_no_change = (
+        parsed.get("status") == "no_artifact"
+        and parsed.get("result_type") == "no_change"
+        and not artifacts
+    )
+    if expected_target_version:
+        if no_artifact_no_change:
+            # A protocol smoke/no-change reply is valid without an output artifact
+            # or output version. It may echo baseline.target_version for operator
+            # clarity, but it must not be required to claim a release output.
+            if baseline_output_version not in {None, expected_target_version}:
+                errors.append("target_version_mismatch")
+            if baseline_target_version not in {None, expected_target_version}:
+                errors.append("target_version_mismatch")
+        elif baseline_output_version != expected_target_version:
+            errors.append("target_version_mismatch")
     if artifact.get("release_type") and baseline.get("release_type") != artifact.get("release_type"):
         errors.append("release_type_mismatch")
     return not errors, errors
@@ -9175,7 +9193,7 @@ def make_parser() -> argparse.ArgumentParser:
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
-    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.")
+    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.1.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
     release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
@@ -9223,7 +9241,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.1.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 

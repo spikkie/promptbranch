@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.245" in out
+    assert "0.0.245.1" in out
     assert "promptbranch" in out
 
 
@@ -403,15 +403,15 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
     artifact_mvp_status = parser.parse_args([
         "artifact", "mvp-status",
-        "chatgpt_claudecode_workflow_v0.0.245.zip",
-        "--version", "v0.0.245",
+        "chatgpt_claudecode_workflow_v0.0.245.1.zip",
+        "--version", "v0.0.245.1",
         "--repo-path", "/tmp/repo",
         "--json",
     ])
     assert artifact_mvp_status.command == "artifact"
     assert artifact_mvp_status.artifact_command == "mvp-status"
-    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.245.zip"
-    assert artifact_mvp_status.version == "v0.0.245"
+    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.245.1.zip"
+    assert artifact_mvp_status.version == "v0.0.245.1"
     assert artifact_mvp_status.repo_path == "/tmp/repo"
     assert artifact_mvp_status.json is True
 
@@ -665,7 +665,7 @@ def test_parser_accepts_release_doctor_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "doctor",
-        "--version", "v0.0.245",
+        "--version", "v0.0.245.1",
         "--target-version", "v0.0.246",
         "--repo-path", "/tmp/repo",
         "--skip-service-health",
@@ -675,7 +675,7 @@ def test_parser_accepts_release_doctor_command() -> None:
 
     assert args.command == "release"
     assert args.release_command == "doctor"
-    assert args.version == "v0.0.245"
+    assert args.version == "v0.0.245.1"
     assert args.target_version == "v0.0.246"
     assert args.repo_path == "/tmp/repo"
     assert args.skip_service_health is True
