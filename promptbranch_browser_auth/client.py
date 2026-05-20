@@ -2953,13 +2953,28 @@ class ChatGPTBrowserClient:
                     file_path=None,
                 )
 
+            initial_presence_error = None
             if not duplicate_detected:
-                matched_source = await self._wait_for_source_presence(
-                    page,
-                    source_match_candidates=source_match_candidates,
-                    before_sources=before_sources,
-                    accept_single_new_card=normalized_kind == "text",
-                )
+                try:
+                    matched_source = await self._wait_for_source_presence(
+                        page,
+                        source_match_candidates=source_match_candidates,
+                        before_sources=before_sources,
+                        accept_single_new_card=normalized_kind == "text",
+                        timeout_ms=5_000 if normalized_kind in {"text", "file"} else 20_000,
+                    )
+                except ResponseTimeoutError as exc:
+                    if normalized_kind not in {"text", "file"}:
+                        raise
+                    initial_presence_error = str(exc)
+                    self._log(
+                        "project-source-add",
+                        "initial source presence probe timed out; deferring to post-save persistence verification",
+                        source_kind=normalized_kind,
+                        source_match_candidates=source_match_candidates,
+                        before_source_count=len(before_sources or []),
+                        error=initial_presence_error,
+                    )
             if normalized_kind in {"text", "file"} and not duplicate_detected:
                 await self._wait_for_project_source_post_save_settle(
                     page,
@@ -2993,11 +3008,15 @@ class ChatGPTBrowserClient:
             requested_match=requested_match,
             source_match_candidates=source_match_candidates,
             matched_card=matched_source,
+            source_kind=normalized_kind,
+            before_sources=before_sources,
         )
         persisted_source = await self._verify_project_source_persistence(
             page,
             project_url=project_home_url,
             source_match_candidates=persistence_candidates,
+            before_sources=before_sources,
+            save_watch=save_request_watch,
         )
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         result = {
@@ -6438,6 +6457,8 @@ class ChatGPTBrowserClient:
         requested_match: Optional[str],
         source_match_candidates: Optional[list[str]],
         matched_card: Optional[dict[str, str]],
+        source_kind: Optional[str] = None,
+        before_sources: Optional[list[dict[str, str]]] = None,
     ) -> list[str]:
         candidates: list[str] = []
 
@@ -6451,6 +6472,22 @@ class ChatGPTBrowserClient:
             add(candidate)
         for candidate in self._source_card_identity_candidates(matched_card):
             add(candidate)
+
+        # ChatGPT can render ad-hoc text sources as a generic uploaded-note card
+        # such as "pasted.txt Document" instead of the text body or caller label.
+        # Add that fallback only when it was not already present before the save,
+        # so we do not incorrectly match an old generic text source.
+        if source_kind == "text" and matched_card is None:
+            before_candidates: set[str] = set()
+            for card in before_sources or []:
+                for value in self._source_card_identity_candidates(card):
+                    normalized = self._normalize_source_match_text(value)
+                    if normalized:
+                        before_candidates.add(normalized.lower())
+            for fallback in ("pasted.txt Document", "pasted.txt"):
+                normalized_fallback = self._normalize_source_match_text(fallback)
+                if normalized_fallback and normalized_fallback.lower() not in before_candidates:
+                    add(normalized_fallback)
         return candidates
 
     def _build_source_match_candidates(
@@ -8018,14 +8055,58 @@ class ChatGPTBrowserClient:
         *,
         project_url: str,
         source_match_candidates: list[str],
+        before_sources: Optional[list[dict[str, str]]] = None,
+        save_watch: Optional[dict[str, Any]] = None,
         timeout_ms: int = 15_000,
         max_refresh_attempts: int = 3,
         retry_backoff_ms: tuple[int, ...] = (2_000, 4_000),
+        pre_refresh_timeout_ms: int = 10_000,
     ) -> Optional[dict[str, str]]:
         if not source_match_candidates:
             raise ResponseTimeoutError("Project source persistence check requires at least one source match candidate")
         sources_url = self._project_sources_url(project_url)
         last_error: ResponseTimeoutError | None = None
+
+        # First re-read the current Sources surface without navigating.  The
+        # previous implementation refreshed immediately, which can hide whether
+        # a just-saved text source appeared late or whether verification raced
+        # the post-save UI.  Persistence remains authoritative: if this probe
+        # fails, the refresh-based verification below still runs.
+        try:
+            self._log(
+                "project-source-add",
+                "verifying project source persistence before refresh",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                before_source_count=len(before_sources or []),
+                save_watch_summary=self._project_source_save_watch_summary(save_watch),
+                timeout_ms=pre_refresh_timeout_ms,
+            )
+            return await self._wait_for_source_presence(
+                page,
+                source_match_candidates=source_match_candidates,
+                before_sources=before_sources,
+                accept_single_new_card=before_sources is not None,
+                timeout_ms=pre_refresh_timeout_ms,
+            )
+        except ResponseTimeoutError as exc:
+            last_error = exc
+            await self._capture_project_source_persistence_diagnostics(
+                page,
+                reason="pre_refresh_timeout",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                before_sources=before_sources,
+                save_watch=save_watch,
+                error=str(exc),
+            )
+            self._log(
+                "project-source-add",
+                "project source was not visible before refresh; continuing with controlled refresh verification",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                error=str(exc),
+            )
 
         for attempt in range(max(max_refresh_attempts, 1)):
             label = "project-source-add-persistence-refresh"
@@ -8039,6 +8120,7 @@ class ChatGPTBrowserClient:
                 source_match_candidates=source_match_candidates,
                 attempt=attempt + 1,
                 max_refresh_attempts=max(max_refresh_attempts, 1),
+                save_watch_summary=self._project_source_save_watch_summary(save_watch),
             )
             await self._goto(page, sources_url, label=label)
             try:
@@ -8053,6 +8135,16 @@ class ChatGPTBrowserClient:
                 last_error = exc
                 empty_state_visible = await self._project_sources_empty_state_visible(page)
                 source_cards = await self._snapshot_project_source_cards(page)
+                await self._capture_project_source_persistence_diagnostics(
+                    page,
+                    reason="post_refresh_timeout",
+                    project_url=project_url,
+                    source_match_candidates=source_match_candidates,
+                    before_sources=before_sources,
+                    save_watch=save_watch,
+                    error=str(exc),
+                    attempt=attempt + 1,
+                )
                 self._log(
                     "project-source-add",
                     "project source persistence attempt timed out",
@@ -8062,6 +8154,7 @@ class ChatGPTBrowserClient:
                     empty_state_visible=empty_state_visible,
                     source_card_count=len(source_cards),
                     current_url=await self._safe_page_url(page),
+                    save_watch_summary=self._project_source_save_watch_summary(save_watch),
                     error=str(exc),
                 )
                 if attempt + 1 >= max(max_refresh_attempts, 1):
@@ -8075,6 +8168,67 @@ class ChatGPTBrowserClient:
         raise ResponseTimeoutError(
             f"Timed out waiting for project source to appear: {source_match_candidates[0]}"
         )
+
+    def _project_source_save_watch_summary(self, watch: Optional[dict[str, Any]]) -> dict[str, Any]:
+        if not isinstance(watch, dict):
+            return {"installed": False}
+        inflight = watch.get("inflight") or set()
+        return {
+            "installed": bool(watch.get("installed")),
+            "source_kind": watch.get("source_kind"),
+            "started": int(watch.get("started") or 0),
+            "finished": int(watch.get("finished") or 0),
+            "failed": int(watch.get("failed") or 0),
+            "saw_relevant": bool(watch.get("saw_relevant")),
+            "saw_commit": bool(watch.get("saw_commit")),
+            "inflight": len(inflight),
+        }
+
+    async def _capture_project_source_persistence_diagnostics(
+        self,
+        page: Any,
+        *,
+        reason: str,
+        project_url: str,
+        source_match_candidates: list[str],
+        before_sources: Optional[list[dict[str, str]]] = None,
+        save_watch: Optional[dict[str, Any]] = None,
+        error: Optional[str] = None,
+        attempt: Optional[int] = None,
+    ) -> None:
+        try:
+            stamp = self._timestamp_for_filename()
+            safe_reason = re.sub(r"[^a-zA-Z0-9._-]+", "-", reason).strip("-") or "persistence"
+            base = self._artifact_dir / f"project_source_persistence_{safe_reason}_{stamp}"
+            source_cards = await self._snapshot_project_source_cards(page)
+            payload = {
+                "reason": reason,
+                "attempt": attempt,
+                "project_url": project_url,
+                "current_url": await self._safe_page_url(page),
+                "source_match_candidates": source_match_candidates,
+                "before_source_count": len(before_sources or []),
+                "before_sources": before_sources or [],
+                "source_card_count": len(source_cards),
+                "source_cards": source_cards,
+                "empty_state_visible": await self._project_sources_empty_state_visible(page),
+                "save_watch_summary": self._project_source_save_watch_summary(save_watch),
+                "error": error,
+            }
+            await self._write_json(base.with_suffix(".json"), payload)
+            if self.config.save_html:
+                try:
+                    await self._write_text(base.with_suffix(".html"), await page.content())
+                except Exception as exc:
+                    self._log("project-source-add", "failed to save project source persistence html", error=repr(exc))
+            if self.config.save_screenshot:
+                try:
+                    await page.screenshot(path=str(base.with_suffix(".png")), full_page=True)
+                except Exception as exc:
+                    self._log("project-source-add", "failed to save project source persistence screenshot", error=repr(exc))
+            self._log("project-source-add", "saved project source persistence diagnostics", path=str(base.with_suffix(".json")), reason=reason)
+        except Exception as exc:
+            self._log("project-source-add", "failed to save project source persistence diagnostics", reason=reason, error=repr(exc))
 
     async def _wait_for_source_presence(
         self,

@@ -1929,7 +1929,7 @@ def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: f
                     break
                 dst.write(chunk)
     elif parsed.scheme in {"http", "https"}:
-        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245.3"})
+        request = urllib.request.Request(url, headers={"User-Agent": "promptbranch-artifact-intake/0.0.245.4"})
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response, tmp_path.open("wb") as dst:  # noqa: S310 - operator-supplied artifact URL, explicit command
             while True:
                 chunk = response.read(1024 * 1024)
@@ -9198,7 +9198,7 @@ def make_parser() -> argparse.ArgumentParser:
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
-    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.3.")
+    release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.4.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
     release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
@@ -9246,7 +9246,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_mvp_status = artifact_subparsers.add_parser("mvp-status", help="Read-only Artifact Intake MVP cockpit: current baseline, protocol precondition, candidate inventory, completion proof, and next command.")
     artifact_mvp_status.add_argument("artifact", nargs="?", help="Optional candidate ZIP filename scope for the completion proof.")
-    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.3.")
+    artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.4.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
 
