@@ -27,7 +27,14 @@ RUN playwright install --with-deps chromium
 RUN rm -rf /app/.pb_profile
 
 COPY . .
-RUN chmod +x /app/docker/run-chatgpt-service-in-container.sh
+# Normalize application source permissions for non-root runtime users.
+# Host files may have restrictive modes; after COPY, Python must still be able
+# to import every module while the container runs as the invoking host UID/GID.
+RUN find /app -type d -exec chmod 755 {} \; && \
+    find /app -type f -exec chmod 644 {} \; && \
+    chmod +x /app/docker/run-chatgpt-service-in-container.sh && \
+    find /app -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} \; && \
+    if [ -d /app/scripts ]; then find /app/scripts -type f -name '*.sh' -exec chmod +x {} \; ; fi
 
 ENV PYTHONUNBUFFERED=1
 ENV CHATGPT_HEADLESS=0
