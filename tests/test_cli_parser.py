@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.244" in out
+    assert "0.0.245" in out
     assert "promptbranch" in out
 
 
@@ -403,15 +403,15 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
     artifact_mvp_status = parser.parse_args([
         "artifact", "mvp-status",
-        "chatgpt_claudecode_workflow_v0.0.244.zip",
-        "--version", "v0.0.244",
+        "chatgpt_claudecode_workflow_v0.0.245.zip",
+        "--version", "v0.0.245",
         "--repo-path", "/tmp/repo",
         "--json",
     ])
     assert artifact_mvp_status.command == "artifact"
     assert artifact_mvp_status.artifact_command == "mvp-status"
-    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.244.zip"
-    assert artifact_mvp_status.version == "v0.0.244"
+    assert artifact_mvp_status.artifact == "chatgpt_claudecode_workflow_v0.0.245.zip"
+    assert artifact_mvp_status.version == "v0.0.245"
     assert artifact_mvp_status.repo_path == "/tmp/repo"
     assert artifact_mvp_status.json is True
 
@@ -659,3 +659,25 @@ def test_parser_accepts_artifact_release_confirm_command_only_alias() -> None:
     assert args.command == "artifact"
     assert args.artifact_command == "release"
     assert args.print_confirm_command is True
+
+
+def test_parser_accepts_release_doctor_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "doctor",
+        "--version", "v0.0.245",
+        "--target-version", "v0.0.246",
+        "--repo-path", "/tmp/repo",
+        "--skip-service-health",
+        "--skip-project-sources",
+        "--json",
+    ])
+
+    assert args.command == "release"
+    assert args.release_command == "doctor"
+    assert args.version == "v0.0.245"
+    assert args.target_version == "v0.0.246"
+    assert args.repo_path == "/tmp/repo"
+    assert args.skip_service_health is True
+    assert args.skip_project_sources is True
+    assert args.json is True
