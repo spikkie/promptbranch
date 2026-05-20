@@ -611,6 +611,12 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.242
+
+- New read-only command: `pb artifact mvp-status --json`.
+- Use it before running the final Artifact Intake MVP gate to inspect the current baseline, protocol precondition, candidate lifecycle inventory, MVP completion proof, and next command.
+- This command does not mutate Project Sources, artifact registries, candidate registries, or Promptbranch state.
+
 ## v0.0.241.2
 
 - Repair release built from accepted repair baseline `v0.0.241.1`.
