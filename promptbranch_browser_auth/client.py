@@ -2787,7 +2787,36 @@ class ChatGPTBrowserClient:
         except ResponseTimeoutError as exc:
             self._log(
                 "project-source-add",
-                "no existing file source detected during bounded overwrite preflight; continuing with add",
+                "bounded overwrite preflight did not find existing file source; refreshing once before upload",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                timeout_ms=timeout_ms,
+                error=str(exc),
+            )
+
+        # A prior file add can be persisted by ChatGPT but not visible in the
+        # first Sources tab snapshot of a later HTTP/service request.  Before
+        # treating an overwrite as a fresh add, perform the same verified
+        # read-back path used after mutations.  This is still read-only and
+        # prevents the full integration overwrite step from classifying an
+        # existing file source as a new upload when the initial DOM snapshot was
+        # stale or empty.
+        try:
+            return await self._verify_project_source_persistence(
+                page,
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                before_sources=None,
+                save_watch=None,
+                timeout_ms=6_000,
+                max_refresh_attempts=2,
+                retry_backoff_ms=(1_000,),
+                pre_refresh_timeout_ms=3_000,
+            )
+        except ResponseTimeoutError as exc:
+            self._log(
+                "project-source-add",
+                "no existing file source detected during refreshed overwrite preflight; continuing with add",
                 project_url=project_url,
                 source_match_candidates=source_match_candidates,
                 timeout_ms=timeout_ms,
