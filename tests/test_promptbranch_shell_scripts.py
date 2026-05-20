@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -510,6 +511,7 @@ def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> Non
     container_script = (root / "docker" / "run-chatgpt-service-in-container.sh").read_text(encoding="utf-8")
 
     assert 'user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"' in compose
+    assert 'pull_policy: build' in compose
     assert 'PYTHONDONTWRITEBYTECODE: "1"' in compose
     assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in run_script
     assert 'export PROMPTBRANCH_DOCKER_GID="${PROMPTBRANCH_DOCKER_GID:-$(id -g)}"' in run_script
@@ -532,6 +534,21 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
     assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
     assert 'up --build --force-recreate "$@"' in run_script
 
+
+
+
+def test_release_control_health_probe_heredoc_is_valid_python() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    match = re.search(
+        r"service_health_probe\(\) \{.*?<<'INNERPY'\n(?P<code>.*?)\nINNERPY\n\}",
+        script,
+        flags=re.DOTALL,
+    )
+    assert match is not None
+    code = match.group("code")
+
+    compile(code, "<release-control-service-health-probe>", "exec")
+    assert 'handle.write("\\n")' in code
 
 def test_release_control_summary_mentions_service_health_artifact() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")

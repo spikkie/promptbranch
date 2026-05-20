@@ -1149,8 +1149,7 @@ for path in ("/healthz", "/health"):
             payload.setdefault("http_status", response.status)
             with open(out_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, sort_keys=True)
-                handle.write("
-")
+                handle.write("\n")
             actual = str(payload.get("version") or "")
             if actual == expected:
                 raise SystemExit(0)
@@ -1161,8 +1160,7 @@ for path in ("/healthz", "/health"):
         last_error = f"{url}: {exc}"
 with open(out_path, "w", encoding="utf-8") as handle:
     json.dump({"ok": False, "status": "health_probe_failed", "expected_version": expected, "error": last_error}, handle, indent=2, sort_keys=True)
-    handle.write("
-")
+    handle.write("\n")
 raise SystemExit(last_error or "service health probe failed")
 INNERPY
 }

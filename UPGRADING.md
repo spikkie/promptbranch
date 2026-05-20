@@ -611,13 +611,27 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 
 
 
+## v0.0.241.2
+
+- Repair release built from accepted repair baseline `v0.0.241.1`.
+- Fixed the release-control service health probe heredoc: the embedded Python now uses valid escaped newline writes, so service version verification no longer fails with `SyntaxError: unterminated string literal` while the Docker container is already healthy.
+- Added regression coverage that extracts and compiles the health-probe heredoc from `chatgpt_claudecode_workflow_release_control.sh`.
+- Added `pull_policy: build` to the Compose service to avoid the noisy remote pull attempt for local `promptbranch-service:<version>` images.
+- No feature scope, slice, or line was advanced.
+
 ## v0.0.241.1
 
-- Built from repair baseline `v0.0.240.1`.
-- Release control now performs deterministic Docker service recreation in detached mode: `docker compose down --remove-orphans`, `docker compose build --pull`, and `docker compose up -d --force-recreate --remove-orphans`.
-- Release control now verifies `/healthz` reports the expected service/package version before accepting service startup.
+- Repair release for non-root Docker runtime permissions.
+- Keeps the Docker service running as the invoking host UID/GID while normalizing `/app` source permissions after `COPY . .` so Python can import all modules.
+- Restores executable mode for shell scripts after permission normalization.
+- Strengthens `.dockerignore` for generated/local state such as `.pb_profile/`, `debug_artifacts/`, caches, logs, ZIPs, and task/session exports.
+
+## v0.0.241
+
+- Release control performs deterministic Docker service recreation in detached mode: `docker compose down --remove-orphans`, `docker compose build --pull`, and `docker compose up -d --force-recreate --remove-orphans`.
+- Release control verifies `/healthz` reports the expected service/package version before accepting service startup.
 - Release control writes service health, Compose ps, and before/after container inspect diagnostics under `.pb_profile/release_logs/<version>/`.
-- Direct `run_chatgpt_service.sh` usage now passes `--force-recreate` by default.
+- Direct `run_chatgpt_service.sh` usage passes `--force-recreate` by default.
 
 ## v0.0.240
 
