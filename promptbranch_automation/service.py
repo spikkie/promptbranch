@@ -5,6 +5,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 from promptbranch_browser_auth.exceptions import (
@@ -61,6 +62,7 @@ class ChatGPTAutomationService:
         self.settings = settings
         self._lock = asyncio.Lock()
         self._recent_project_chats: dict[str, dict[str, Any]] = {}
+        self._recent_project_sources: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     @staticmethod
     def _extract_project_id(url: Optional[str]) -> Optional[str]:
@@ -94,6 +96,126 @@ class ChatGPTAutomationService:
             "project_id": project_id,
             "seen_at": time.time(),
         }
+
+    @staticmethod
+    def _normalize_source_identity(value: Optional[str]) -> str:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        return text.lower()
+
+    @classmethod
+    def _file_source_memory_names(cls, *, file_path: Optional[str], display_name: Optional[str]) -> list[str]:
+        names: list[str] = []
+
+        def add(value: Optional[str]) -> None:
+            normalized = cls._normalize_source_identity(value)
+            if normalized and normalized not in names:
+                names.append(normalized)
+
+        if display_name:
+            add(display_name)
+        if file_path:
+            try:
+                add(Path(file_path).name)
+            except TypeError:
+                pass
+        return names
+
+    def _project_source_scope(self, project_url: Optional[str] = None) -> str:
+        project_id = self._extract_project_id(project_url) or self._extract_project_id(self.settings.project_url)
+        if project_id:
+            return project_id
+        return str(project_url or self.settings.project_url or "").rstrip("/").lower()
+
+    def _project_source_memory_keys(
+        self,
+        *,
+        source_kind: str,
+        file_path: Optional[str],
+        display_name: Optional[str],
+        project_url: Optional[str] = None,
+    ) -> list[tuple[str, str, str]]:
+        normalized_kind = str(source_kind or "").strip().lower()
+        if normalized_kind != "file":
+            return []
+        scope = self._project_source_scope(project_url)
+        return [(scope, normalized_kind, name) for name in self._file_source_memory_names(file_path=file_path, display_name=display_name)]
+
+    def _lookup_recent_project_source(
+        self,
+        *,
+        source_kind: str,
+        file_path: Optional[str],
+        display_name: Optional[str],
+        project_url: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        for key in self._project_source_memory_keys(
+            source_kind=source_kind,
+            file_path=file_path,
+            display_name=display_name,
+            project_url=project_url,
+        ):
+            remembered = self._recent_project_sources.get(key)
+            if remembered:
+                return dict(remembered)
+        return None
+
+    def _remember_verified_project_source(
+        self,
+        result: dict[str, Any],
+        *,
+        source_kind: str,
+        file_path: Optional[str],
+        display_name: Optional[str],
+    ) -> None:
+        normalized_kind = str(source_kind or "").strip().lower()
+        if normalized_kind != "file":
+            return
+        if not isinstance(result, dict) or not result.get("ok") or not result.get("persistence_verified"):
+            return
+        source_name = (
+            result.get("source_match")
+            or result.get("source_match_requested")
+            or display_name
+            or (Path(file_path).name if file_path else None)
+        )
+        if not source_name:
+            return
+        project_url = result.get("project_url") or self.settings.project_url
+        record = {
+            "source_name": source_name,
+            "source_match": result.get("source_match"),
+            "source_match_requested": result.get("source_match_requested"),
+            "source_match_candidates": result.get("source_match_candidates"),
+            "project_url": project_url,
+            "source_kind": normalized_kind,
+            "file_basename": Path(file_path).name if file_path else None,
+            "display_name": display_name,
+            "source": "remembered_verified_before_state",
+            "seen_at": time.time(),
+        }
+        for key in self._project_source_memory_keys(
+            source_kind=normalized_kind,
+            file_path=file_path,
+            display_name=display_name,
+            project_url=project_url,
+        ):
+            self._recent_project_sources[key] = dict(record)
+
+    def _forget_recent_project_source(
+        self,
+        *,
+        source_kind: str,
+        file_path: Optional[str],
+        display_name: Optional[str],
+        project_url: Optional[str] = None,
+    ) -> None:
+        for key in self._project_source_memory_keys(
+            source_kind=source_kind,
+            file_path=file_path,
+            display_name=display_name,
+            project_url=project_url,
+        ):
+            self._recent_project_sources.pop(key, None)
 
     _INDEXED_TASK_SOURCES = {"snorlax", "dom", "history", "history_detail", "current_page"}
     _LOCAL_TASK_SOURCES = {"recent_state", "current_state"}
@@ -435,7 +557,80 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         async with self._lock:
             logger.info("Adding ChatGPT project source")
-            return await self._build_bot().add_project_source(
+            normalized_kind = str(source_kind or "").strip().lower()
+            remembered_source: Optional[dict[str, Any]] = None
+            remembered_remove_result: Optional[dict[str, Any]] = None
+            bot = self._build_bot()
+
+            if normalized_kind == "file" and overwrite_existing:
+                remembered_source = self._lookup_recent_project_source(
+                    source_kind=normalized_kind,
+                    file_path=file_path,
+                    display_name=display_name,
+                )
+                if remembered_source:
+                    source_name = str(remembered_source.get("source_name") or "").strip()
+                    if source_name:
+                        logger.info(
+                            "Removing remembered verified ChatGPT project file source before overwrite: %s",
+                            source_name,
+                        )
+                        try:
+                            remembered_remove_result = await bot.remove_project_source(
+                                source_name=source_name,
+                                exact=False,
+                                keep_open=False,
+                            )
+                        except ResponseTimeoutError as exc:
+                            self._forget_recent_project_source(
+                                source_kind=normalized_kind,
+                                file_path=file_path,
+                                display_name=display_name,
+                            )
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "remembered_overwrite_remove_failed",
+                                "source_kind": normalized_kind,
+                                "source_match": remembered_source.get("source_match") or source_name,
+                                "source_match_requested": remembered_source.get("source_match_requested") or source_name,
+                                "source_match_candidates": remembered_source.get("source_match_candidates"),
+                                "persistence_verified": False,
+                                "already_exists": True,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "overwrite_classification_source": "remembered_verified_before_state",
+                                "overwrite_source_name": source_name,
+                                "overwrite_remove_error": str(exc),
+                                "operator_review_required": True,
+                            }
+                        if not (isinstance(remembered_remove_result, dict) and remembered_remove_result.get("ok")):
+                            self._forget_recent_project_source(
+                                source_kind=normalized_kind,
+                                file_path=file_path,
+                                display_name=display_name,
+                            )
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "remembered_overwrite_remove_not_verified",
+                                "source_kind": normalized_kind,
+                                "source_match": remembered_source.get("source_match") or source_name,
+                                "source_match_requested": remembered_source.get("source_match_requested") or source_name,
+                                "source_match_candidates": remembered_source.get("source_match_candidates"),
+                                "persistence_verified": False,
+                                "already_exists": True,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "overwrite_classification_source": "remembered_verified_before_state",
+                                "overwrite_source_name": source_name,
+                                "overwrite_remove_result": remembered_remove_result,
+                                "operator_review_required": True,
+                            }
+
+            result = await bot.add_project_source(
                 source_kind=source_kind,
                 value=value,
                 file_path=file_path,
@@ -443,6 +638,30 @@ class ChatGPTAutomationService:
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
             )
+
+            if remembered_remove_result is not None and isinstance(result, dict) and result.get("ok") and result.get("persistence_verified"):
+                result = dict(result)
+                result["already_exists"] = True
+                result["overwritten"] = True
+                result["removed_existing"] = True
+                result["overwrite_classification_source"] = "remembered_verified_before_state"
+                result["remembered_source"] = remembered_source
+                result["remembered_overwrite_remove_result"] = remembered_remove_result
+
+            if isinstance(result, dict) and result.get("ok") and result.get("persistence_verified"):
+                self._remember_verified_project_source(
+                    result,
+                    source_kind=source_kind,
+                    file_path=file_path,
+                    display_name=display_name,
+                )
+            elif normalized_kind == "file":
+                self._forget_recent_project_source(
+                    source_kind=normalized_kind,
+                    file_path=file_path,
+                    display_name=display_name,
+                )
+            return result
 
     async def discover_project_source_capabilities(
         self,
@@ -464,11 +683,22 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         async with self._lock:
             logger.info("Removing ChatGPT project source")
-            return await self._build_bot().remove_project_source(
+            result = await self._build_bot().remove_project_source(
                 source_name=source_name,
                 exact=exact,
                 keep_open=keep_open,
             )
+            if isinstance(result, dict) and result.get("ok"):
+                normalized_name = self._normalize_source_identity(source_name)
+                for key, remembered in list(self._recent_project_sources.items()):
+                    remembered_names = {
+                        self._normalize_source_identity(remembered.get("source_name")),
+                        self._normalize_source_identity(remembered.get("source_match")),
+                        self._normalize_source_identity(remembered.get("source_match_requested")),
+                    }
+                    if normalized_name and normalized_name in remembered_names:
+                        self._recent_project_sources.pop(key, None)
+            return result
 
     async def ask_question(
         self,
