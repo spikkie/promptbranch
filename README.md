@@ -1,4 +1,11 @@
-# promptbranch v0.0.245.3
+# promptbranch v0.0.248
+
+## v0.0.248
+
+- Adds read-only `pb release install --artifact ZIP --version VERSION --plan --json`.
+- Validates release config, candidate ZIP, version alignment, and preserved-path conflicts before any future install mutation.
+- Performs no repo install, Project Source upload, artifact registry update, adoption, git commit, or git push.
+
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 

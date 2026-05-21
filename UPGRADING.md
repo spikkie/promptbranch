@@ -1,3 +1,14 @@
+
+## v0.0.248
+
+`pb release install` is introduced as a read-only planning command only. Use `--plan`; mutation is intentionally blocked in this slice.
+
+Example:
+
+```bash
+pb release install --artifact chatgpt_claudecode_workflow_v0.0.248.zip --version v0.0.248 --plan --json
+```
+
 # UPGRADING
 
 This file documents the breaking rename that landed in **v0.0.68** and remains the reference for later releases such as **v0.0.69**.

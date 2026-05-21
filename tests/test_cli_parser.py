@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.247.1" in out
+    assert "0.0.248" in out
     assert "promptbranch" in out
 
 
@@ -682,6 +682,32 @@ def test_parser_accepts_release_doctor_command() -> None:
     assert args.repo_path == "/tmp/repo"
     assert args.skip_service_health is True
     assert args.skip_project_sources is True
+    assert args.json is True
+
+
+
+
+def test_parser_accepts_release_install_plan_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "install",
+        "--artifact", "chatgpt_claudecode_workflow_v0.0.248.zip",
+        "--version", "v0.0.248",
+        "--target-version", "v0.0.249",
+        "--config", ".promptbranch-release.yml",
+        "--repo-path", "/tmp/repo",
+        "--plan",
+        "--json",
+    ])
+
+    assert args.command == "release"
+    assert args.release_command == "install"
+    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.248.zip"
+    assert args.version == "v0.0.248"
+    assert args.target_version == "v0.0.249"
+    assert args.config == ".promptbranch-release.yml"
+    assert args.repo_path == "/tmp/repo"
+    assert args.plan is True
     assert args.json is True
 
 
