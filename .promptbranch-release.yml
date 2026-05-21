@@ -1,0 +1,36 @@
+schema_version: 1
+
+artifact:
+  prefix: chatgpt_claudecode_workflow_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+
+install:
+  preserve:
+    - .git/
+    - .env
+    - .generated/
+    - .pb_profile/
+    - debug_artifacts/
+
+git:
+  commit_release: true
+  push_release: true
+  unsafe_paths:
+    - .env
+    - .generated/
+    - .pb_profile/
+    - debug_artifacts/
+    - '*.zip'
+    - '*.log'
+    - '__pycache__/'
+    - '.pytest_cache/'
+
+hooks:
+  doctor:
+    command: pb release doctor --version {version} --artifact {artifact} --repo-path {repo_path} --json
+  local_acceptance:
+    command: scripts/finalize-artifact-intake-mvp.sh --version {version} --target-version {target_version}
+  release_status:
+    command: pb artifact current --json

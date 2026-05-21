@@ -79,3 +79,5 @@ docs/repair-v0.0.245.9.md
 docs/repair-v0.0.245.11.md
 docs/repair-v0.0.245.13.md
 docs/release-v0.0.246.md
+.promptbranch-release.yml
+docs/release-v0.0.247.md

@@ -6448,6 +6448,320 @@ def _release_doctor_expected_versions(*, requested_version: str | None, target_v
     }
 
 
+
+_RELEASE_CONFIG_ALLOWED_PLACEHOLDERS = {"version", "target_version", "artifact", "repo_path"}
+_RELEASE_CONFIG_REQUIRED_TOP_LEVEL = {"schema_version", "artifact", "install", "git", "hooks"}
+
+
+def _strip_yaml_comment(line: str) -> str:
+    """Strip YAML comments outside simple single/double quoted strings."""
+
+    in_single = False
+    in_double = False
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and in_double:
+            escaped = True
+            continue
+        if char == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if char == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if char == "#" and not in_single and not in_double:
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
+def _parse_release_config_scalar(value: str) -> Any:
+    value = value.strip()
+    if value == "":
+        return ""
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if lowered in {"null", "none", "~"}:
+        return None
+    if re.fullmatch(r"-?[0-9]+", value):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        return [_parse_release_config_scalar(part.strip()) for part in inner.split(",")]
+    return value
+
+
+def _parse_release_config_yaml_subset(text: str) -> dict[str, Any]:
+    """Parse the small .promptbranch-release.yml subset used by Promptbranch.
+
+    This intentionally avoids an optional PyYAML dependency. Supported shapes are
+    nested mappings, scalar values, and lists of scalar values. That is enough for
+    artifact/install/git/hooks release lifecycle configuration.
+    """
+
+    logical_lines: list[tuple[int, str]] = []
+    for raw_line in text.splitlines():
+        line_without_comment = _strip_yaml_comment(raw_line)
+        if not line_without_comment.strip():
+            continue
+        leading = line_without_comment[: len(line_without_comment) - len(line_without_comment.lstrip(" \t"))]
+        if "\t" in leading:
+            raise ValueError("tabs are not supported in release config indentation")
+        logical_lines.append((len(leading), line_without_comment.strip()))
+
+    def next_is_list(index: int, indent: int) -> bool:
+        if index + 1 >= len(logical_lines):
+            return False
+        next_indent, next_stripped = logical_lines[index + 1]
+        return next_indent > indent and next_stripped.startswith("- ")
+
+    root: dict[str, Any] = {}
+    stack: list[tuple[int, Any]] = [(-1, root)]
+
+    for index, (indent, stripped) in enumerate(logical_lines):
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        if not stack:
+            raise ValueError(f"invalid indentation near: {stripped}")
+        parent = stack[-1][1]
+        if stripped.startswith("- "):
+            if not isinstance(parent, list):
+                raise ValueError(f"list item without list parent near: {stripped}")
+            item_value = stripped[2:].strip()
+            if ":" in item_value and not item_value.startswith(('"', "'")):
+                key, value = item_value.split(":", 1)
+                item: dict[str, Any] = {}
+                key = key.strip()
+                if not key:
+                    raise ValueError(f"empty list item key near: {stripped}")
+                if value.strip():
+                    item[key] = _parse_release_config_scalar(value.strip())
+                else:
+                    child: dict[str, Any] | list[Any]
+                    child = [] if next_is_list(index, indent) else {}
+                    item[key] = child
+                    stack.append((indent, child))
+                parent.append(item)
+            else:
+                parent.append(_parse_release_config_scalar(item_value))
+            continue
+        if ":" not in stripped:
+            raise ValueError(f"expected key/value pair near: {stripped}")
+        if not isinstance(parent, dict):
+            raise ValueError(f"mapping entry parent is not a mapping near: {stripped}")
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            raise ValueError(f"empty key near: {stripped}")
+        if value:
+            parent[key] = _parse_release_config_scalar(value)
+        else:
+            child = [] if next_is_list(index, indent) else {}
+            parent[key] = child
+            stack.append((indent, child))
+    return root
+
+def _release_config_path_status(path_value: Any, *, allow_glob: bool = False) -> tuple[bool, str | None]:
+    path_text = str(path_value or "").strip()
+    if not path_text:
+        return False, "path_empty"
+    if path_text.startswith("/"):
+        return False, "path_must_be_repo_relative"
+    parts = Path(path_text).parts
+    if ".." in parts:
+        return False, "path_must_not_escape_repo"
+    if not allow_glob and any(char in path_text for char in "*?["):
+        return False, "glob_not_allowed_here"
+    return True, None
+
+
+def _release_config_command_placeholders(command: str) -> set[str]:
+    names: set[str] = set()
+    for match in re.finditer(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)\}(?!\})", command):
+        names.add(match.group(1))
+    return names
+
+
+def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not isinstance(config, dict):
+        block("release_config_not_mapping", "Release config root must be a mapping.")
+        config = {}
+
+    missing = sorted(_RELEASE_CONFIG_REQUIRED_TOP_LEVEL - set(config.keys()))
+    for key in missing:
+        block("release_config_missing_section", f"Missing required release config section: {key}.", section=key)
+
+    if config.get("schema_version") != 1:
+        block("release_config_schema_version_unsupported", "release config schema_version must be 1.", schema_version=config.get("schema_version"))
+
+    artifact = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    if not isinstance(config.get("artifact"), dict):
+        block("release_config_artifact_not_mapping", "artifact section must be a mapping.")
+    for key in ["prefix", "suffix", "version_file", "policy_file"]:
+        if not str(artifact.get(key) or "").strip():
+            block("release_config_artifact_field_missing", f"artifact.{key} is required.", field=f"artifact.{key}")
+    for key in ["version_file", "policy_file"]:
+        if artifact.get(key) is not None:
+            ok, reason = _release_config_path_status(artifact.get(key))
+            if not ok:
+                block("release_config_artifact_path_invalid", f"artifact.{key} must be a safe repo-relative path.", field=f"artifact.{key}", reason=reason)
+    if artifact.get("suffix") and not str(artifact.get("suffix")).startswith("."):
+        warn("release_config_suffix_without_dot", "artifact.suffix usually starts with a dot, for example .zip.", suffix=artifact.get("suffix"))
+
+    install = config.get("install") if isinstance(config.get("install"), dict) else {}
+    if not isinstance(config.get("install"), dict):
+        block("release_config_install_not_mapping", "install section must be a mapping.")
+    preserve = install.get("preserve")
+    if not isinstance(preserve, list) or not preserve:
+        block("release_config_install_preserve_invalid", "install.preserve must be a non-empty list of safe repo-relative paths.")
+    else:
+        for item in preserve:
+            ok, reason = _release_config_path_status(item)
+            if not ok:
+                block("release_config_install_preserve_path_invalid", "install.preserve contains an unsafe path.", path=item, reason=reason)
+
+    git = config.get("git") if isinstance(config.get("git"), dict) else {}
+    if not isinstance(config.get("git"), dict):
+        block("release_config_git_not_mapping", "git section must be a mapping.")
+    unsafe_paths = git.get("unsafe_paths")
+    if not isinstance(unsafe_paths, list) or not unsafe_paths:
+        block("release_config_git_unsafe_paths_invalid", "git.unsafe_paths must be a non-empty list.")
+    else:
+        for item in unsafe_paths:
+            ok, reason = _release_config_path_status(item, allow_glob=True)
+            if not ok:
+                block("release_config_git_unsafe_path_invalid", "git.unsafe_paths contains an unsafe path.", path=item, reason=reason)
+
+    hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
+    if not isinstance(config.get("hooks"), dict):
+        block("release_config_hooks_not_mapping", "hooks section must be a mapping.")
+    if isinstance(hooks, dict):
+        for name, hook in hooks.items():
+            if not isinstance(hook, dict):
+                block("release_config_hook_not_mapping", "Each hook must be a mapping.", hook=name)
+                continue
+            command = hook.get("command")
+            if not isinstance(command, str) or not command.strip():
+                block("release_config_hook_command_missing", "Each hook must define a non-empty command.", hook=name)
+                continue
+            unsupported = sorted(_release_config_command_placeholders(command) - _RELEASE_CONFIG_ALLOWED_PLACEHOLDERS)
+            if unsupported:
+                block("release_config_hook_placeholder_unsupported", "Hook command uses unsupported placeholders.", hook=name, placeholders=unsupported, allowed=sorted(_RELEASE_CONFIG_ALLOWED_PLACEHOLDERS))
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+    }
+
+
+def _load_release_config(config_arg: str | None, *, repo_root: Path) -> dict[str, Any]:
+    raw = str(config_arg or ".promptbranch-release.yml").strip() or ".promptbranch-release.yml"
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path.absolute()
+    payload: dict[str, Any] = {
+        "path": str(resolved),
+        "present": resolved.is_file(),
+        "read_only": True,
+        "mutating_actions_executed": False,
+    }
+    if not resolved.is_file():
+        payload.update({"ok": False, "status": "missing", "error": "release_config_missing"})
+        return payload
+    try:
+        text = resolved.read_text(encoding="utf-8")
+    except OSError as exc:
+        payload.update({"ok": False, "status": "read_error", "error": str(exc)})
+        return payload
+    try:
+        config = _parse_release_config_yaml_subset(text)
+    except ValueError as exc:
+        payload.update({"ok": False, "status": "parse_error", "error": str(exc), "config": None})
+        return payload
+    validation = _validate_release_config(config)
+    payload.update({
+        "ok": validation["ok"],
+        "status": validation["status"],
+        "severity": validation["severity"],
+        "config": config,
+        "validation": validation,
+        "warning_codes": validation["warning_codes"],
+        "blocker_codes": validation["blocker_codes"],
+    })
+    return payload
+
+
+async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
+    """Read-only parser/validator for .promptbranch-release.yml."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    payload.update({
+        "action": "release_config",
+        "repo_path": str(repo_root),
+        "download_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+    })
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity') or 'unknown'}")
+        print(f"config_path={payload.get('path')}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
 def _release_doctor_consistency(
     *,
     expected: dict[str, Any],
@@ -6855,6 +7169,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
     if args.release_command == "doctor":
         return await cmd_release_doctor(backend, args)
+    if args.release_command == "config":
+        return await cmd_release_config(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -9639,6 +9955,11 @@ def make_parser() -> argparse.ArgumentParser:
     release_doctor.add_argument("--skip-project-sources", action="store_true", help="Skip read-only Project Sources listing.")
     release_doctor.add_argument("--keep-open", action="store_true")
     release_doctor.add_argument("--json", action="store_true")
+
+    release_config = release_subparsers.add_parser("config", help="Read-only .promptbranch-release.yml parser and validator.")
+    release_config.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
+    release_config.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_config.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
