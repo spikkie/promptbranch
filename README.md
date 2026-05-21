@@ -1,4 +1,10 @@
-# promptbranch v0.0.248
+# promptbranch v0.0.249
+
+## v0.0.249
+
+- Enables controlled `pb release install --artifact ZIP --version VERSION --json` mutation.
+- `--plan` remains read-only; omitting `--plan` now extracts verified candidate ZIP entries into the repository root.
+- Install is intentionally bounded: it does not delete stale files, upload Project Sources, update artifact/source state, adopt artifacts, commit, or push.
 
 ## v0.0.248
 
