@@ -1715,17 +1715,31 @@ def _protocol_run_expectations(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _protocol_run_is_no_artifact_no_change(run: dict[str, Any]) -> bool:
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
+    return (
+        reply.get("status") == "no_artifact"
+        and reply.get("result_type") == "no_change"
+        and not artifacts
+    )
+
+
 def _protocol_run_baseline_errors(run: dict[str, Any]) -> list[str]:
     reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
     baseline = reply.get("baseline") if isinstance(reply.get("baseline"), dict) else {}
     expectations = _protocol_run_expectations(run)
-    comparisons = (
+    no_artifact_no_change = _protocol_run_is_no_artifact_no_change(run)
+    comparisons = [
         ("input_artifact", baseline.get("input_artifact"), expectations.get("expected_input_artifact"), "baseline_artifact_mismatch"),
         ("input_version", baseline.get("input_version"), expectations.get("expected_input_version"), "baseline_version_mismatch"),
-        ("source_ref", baseline.get("source_ref"), expectations.get("expected_source_ref"), "baseline_source_ref_mismatch"),
-        ("source_version", baseline.get("source_version"), expectations.get("expected_source_version"), "baseline_source_version_mismatch"),
         ("release_type", baseline.get("release_type"), expectations.get("expected_release_type"), "baseline_release_type_mismatch"),
-    )
+    ]
+    if not no_artifact_no_change:
+        comparisons.extend([
+            ("source_ref", baseline.get("source_ref"), expectations.get("expected_source_ref"), "baseline_source_ref_mismatch"),
+            ("source_version", baseline.get("source_version"), expectations.get("expected_source_version"), "baseline_source_version_mismatch"),
+        ])
     errors: list[str] = []
     for _field, actual, expected, error in comparisons:
         if expected is not None and actual != expected:

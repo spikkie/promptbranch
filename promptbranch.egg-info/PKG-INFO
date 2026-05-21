@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: promptbranch
-Version: 0.0.245.11
+Version: 0.0.245.12
 Summary: Stateful ChatGPT workflow CLI and reusable browser-automation service
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -14,7 +14,7 @@ Requires-Dist: python-multipart
 Requires-Dist: uvicorn
 Requires-Dist: watchfiles
 
-# promptbranch v0.0.245.11
+# promptbranch v0.0.245.12
 
 promptbranch is a stateful CLI and reusable browser-automation service for ChatGPT projects, sources, and conversations.
 

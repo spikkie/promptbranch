@@ -77,3 +77,4 @@ tests/test_promptbranch_test_suite.py
 tests/test_response_completion.py
 docs/repair-v0.0.245.9.md
 docs/repair-v0.0.245.11.md
+docs/repair-v0.0.245.12.md
