@@ -1640,7 +1640,7 @@ def _protocol_run_records_dir(profile_dir: str | Path) -> Path:
 def _protocol_run_is_validated(payload: dict[str, Any]) -> bool:
     return bool(
         payload.get("ok") is True
-        and payload.get("status") == "reply_validated"
+        and payload.get("status") in {"reply_validated", "recovered_after_service_timeout"}
         and payload.get("reply_validation_ok") is True
         and isinstance(payload.get("reply"), dict)
     )
@@ -1824,6 +1824,8 @@ def _artifact_intake_from_parsed_answer(
             "reply_correlation_id": parsed.get("correlation_id"),
             "reply_status": reply_status,
             "result_type": result_type,
+            "protocol_run_status": parsed.get("protocol_run_status"),
+            "protocol_run_reply_validation_ok": parsed.get("protocol_run_reply_validation_ok"),
             "baseline": parsed.get("baseline"),
             "validation": parsed.get("validation"),
             "next_step": parsed.get("next_step"),
@@ -3508,6 +3510,160 @@ def _classify_protocol_submit_visibility_failure(
     )
 
 
+
+
+def _protocol_recovery_conversation_url(args: argparse.Namespace, envelope: dict[str, Any]) -> str:
+    expected = _protocol_expected_conversation_url(envelope)
+    if expected:
+        return expected
+    arg_value = str(getattr(args, "conversation_url", None) or "").strip()
+    if arg_value:
+        return arg_value
+    try:
+        state_snapshot = _state_store_from_args(args).snapshot(getattr(args, "project_url", None))
+    except Exception:
+        state_snapshot = {}
+    if isinstance(state_snapshot, dict):
+        value = state_snapshot.get("conversation_url") or (state_snapshot.get("task") or {}).get("conversation_url")
+        if value:
+            return str(value)
+    task = envelope.get("task") if isinstance(envelope.get("task"), dict) else {}
+    return str(task.get("conversation_url") or "").strip()
+
+
+def _validated_protocol_recovery_record(payload: dict[str, Any], envelope: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "protocol_recovery_record_not_object"
+    if not _protocol_run_is_validated(payload):
+        return None, "protocol_recovery_record_not_validated"
+    if str(payload.get("request_id") or "") != str(envelope.get("request_id") or ""):
+        return None, "protocol_recovery_request_id_mismatch"
+    if str(payload.get("correlation_id") or "") != str(envelope.get("correlation_id") or ""):
+        return None, "protocol_recovery_correlation_id_mismatch"
+    validation_ok, validation_errors = _validate_protocol_reply_against_request(payload, envelope)
+    if not validation_ok:
+        return None, "protocol_recovery_validation_failed:" + ",".join(validation_errors)
+    recovered = copy.deepcopy(payload)
+    recovered["ok"] = True
+    recovered["status"] = "recovered_after_service_timeout"
+    recovered["reply_validation_ok"] = True
+    recovered["reply_validation_errors"] = []
+    recovered.setdefault("request", envelope)
+    recovered.setdefault("request_baseline", _baseline_from_protocol_request(envelope))
+    recovered["service_timeout_recovery"] = {
+        "attempted": True,
+        "source": "persisted_protocol_run_record",
+        "previous_status": payload.get("status"),
+        "record_had_validated_reply": True,
+    }
+    recovered["timeout_layer"] = "service_client"
+    recovered["operator_instruction"] = "Protocol ask service call timed out, but a persisted validated protocol reply for the same request was found and recovered. No artifact download, migration, adoption, or Project Source mutation was performed."
+    return recovered, None
+
+
+def _load_protocol_run_record_for_request(args: argparse.Namespace, envelope: dict[str, Any]) -> tuple[Path | None, dict[str, Any] | None, dict[str, Any]]:
+    path = _protocol_run_record_path(args, envelope.get("request_id"))
+    if not path.is_file():
+        return path, None, {"available": False, "status": "protocol_run_record_missing", "path": str(path)}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return path, None, {"available": False, "status": "protocol_run_record_unreadable", "path": str(path), "error": str(exc)}
+    if not isinstance(payload, dict):
+        return path, None, {"available": False, "status": "protocol_run_record_invalid_payload", "path": str(path)}
+    return path, payload, {"available": True, "status": "protocol_run_record_loaded", "path": str(path)}
+
+
+async def _recover_protocol_reply_after_service_timeout(
+    backend: CommandBackend,
+    args: argparse.Namespace,
+    *,
+    envelope: dict[str, Any],
+    error: str,
+    error_type: str,
+    pre_ask_marker: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Recover a protocol reply after the HTTP service response times out.
+
+    The browser service can complete the ChatGPT ask and persist/serve the
+    resulting conversation after the CLI HTTP client has timed out waiting for
+    /v1/ask. Recovery is deliberately bounded and fail-closed: only a reply
+    matching the original request envelope may become a successful protocol run.
+    """
+
+    diagnostic: dict[str, Any] = {
+        "attempted": True,
+        "timeout_layer": "service_client",
+        "error": error,
+        "error_type": error_type,
+        "request_id": envelope.get("request_id"),
+        "correlation_id": envelope.get("correlation_id"),
+        "persisted_record_checked": False,
+        "transcript_recovery_attempted": False,
+        "recovered": False,
+    }
+
+    record_path, record_payload, record_diag = _load_protocol_run_record_for_request(args, envelope)
+    diagnostic["persisted_record_checked"] = True
+    diagnostic["persisted_record"] = record_diag
+    if isinstance(record_payload, dict):
+        recovered, reason = _validated_protocol_recovery_record(record_payload, envelope)
+        if recovered is not None:
+            diagnostic["recovered"] = True
+            diagnostic["source"] = "persisted_protocol_run_record"
+            diagnostic["record_path"] = str(record_path) if record_path else None
+            recovered["service_timeout_recovery"] = {**diagnostic, **recovered.get("service_timeout_recovery", {})}
+            return recovered, diagnostic
+        diagnostic["persisted_record_rejected_reason"] = reason
+
+    conversation_url = _protocol_recovery_conversation_url(args, envelope)
+    diagnostic["conversation_url"] = conversation_url or None
+    if not conversation_url:
+        diagnostic["transcript_recovery_status"] = "conversation_url_missing"
+        return None, diagnostic
+
+    diagnostic["transcript_recovery_attempted"] = True
+    synthetic_ask_response = {
+        "ok": True,
+        "answer": None,
+        "conversation_url": conversation_url,
+        "status": "service_read_timeout_recovery_probe",
+        "error": error,
+        "error_type": error_type,
+        "timeout_layer": "service_client",
+        "partial_result": True,
+    }
+    try:
+        result = await _parse_protocol_reply_after_ask(
+            backend,
+            args,
+            envelope=envelope,
+            ask_response=synthetic_ask_response,
+            pre_ask_marker=pre_ask_marker,
+        )
+    except Exception as exc:
+        diagnostic["transcript_recovery_status"] = "exception"
+        diagnostic["transcript_recovery_error_type"] = exc.__class__.__name__
+        diagnostic["transcript_recovery_error"] = str(exc)
+        return None, diagnostic
+
+    diagnostic["transcript_recovery_status"] = result.get("status")
+    diagnostic["transcript_recovery_ok"] = bool(result.get("ok"))
+    diagnostic["transcript_reply_validation_ok"] = bool(result.get("reply_validation_ok"))
+    if result.get("ok") is True and result.get("reply_validation_ok") is True:
+        recovered = dict(result)
+        recovered["status"] = "recovered_after_service_timeout"
+        recovered["timeout_layer"] = "service_client"
+        recovered["service_timeout_recovery"] = {**diagnostic, "recovered": True, "source": "task_transcript_reparse"}
+        recovered["operator_instruction"] = "Protocol ask service call timed out, but the same request was recovered from the task transcript and validated. No artifact download, migration, adoption, or Project Source mutation was performed."
+        diagnostic["recovered"] = True
+        diagnostic["source"] = "task_transcript_reparse"
+        return recovered, diagnostic
+
+    diagnostic["transcript_recovery_result_status"] = result.get("status")
+    diagnostic["transcript_recovery_result_error"] = result.get("error")
+    return None, diagnostic
+
 def _emit_protocol_result(args: argparse.Namespace, result: dict[str, Any]) -> int:
     record_path = _persist_protocol_run_record(args, result)
     if record_path:
@@ -4293,6 +4449,18 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
                 status = "service_read_timeout"
             else:
                 status = "response_timeout" if "timeout" in lowered or "timed out" in lowered else "ask_failed"
+            recovery_diagnostic: dict[str, Any] | None = None
+            if status == "service_read_timeout":
+                recovered, recovery_diagnostic = await _recover_protocol_reply_after_service_timeout(
+                    backend,
+                    args,
+                    envelope=envelope,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    pre_ask_marker=pre_ask_marker,
+                )
+                if recovered is not None:
+                    return _emit_protocol_result(args, recovered)
             result = _protocol_failure_result(
                 args,
                 envelope=envelope,
@@ -4303,6 +4471,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
             )
             if status == "service_read_timeout":
                 result["timeout_layer"] = "service_client"
+                result["service_timeout_recovery"] = recovery_diagnostic or {"attempted": False}
             elif status == "response_timeout":
                 result["timeout_layer"] = "unknown_response_wait"
             return _emit_protocol_result(args, result)
