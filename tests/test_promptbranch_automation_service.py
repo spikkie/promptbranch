@@ -4,6 +4,7 @@ import asyncio
 
 from promptbranch_automation.automation import ChatGPTAutomation
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
+from promptbranch_browser_auth.exceptions import ResponseTimeoutError
 
 
 class _DummyClient:
@@ -195,6 +196,121 @@ def test_service_project_source_list_calls_automation(monkeypatch):
     assert result["count"] == 1
     assert result["sources"][0]["title"] == "architecture-process_0.1.16.zip"
 
+
+
+
+def test_service_remembers_verified_file_source_for_next_overwrite(monkeypatch, tmp_path):
+    file_path = tmp_path / "itest-file.txt"
+    file_path.write_text("demo", encoding="utf-8")
+    add_calls: list[dict] = []
+    remove_calls: list[dict] = []
+
+    async def fake_add_project_source(self, **kwargs):
+        add_calls.append(kwargs)
+        return {
+            "ok": True,
+            "action": "add",
+            "project_url": "https://chatgpt.com/g/g-p-demo/project",
+            "source_kind": "file",
+            "source_match": "itest-file.txt Document",
+            "source_match_requested": "itest-file.txt",
+            "source_match_candidates": ["itest-file.txt", "itest-file.txt Document"],
+            "persistence_verified": True,
+            "already_exists": False,
+            "added": True,
+            "overwritten": False,
+            "removed_existing": False,
+        }
+
+    async def fake_remove_project_source(self, **kwargs):
+        remove_calls.append(kwargs)
+        return {"ok": True, "removed_via_ui": True, "source_match": kwargs["source_name"]}
+
+    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+    monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        email=None,
+        password=None,
+        profile_dir="/tmp/.pb_profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    first = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
+    second = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
+
+    assert first["persistence_verified"] is True
+    assert len(add_calls) == 2
+    assert len(remove_calls) == 1
+    assert remove_calls[0]["source_name"] == "itest-file.txt Document"
+    assert remove_calls[0]["exact"] is False
+    assert second["already_exists"] is True
+    assert second["overwritten"] is True
+    assert second["removed_existing"] is True
+    assert second["overwrite_classification_source"] == "remembered_verified_before_state"
+    assert second["remembered_source"]["source_match"] == "itest-file.txt Document"
+    assert second["remembered_overwrite_remove_result"]["removed_via_ui"] is True
+
+
+def test_service_forgets_remembered_overwrite_when_remove_cannot_verify(monkeypatch, tmp_path):
+    file_path = tmp_path / "itest-file.txt"
+    file_path.write_text("demo", encoding="utf-8")
+    add_calls: list[dict] = []
+    remove_calls: list[dict] = []
+
+    async def fake_add_project_source(self, **kwargs):
+        add_calls.append(kwargs)
+        return {
+            "ok": True,
+            "action": "add",
+            "project_url": "https://chatgpt.com/g/g-p-demo/project",
+            "source_kind": "file",
+            "source_match": "itest-file.txt Document",
+            "source_match_requested": "itest-file.txt",
+            "source_match_candidates": ["itest-file.txt", "itest-file.txt Document"],
+            "persistence_verified": True,
+            "already_exists": False,
+            "added": True,
+            "overwritten": False,
+            "removed_existing": False,
+        }
+
+    async def fake_remove_project_source(self, **kwargs):
+        remove_calls.append(kwargs)
+        raise ResponseTimeoutError("remove did not verify")
+
+    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+    monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        email=None,
+        password=None,
+        profile_dir="/tmp/.pb_profile",
+        headless=True,
+        use_patchright=False,
+    ))
+
+    first = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
+    failed = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
+    third = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
+
+    assert first["persistence_verified"] is True
+    assert failed["ok"] is False
+    assert failed["status"] == "remembered_overwrite_remove_failed"
+    assert failed["already_exists"] is True
+    assert failed["overwritten"] is False
+    assert failed["removed_existing"] is False
+    assert failed["operator_review_required"] is True
+    assert failed["overwrite_classification_source"] == "remembered_verified_before_state"
+    assert len(remove_calls) == 1
+    # The failed remembered remove must clear the memory rather than looping on
+    # the same stale identity forever. The third call therefore falls back to
+    # the browser client's normal add/overwrite path.
+    assert third["ok"] is True
+    assert len(add_calls) == 2
 
 def test_service_remembers_recent_task_from_ask_for_task_list(monkeypatch):
     async def fake_ask_question_result(self, **kwargs):
