@@ -4016,10 +4016,17 @@ async def _parse_protocol_reply_after_ask(
     expected_conversation_id = _protocol_expected_conversation_id(envelope)
     response_conversation_id = _protocol_conversation_id_from_response(ask_response)
     lock_mismatch = _protocol_conversation_lock_mismatch(envelope, ask_response)
+    state_snapshot = _state_store_from_args(args).snapshot(getattr(args, "project_url", None))
+    state_conversation_url = (
+        state_snapshot.get("conversation_url")
+        or (state_snapshot.get("task") or {}).get("conversation_url")
+        if isinstance(state_snapshot, dict)
+        else None
+    )
     conversation_url = str(
         expected_conversation_url
         or getattr(args, "conversation_url", None)
-        or _state_store_from_args(args).load().conversation_url
+        or state_conversation_url
         or ask_response.get("conversation_url")
         or ""
     )
