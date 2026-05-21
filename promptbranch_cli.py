@@ -2243,6 +2243,8 @@ def _record_artifact_candidate_test(profile_dir: str | Path, *, candidate: dict[
         "result": test_result,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -2736,6 +2738,8 @@ def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str
     return {
         **result,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -5293,6 +5297,12 @@ def _verify_project_source_upload_change(
     matched_after = [item for item in after_sources if isinstance(item, dict) and _source_matches_filename(item, expected_filename)]
     removed_keys = sorted(before_keys - after_keys)
     added_keys = sorted(after_keys - before_keys)
+    expected_removed_keys = sorted({
+        _source_stable_key(item)
+        for item in matched_before
+        if isinstance(item, dict) and _source_stable_key(item)
+    } & set(removed_keys))
+    collateral_removed_keys = sorted(set(removed_keys) - set(expected_removed_keys))
 
     upload_ok = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
     checks = {
@@ -5300,7 +5310,8 @@ def _verify_project_source_upload_change(
         "before_source_list_ok": bool(before.get("ok")),
         "after_source_list_ok": bool(after.get("ok")),
         "expected_source_present_after": bool(matched_after),
-        "collateral_sources_removed": bool(removed_keys),
+        "expected_source_replaced": bool(expected_removed_keys and matched_after),
+        "collateral_sources_removed": bool(collateral_removed_keys),
     }
     ok = (
         checks["upload_result_ok"]
@@ -5342,7 +5353,9 @@ def _verify_project_source_upload_change(
         "matched_after": matched_after[:3],
         "added_source_keys": added_keys,
         "removed_source_keys": removed_keys,
-        "collateral_change_detected": bool(removed_keys),
+        "expected_removed_source_keys": expected_removed_keys,
+        "collateral_removed_source_keys": collateral_removed_keys,
+        "collateral_change_detected": bool(collateral_removed_keys),
         "upload_result_status": upload_result.get("status") if isinstance(upload_result, dict) else None,
     }
 
@@ -6735,6 +6748,8 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -6821,6 +6836,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         warnings.append({"code": code, "severity": "warning", "message": message, **extra})
 
     plan_only = bool(getattr(args, "plan", False))
+    upload_source_requested = bool(getattr(args, "upload_source", False))
 
     if not config_payload.get("ok"):
         block("release_config_invalid", "Release install requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
@@ -6873,7 +6889,8 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "would_overwrite_repo_files": True,
         "would_verify_installed_version": True,
         "would_update_artifact_registry": False,
-        "would_upload_project_source": False,
+        "would_upload_project_source": upload_source_requested,
+        "would_verify_project_source_visibility": upload_source_requested,
         "would_adopt_artifact": False,
         "would_commit_git": False,
         "would_push_git": False,
@@ -6885,6 +6902,8 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "install_entry_count": len(install_entries),
         "install_entry_sample": install_entries[:30],
         "install_entry_sample_truncated": len(install_entries) > 30,
+        "upload_source_requested": upload_source_requested,
+        "project_source_filename": artifact_filename or None,
         "preserve_paths": preserve_paths,
         "preserved_conflict_count": len(preserved_conflicts),
         "preserved_conflict_sample": preserved_conflicts[:20],
@@ -6896,6 +6915,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
             "preserve configured local runtime paths",
             "extract candidate ZIP entries into repo root",
             "verify installed VERSION after extraction",
+            *( ["list Project Sources before upload", "upload candidate artifact ZIP as Project Source", "list Project Sources after upload", "verify expected source is visible and no collateral source was removed"] if upload_source_requested else [] ),
         ],
     }
 
@@ -6914,6 +6934,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "version_file": version_file,
         "git": git_status,
         "install_plan": plan,
+        "upload_source_requested": upload_source_requested,
         "warnings": warnings,
         "blockers": blockers,
         "warning_codes": [item["code"] for item in warnings],
@@ -6924,6 +6945,8 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7089,6 +7112,8 @@ def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, 
         "repo_install_performed": True,
         "mutating_actions_executed": True,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7121,10 +7146,135 @@ def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, 
     return payload
 
 
+async def _release_install_upload_source_payload(
+    payload: dict[str, Any],
+    backend: Any,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Upload the candidate release artifact as a Project Source and verify it.
+
+    This is intentionally a bounded lifecycle step: it may mutate ChatGPT Project
+    Sources, but it does not advance artifact registry, Promptbranch state,
+    adoption, Git commit, or Git push state. The source mutation is trusted only
+    when before/after source-list verification succeeds.
+    """
+
+    result = copy.deepcopy(payload)
+    if not bool(result.get("ok")):
+        return result
+    if not bool(result.get("upload_source_requested")):
+        return result
+    if backend is None:
+        blocker = {
+            "code": "release_install_source_backend_unavailable",
+            "severity": "blocked",
+            "message": "Project Source upload was requested but no Promptbranch backend is available.",
+        }
+        result.update({
+            "ok": False,
+            "status": "source_upload_backend_unavailable",
+            "severity": "blocked",
+            "project_source_mutated": False,
+            "project_source_mutation": "not_verified",
+            "mutating_actions_executed": bool(result.get("mutating_actions_executed")),
+            "blockers": list(result.get("blockers") or []) + [blocker],
+            "blocker_codes": list(result.get("blocker_codes") or []) + [blocker["code"]],
+        })
+        return result
+
+    install_plan = result.get("install_plan") if isinstance(result.get("install_plan"), dict) else {}
+    artifact_path = str(install_plan.get("artifact_path") or ((result.get("artifact") or {}).get("path")) or "")
+    artifact_filename = str(install_plan.get("artifact_filename") or ((result.get("artifact") or {}).get("filename")) or Path(artifact_path).name)
+    keep_open = bool(getattr(args, "keep_open", False))
+
+    try:
+        before_result = await backend.list_project_sources(keep_open=keep_open)
+    except Exception as exc:
+        before_result = _operation_error_payload("release_install_source_list_before_upload", exc)
+
+    before_snapshot = _project_sources_snapshot_from_result(before_result)
+    upload_result: dict[str, Any]
+    after_result: Any = before_result
+    if not before_snapshot.get("ok"):
+        upload_result = {
+            "ok": False,
+            "action": "source_add",
+            "status": "before_source_list_unavailable",
+            "error": "project source list before upload was not readable; upload was not attempted",
+        }
+    else:
+        try:
+            upload_result = await backend.add_project_source(
+                source_kind="file",
+                file_path=artifact_path,
+                display_name=artifact_filename,
+                keep_open=keep_open,
+                overwrite_existing=True,
+            )
+        except Exception as exc:
+            upload_result = _operation_error_payload("release_install_source_add", exc)
+        try:
+            after_result = await backend.list_project_sources(keep_open=keep_open)
+        except Exception as exc:
+            after_result = _operation_error_payload("release_install_source_list_after_upload", exc)
+
+    verification = _verify_project_source_upload_change(
+        before_result=before_result,
+        after_result=after_result,
+        upload_result=upload_result,
+        expected_filename=artifact_filename,
+    )
+    verified = bool(verification.get("ok"))
+    ambiguous = verification.get("status") == "upload_ambiguous"
+    source_mutation = "verified" if verified else ("ambiguous" if ambiguous else "not_verified")
+    status = "installed_source_uploaded" if verified else ("installed_source_upload_ambiguous" if ambiguous else "installed_source_upload_not_verified")
+    blocker_codes = list(result.get("blocker_codes") or [])
+    blockers = list(result.get("blockers") or [])
+    if not verified:
+        blockers.append({
+            "code": "release_install_source_upload_not_verified",
+            "severity": "blocked",
+            "message": "Project Source upload did not verify from before/after source-list snapshots.",
+            "verification_status": verification.get("status"),
+        })
+        blocker_codes.append("release_install_source_upload_not_verified")
+
+    result.update({
+        "ok": verified,
+        "status": status,
+        "severity": "ok" if verified and not result.get("warnings") else ("warning" if verified else "blocked"),
+        "project_source_mutated": verified,
+        "project_source_mutation": source_mutation,
+        "operator_review_required": bool(ambiguous),
+        "source_upload_result": upload_result,
+        "source_upload_verification": verification,
+        "project_source_before_upload": _project_sources_snapshot_from_result(before_result),
+        "project_source_after_upload": _project_sources_snapshot_from_result(after_result),
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "adoption_performed": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "blockers": blockers,
+        "blocker_codes": blocker_codes,
+        "operator_instruction": (
+            "Controlled repo install and Project Source upload verification completed. "
+            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
+            if verified else
+            "Controlled repo install completed, but Project Source upload did not verify. "
+            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
+        ),
+    })
+    return result
+
+
 async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
     payload = _release_install_plan_payload(args)
     if payload.get("ok") and not getattr(args, "plan", False):
         payload = _release_install_execute_payload(payload)
+    if payload.get("ok") and not getattr(args, "plan", False) and getattr(args, "upload_source", False):
+        payload = await _release_install_upload_source_payload(payload, backend, args)
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -7484,6 +7634,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7608,6 +7760,8 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
         "migration_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7842,6 +7996,8 @@ def _artifact_candidate_lifecycle_status(
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -8084,6 +8240,8 @@ def _artifact_candidate_lifecycle_status_all(
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -8213,6 +8371,8 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -8377,6 +8537,8 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -8768,6 +8930,8 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -10344,6 +10508,8 @@ def make_parser() -> argparse.ArgumentParser:
     release_install.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
     release_install.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_install.add_argument("--plan", action="store_true", help="Emit the read-only install plan and perform no mutation.")
+    release_install.add_argument("--upload-source", action="store_true", help="After a controlled install, add the candidate ZIP to Project Sources and verify before/after source-list state. In --plan mode this only reports the intended source upload.")
+    release_install.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
     release_install.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
