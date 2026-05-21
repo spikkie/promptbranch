@@ -493,6 +493,7 @@ class ChatGPTBrowserClient:
         self._conversation_history_fetch_attempt_count = 0
         self._conversation_history_fetch_skipped_count = 0
         self._conversation_history_cooldown_skip_count = 0
+        self._google_device_prompt_logged_keys: set[str] = set()
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2765,7 +2766,26 @@ class ChatGPTBrowserClient:
             source_match_candidates,
             exact_safe=True,
         )
+        if existing_source is None:
+            # Some ChatGPT cards render files as "<filename> Document" or as
+            # a multiline row whose exact-safe identity differs from the
+            # requested basename.  Before declaring the preflight inconclusive,
+            # perform a broader read-only card match against the same snapshot.
+            existing_source = self._match_source_card(
+                initial_sources,
+                source_match_candidates,
+                exact_safe=False,
+                anchor_safe=True,
+            )
         if existing_source is not None:
+            self._log(
+                "project-source-add",
+                "existing file source detected from initial overwrite snapshot",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                source_match=self._preferred_source_card_identity(existing_source),
+                initial_source_count=len(initial_sources),
+            )
             return existing_source
 
         self._log(
@@ -3705,6 +3725,155 @@ class ChatGPTBrowserClient:
             "Google sign-in was started, but no popup or redirect page became detectable within the timeout."
         )
 
+    def _is_google_device_prompt_url(self, url: str) -> bool:
+        normalized = (url or "").lower()
+        return "accounts.google.com" in normalized and "/signin/challenge/dp" in normalized
+
+    def _looks_like_google_device_prompt_text(self, text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", text or "").strip().lower()
+        if not normalized:
+            return False
+        prompt_hints = [
+            "check your phone",
+            "open the gmail app",
+            "open the google app",
+            "tap yes",
+            "choose",
+            "select",
+            "match the number",
+            "number on your phone",
+            "device prompt",
+        ]
+        return any(hint in normalized for hint in prompt_hints)
+
+    def _extract_google_device_prompt_numbers(self, text: str) -> list[str]:
+        # Google device prompts usually show one short decimal number in the
+        # browser. Keep this intentionally conservative: longer numbers are
+        # often timestamps, client ids, or unrelated recovery text.
+        seen: set[str] = set()
+        numbers: list[str] = []
+        for match in re.finditer(r"(?<![A-Za-z0-9])([0-9]{1,3})(?![A-Za-z0-9])", text or ""):
+            value = match.group(1)
+            if value not in seen:
+                seen.add(value)
+                numbers.append(value)
+        return numbers
+
+    async def _google_device_prompt_snapshot(self, page: Any) -> dict[str, Any]:
+        page_url = await self._safe_page_url(page)
+        page_title = await self._safe_page_title(page)
+        visible_text = ""
+        try:
+            visible_text = await page.evaluate(
+                r'''
+                () => {
+                  const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                  const candidates = [];
+                  for (const el of Array.from(document.querySelectorAll('main, [role="main"], body'))) {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    if (rect.width && rect.height && style.visibility !== 'hidden' && style.display !== 'none') {
+                      const text = normalize(el.innerText || el.textContent || '');
+                      if (text) candidates.push(text);
+                    }
+                  }
+                  return candidates.sort((a, b) => b.length - a.length)[0] || normalize(document.body && (document.body.innerText || document.body.textContent) || '');
+                }
+                '''
+            )
+        except Exception as exc:
+            self._log("google", "device prompt text extraction failed", error=str(exc), page_url=page_url)
+
+        visible_text = re.sub(r"\s+", " ", str(visible_text or "")).strip()
+        numbers = self._extract_google_device_prompt_numbers(visible_text)
+        return {
+            "page_url": page_url,
+            "page_title": page_title,
+            "text_preview": visible_text[:600],
+            "challenge_numbers": numbers,
+            "is_device_prompt_url": self._is_google_device_prompt_url(page_url),
+            "is_device_prompt_text": self._looks_like_google_device_prompt_text(visible_text),
+        }
+
+    async def _save_google_device_prompt_artifacts(self, page: Any, snapshot: dict[str, Any], *, reason: str) -> dict[str, str]:
+        paths: dict[str, str] = {}
+        if not self.config.debug:
+            return paths
+        stamp = self._timestamp_for_filename()
+        base = self._artifact_dir / f"google_device_prompt_{stamp}"
+        try:
+            txt_path = base.with_suffix(".txt")
+            await self._write_text(
+                txt_path,
+                "\n".join([
+                    f"timestamp: {self._timestamp()}",
+                    f"reason: {reason}",
+                    f"url: {snapshot.get('page_url')}",
+                    f"title: {snapshot.get('page_title')}",
+                    f"challenge_numbers: {snapshot.get('challenge_numbers')}",
+                    "text_preview:",
+                    str(snapshot.get("text_preview") or ""),
+                ]),
+            )
+            paths["text"] = str(txt_path)
+        except Exception as exc:
+            self._log("google", "failed to save device prompt text artifact", error=str(exc))
+
+        if self.config.save_html:
+            try:
+                html_path = base.with_suffix(".html")
+                await self._write_text(html_path, await page.content())
+                paths["html"] = str(html_path)
+            except Exception as exc:
+                self._log("google", "failed to save device prompt html artifact", error=str(exc))
+
+        if self.config.save_screenshot:
+            try:
+                screenshot_path = base.with_suffix(".png")
+                await page.screenshot(path=str(screenshot_path), full_page=True)
+                paths["screenshot"] = str(screenshot_path)
+            except Exception as exc:
+                self._log("google", "failed to save device prompt screenshot artifact", error=str(exc))
+        return paths
+
+    async def _detect_and_log_google_device_prompt(self, page: Any, *, stage: str, iteration: int | None = None) -> bool:
+        snapshot = await self._google_device_prompt_snapshot(page)
+        detected = bool(snapshot.get("is_device_prompt_url") or snapshot.get("is_device_prompt_text"))
+        if not detected:
+            return False
+
+        challenge_numbers = list(snapshot.get("challenge_numbers") or [])
+        page_url = str(snapshot.get("page_url") or "")
+        key = f"{page_url}|{','.join(challenge_numbers)}|{stage}"
+        if key in self._google_device_prompt_logged_keys:
+            return True
+        self._google_device_prompt_logged_keys.add(key)
+
+        if len(challenge_numbers) == 1:
+            instruction = f"Choose number {challenge_numbers[0]} on your phone."
+        elif challenge_numbers:
+            instruction = "Google device prompt detected; choose the matching number shown in the browser."
+        else:
+            instruction = "Google device prompt detected, but no challenge number could be extracted from the container browser."
+
+        artifact_paths: dict[str, str] = {}
+        if not challenge_numbers:
+            artifact_paths = await self._save_google_device_prompt_artifacts(page, snapshot, reason="challenge_number_unreadable")
+
+        self._log(
+            "google",
+            "device prompt challenge detected",
+            auth_stage=stage,
+            iteration=iteration,
+            page_url=page_url,
+            challenge_numbers=challenge_numbers,
+            instruction=instruction,
+            text_preview=snapshot.get("text_preview"),
+            artifact_paths=artifact_paths,
+        )
+        self._log("google", "operator action required", instruction=instruction)
+        return True
+
     async def _wait_for_session_after_google(
         self,
         page: Any,
@@ -3751,6 +3920,7 @@ class ChatGPTBrowserClient:
             for candidate in open_pages:
                 candidate_url = await self._safe_page_url(candidate)
                 if self._is_google_auth_url(candidate_url):
+                    await self._detect_and_log_google_device_prompt(candidate, stage="post-google-session-wait")
                     continue
                 if "chatgpt.com" in candidate_url or "openai.com" in candidate_url:
                     try:
@@ -3935,6 +4105,7 @@ class ChatGPTBrowserClient:
                     auth_page_closed=auth_page.is_closed() if hasattr(auth_page, "is_closed") else None,
                 )
                 if auth_page_url != "<url-unavailable>" and self._is_google_auth_url(auth_page_url):
+                    await self._detect_and_log_google_device_prompt(auth_page, stage="manual-login", iteration=iteration)
                     self._log(
                         "manual-login",
                         "google auth page still active; waiting on Google/browser-mediated confirmation before polling ChatGPT",
@@ -6535,8 +6706,19 @@ class ChatGPTBrowserClient:
                 candidates.append(normalized)
 
         if source_kind == "file":
-            add(self._normalize_file_source_display_name(display_name, file_path))
-            add(Path(file_path).name if file_path else None)
+            normalized_display = self._normalize_file_source_display_name(display_name, file_path)
+            normalized_path_name = Path(file_path).name if file_path else None
+            add(normalized_display)
+            add(normalized_path_name)
+            # ChatGPT commonly renders uploaded files with an added generic
+            # document/type suffix, for example "release.zip Document".
+            # Include those identities during overwrite preflight so a verified
+            # existing file source is not misclassified as a fresh add merely
+            # because the card identity is richer than the filesystem basename.
+            for file_label in (normalized_display, normalized_path_name):
+                normalized_label = self._normalize_source_match_text(file_label)
+                if normalized_label and not normalized_label.lower().endswith(" document"):
+                    add(f"{normalized_label} Document")
             return candidates
 
         normalized_value = self._normalize_source_match_text(value)
