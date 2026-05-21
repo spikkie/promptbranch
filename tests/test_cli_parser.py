@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.248" in out
+    assert "0.0.249" in out
     assert "promptbranch" in out
 
 
@@ -666,7 +666,7 @@ def test_parser_accepts_release_doctor_command() -> None:
     args = parser.parse_args([
         "release", "doctor",
         "--version", "v0.0.247",
-        "--target-version", "v0.0.248",
+        "--target-version", "v0.0.250",
         "--artifact", "chatgpt_claudecode_workflow_v0.0.247.zip",
         "--repo-path", "/tmp/repo",
         "--skip-service-health",
@@ -677,7 +677,7 @@ def test_parser_accepts_release_doctor_command() -> None:
     assert args.command == "release"
     assert args.release_command == "doctor"
     assert args.version == "v0.0.247"
-    assert args.target_version == "v0.0.248"
+    assert args.target_version == "v0.0.250"
     assert args.artifact == "chatgpt_claudecode_workflow_v0.0.247.zip"
     assert args.repo_path == "/tmp/repo"
     assert args.skip_service_health is True
@@ -691,9 +691,9 @@ def test_parser_accepts_release_install_plan_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "install",
-        "--artifact", "chatgpt_claudecode_workflow_v0.0.248.zip",
-        "--version", "v0.0.248",
-        "--target-version", "v0.0.249",
+        "--artifact", "chatgpt_claudecode_workflow_v0.0.249.zip",
+        "--version", "v0.0.249",
+        "--target-version", "v0.0.250",
         "--config", ".promptbranch-release.yml",
         "--repo-path", "/tmp/repo",
         "--plan",
@@ -702,9 +702,9 @@ def test_parser_accepts_release_install_plan_command() -> None:
 
     assert args.command == "release"
     assert args.release_command == "install"
-    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.248.zip"
-    assert args.version == "v0.0.248"
-    assert args.target_version == "v0.0.249"
+    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.249.zip"
+    assert args.version == "v0.0.249"
+    assert args.target_version == "v0.0.250"
     assert args.config == ".promptbranch-release.yml"
     assert args.repo_path == "/tmp/repo"
     assert args.plan is True

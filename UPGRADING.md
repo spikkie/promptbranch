@@ -1,4 +1,14 @@
 
+## v0.0.249
+
+`pb release install` can now perform the bounded repository install mutation when `--plan` is omitted.
+
+```bash
+pb release install --artifact chatgpt_claudecode_workflow_v0.0.249.zip --version v0.0.249 --json
+```
+
+Use `--plan` to keep the v0.0.248 read-only behavior. The install command still does not upload Project Sources, adopt artifacts, update Promptbranch state, commit, push, or delete stale files.
+
 ## v0.0.248
 
 `pb release install` is introduced as a read-only planning command only. Use `--plan`; mutation is intentionally blocked in this slice.

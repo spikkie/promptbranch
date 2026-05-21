@@ -14,6 +14,7 @@ import shlex
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
@@ -6819,11 +6820,8 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     def warn(code: str, message: str, **extra: Any) -> None:
         warnings.append({"code": code, "severity": "warning", "message": message, **extra})
 
-    if not getattr(args, "plan", False):
-        block(
-            "release_install_requires_plan",
-            "v0.0.248 implements read-only install planning only; pass --plan to inspect the transaction contract.",
-        )
+    plan_only = bool(getattr(args, "plan", False))
+
     if not config_payload.get("ok"):
         block("release_config_invalid", "Release install requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
     if not artifact_payload.get("attempted"):
@@ -6866,9 +6864,9 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
 
     plan = {
         "schema_version": 1,
-        "phase": "release_install_plan",
-        "read_only": True,
-        "mutation_allowed": False,
+        "phase": "release_install_plan" if plan_only else "release_install_execute",
+        "read_only": plan_only,
+        "mutation_allowed": not plan_only,
         "would_install_artifact": True,
         "would_extract_zip": True,
         "would_preserve_paths": preserve_paths,
@@ -6901,15 +6899,15 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         ],
     }
 
-    status = "planned" if not blockers else "blocked"
+    status = ("planned" if plan_only else "ready_to_install") if not blockers else "blocked"
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
         "action": "release_install",
         "status": status,
         "severity": severity,
-        "mode": "plan_only",
-        "read_only": True,
+        "mode": "plan_only" if plan_only else "install",
+        "read_only": plan_only,
         "repo_path": str(repo_root),
         "config": config_payload,
         "artifact": artifact_payload,
@@ -6932,7 +6930,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "git_commit_performed": False,
         "git_push_performed": False,
         "mutating_actions_executed": False,
-        "not_performed": [
+        "not_performed": ([
             "artifact_download",
             "candidate_migration",
             "repo_install",
@@ -6944,13 +6942,189 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
             "state_source_update",
             "git_commit",
             "git_push",
-        ],
-        "operator_instruction": "Read-only release install plan. Inspect this contract before a future controlled install mutation; no files, sources, registry, state, git commits, or pushes were changed.",
+        ] if plan_only else [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ]),
+        "operator_instruction": (
+            "Read-only release install plan. Inspect this contract before a future controlled install mutation; no files, sources, registry, state, git commits, or pushes were changed."
+            if plan_only
+            else "Controlled release install is ready. The command will overwrite ZIP entries into the repository root without deleting extra files and without source upload, adoption, registry, state, git commit, or push."
+        ),
     }
+
+
+def _release_install_preflight_targets(repo_root: Path, install_entries: list[str]) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    for entry in install_entries:
+        target = (repo_root / entry).resolve()
+        try:
+            target.relative_to(repo_root)
+        except ValueError:
+            blockers.append({
+                "code": "release_install_target_escapes_repo",
+                "severity": "blocked",
+                "message": "Candidate ZIP entry would extract outside the repository root.",
+                "entry": entry,
+            })
+            continue
+        if target.exists() and target.is_dir():
+            blockers.append({
+                "code": "release_install_target_is_directory",
+                "severity": "blocked",
+                "message": "Candidate ZIP entry targets an existing directory, not a file.",
+                "entry": entry,
+                "target": str(target),
+            })
+    return blockers
+
+
+def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, Any]:
+    install_plan = plan_payload.get("install_plan") if isinstance(plan_payload.get("install_plan"), dict) else {}
+    repo_root = Path(str(install_plan.get("repo_path") or plan_payload.get("repo_path") or ".")).expanduser().resolve()
+    artifact_path = Path(str(install_plan.get("artifact_path") or "")).expanduser().resolve()
+    artifact_version = _candidate_version_normalized(install_plan.get("artifact_version"))
+    install_entries = [str(item) for item in install_plan.get("install_entry_sample") or []]
+    # Use the complete entry list from the verified ZIP rather than the truncated sample.
+    zip_entries_payload = _release_install_zip_entries(artifact_path)
+    entries = [str(item) for item in zip_entries_payload.get("entries") or []]
+    preserve_paths = [str(item) for item in install_plan.get("preserve_paths") or []]
+    install_entries = [entry for entry in entries if not _release_install_entry_under_preserve(entry, preserve_paths)]
+
+    execution_blockers = _release_install_preflight_targets(repo_root, install_entries)
+    if execution_blockers:
+        payload = copy.deepcopy(plan_payload)
+        payload.update({
+            "ok": False,
+            "status": "blocked",
+            "severity": "blocked",
+            "read_only": False,
+            "install_performed": False,
+            "mutating_actions_executed": False,
+            "execution": {
+                "ok": False,
+                "status": "blocked",
+                "installed_entry_count": 0,
+                "blockers": execution_blockers,
+            },
+            "blockers": list(payload.get("blockers") or []) + execution_blockers,
+            "blocker_codes": list(payload.get("blocker_codes") or []) + [item["code"] for item in execution_blockers],
+        })
+        return payload
+
+    installed: list[dict[str, Any]] = []
+    overwritten_count = 0
+    created_count = 0
+    start_time = time.time()
+    with tempfile.TemporaryDirectory(prefix="promptbranch-release-install-") as tmp_name:
+        staging_root = Path(tmp_name) / "staging"
+        with zipfile.ZipFile(artifact_path) as archive:
+            for entry in install_entries:
+                info = archive.getinfo(entry)
+                staged = staging_root / entry
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(info) as src, staged.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                mode = (info.external_attr >> 16) & 0o777
+                if mode:
+                    try:
+                        staged.chmod(mode)
+                    except OSError:
+                        pass
+        for entry in install_entries:
+            staged = staging_root / entry
+            target = (repo_root / entry).resolve()
+            existed = target.exists()
+            if existed:
+                overwritten_count += 1
+            else:
+                created_count += 1
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp_target = target.with_name(f".{target.name}.promptbranch-install.tmp")
+            shutil.copy2(staged, tmp_target)
+            os.replace(tmp_target, target)
+            installed.append({
+                "entry": entry,
+                "target": str(target),
+                "overwrote_existing": existed,
+                "size_bytes": target.stat().st_size if target.exists() else None,
+            })
+
+    installed_version_payload = _release_doctor_version_from_file(repo_root)
+    installed_version = _candidate_version_normalized(installed_version_payload.get("normalized_version") or installed_version_payload.get("version"))
+    version_ok = bool(artifact_version and installed_version == artifact_version)
+    execution = {
+        "ok": version_ok,
+        "status": "installed" if version_ok else "installed_version_mismatch",
+        "duration_seconds": round(time.time() - start_time, 3),
+        "installed_entry_count": len(installed),
+        "installed_entry_sample": installed[:30],
+        "installed_entry_sample_truncated": len(installed) > 30,
+        "overwritten_entry_count": overwritten_count,
+        "created_entry_count": created_count,
+        "deleted_entry_count": 0,
+        "delete_performed": False,
+        "installed_version": installed_version,
+        "expected_version": artifact_version,
+        "installed_version_matches_artifact": version_ok,
+    }
+    payload = copy.deepcopy(plan_payload)
+    payload.update({
+        "ok": version_ok,
+        "status": "installed" if version_ok else "installed_version_mismatch",
+        "severity": "ok" if version_ok and not payload.get("warnings") else ("warning" if version_ok else "blocked"),
+        "mode": "install",
+        "read_only": False,
+        "version_file_after_install": installed_version_payload,
+        "execution": execution,
+        "install_performed": True,
+        "repo_install_performed": True,
+        "mutating_actions_executed": True,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+        "operator_instruction": "Controlled repo install completed. Candidate ZIP entries were extracted into the repository root without deleting extra files and without source upload, adoption, registry, state, git commit, or push.",
+    })
+    if not version_ok:
+        blocker = {
+            "code": "release_install_installed_version_mismatch",
+            "severity": "blocked",
+            "message": "Installed VERSION does not match the candidate artifact version after extraction.",
+            "installed_version": installed_version,
+            "expected_version": artifact_version,
+        }
+        payload["blockers"] = list(payload.get("blockers") or []) + [blocker]
+        payload["blocker_codes"] = list(payload.get("blocker_codes") or []) + [blocker["code"]]
+    return payload
 
 
 async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
     payload = _release_install_plan_payload(args)
+    if payload.get("ok") and not getattr(args, "plan", False):
+        payload = _release_install_execute_payload(payload)
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -10163,13 +10337,13 @@ def make_parser() -> argparse.ArgumentParser:
     release_config.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_config.add_argument("--json", action="store_true")
 
-    release_install = release_subparsers.add_parser("install", help="Plan a release artifact install transaction without mutating the repository.")
-    release_install.add_argument("--artifact", required=True, help="Candidate release ZIP to inspect for a future install transaction.")
-    release_install.add_argument("--version", help="Expected candidate version such as v0.0.248.")
+    release_install = release_subparsers.add_parser("install", help="Plan or perform a bounded release artifact install transaction.")
+    release_install.add_argument("--artifact", required=True, help="Candidate release ZIP to inspect or install.")
+    release_install.add_argument("--version", help="Expected candidate version such as v0.0.249.")
     release_install.add_argument("--target-version", help="Optional next target version for operator context.")
     release_install.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
     release_install.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
-    release_install.add_argument("--plan", action="store_true", help="Required in v0.0.248: emit the read-only install plan and perform no mutation.")
+    release_install.add_argument("--plan", action="store_true", help="Emit the read-only install plan and perform no mutation.")
     release_install.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
