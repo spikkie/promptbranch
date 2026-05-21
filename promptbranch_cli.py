@@ -6762,6 +6762,206 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
 
+
+
+def _release_install_normalize_preserve_path(value: Any) -> str:
+    text = str(value or "").strip().replace("\\", "/").strip("/")
+    if not text:
+        return ""
+    return text + "/" if str(value or "").strip().endswith("/") else text
+
+
+def _release_install_entry_under_preserve(entry: str, preserve_paths: list[str]) -> bool:
+    rel = str(entry or "").strip("/")
+    if not rel:
+        return False
+    for raw in preserve_paths:
+        preserve = _release_install_normalize_preserve_path(raw).strip("/")
+        if not preserve:
+            continue
+        if rel == preserve or rel.startswith(preserve + "/"):
+            return True
+    return False
+
+
+def _release_install_zip_entries(path: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "entry_count": 0,
+        "entries": [],
+        "error": None,
+    }
+    try:
+        with zipfile.ZipFile(path) as archive:
+            entries = [name for name in archive.namelist() if name and not name.endswith("/")]
+    except (OSError, zipfile.BadZipFile) as exc:
+        payload.update({"error": str(exc), "entries": []})
+        return payload
+    payload.update({"entry_count": len(entries), "entries": sorted(entries)})
+    return payload
+
+
+def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    version_file = _release_doctor_version_from_file(repo_root)
+    git_status = _release_doctor_git_status(repo_root)
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    if not getattr(args, "plan", False):
+        block(
+            "release_install_requires_plan",
+            "v0.0.248 implements read-only install planning only; pass --plan to inspect the transaction contract.",
+        )
+    if not config_payload.get("ok"):
+        block("release_config_invalid", "Release install requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if not artifact_payload.get("attempted"):
+        block("release_install_artifact_required", "release install --plan requires --artifact ZIP.")
+    elif not artifact_payload.get("ok"):
+        block("release_install_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    install_cfg = config.get("install") if isinstance(config.get("install"), dict) else {}
+    preserve_paths = install_cfg.get("preserve") if isinstance(install_cfg.get("preserve"), list) else []
+    expected_prefix = str(artifact_cfg.get("prefix") or "")
+    expected_suffix = str(artifact_cfg.get("suffix") or "")
+    artifact_filename = str(artifact_payload.get("filename") or "")
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+
+    if expected_prefix and artifact_filename and not artifact_filename.startswith(expected_prefix):
+        block("release_install_artifact_prefix_mismatch", "Candidate artifact filename does not match release config artifact.prefix.", expected_prefix=expected_prefix, artifact_filename=artifact_filename)
+    if expected_suffix and artifact_filename and not artifact_filename.endswith(expected_suffix):
+        block("release_install_artifact_suffix_mismatch", "Candidate artifact filename does not match release config artifact.suffix.", expected_suffix=expected_suffix, artifact_filename=artifact_filename)
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_install_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if not requested_version and artifact_version:
+        warn("release_install_version_inferred", "No --version was supplied; candidate version is inferred from the artifact ZIP.", artifact_version=artifact_version)
+
+    artifact_path_text = str(artifact_payload.get("path") or "")
+    zip_entry_payload = _release_install_zip_entries(Path(artifact_path_text)) if artifact_path_text else {"entry_count": 0, "entries": []}
+    entries = [str(item) for item in zip_entry_payload.get("entries") or []]
+    preserved_conflicts = [entry for entry in entries if _release_install_entry_under_preserve(entry, preserve_paths)]
+    install_entries = [entry for entry in entries if entry not in preserved_conflicts]
+    if preserved_conflicts:
+        block(
+            "release_install_artifact_contains_preserved_path",
+            "Candidate ZIP contains entries under install.preserve paths; install planning refuses implicit overwrite/skip ambiguity.",
+            preserved_conflict_count=len(preserved_conflicts),
+            preserved_conflict_sample=preserved_conflicts[:20],
+        )
+    if "VERSION" not in entries and artifact_payload.get("present"):
+        block("release_install_version_file_missing", "Candidate ZIP must contain VERSION at repository root.")
+
+    plan = {
+        "schema_version": 1,
+        "phase": "release_install_plan",
+        "read_only": True,
+        "mutation_allowed": False,
+        "would_install_artifact": True,
+        "would_extract_zip": True,
+        "would_preserve_paths": preserve_paths,
+        "would_overwrite_repo_files": True,
+        "would_verify_installed_version": True,
+        "would_update_artifact_registry": False,
+        "would_upload_project_source": False,
+        "would_adopt_artifact": False,
+        "would_commit_git": False,
+        "would_push_git": False,
+        "repo_path": str(repo_root),
+        "artifact_path": artifact_payload.get("path"),
+        "artifact_filename": artifact_filename or None,
+        "artifact_version": artifact_version,
+        "target_version": target_version,
+        "install_entry_count": len(install_entries),
+        "install_entry_sample": install_entries[:30],
+        "install_entry_sample_truncated": len(install_entries) > 30,
+        "preserve_paths": preserve_paths,
+        "preserved_conflict_count": len(preserved_conflicts),
+        "preserved_conflict_sample": preserved_conflicts[:20],
+        "verification_plan": [
+            "validate release config",
+            "verify candidate ZIP immutability and hygiene",
+            "verify candidate VERSION matches filename and requested version",
+            "verify ZIP contains no preserved-path entries",
+            "preserve configured local runtime paths",
+            "extract candidate ZIP entries into repo root",
+            "verify installed VERSION after extraction",
+        ],
+    }
+
+    status = "planned" if not blockers else "blocked"
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "action": "release_install",
+        "status": status,
+        "severity": severity,
+        "mode": "plan_only",
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "config": config_payload,
+        "artifact": artifact_payload,
+        "version_file": version_file,
+        "git": git_status,
+        "install_plan": plan,
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "repo_install",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+        "operator_instruction": "Read-only release install plan. Inspect this contract before a future controlled install mutation; no files, sources, registry, state, git commits, or pushes were changed.",
+    }
+
+
+async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_install_plan_payload(args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"artifact={((payload.get('artifact') or {}).get('filename')) or 'none'}")
+        print(f"install_entry_count={((payload.get('install_plan') or {}).get('install_entry_count')) or 0}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
 def _release_doctor_consistency(
     *,
     expected: dict[str, Any],
@@ -7171,6 +7371,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_doctor(backend, args)
     if args.release_command == "config":
         return await cmd_release_config(backend, args)
+    if args.release_command == "install":
+        return await cmd_release_install(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -9960,6 +10162,15 @@ def make_parser() -> argparse.ArgumentParser:
     release_config.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
     release_config.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_config.add_argument("--json", action="store_true")
+
+    release_install = release_subparsers.add_parser("install", help="Plan a release artifact install transaction without mutating the repository.")
+    release_install.add_argument("--artifact", required=True, help="Candidate release ZIP to inspect for a future install transaction.")
+    release_install.add_argument("--version", help="Expected candidate version such as v0.0.248.")
+    release_install.add_argument("--target-version", help="Optional next target version for operator context.")
+    release_install.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
+    release_install.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_install.add_argument("--plan", action="store_true", help="Required in v0.0.248: emit the read-only install plan and perform no mutation.")
+    release_install.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
