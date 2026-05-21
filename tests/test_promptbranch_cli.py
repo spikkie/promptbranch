@@ -26,8 +26,8 @@ def test_protocol_reply_validation_allows_no_artifact_without_output_version() -
         "request_id": "req-no-artifact",
         "correlation_id": "corr-no-artifact",
         "artifact": {
-            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "current_version": "v0.0.245.11",
+            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "current_version": "v0.0.245.12",
             "target_version": "v0.0.246",
             "release_type": "normal",
         },
@@ -39,8 +39,8 @@ def test_protocol_reply_validation_allows_no_artifact_without_output_version() -
         "status": "no_artifact",
         "result_type": "no_change",
         "baseline": {
-            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "input_version": "v0.0.245.11",
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "input_version": "v0.0.245.12",
             "output_artifact": None,
             "output_version": None,
             "target_version": "v0.0.246",
@@ -62,8 +62,8 @@ def test_protocol_reply_validation_allows_parser_shaped_no_artifact_without_outp
         "request_id": "req-no-artifact",
         "correlation_id": "corr-no-artifact",
         "artifact": {
-            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "current_version": "v0.0.245.11",
+            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "current_version": "v0.0.245.12",
             "target_version": "v0.0.246",
             "release_type": "normal",
         },
@@ -76,8 +76,8 @@ def test_protocol_reply_validation_allows_parser_shaped_no_artifact_without_outp
         "reply_status": "no_artifact",
         "result_type": "no_change",
         "baseline": {
-            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "input_version": "v0.0.245.11",
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "input_version": "v0.0.245.12",
             "output_artifact": None,
             "output_version": None,
             "target_version": "v0.0.246",
@@ -102,8 +102,8 @@ def test_protocol_reply_validation_rejects_wrong_no_artifact_target_echo() -> No
         "request_id": "req-no-artifact",
         "correlation_id": "corr-no-artifact",
         "artifact": {
-            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "current_version": "v0.0.245.11",
+            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "current_version": "v0.0.245.12",
             "target_version": "v0.0.246",
             "release_type": "normal",
         },
@@ -115,8 +115,8 @@ def test_protocol_reply_validation_rejects_wrong_no_artifact_target_echo() -> No
         "status": "no_artifact",
         "result_type": "no_change",
         "baseline": {
-            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "input_version": "v0.0.245.11",
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "input_version": "v0.0.245.12",
             "output_artifact": None,
             "output_version": None,
             "target_version": "v0.0.999",
@@ -700,8 +700,8 @@ def test_parse_protocol_reply_uses_state_snapshot_when_service_omits_conversatio
         "result_type": "no_change",
         "summary": "Protocol smoke completed without an artifact.",
         "baseline": {
-            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "input_version": "v0.0.245.11",
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "input_version": "v0.0.245.12",
             "output_artifact": None,
             "output_version": None,
             "target_version": "v0.0.246",
@@ -721,8 +721,8 @@ def test_parse_protocol_reply_uses_state_snapshot_when_service_omits_conversatio
         "task": {"conversation_id": "current", "turn_policy": "assistant_may_return_one_protocol_reply"},
         "intent": {"summary": "protocol smoke"},
         "artifact": {
-            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.11.zip",
-            "current_version": "v0.0.245.11",
+            "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "current_version": "v0.0.245.12",
             "target_version": "v0.0.246",
             "release_type": "normal",
         },
@@ -1719,7 +1719,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.245.11"
+    assert captured.out.strip() == "promptbranch 0.0.245.12"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2168,7 +2168,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.245.11"
+    assert payload["version"] == "0.0.245.12"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -3309,6 +3309,75 @@ def test_artifact_intake_dry_run_reads_latest_validated_protocol_run_without_bac
     assert payload["adoption_performed"] is False
 
 
+
+def test_artifact_intake_no_artifact_no_change_allows_missing_source_baseline(monkeypatch, capsys, tmp_path) -> None:
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": "req-no-artifact-missing-source",
+        "correlation_id": "req-no-artifact-missing-source",
+        "status": "no_artifact",
+        "result_type": "no_change",
+        "summary": "Protocol smoke only; no artifact.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+            "input_version": "v0.0.245.12",
+            "output_artifact": None,
+            "output_version": "v0.0.246",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [],
+        "validation": {"claimed": ["protocol smoke"], "not_claimed": ["artifact creation"]},
+        "next_step": {"operator_action": "none"},
+    }
+    run = {
+        "ok": True,
+        "status": "reply_validated",
+        "reply_validation_ok": True,
+        "request_id": "req-no-artifact-missing-source",
+        "correlation_id": "req-no-artifact-missing-source",
+        "reply": reply,
+        "artifact_candidate_count": 0,
+        "request": {
+            "workspace": {"project_home_url": "https://chatgpt.com/g/g-p-demo/project"},
+            "task": {"conversation_url": "https://chatgpt.com/g/g-p-demo/c/abc", "conversation_id": "abc"},
+            "artifact": {
+                "repo": "chatgpt_claudecode_workflow",
+                "current_baseline": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+                "current_version": "v0.0.245.12",
+                "source_ref": "chatgpt_claudecode_workflow_v0.0.245.12.zip",
+                "source_version": "v0.0.245.12",
+                "target_version": "v0.0.246",
+                "release_type": "normal",
+            },
+        },
+    }
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / "req-no-artifact-missing-source.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake", "--from-last-protocol-run", "--dry-run", "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "no_artifact"
+    assert payload["reply_parse_status"] in {"valid", "no_artifact"}
+    assert payload["artifact_candidate_count"] == 0
+    assert payload["download_performed"] is False
+    assert "baseline_source_ref_mismatch" not in payload.get("validation_errors", [])
+    assert "baseline_source_version_mismatch" not in payload.get("validation_errors", [])
+
+
 def test_artifact_intake_protocol_run_rejects_baseline_mismatch(monkeypatch, capsys, tmp_path) -> None:
     reply = {
         "schema": "promptbranch.ask.reply",
@@ -4341,8 +4410,8 @@ def _write_no_artifact_protocol_run(profile: Path, *, request_id: str = "req-no-
             "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
             "source_version": "v0.0.236",
             "output_artifact": None,
-            "output_version": "v0.0.245.11",
-            "target_version": "v0.0.245.11",
+            "output_version": "v0.0.245.12",
+            "target_version": "v0.0.245.12",
             "release_type": "normal",
         },
         "changes": [],
@@ -4367,7 +4436,7 @@ def _write_no_artifact_protocol_run(profile: Path, *, request_id: str = "req-no-
                 "current_version": "v0.0.236",
                 "source_ref": "chatgpt_claudecode_workflow_v0.0.236.zip",
                 "source_version": "v0.0.236",
-                "target_version": "v0.0.245.11",
+                "target_version": "v0.0.245.12",
                 "release_type": "normal",
             },
         },
@@ -4409,7 +4478,7 @@ def test_artifact_mvp_status_reports_no_artifact_protocol_precondition(capsys, t
     assert payload["severity"] == "warning"
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     assert payload["lifecycle_classification"]["candidate_verdict"] == "no_candidate_available"
-    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == "v0.0.245.11"
+    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == "v0.0.245.12"
     assert payload["candidate_next"]["status"] == "candidate_next_no_artifact_candidate"
     assert payload["candidate_next"]["recommended_next_command"]["kind"] == "no_artifact_candidate"
     assert payload["candidate_intake_precondition"]["blocks_intake"] is True
@@ -4480,7 +4549,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     classification = payload["lifecycle_classification"]
     assert classification["candidate_verdict"] == "no_candidate_available"
-    assert classification["versions"]["runtime_code_version"] == "v0.0.245.11"
+    assert classification["versions"]["runtime_code_version"] == "v0.0.245.12"
     assert classification["versions"]["adopted_project_source_version"] == "v0.0.238"
     assert classification["versions"]["runtime_vs_adopted_source"] == "left_newer"
     assert classification["checks"]["runtime_code_matches_adopted_source"] is False
@@ -4491,7 +4560,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert plan["kind"] == "runtime_source_baseline_mismatch"
     assert plan["safe_action"] == "inspect_and_decide_reconciliation"
     assert plan["read_only"] is True
-    assert plan["versions"]["runtime_code_version"] == "v0.0.245.11"
+    assert plan["versions"]["runtime_code_version"] == "v0.0.245.12"
     assert plan["versions"]["adopted_project_source_version"] == "v0.0.238"
     action_kinds = {item["kind"] for item in plan["next_safe_actions"]}
     assert "inspect_project_sources" in action_kinds
@@ -4505,7 +4574,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
 def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "VERSION").write_text("v0.0.245.11\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.0.245.12\n", encoding="utf-8")
     subprocess_run = __import__("subprocess").run
     subprocess_run(["git", "init"], cwd=repo, stdout=__import__("subprocess").DEVNULL, stderr=__import__("subprocess").DEVNULL, check=True)
     profile = tmp_path / "profile"
@@ -4536,7 +4605,7 @@ def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_pa
         }],
     }), encoding="utf-8")
     args = argparse.Namespace(
-        version="v0.0.245.11",
+        version="v0.0.245.12",
         target_version="v0.0.246",
         repo_path=str(repo),
         health_url="http://127.0.0.1:9/healthz",
@@ -4558,8 +4627,8 @@ def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_pa
     assert payload["action"] == "release_doctor"
     assert payload["read_only"] is True
     assert payload["mutating_actions_executed"] is False
-    assert payload["runtime"]["runtime_code_version"] == "v0.0.245.11"
-    assert payload["version_file"]["normalized_version"] == "v0.0.245.11"
+    assert payload["runtime"]["runtime_code_version"] == "v0.0.245.12"
+    assert payload["version_file"]["normalized_version"] == "v0.0.245.12"
     assert payload["project_sources"]["attempted"] is True
     assert payload["project_sources"]["detected_versions"][0]["normalized_version"] == "v0.0.238"
     assert "runtime_source_baseline_mismatch" in payload["warning_codes"]
@@ -4581,7 +4650,7 @@ def test_release_doctor_blocks_runtime_version_file_mismatch(capsys, tmp_path) -
     profile = tmp_path / "profile"
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
     args = argparse.Namespace(
-        version="v0.0.245.11",
+        version="v0.0.245.12",
         target_version=None,
         repo_path=str(repo),
         health_url=None,
@@ -4608,13 +4677,13 @@ def test_release_doctor_blocks_runtime_version_file_mismatch(capsys, tmp_path) -
 
 
 def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.245.11.zip"
+    filename = "chatgpt_claudecode_workflow_v0.0.245.12.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.245.11")
+    _write_test_release_zip(zip_path, "v0.0.245.12")
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.245.11", tested=True)
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.245.12", tested=True)
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
     accept_args = argparse.Namespace(
         artifact=filename,
@@ -4636,7 +4705,7 @@ def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsy
 
     status_args = argparse.Namespace(
         artifact=None,
-        version="v0.0.245.11",
+        version="v0.0.245.12",
         repo_path=str(repo),
         json=True,
         profile_dir=str(profile),
@@ -4651,8 +4720,8 @@ def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsy
     assert payload["operator_verdict"] == "candidate_mvp_complete"
     assert payload["severity"] == "ok"
     assert payload["lifecycle_classification"]["candidate_verdict"] == "candidate_mvp_complete"
-    assert payload["lifecycle_classification"]["versions"]["accepted_candidate_version"] == "v0.0.245.11"
-    assert payload["mvp_completion"]["accepted_candidate"]["artifact_version"] == "v0.0.245.11"
+    assert payload["lifecycle_classification"]["versions"]["accepted_candidate_version"] == "v0.0.245.12"
+    assert payload["mvp_completion"]["accepted_candidate"]["artifact_version"] == "v0.0.245.12"
     assert payload["candidate_next"]["recommended_next_command"]["kind"] == "candidate_already_accepted"
     assert payload["commands"]["inspect_candidates"] == "pb artifact candidate-status --all --json"
     assert payload["mutating_actions_executed"] is False
