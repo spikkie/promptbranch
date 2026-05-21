@@ -4545,7 +4545,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
-        "release": ["doctor", "--version", "--target-version", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
+        "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
@@ -6189,6 +6189,217 @@ def _release_doctor_http_json(url: str, *, timeout_seconds: float) -> dict[str, 
     return payload
 
 
+
+
+def _release_doctor_artifact_summary(artifact_arg: str | None, *, repo_root: Path) -> dict[str, Any]:
+    """Inspect a candidate artifact ZIP without mutating release state."""
+
+    raw = str(artifact_arg or "").strip()
+    if not raw:
+        return {
+            "attempted": False,
+            "ok": None,
+            "status": "not_requested",
+            "path": None,
+            "filename": None,
+            "version": None,
+            "normalized_version": None,
+        }
+
+    candidate_path = Path(raw).expanduser()
+    if not candidate_path.is_absolute():
+        candidate_path = repo_root / candidate_path
+    try:
+        resolved = candidate_path.resolve()
+    except OSError:
+        resolved = candidate_path.absolute()
+
+    filename = resolved.name
+    filename_version = _artifact_version_from_filename(filename)
+    payload: dict[str, Any] = {
+        "attempted": True,
+        "path": str(resolved),
+        "filename": filename,
+        "present": resolved.is_file(),
+        "filename_version": filename_version,
+        "filename_version_normalized": _candidate_version_normalized(filename_version),
+        "version_file": None,
+        "version_file_normalized": None,
+        "version": None,
+        "normalized_version": None,
+        "verification": None,
+        "status": "missing" if not resolved.is_file() else "unknown",
+        "ok": False,
+        "read_only": True,
+        "mutating_actions_executed": False,
+    }
+    if not resolved.is_file():
+        payload["error"] = "artifact_not_found"
+        return payload
+
+    verification = verify_zip_artifact(resolved)
+    zip_version = _read_zip_version_file(resolved)
+    normalized_zip_version = _candidate_version_normalized(zip_version)
+    normalized_filename_version = _candidate_version_normalized(filename_version)
+    version = normalized_zip_version or normalized_filename_version
+    version_mismatch = bool(normalized_zip_version and normalized_filename_version and normalized_zip_version != normalized_filename_version)
+    blocking_errors: list[str] = []
+    if not verification.get("ok"):
+        blocking_errors.append("artifact_zip_verification_failed")
+    if not normalized_zip_version:
+        blocking_errors.append("artifact_version_file_missing_or_invalid")
+    if version_mismatch:
+        blocking_errors.append("artifact_filename_version_mismatch")
+
+    payload.update({
+        "verification": verification,
+        "version_file": zip_version,
+        "version_file_normalized": normalized_zip_version,
+        "version": version,
+        "normalized_version": version,
+        "version_file_matches_filename": not version_mismatch,
+        "sha256": verification.get("sha256"),
+        "size_bytes": verification.get("size_bytes"),
+        "entry_count": verification.get("entry_count"),
+        "wrapper_folder": verification.get("wrapper_folder"),
+        "hygiene_violation_count": verification.get("hygiene_violation_count"),
+        "nested_zip_count": verification.get("nested_zip_count"),
+        "blocking_errors": blocking_errors,
+        "ok": not blocking_errors,
+        "status": "verified" if not blocking_errors else "blocked",
+    })
+    return payload
+
+
+def _release_doctor_artifact_consistency(
+    *,
+    artifact: dict[str, Any],
+    expected: dict[str, Any],
+    version_file: dict[str, Any],
+    artifact_current: dict[str, Any],
+    project_sources: dict[str, Any],
+) -> dict[str, Any]:
+    """Compare an inspected ZIP against runtime, VERSION, source, and adopted state."""
+
+    if not artifact.get("attempted"):
+        return {
+            "attempted": False,
+            "ok": True,
+            "severity": "not_requested",
+            "warnings": [],
+            "blockers": [],
+            "warning_codes": [],
+            "blocker_codes": [],
+            "checks": {},
+        }
+
+    runtime_version = expected.get("runtime_version_normalized")
+    version_file_value = version_file.get("normalized_version")
+    artifact_version = artifact.get("normalized_version")
+    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    adopted_source = baseline_roles.get("adopted_source_version")
+    adopted_artifact = baseline_roles.get("adopted_artifact_version")
+    registry_current = baseline_roles.get("registry_current_version")
+    source_versions = [item.get("normalized_version") for item in project_sources.get("detected_versions", []) if item.get("normalized_version")]
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    for code in artifact.get("blocking_errors") or []:
+        block(str(code), "Candidate artifact ZIP failed release-doctor verification.", artifact_path=artifact.get("path"))
+
+    if artifact_version and runtime_version and artifact_version != runtime_version:
+        warn("artifact_runtime_version_mismatch", "Candidate ZIP version differs from runtime code version.", artifact_version=artifact_version, runtime_version=runtime_version, version_relation=_compare_operator_versions(runtime_version, artifact_version))
+    if artifact_version and version_file_value and artifact_version != version_file_value:
+        warn("artifact_version_file_mismatch", "Candidate ZIP version differs from working-tree VERSION file.", artifact_version=artifact_version, version_file_version=version_file_value)
+    if project_sources.get("attempted") and artifact_version and artifact_version not in source_versions:
+        warn("artifact_version_not_visible_in_project_sources", "Candidate ZIP version was not detected in Project Sources.", artifact_version=artifact_version, detected_versions=source_versions)
+
+    checks = {
+        "artifact_zip_verified": bool(artifact.get("ok")),
+        "artifact_matches_runtime": not artifact_version or not runtime_version or artifact_version == runtime_version,
+        "artifact_matches_version_file": not artifact_version or not version_file_value or artifact_version == version_file_value,
+        "artifact_visible_in_project_sources": (not project_sources.get("attempted")) or (not artifact_version) or artifact_version in source_versions,
+        "artifact_matches_adopted_source": not artifact_version or not adopted_source or artifact_version == adopted_source,
+        "artifact_matches_adopted_artifact": not artifact_version or not adopted_artifact or artifact_version == adopted_artifact,
+        "artifact_matches_registry_current": not artifact_version or not registry_current or artifact_version == registry_current,
+    }
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "attempted": True,
+        "ok": not blockers,
+        "severity": severity,
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "checks": checks,
+    }
+
+
+def _release_doctor_lifecycle_phase(
+    *,
+    consistency: dict[str, Any],
+    artifact_consistency: dict[str, Any],
+    artifact: dict[str, Any],
+    expected: dict[str, Any],
+    artifact_current: dict[str, Any],
+    project_sources: dict[str, Any],
+) -> dict[str, Any]:
+    runtime_version = expected.get("runtime_version_normalized")
+    artifact_version = artifact.get("normalized_version") if artifact.get("attempted") else None
+    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    adopted_source = baseline_roles.get("adopted_source_version")
+    adopted_artifact = baseline_roles.get("adopted_artifact_version")
+    registry_current = baseline_roles.get("registry_current_version")
+    source_versions = [item.get("normalized_version") for item in project_sources.get("detected_versions", []) if item.get("normalized_version")]
+
+    combined_blockers = list(consistency.get("blocker_codes") or []) + list(artifact_consistency.get("blocker_codes") or [])
+    if combined_blockers:
+        phase = "lifecycle_blocked"
+    elif artifact.get("attempted") and artifact_version:
+        artifact_visible = bool(project_sources.get("attempted")) and artifact_version in source_versions
+        adopted_matches = artifact_version in {adopted_source, adopted_artifact, registry_current}
+        source_visibility_satisfied = (not project_sources.get("attempted")) or artifact_visible
+        all_aligned = (
+            artifact.get("ok") is True
+            and (not runtime_version or artifact_version == runtime_version)
+            and source_visibility_satisfied
+            and adopted_matches
+        )
+        if all_aligned:
+            phase = "lifecycle_ready"
+        elif adopted_matches:
+            phase = "adopted_current"
+        elif artifact_visible:
+            phase = "project_source_uploaded"
+        else:
+            phase = "candidate_zip_available"
+    elif runtime_version and runtime_version in {adopted_source, adopted_artifact, registry_current}:
+        phase = "adopted_current"
+    else:
+        phase = "runtime_only"
+
+    return {
+        "phase": phase,
+        "blocked": phase == "lifecycle_blocked",
+        "artifact_version": artifact_version,
+        "runtime_version": runtime_version,
+        "adopted_source_version": adopted_source,
+        "adopted_artifact_version": adopted_artifact,
+        "registry_current_version": registry_current,
+        "project_source_versions": source_versions,
+        "artifact_requested": bool(artifact.get("attempted")),
+        "artifact_verified": bool(artifact.get("ok")) if artifact.get("attempted") else None,
+        "artifact_visible_in_project_sources": (artifact_version in source_versions) if artifact_version and project_sources.get("attempted") else None,
+    }
+
 def _release_doctor_source_versions(sources: list[dict[str, Any]]) -> dict[str, Any]:
     versions: list[dict[str, Any]] = []
     seen: set[tuple[str | None, str | None]] = set()
@@ -6467,6 +6678,10 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
     installed_distribution = _release_doctor_installed_distribution()
     git_status = _release_doctor_git_status(repo_root)
     artifact_current = _artifact_current_payload(backend, registry)
+    artifact_inspection = _release_doctor_artifact_summary(
+        str(getattr(args, "artifact", "") or "").strip() or None,
+        repo_root=repo_root,
+    )
 
     health_url = str(getattr(args, "health_url", "") or "").strip()
     if not health_url:
@@ -6533,6 +6748,26 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         git_status=git_status,
         project_sources=project_sources,
     )
+    artifact_consistency = _release_doctor_artifact_consistency(
+        artifact=artifact_inspection,
+        expected=expected,
+        version_file=version_file,
+        artifact_current=artifact_current,
+        project_sources=project_sources,
+    )
+    combined_warnings = list(consistency.get("warnings") or []) + list(artifact_consistency.get("warnings") or [])
+    combined_blockers = list(consistency.get("blockers") or []) + list(artifact_consistency.get("blockers") or [])
+    combined_warning_codes = [item.get("code") for item in combined_warnings if item.get("code")]
+    combined_blocker_codes = [item.get("code") for item in combined_blockers if item.get("code")]
+    combined_severity = "blocked" if combined_blockers else "warning" if combined_warnings else "ok"
+    lifecycle_phase = _release_doctor_lifecycle_phase(
+        consistency=consistency,
+        artifact_consistency=artifact_consistency,
+        artifact=artifact_inspection,
+        expected=expected,
+        artifact_current=artifact_current,
+        project_sources=project_sources,
+    )
 
     next_safe_actions = [
         _read_only_action("inspect_artifact_current", "pb artifact current --json", "Inspect runtime/adopted artifact/source state.", priority=10),
@@ -6540,18 +6775,20 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         _read_only_action("inspect_candidate_next", "pb artifact candidate-next --json", "Inspect next candidate step without executing it.", priority=30),
         _read_only_action("inspect_project_sources", "pb src list --json", "Inspect visible Project Sources.", priority=40),
     ]
-    if consistency.get("warning_codes"):
+    if combined_warning_codes:
         next_safe_actions.append(_decision_action("review_release_doctor_warnings", "Review release doctor warnings before declaring the runtime/source lifecycle reconciled.", priority=50))
-    if consistency.get("blocker_codes"):
+    if combined_blocker_codes:
         next_safe_actions.append(_decision_action("resolve_release_doctor_blockers", "Resolve release doctor blockers before lifecycle mutation/adoption.", priority=5))
     next_safe_actions = sorted(next_safe_actions, key=lambda item: int(item.get("priority") or 999))
     next_safe_actions = [{k: v for k, v in item.items() if k != "priority"} for item in next_safe_actions]
 
     payload = {
-        "ok": bool(consistency.get("ok")),
+        "ok": not combined_blockers,
         "action": "release_doctor",
-        "status": "verified" if consistency.get("ok") else "blocked",
-        "severity": consistency.get("severity"),
+        "status": "verified" if not combined_blockers else "blocked",
+        "severity": combined_severity,
+        "lifecycle_phase": lifecycle_phase.get("phase"),
+        "lifecycle_phase_detail": lifecycle_phase,
         "read_only": True,
         "mutating_actions_executed": False,
         "download_performed": False,
@@ -6573,6 +6810,7 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         "installed_distribution": installed_distribution,
         "service_health": service_health,
         "artifact_current": artifact_current,
+        "artifact_inspection": artifact_inspection,
         "project_sources": project_sources,
         "candidate_intake_precondition": candidate_precondition,
         "candidate_next": next_payload,
@@ -6583,8 +6821,9 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         },
         "git": git_status,
         "consistency": consistency,
-        "warning_codes": consistency.get("warning_codes"),
-        "blocker_codes": consistency.get("blocker_codes"),
+        "artifact_consistency": artifact_consistency,
+        "warning_codes": combined_warning_codes,
+        "blocker_codes": combined_blocker_codes,
         "next_safe_actions": next_safe_actions,
         "not_performed": [
             "artifact_download",
@@ -6607,6 +6846,7 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         print(f"status={payload.get('status')}")
         print(f"severity={payload.get('severity')}")
         print(f"runtime={runtime_version}")
+        print(f"lifecycle_phase={payload.get('lifecycle_phase')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
@@ -9390,6 +9630,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
+    release_doctor.add_argument("--artifact", help="Optional candidate ZIP to inspect read-only for immutability, VERSION, layout, and lifecycle phase.")
     release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
     release_doctor.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds. Defaults to 3.")
