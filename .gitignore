@@ -107,3 +107,6 @@ ollama_mcp_verification_harness_v2/
 
 # promptbranch services pid
 .promptbranch-service-start.*.pid
+
+# prompt branch
+.pb_profile.bak*/
