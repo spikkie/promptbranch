@@ -83,6 +83,7 @@ LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
     "login-check",
     "ask",
+    "ask-release",
     "shell",
     "ws",
     "task",
@@ -3990,6 +3991,8 @@ async def _capture_pre_ask_protocol_marker(backend: Any, args: argparse.Namespac
 
 
 def _is_protocol_parse_ask(args: argparse.Namespace) -> bool:
+    if getattr(args, "command", None) == "ask-release":
+        return not bool(getattr(args, "no_parse_reply", False))
     return bool(getattr(args, "command", None) == "ask" and getattr(args, "protocol", False) and getattr(args, "parse_reply", False))
 
 
@@ -4402,6 +4405,277 @@ def _repo_name_from_artifact_name(filename: str) -> str | None:
     return name[: match.start()].rstrip("_.-") or None
 
 
+
+
+def _normalize_version_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text if text.startswith("v") else f"v{text}"
+
+
+def _ask_release_expected_from_envelope(envelope: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
+    expected_repo = str(getattr(args, "expect_repo", None) or artifact.get("repo") or "").strip() or None
+    expected_version = _normalize_version_token(getattr(args, "expect_version", None) or artifact.get("target_version"))
+    expected_artifact = str(getattr(args, "expect_artifact", None) or "").strip() or None
+    if expected_artifact:
+        expected_artifact = Path(expected_artifact).name
+    elif expected_repo and expected_version:
+        expected_artifact = _candidate_expected_filename(expected_repo, expected_version)
+    return {
+        "expected_repo": expected_repo,
+        "expected_version": expected_version,
+        "expected_artifact": expected_artifact,
+        "expected_role": "candidate_release",
+        "exact_artifact_count": 1,
+    }
+
+
+def _augment_release_candidate_request(envelope: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    enriched = copy.deepcopy(envelope)
+    artifact = enriched.setdefault("artifact", {})
+    if isinstance(artifact, dict):
+        if expected.get("expected_repo") and not artifact.get("repo"):
+            artifact["repo"] = expected.get("expected_repo")
+        if expected.get("expected_version") and not artifact.get("target_version"):
+            artifact["target_version"] = expected.get("expected_version")
+        artifact["expected_output_artifact"] = expected.get("expected_artifact")
+        artifact["expected_output_version"] = expected.get("expected_version")
+        artifact["expected_artifact_role"] = expected.get("expected_role")
+        artifact["artifact_count_policy"] = "exactly_one_expected_zip_candidate"
+        artifact["no_artifact_reply_allowed"] = False
+        artifact["download_policy"] = "direct_url_or_chatgpt_attachment_link_required"
+    constraints = enriched.setdefault("constraints", {})
+    if isinstance(constraints, dict):
+        constraints["exactly_one_zip_artifact_required"] = True
+        constraints["expected_output_artifact_required"] = True
+        constraints["no_artifact_reply_allowed"] = False
+        constraints["no_auto_adopt"] = True
+    expected_reply = enriched.setdefault("expected_reply", {})
+    if isinstance(expected_reply, dict):
+        expected_reply["result_type_required"] = "release_candidate"
+        expected_reply["artifact_policy"] = {
+            "exact_count": 1,
+            "expected_filename": expected.get("expected_artifact"),
+            "expected_version": expected.get("expected_version"),
+            "expected_role": expected.get("expected_role"),
+            "download_available_required": True,
+        }
+    decisions = enriched.setdefault("protocol_decisions", {})
+    if isinstance(decisions, dict):
+        decisions["no_artifact_reply_allowed"] = False
+        decisions["release_candidate_artifact_required"] = True
+        decisions["candidate_run_next_step_required"] = True
+    return enriched
+
+
+def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], envelope: dict[str, Any]) -> str:
+    artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
+    baseline = artifact.get("current_baseline")
+    current_version = artifact.get("current_version")
+    target_version = expected.get("expected_version") or artifact.get("target_version")
+    expected_artifact = expected.get("expected_artifact")
+    prompt_text = str(base_prompt or "").strip()
+    if not prompt_text:
+        prompt_text = (
+            f"Build {expected_artifact} from accepted baseline {baseline}. "
+            f"Implement the target version {target_version} as requested by the current project plan."
+        )
+    return (
+        f"Release-candidate request. Create exactly one ZIP artifact named {expected_artifact}.\n"
+        f"Input baseline: {baseline}\n"
+        f"Input version: {current_version}\n"
+        f"Target version: {target_version}\n"
+        "The reply envelope MUST use status completed and result_type release_candidate. "
+        "The reply envelope artifacts array MUST contain exactly one ZIP candidate with the expected filename, version, role candidate_release, and a downloadable ChatGPT attachment/link when available. "
+        "Do not return status no_artifact or result_type no_change for this command. "
+        "Do not claim adoption, Project Source mutation, Git commit, or Git push.\n\n"
+        "Requested implementation scope:\n"
+        f"{prompt_text}"
+    )
+
+
+def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    validated = copy.deepcopy(result)
+    checks: dict[str, Any] = {
+        "reply_validated": bool(validated.get("ok") is True and validated.get("reply_validation_ok") is True),
+        "expected_artifact": expected.get("expected_artifact"),
+        "expected_version": expected.get("expected_version"),
+        "exact_artifact_count": False,
+        "filename_matches": False,
+        "version_matches": False,
+        "role_matches": False,
+        "download_available": False,
+        "status_release_candidate": False,
+    }
+    reply = validated.get("reply") if isinstance(validated.get("reply"), dict) else {}
+    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
+    checks["artifact_count"] = len(artifacts)
+    checks["exact_artifact_count"] = len(artifacts) == 1
+    checks["status_release_candidate"] = reply.get("status") == "completed" and reply.get("result_type") == "release_candidate"
+    if len(artifacts) == 1 and isinstance(artifacts[0], dict):
+        candidate = artifacts[0]
+        download = candidate.get("download") if isinstance(candidate.get("download"), dict) else {}
+        checks["filename_matches"] = Path(str(candidate.get("filename") or candidate.get("name") or "")).name == expected.get("expected_artifact")
+        checks["version_matches"] = _normalize_version_token(candidate.get("version")) == expected.get("expected_version")
+        checks["role_matches"] = candidate.get("role") == expected.get("expected_role")
+        checks["download_available"] = bool(download.get("available") or download.get("url") or download.get("link_text"))
+    failures = [name for name, ok in checks.items() if name in {"reply_validated", "exact_artifact_count", "filename_matches", "version_matches", "role_matches", "download_available", "status_release_candidate"} and not ok]
+    validated["ask_release_validation"] = {
+        "ok": not failures,
+        "failures": failures,
+        "checks": checks,
+        "operator_instruction": "Run `pb artifact candidate-run --execute-until-blocked --require-complete --require-real-candidate --json` only after ask-release validation is green.",
+    }
+    validated["expected_artifact"] = expected.get("expected_artifact")
+    validated["expected_version"] = expected.get("expected_version")
+    validated["candidate_producing_protocol_flow"] = True
+    if failures:
+        validated["ok"] = False
+        validated["status"] = "release_candidate_validation_failed"
+        validated["reply_validation_ok"] = False
+        errors = list(validated.get("reply_validation_errors") or [])
+        errors.extend(f"ask_release:{failure}" for failure in failures)
+        validated["reply_validation_errors"] = errors
+        validated["error"] = "release-candidate protocol reply did not contain exactly one expected downloadable ZIP candidate"
+    else:
+        validated["status"] = "reply_validated"
+        validated["reply_validation_ok"] = True
+        validated["operator_instruction"] = "Validated exactly one expected release-candidate ZIP in the protocol reply. Next run strict candidate-run with --require-real-candidate."
+    return validated
+
+
+async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> int:
+    try:
+        raw_prompt = _merge_prompt_text(getattr(args, "prompt", None), getattr(args, "prompt_file", None))
+    except (OSError, UnicodeError) as exc:
+        print(f"error: could not read prompt file: {exc}", file=sys.stderr)
+        return 2
+
+    args.protocol = True
+    args.intent_kind = "software_release_candidate_request"
+    protocol_payload = _protocol_request_from_current_baseline(backend, args, prompt=raw_prompt or "release candidate request")
+    expected = _ask_release_expected_from_envelope(protocol_payload["request"], args)
+    if not expected.get("expected_artifact") or not expected.get("expected_version"):
+        payload = {
+            "ok": False,
+            "action": "ask_release",
+            "status": "expected_artifact_unresolved",
+            "error": "ask-release requires a resolvable repo and target version; pass --target-version and ensure pb artifact current is set, or pass --expect-artifact/--expect-version/--expect-repo",
+            "expected": expected,
+            "request": protocol_payload.get("request"),
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 2
+
+    envelope = _augment_release_candidate_request(protocol_payload["request"], expected)
+    protocol_payload["request"] = envelope
+    protocol_payload["action"] = "ask_release"
+    protocol_payload["expected"] = expected
+    protocol_payload["candidate_producing_protocol_flow"] = True
+    protocol_payload["strict_real_candidate_required"] = True
+    if getattr(args, "print_request_json", False):
+        print(json.dumps(protocol_payload, indent=2, ensure_ascii=False))
+        return 0
+
+    release_prompt = _build_ask_release_user_prompt(raw_prompt, expected, envelope)
+    prompt = render_protocol_ask_prompt(envelope, user_prompt=release_prompt)
+    attachment_paths = _collect_ask_attachment_paths(args)
+    for attachment_path in attachment_paths:
+        if not Path(attachment_path).is_file():
+            print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)
+            return 2
+    legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) else None
+    repeatable_attachments = attachment_paths if not legacy_single_file else None
+    parse_reply = not bool(getattr(args, "no_parse_reply", False))
+    pre_ask_marker = await _capture_pre_ask_protocol_marker(backend, args) if parse_reply else None
+    try:
+        response = await backend.ask(
+            prompt=prompt,
+            file_path=legacy_single_file,
+            attachment_paths=repeatable_attachments,
+            conversation_url=args.conversation_url,
+            expect_json=False,
+            keep_open=args.keep_open,
+            retries=args.retries,
+        )
+    except Exception as exc:
+        if parse_reply:
+            lowered = f"{exc.__class__.__name__}: {exc}".lower()
+            status = "service_read_timeout" if exc.__class__.__name__ in {"ReadTimeout", "TimeoutException"} else ("response_timeout" if "timeout" in lowered or "timed out" in lowered else "ask_failed")
+            recovery_diagnostic: dict[str, Any] | None = None
+            if status == "service_read_timeout":
+                recovered, recovery_diagnostic = await _recover_protocol_reply_after_service_timeout(
+                    backend,
+                    args,
+                    envelope=envelope,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    pre_ask_marker=pre_ask_marker,
+                )
+                if recovered is not None:
+                    recovered = _validate_ask_release_candidate_result(recovered, expected)
+                    return _emit_protocol_result(args, recovered)
+            result = _protocol_failure_result(
+                args,
+                envelope=envelope,
+                status=status,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                pre_ask_marker=pre_ask_marker,
+            )
+            result["action"] = "ask_release"
+            result["expected"] = expected
+            if status == "service_read_timeout":
+                result["timeout_layer"] = "service_client"
+                result["service_timeout_recovery"] = recovery_diagnostic or {"attempted": False}
+            return _emit_protocol_result(args, result)
+        raise
+
+    if not parse_reply:
+        payload = {
+            **protocol_payload,
+            "ok": True,
+            "status": "submitted_without_parse",
+            "ask_response": response,
+            "automation_performed": True,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+            "operator_instruction": "ask-release submitted the candidate-producing protocol request without parsing. Rerun with default parsing before candidate-run.",
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload['status']}")
+        return 0
+
+    if isinstance(response, dict):
+        response_failure = _protocol_ask_response_failure_result(args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
+        if response_failure is not None:
+            response_failure["action"] = "ask_release"
+            response_failure["expected"] = expected
+            return _emit_protocol_result(args, response_failure)
+    try:
+        result = await _parse_protocol_reply_after_ask(backend, args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
+    except Exception as exc:
+        result = _protocol_failure_result(
+            args,
+            envelope=envelope,
+            status="reply_parse_failed",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+            ask_response=response if isinstance(response, dict) else {"answer": response},
+            pre_ask_marker=pre_ask_marker,
+        )
+    result["action"] = "ask_release"
+    result["expected"] = expected
+    result = _validate_ask_release_candidate_result(result, expected)
+    return _emit_protocol_result(args, result)
+
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     try:
         prompt = _merge_prompt_text(args.prompt, getattr(args, "prompt_file", None))
@@ -4583,6 +4857,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "completion": [],
         "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
+        "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
@@ -12687,6 +12962,30 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--project-list-debug-manual-pause", action="store_true")
     test_suite.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
 
+    ask_release = subparsers.add_parser("ask-release", help="Send a strict release-candidate protocol request that must produce exactly one expected ZIP candidate.")
+    ask_release.add_argument("prompt", nargs="?", help="Release implementation request. If omitted, a default candidate-producing request is generated from the current baseline and target version.")
+    ask_release.add_argument("--prompt-file", help="Read additional release request text from a UTF-8 file.")
+    ask_release.add_argument("--file", help="Legacy single chat attachment. Prefer repeatable --attach for multiple files.")
+    ask_release.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
+    ask_release.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
+    ask_release.add_argument("--target-version", help="Target output version to include in the release-candidate request envelope.")
+    ask_release.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope.")
+    ask_release.add_argument("--expect-artifact", help="Exact expected ZIP artifact filename. Defaults to <repo>_<target-version>.zip.")
+    ask_release.add_argument("--expect-version", help="Expected artifact version. Defaults to --target-version.")
+    ask_release.add_argument("--expect-repo", help="Expected repo/artifact prefix. Defaults to the repo inferred from current baseline.")
+    ask_release.add_argument("--request-id", help="Explicit protocol request_id. Defaults to a generated timestamp id.")
+    ask_release.add_argument("--correlation-id", help="Explicit protocol correlation_id. Defaults to request_id.")
+    ask_release.add_argument("--print-request-json", action="store_true", help="Print the strict release-candidate protocol request envelope without sending the ask.")
+    ask_release.add_argument("--no-parse-reply", action="store_true", help="Submit only; do not fetch/validate the release-candidate reply. Not suitable for the strict candidate proof.")
+    ask_release.add_argument("--protocol-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS, help="Bounded timeout for protocol ask/parse-reply service calls. Defaults to 120 seconds.")
+    ask_release.add_argument("--protocol-fresh-turn-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS, help="Seconds to poll after submit until a fresh user turn or request_id-matched turn is visible. Defaults to 12 seconds.")
+    ask_release.add_argument("--protocol-fresh-turn-poll-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS, help="Polling interval for fresh-turn visibility after protocol submit. Defaults to 1 second.")
+    ask_release.add_argument("--answer-index", help="Assistant answer index to parse after submit. Defaults to latest.")
+    ask_release.add_argument("--answer-id", help="Assistant answer id or unique prefix to parse after submit.")
+    ask_release.add_argument("--json", action="store_true", help="Emit strict release-candidate protocol result as JSON.")
+    ask_release.add_argument("--keep-open", action="store_true")
+    ask_release.add_argument("--retries", type=int)
+
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--prompt-file", help="Read additional prompt text from a UTF-8 file. If prompt text is also provided, both are joined with a blank line.")
@@ -12790,6 +13089,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_src(backend, args)
     if args.command == "artifact":
         return await cmd_artifact(backend, args)
+    if args.command == "ask-release":
+        return await cmd_ask_release(backend, args)
     if args.command == "release":
         return await cmd_release(backend, args)
     if args.command == "agent":
