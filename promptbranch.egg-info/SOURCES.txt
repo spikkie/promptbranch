@@ -84,3 +84,4 @@ tests/test_promptbranch_shell_scripts.py
 tests/test_promptbranch_test_report.py
 tests/test_promptbranch_test_suite.py
 tests/test_response_completion.py
+docs/release-v0.0.255.md
