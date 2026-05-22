@@ -4,6 +4,7 @@ import argparse
 import copy
 import asyncio
 import hashlib
+import fnmatch
 import importlib.metadata
 import json
 import io
@@ -7923,6 +7924,430 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
     return emit(result, 0 if current_ok else 1)
 
 
+
+
+def _release_policy_file_path(config_payload: dict[str, Any], repo_root: Path) -> Path:
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    raw = str(artifact_cfg.get("policy_file") or ".promptbranch-project.json").strip() or ".promptbranch-project.json"
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    return path.resolve()
+
+
+def _load_release_policy(path: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "present": path.is_file(),
+        "ok": False,
+        "status": "missing",
+        "policy": None,
+    }
+    if not path.exists():
+        payload.update({"ok": True, "status": "missing"})
+        return payload
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        payload.update({"status": "invalid_json", "error": str(exc)})
+        return payload
+    except OSError as exc:
+        payload.update({"status": "read_error", "error": str(exc)})
+        return payload
+    if not isinstance(raw, dict):
+        payload.update({"status": "policy_not_mapping", "error": "policy file root must be a JSON object"})
+        return payload
+    payload.update({"ok": True, "status": "loaded", "policy": raw})
+    return payload
+
+
+def _release_policy_payload_matches(policy: dict[str, Any], *, artifact_ref: str, artifact_version: str) -> dict[str, Any]:
+    accepted = policy.get("accepted_baseline") if isinstance(policy.get("accepted_baseline"), dict) else {}
+    artifact_section = policy.get("artifact") if isinstance(policy.get("artifact"), dict) else {}
+    source_section = policy.get("source") if isinstance(policy.get("source"), dict) else {}
+    checks = {
+        "accepted_artifact_ref_matches": accepted.get("artifact_ref") == artifact_ref,
+        "accepted_artifact_version_matches": _candidate_version_normalized(accepted.get("artifact_version")) == artifact_version,
+        "accepted_source_ref_matches": accepted.get("source_ref") == artifact_ref,
+        "accepted_source_version_matches": _candidate_version_normalized(accepted.get("source_version")) == artifact_version,
+        "artifact_section_ref_matches": artifact_section.get("ref") == artifact_ref,
+        "artifact_section_version_matches": _candidate_version_normalized(artifact_section.get("version")) == artifact_version,
+        "source_section_ref_matches": source_section.get("ref") == artifact_ref,
+        "source_section_version_matches": _candidate_version_normalized(source_section.get("version")) == artifact_version,
+    }
+    return {
+        "ok": all(checks.values()),
+        "status": "verified" if all(checks.values()) else "policy_mismatch",
+        "checks": checks,
+    }
+
+
+def _build_release_policy_payload(
+    *,
+    existing_policy: dict[str, Any] | None,
+    artifact_ref: str,
+    artifact_version: str,
+    artifact_payload: dict[str, Any],
+    repo_root: Path,
+    project_url: str | None,
+    target_version: str | None,
+) -> dict[str, Any]:
+    existing = existing_policy if isinstance(existing_policy, dict) else {}
+    payload = copy.deepcopy(existing)
+    now = utc_now()
+    payload.update({
+        "schema": "promptbranch.release.policy",
+        "schema_version": 1,
+        "updated_at": now,
+        "repo_path": str(repo_root),
+        "project_url": project_url,
+        "target_version": target_version,
+        "accepted_baseline": {
+            "artifact_ref": artifact_ref,
+            "artifact_version": artifact_version,
+            "source_ref": artifact_ref,
+            "source_version": artifact_version,
+            "synced_at": now,
+        },
+        "artifact": {
+            "ref": artifact_ref,
+            "version": artifact_version,
+            "sha256": artifact_payload.get("sha256"),
+            "size_bytes": artifact_payload.get("size_bytes"),
+            "entry_count": artifact_payload.get("entry_count"),
+        },
+        "source": {
+            "ref": artifact_ref,
+            "version": artifact_version,
+        },
+        "lifecycle": {
+            "policy_synced": True,
+            "policy_synced_at": now,
+            "git_commit_performed": False,
+            "git_push_performed": False,
+        },
+    })
+    return payload
+
+
+def _release_git_status_entries(repo_root: Path) -> dict[str, Any]:
+    payload = _release_doctor_git_status(repo_root)
+    entries: list[dict[str, Any]] = []
+    if payload.get("is_git_repo"):
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain=v1"],
+                cwd=str(repo_root),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5.0,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            payload.update({"status": "git_status_error", "error": str(exc), "entries": []})
+            return payload
+        if result.returncode != 0:
+            payload.update({"status": "git_status_error", "error": result.stderr.strip(), "entries": []})
+            return payload
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            status = line[:2]
+            path_text = line[3:].strip()
+            # Rename/copy status may be formatted as "old -> new"; commit safety cares about the destination path.
+            if " -> " in path_text:
+                path_text = path_text.split(" -> ", 1)[1].strip()
+            entries.append({"status": status, "path": path_text})
+    payload["entries"] = entries
+    payload["dirty_paths"] = [item["path"] for item in entries]
+    payload["dirty_count"] = len(entries)
+    payload["dirty"] = bool(entries)
+    return payload
+
+
+def _release_path_matches_any(path_text: str, patterns: list[str]) -> bool:
+    normalized = path_text.strip().replace("\\", "/")
+    for raw in patterns:
+        pattern = str(raw or "").strip().replace("\\", "/").strip("/")
+        if not pattern:
+            continue
+        if fnmatch.fnmatch(normalized, pattern) or normalized == pattern or normalized.startswith(pattern.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def _release_git_safety_plan(
+    *,
+    repo_root: Path,
+    config_payload: dict[str, Any],
+    expected_paths: list[str],
+) -> dict[str, Any]:
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    git_cfg = config.get("git") if isinstance(config.get("git"), dict) else {}
+    unsafe_patterns = [str(item) for item in (git_cfg.get("unsafe_paths") if isinstance(git_cfg.get("unsafe_paths"), list) else [])]
+    expected = sorted({str(path).strip().replace("\\", "/").strip("/") for path in expected_paths if str(path or "").strip()})
+    status = _release_git_status_entries(repo_root)
+    entries = status.get("entries") if isinstance(status.get("entries"), list) else []
+    dirty_paths = [str(item.get("path") or "") for item in entries if isinstance(item, dict)]
+    unsafe_dirty = [path for path in dirty_paths if _release_path_matches_any(path, unsafe_patterns)]
+    expected_dirty = [path for path in dirty_paths if path in expected]
+    unexpected_dirty = [path for path in dirty_paths if path not in expected_dirty]
+    return {
+        "ok": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
+        "status": "safe_to_commit" if bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty else ("not_git_repo" if not status.get("is_git_repo") else "unsafe_or_unexpected_dirty_paths"),
+        "repo_path": str(repo_root),
+        "git_status": status,
+        "commit_allowed": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
+        "push_allowed": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
+        "commit_performed": False,
+        "push_performed": False,
+        "expected_paths": expected,
+        "unsafe_patterns": unsafe_patterns,
+        "dirty_paths": dirty_paths,
+        "expected_dirty_paths": expected_dirty,
+        "unexpected_dirty_paths": unexpected_dirty,
+        "unsafe_dirty_paths": unsafe_dirty,
+        "operator_instruction": "Git safety planner only; no files were staged, committed, or pushed.",
+    }
+
+
+async def cmd_release_policy_sync(backend: Any, args: argparse.Namespace) -> int:
+    """Synchronize repo-local release policy to the accepted artifact/source baseline."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    plan_only = bool(getattr(args, "plan", False))
+    try:
+        project_url = _artifact_state_project_url(backend) if backend is not None else None
+    except Exception:
+        project_url = None
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not config_payload.get("ok"):
+        block("release_config_invalid", "Policy sync requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if not artifact_payload.get("attempted"):
+        block("release_policy_sync_artifact_required", "release policy-sync requires --artifact ZIP.")
+    elif not artifact_payload.get("ok"):
+        block("release_policy_sync_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+
+    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_policy_sync_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if not artifact_version:
+        block("release_policy_sync_version_missing", "Could not determine artifact version for policy sync.")
+    if not artifact_filename:
+        block("release_policy_sync_artifact_filename_missing", "Could not determine artifact filename for policy sync.")
+
+    policy_path = _release_policy_file_path(config_payload, repo_root)
+    try:
+        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
+    except ValueError:
+        policy_rel = str(policy_path)
+        block("release_policy_path_escapes_repo", "Configured policy file must resolve inside the repository root.", policy_path=str(policy_path))
+    existing_policy = _load_release_policy(policy_path)
+    if existing_policy.get("present") and not existing_policy.get("ok"):
+        block("release_policy_sync_existing_policy_invalid", "Existing policy file could not be safely loaded.", policy_status=existing_policy.get("status"), error=existing_policy.get("error"))
+
+    desired_policy = _build_release_policy_payload(
+        existing_policy=existing_policy.get("policy") if isinstance(existing_policy.get("policy"), dict) else {},
+        artifact_ref=artifact_filename,
+        artifact_version=artifact_version or requested_version or "",
+        artifact_payload=artifact_payload,
+        repo_root=repo_root,
+        project_url=project_url,
+        target_version=target_version,
+    )
+    desired_check = _release_policy_payload_matches(desired_policy, artifact_ref=artifact_filename, artifact_version=artifact_version or requested_version or "")
+    git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
+
+    base_payload = {
+        "ok": False,
+        "action": "release_policy_sync",
+        "status": "blocked" if blockers else ("planned" if plan_only else "ready_to_sync"),
+        "version": requested_version or artifact_version,
+        "target_version": target_version,
+        "repo_path": str(repo_root),
+        "read_only": plan_only,
+        "policy_file": str(policy_path),
+        "policy_file_repo_relative": policy_rel,
+        "existing_policy": existing_policy,
+        "desired_policy": desired_policy,
+        "desired_policy_verification": desired_check,
+        "artifact": artifact_payload,
+        "artifact_ref": artifact_filename,
+        "artifact_version": artifact_version,
+        "git_safety_plan": git_plan,
+        "policy_sync_performed": False,
+        "policy_verified": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "mutating_actions_executed": False,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "not_performed": ["git_commit", "git_push", "project_source_mutation", "artifact_registry_update", "state_artifact_update", "state_source_update"],
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+            print(f"policy_file={payload.get('policy_file')}")
+        return code
+
+    if blockers:
+        return emit({**base_payload, "operator_instruction": "Release policy sync is blocked. Resolve artifact/config/policy path blockers before mutating policy state."}, 1)
+    if plan_only:
+        return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release policy sync plan. No policy file, Git state, Project Sources, or artifact state was changed."}, 0)
+
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(json.dumps(desired_policy, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    readback = _load_release_policy(policy_path)
+    readback_policy = readback.get("policy") if isinstance(readback.get("policy"), dict) else {}
+    verification = _release_policy_payload_matches(readback_policy, artifact_ref=artifact_filename, artifact_version=artifact_version or requested_version or "") if readback.get("ok") else {"ok": False, "status": readback.get("status"), "checks": {}}
+    git_plan_after = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
+    payload = {
+        **base_payload,
+        "ok": bool(verification.get("ok")),
+        "status": "release_policy_synced" if verification.get("ok") else "release_policy_sync_verification_failed",
+        "read_only": False,
+        "existing_policy": existing_policy,
+        "policy_readback": readback,
+        "policy_verification": verification,
+        "git_safety_plan": git_plan_after,
+        "policy_sync_performed": True,
+        "policy_verified": bool(verification.get("ok")),
+        "mutating_actions_executed": True,
+        "mutated_local_state_only": True,
+        "operator_instruction": "Release policy file was synchronized to the accepted artifact/source baseline. Git commit/push were not performed." if verification.get("ok") else "Policy file was written, but verification failed; inspect policy_verification before continuing.",
+    }
+    if not verification.get("ok"):
+        payload["blockers"] = [{"code": "release_policy_sync_verification_failed", "severity": "blocked", "message": "Policy readback does not match expected accepted baseline."}]
+        payload["blocker_codes"] = ["release_policy_sync_verification_failed"]
+    return emit(payload, 0 if verification.get("ok") else 1)
+
+
+async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
+    """Plan the native release lifecycle without executing lifecycle mutations."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    plan_only = bool(getattr(args, "plan", False))
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+    policy_path = _release_policy_file_path(config_payload, repo_root)
+    try:
+        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
+    except ValueError:
+        policy_rel = str(policy_path)
+    git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+    if not plan_only:
+        block("release_lifecycle_execute_not_implemented", "v0.0.253 supports release lifecycle --plan only; guarded execution is intentionally deferred.")
+    if not config_payload.get("ok"):
+        block("release_config_invalid", "Lifecycle planning requires a valid release config.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if not artifact_payload.get("attempted"):
+        block("release_lifecycle_artifact_required", "release lifecycle --plan requires --artifact ZIP.")
+    elif not artifact_payload.get("ok"):
+        block("release_lifecycle_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_lifecycle_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+
+    phase_plan = [
+        {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
+        {"phase": "install", "command": "pb release install --artifact {artifact} --version {version} --target-version {target_version} --upload-source --json", "will_execute_in_plan": False},
+        {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
+        {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
+        {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
+        {"phase": "git_safety", "command": "internal git safety planner", "will_execute_in_plan": True},
+        {"phase": "git_commit", "command": "deferred; future explicit --commit flag only", "will_execute_in_plan": False},
+        {"phase": "git_push", "command": "deferred; future explicit --push flag only", "will_execute_in_plan": False},
+    ]
+    rendered_commands = []
+    for item in phase_plan:
+        command = str(item["command"]).format(
+            artifact=str(artifact_payload.get("path") or getattr(args, "artifact", "") or ""),
+            version=requested_version or artifact_version or "",
+            target_version=target_version or "",
+            repo_path=str(repo_root),
+        ) if "{" in str(item["command"]) else str(item["command"])
+        rendered = dict(item)
+        rendered["command"] = command
+        rendered_commands.append(rendered)
+
+    payload = {
+        "ok": not blockers,
+        "action": "release_lifecycle",
+        "status": "planned" if not blockers else "blocked",
+        "schema_version": 1,
+        "read_only": True,
+        "plan_only": True,
+        "version": requested_version or artifact_version,
+        "target_version": target_version,
+        "repo_path": str(repo_root),
+        "artifact": artifact_payload,
+        "artifact_ref": artifact_filename or None,
+        "artifact_version": artifact_version,
+        "config": config_payload,
+        "policy_file": str(policy_path),
+        "policy_file_repo_relative": policy_rel,
+        "git_safety_plan": git_plan,
+        "phase_plan": rendered_commands,
+        "phase_count": len(rendered_commands),
+        "would_install_candidate_zip": True,
+        "would_upload_project_source": True,
+        "would_run_acceptance_hooks": True,
+        "would_adopt_artifact": True,
+        "would_sync_policy": True,
+        "would_commit_git": False,
+        "would_push_git": False,
+        "mutating_actions_executed": False,
+        "policy_sync_performed": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed.",
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"ok={str(bool(payload.get('ok'))).lower()}")
+        print(f"phase_count={payload.get('phase_count')}")
+    return 0 if payload.get("ok") else 1
+
 def _release_doctor_consistency(
     *,
     expected: dict[str, Any],
@@ -8340,6 +8765,10 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_test(backend, args)
     if args.release_command == "adopt":
         return await cmd_release_adopt(backend, args)
+    if args.release_command == "policy-sync":
+        return await cmd_release_policy_sync(backend, args)
+    if args.release_command == "lifecycle":
+        return await cmd_release_lifecycle(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -11124,6 +11553,24 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
+    release_policy_sync = release_subparsers.add_parser("policy-sync", help="Synchronize .promptbranch-project.json to an accepted release baseline; no git commit/push.")
+    release_policy_sync.add_argument("--artifact", help="Accepted release ZIP used to set artifact/source policy baseline.")
+    release_policy_sync.add_argument("--version", help="Accepted release version such as v0.0.253.")
+    release_policy_sync.add_argument("--target-version", help="Next target version for policy metadata.")
+    release_policy_sync.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
+    release_policy_sync.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+    release_policy_sync.add_argument("--plan", action="store_true", help="Show policy sync plan without writing the policy file.")
+    release_policy_sync.add_argument("--json", action="store_true")
+
+    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan the native release lifecycle; v0.0.253 is read-only plan only.")
+    release_lifecycle.add_argument("--artifact", help="Candidate release ZIP to carry through the lifecycle.")
+    release_lifecycle.add_argument("--version", help="Candidate release version such as v0.0.253.")
+    release_lifecycle.add_argument("--target-version", help="Next target version.")
+    release_lifecycle.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
+    release_lifecycle.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+    release_lifecycle.add_argument("--plan", action="store_true", help="Required in v0.0.253: emit lifecycle plan without executing lifecycle mutations.")
+    release_lifecycle.add_argument("--json", action="store_true")
+
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
