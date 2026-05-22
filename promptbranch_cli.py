@@ -7286,6 +7286,352 @@ async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
 
+
+_RELEASE_TEST_DEFAULT_HOOK_ORDER = ["doctor", "preflight", "local_acceptance", "live_acceptance", "release_status"]
+
+
+def _release_test_records_dir(repo_root: Path) -> Path:
+    return repo_root / ".pb_profile" / "release_acceptance"
+
+
+def _release_test_selected_hooks(config: dict[str, Any], requested_hooks: list[str] | None) -> tuple[list[tuple[str, dict[str, Any]]], list[dict[str, Any]]]:
+    hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
+    blockers: list[dict[str, Any]] = []
+    selected: list[tuple[str, dict[str, Any]]] = []
+    if requested_hooks:
+        names = [str(item).strip() for item in requested_hooks if str(item).strip()]
+    else:
+        configured_names = [name for name in _RELEASE_TEST_DEFAULT_HOOK_ORDER if name in hooks]
+        extra_names = sorted(name for name in hooks.keys() if name not in set(_RELEASE_TEST_DEFAULT_HOOK_ORDER))
+        names = configured_names + extra_names
+    for name in names:
+        hook = hooks.get(name)
+        if not isinstance(hook, dict):
+            blockers.append({
+                "code": "release_test_hook_missing",
+                "severity": "blocked",
+                "message": f"Configured release hook is missing: {name}.",
+                "hook": name,
+            })
+            continue
+        command = hook.get("command")
+        if not isinstance(command, str) or not command.strip():
+            blockers.append({
+                "code": "release_test_hook_command_missing",
+                "severity": "blocked",
+                "message": f"Configured release hook has no command: {name}.",
+                "hook": name,
+            })
+            continue
+        selected.append((name, hook))
+    if not names:
+        blockers.append({
+            "code": "release_test_no_hooks_configured",
+            "severity": "blocked",
+            "message": "No release hooks are configured for release test execution.",
+        })
+    return selected, blockers
+
+
+def _release_test_render_command(command_template: str, *, version: str | None, target_version: str | None, artifact: str, repo_path: str) -> tuple[list[str], str | None, str | None]:
+    placeholders = _release_config_command_placeholders(command_template)
+    missing: list[str] = []
+    values = {
+        "version": version or "",
+        "target_version": target_version or "",
+        "artifact": artifact,
+        "repo_path": repo_path,
+    }
+    for name in placeholders:
+        if not str(values.get(name) or ""):
+            missing.append(name)
+    if missing:
+        return [], None, f"missing placeholder values: {', '.join(sorted(missing))}"
+    try:
+        rendered = command_template.format(**values)
+    except Exception as exc:
+        return [], None, f"command template render failed: {exc}"
+    try:
+        argv = shlex.split(rendered)
+    except ValueError as exc:
+        return [], rendered, f"command split failed: {exc}"
+    if not argv:
+        return [], rendered, "rendered command is empty"
+    return argv, rendered, None
+
+
+def _run_release_test_hook(
+    *,
+    hook_name: str,
+    hook: dict[str, Any],
+    repo_root: Path,
+    version: str | None,
+    target_version: str | None,
+    artifact_path: Path,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    command_template = str(hook.get("command") or "")
+    started_at = utc_now()
+    argv, rendered, error = _release_test_render_command(
+        command_template,
+        version=version,
+        target_version=target_version,
+        artifact=str(artifact_path),
+        repo_path=str(repo_root),
+    )
+    base = {
+        "hook": hook_name,
+        "command_template": command_template,
+        "command": argv,
+        "rendered_command": rendered,
+        "started_at": started_at,
+        "timeout_seconds": timeout_seconds,
+    }
+    if error:
+        return {**base, "ok": False, "status": "hook_command_invalid", "error": error, "finished_at": utc_now()}
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            **base,
+            "ok": False,
+            "status": "hook_timeout",
+            "finished_at": utc_now(),
+            "returncode": None,
+            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
+            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
+        }
+    return {
+        **base,
+        "ok": completed.returncode == 0,
+        "status": "hook_passed" if completed.returncode == 0 else "hook_failed",
+        "finished_at": utc_now(),
+        "returncode": completed.returncode,
+        "stdout_tail": (completed.stdout or "")[-4000:],
+        "stderr_tail": (completed.stderr or "")[-4000:],
+    }
+
+
+def _record_release_acceptance_report(repo_root: Path, *, version: str, report: dict[str, Any]) -> Path:
+    version_key = _candidate_version_normalized(version) or "unknown"
+    record_dir = _release_test_records_dir(repo_root) / version_key
+    record_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = re.sub(r"[^0-9A-Za-z_.-]+", "_", utc_now())
+    record_path = record_dir / f"release_acceptance.{timestamp}.json"
+    record_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return record_path
+
+
+async def cmd_release_test(backend: Any, args: argparse.Namespace) -> int:
+    """Run configured release acceptance hooks and persist a structured report.
+
+    This command is intentionally evidence-producing only. It can execute configured
+    project hook commands, but it does not itself adopt artifacts, update Promptbranch
+    source/artifact state, update the artifact registry, or commit/push Git state.
+    """
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    timeout_seconds = float(getattr(args, "hook_timeout", 3600.0) or 3600.0)
+    plan_only = bool(getattr(args, "plan", False))
+    requested_hooks = list(getattr(args, "hook", None) or [])
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not config_payload.get("ok"):
+        block("release_config_invalid", "Release test requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if not artifact_payload.get("attempted"):
+        block("release_test_artifact_required", "release test requires --artifact ZIP.")
+    elif not artifact_payload.get("ok"):
+        block("release_test_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_test_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if not requested_version and artifact_version:
+        requested_version = artifact_version
+        warnings.append({
+            "code": "release_test_version_inferred",
+            "severity": "warning",
+            "message": "No --version was supplied; candidate version is inferred from the artifact ZIP.",
+            "artifact_version": artifact_version,
+        })
+
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    selected_hooks, hook_selection_blockers = _release_test_selected_hooks(config, requested_hooks)
+    blockers.extend(hook_selection_blockers)
+
+    hook_plan = [
+        {
+            "hook": name,
+            "command_template": str(hook.get("command") or ""),
+            "risk": str(hook.get("risk") or "process"),
+        }
+        for name, hook in selected_hooks
+    ]
+    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser()
+    if artifact_path and not artifact_path.is_absolute():
+        artifact_path = (repo_root / artifact_path).resolve()
+
+    base_payload: dict[str, Any] = {
+        "ok": False,
+        "action": "release_test",
+        "status": "blocked" if blockers else ("planned" if plan_only else "ready"),
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "mode": "plan_only" if plan_only else "execute",
+        "read_only": plan_only,
+        "repo_path": str(repo_root),
+        "config": config_payload,
+        "artifact": artifact_payload,
+        "version": requested_version,
+        "target_version": target_version,
+        "hook_timeout_seconds": timeout_seconds,
+        "hook_plan": hook_plan,
+        "hook_count": len(hook_plan),
+        "hook_results": [],
+        "acceptance_report_written": False,
+        "acceptance_report_path": None,
+        "acceptance_status": "not_run" if plan_only or blockers else "pending",
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": not plan_only and not bool(blockers),
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"acceptance_status={payload.get('acceptance_status')}")
+            print(f"hook_count={payload.get('hook_count')}")
+            print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+            print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+            if payload.get("acceptance_report_path"):
+                print(f"acceptance_report_path={payload.get('acceptance_report_path')}")
+        return code
+
+    if blockers:
+        base_payload["operator_instruction"] = "Release acceptance hook execution is blocked. Resolve blockers before running project hooks."
+        return emit(base_payload, 1)
+    if plan_only:
+        base_payload.update({
+            "ok": True,
+            "status": "planned",
+            "acceptance_status": "planned",
+            "operator_instruction": "Read-only release test plan. No hooks were executed and no lifecycle state was advanced.",
+        })
+        return emit(base_payload, 0)
+
+    hook_results: list[dict[str, Any]] = []
+    for name, hook in selected_hooks:
+        result = _run_release_test_hook(
+            hook_name=name,
+            hook=hook,
+            repo_root=repo_root,
+            version=requested_version,
+            target_version=target_version,
+            artifact_path=artifact_path,
+            timeout_seconds=timeout_seconds,
+        )
+        hook_results.append(result)
+        if not result.get("ok") and bool(getattr(args, "stop_on_failure", True)):
+            break
+
+    all_passed = bool(hook_results) and all(bool(item.get("ok")) for item in hook_results)
+    report = {
+        "schema": "promptbranch.release.acceptance_report",
+        "schema_version": "1.0",
+        "created_at": utc_now(),
+        "version": requested_version,
+        "target_version": target_version,
+        "artifact": artifact_payload,
+        "repo_path": str(repo_root),
+        "hook_results": hook_results,
+        "hook_count": len(hook_results),
+        "accepted": all_passed,
+        "status": "accepted" if all_passed else "rejected",
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+    }
+    report_path = _record_release_acceptance_report(repo_root, version=requested_version or "unknown", report=report)
+
+    payload = {
+        **base_payload,
+        "ok": all_passed,
+        "status": "release_acceptance_passed" if all_passed else "release_acceptance_failed",
+        "severity": "ok" if all_passed and not warnings else ("warning" if all_passed else "blocked"),
+        "hook_results": hook_results,
+        "hook_count": len(hook_results),
+        "acceptance_status": "accepted" if all_passed else "rejected",
+        "acceptance_report": report,
+        "acceptance_report_written": True,
+        "acceptance_report_path": str(report_path),
+        "candidate_test_performed": True,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "blockers": [] if all_passed else [{
+            "code": "release_acceptance_hooks_failed",
+            "severity": "blocked",
+            "message": "One or more release acceptance hooks failed.",
+            "failed_hooks": [item.get("hook") for item in hook_results if not item.get("ok")],
+        }],
+        "blocker_codes": [] if all_passed else ["release_acceptance_hooks_failed"],
+        "operator_instruction": (
+            "Release acceptance hooks passed and a structured report was written. Adoption, source/artifact state advancement, Git commit, and Git push were not performed."
+            if all_passed else
+            "Release acceptance hooks failed. The structured report was written, but adoption and state advancement remain blocked."
+        ),
+    }
+    return emit(payload, 0 if all_passed else 1)
+
 def _release_doctor_consistency(
     *,
     expected: dict[str, Any],
@@ -7699,6 +8045,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_config(backend, args)
     if args.release_command == "install":
         return await cmd_release_install(backend, args)
+    if args.release_command == "test":
+        return await cmd_release_test(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -10511,6 +10859,19 @@ def make_parser() -> argparse.ArgumentParser:
     release_install.add_argument("--upload-source", action="store_true", help="After a controlled install, add the candidate ZIP to Project Sources and verify before/after source-list state. In --plan mode this only reports the intended source upload.")
     release_install.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
     release_install.add_argument("--json", action="store_true")
+
+    release_test = release_subparsers.add_parser("test", help="Run configured release acceptance hooks and write a structured acceptance report.")
+    release_test.add_argument("--artifact", required=True, help="Candidate release ZIP to verify before hook execution.")
+    release_test.add_argument("--version", help="Expected candidate version such as v0.0.251.")
+    release_test.add_argument("--target-version", help="Optional next target version for hook placeholders and operator context.")
+    release_test.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
+    release_test.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_test.add_argument("--hook", action="append", help="Specific hook name to run. May be passed multiple times. Defaults to configured lifecycle hook order.")
+    release_test.add_argument("--plan", action="store_true", help="Emit the hook execution plan and perform no hook execution.")
+    release_test.add_argument("--hook-timeout", type=float, default=3600.0, help="Timeout in seconds per hook. Defaults to 3600.")
+    release_test.add_argument("--stop-on-failure", action="store_true", default=True, help="Stop after the first failing hook. Default: true.")
+    release_test.add_argument("--no-stop-on-failure", dest="stop_on_failure", action="store_false", help="Continue running later hooks after a hook fails.")
+    release_test.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
