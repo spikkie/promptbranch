@@ -8094,13 +8094,16 @@ def _release_git_safety_plan(
     unsafe_dirty = [path for path in dirty_paths if _release_path_matches_any(path, unsafe_patterns)]
     expected_dirty = [path for path in dirty_paths if path in expected]
     unexpected_dirty = [path for path in dirty_paths if path not in expected_dirty]
+    safe = bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty
     return {
-        "ok": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
-        "status": "safe_to_commit" if bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty else ("not_git_repo" if not status.get("is_git_repo") else "unsafe_or_unexpected_dirty_paths"),
+        "ok": safe,
+        "status": "safe_to_commit" if safe else ("not_git_repo" if not status.get("is_git_repo") else "unsafe_or_unexpected_dirty_paths"),
         "repo_path": str(repo_root),
         "git_status": status,
-        "commit_allowed": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
-        "push_allowed": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty,
+        "commit_allowed": safe,
+        "commit_eligible": safe,
+        "push_allowed": safe,
+        "push_eligible": safe,
         "commit_performed": False,
         "push_performed": False,
         "expected_paths": expected,
@@ -8110,6 +8113,169 @@ def _release_git_safety_plan(
         "unexpected_dirty_paths": unexpected_dirty,
         "unsafe_dirty_paths": unsafe_dirty,
         "operator_instruction": "Git safety planner only; no files were staged, committed, or pushed.",
+    }
+
+
+def _release_git_upstream_status(repo_root: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "attempted": True,
+        "has_upstream": False,
+        "branch": None,
+        "upstream": None,
+        "ahead": None,
+        "behind": None,
+        "push_precheck_ok": False,
+        "status": "unknown",
+    }
+    try:
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(repo_root),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        payload.update({"status": "git_branch_error", "error": str(exc)})
+        return payload
+    if branch_result.returncode != 0:
+        payload.update({"status": "git_branch_error", "error": branch_result.stderr.strip()})
+        return payload
+    payload["branch"] = branch_result.stdout.strip()
+    upstream_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        cwd=str(repo_root),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=5.0,
+        check=False,
+    )
+    if upstream_result.returncode != 0:
+        payload.update({"status": "no_upstream", "error": upstream_result.stderr.strip()})
+        return payload
+    payload["has_upstream"] = True
+    payload["upstream"] = upstream_result.stdout.strip()
+    rev_result = subprocess.run(
+        ["git", "rev-list", "--left-right", "--count", "HEAD...@{u}"],
+        cwd=str(repo_root),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10.0,
+        check=False,
+    )
+    if rev_result.returncode != 0:
+        payload.update({"status": "ahead_behind_error", "error": rev_result.stderr.strip()})
+        return payload
+    parts = rev_result.stdout.strip().split()
+    if len(parts) == 2:
+        try:
+            payload["ahead"] = int(parts[0])
+            payload["behind"] = int(parts[1])
+        except ValueError:
+            payload.update({"status": "ahead_behind_parse_error", "raw": rev_result.stdout.strip()})
+            return payload
+    payload["push_precheck_ok"] = payload.get("has_upstream") is True and int(payload.get("behind") or 0) == 0
+    payload["status"] = "push_precheck_ok" if payload["push_precheck_ok"] else "branch_behind_upstream"
+    return payload
+
+
+def _release_git_sync_plan(
+    *,
+    repo_root: Path,
+    config_payload: dict[str, Any],
+    artifact_ref: str | None,
+    artifact_version: str | None,
+    policy_file_repo_relative: str | None,
+    requested_commit: bool,
+    requested_push: bool,
+    commit_message: str | None = None,
+) -> dict[str, Any]:
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    git_cfg = config.get("git") if isinstance(config.get("git"), dict) else {}
+    unsafe_patterns = [str(item) for item in (git_cfg.get("unsafe_paths") if isinstance(git_cfg.get("unsafe_paths"), list) else [])]
+    configured_expected = git_cfg.get("expected_paths") if isinstance(git_cfg.get("expected_paths"), list) else []
+    expected_patterns = [str(item) for item in configured_expected if str(item or "").strip()]
+    expected_policy = "configured_expected_paths" if expected_patterns else "all_non_unsafe_dirty_paths"
+    status = _release_git_status_entries(repo_root)
+    entries = status.get("entries") if isinstance(status.get("entries"), list) else []
+    dirty_paths = [str(item.get("path") or "") for item in entries if isinstance(item, dict)]
+    unsafe_dirty = [path for path in dirty_paths if _release_path_matches_any(path, unsafe_patterns)]
+    if expected_patterns:
+        expected_dirty = [path for path in dirty_paths if _release_path_matches_any(path, expected_patterns)]
+        unexpected_dirty = [path for path in dirty_paths if path not in expected_dirty and path not in unsafe_dirty]
+    else:
+        expected_dirty = [path for path in dirty_paths if path not in unsafe_dirty]
+        unexpected_dirty = []
+    clean = not dirty_paths
+    policy_ok = False
+    policy_status = "not_checked"
+    policy_path = repo_root / str(policy_file_repo_relative or ".promptbranch-project.json")
+    policy_payload = _load_release_policy(policy_path)
+    if policy_payload.get("ok") and isinstance(policy_payload.get("policy"), dict):
+        verification = _release_policy_payload_matches(
+            policy_payload["policy"],
+            artifact_ref=artifact_ref or "",
+            artifact_version=artifact_version or "",
+        )
+        policy_ok = bool(verification.get("ok"))
+        policy_status = str(verification.get("status") or ("verified" if policy_ok else "mismatch"))
+    else:
+        policy_status = str(policy_payload.get("status") or "policy_missing_or_invalid")
+    upstream = _release_git_upstream_status(repo_root) if bool(status.get("is_git_repo")) else {"attempted": False, "status": "not_git_repo"}
+    config_commit_enabled = bool(git_cfg.get("commit_release", True))
+    config_push_enabled = bool(git_cfg.get("push_release", True))
+    safe_dirty = bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty
+    commit_eligible = safe_dirty and policy_ok and not clean and config_commit_enabled
+    push_eligible = bool(upstream.get("push_precheck_ok")) and config_push_enabled
+    blocked_reasons: list[str] = []
+    if not status.get("is_git_repo"):
+        blocked_reasons.append("not_git_repo")
+    if unsafe_dirty:
+        blocked_reasons.append("unsafe_dirty_paths")
+    if unexpected_dirty:
+        blocked_reasons.append("unexpected_dirty_paths")
+    if not policy_ok:
+        blocked_reasons.append("policy_not_synced")
+    if clean:
+        blocked_reasons.append("nothing_to_commit")
+    if not config_commit_enabled:
+        blocked_reasons.append("commit_disabled_by_config")
+    if requested_push and not requested_commit:
+        blocked_reasons.append("push_requires_commit_flag")
+    if requested_push and not push_eligible:
+        blocked_reasons.append("push_precheck_failed")
+    return {
+        "ok": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty and policy_ok,
+        "status": "git_sync_ready" if commit_eligible else ("git_sync_clean" if clean and bool(status.get("is_git_repo")) and policy_ok and not unsafe_dirty and not unexpected_dirty else "git_sync_blocked"),
+        "repo_path": str(repo_root),
+        "artifact_ref": artifact_ref,
+        "artifact_version": artifact_version,
+        "policy_file_repo_relative": policy_file_repo_relative,
+        "policy_status": policy_status,
+        "policy_verified": policy_ok,
+        "git_status": status,
+        "upstream": upstream,
+        "expected_policy": expected_policy,
+        "expected_patterns": expected_patterns,
+        "unsafe_patterns": unsafe_patterns,
+        "dirty_paths": dirty_paths,
+        "expected_dirty_paths": expected_dirty,
+        "unexpected_dirty_paths": unexpected_dirty,
+        "unsafe_dirty_paths": unsafe_dirty,
+        "paths_to_stage": expected_dirty,
+        "clean": clean,
+        "commit_requested": requested_commit,
+        "push_requested": requested_push,
+        "commit_allowed": commit_eligible,
+        "commit_eligible": commit_eligible,
+        "push_allowed": push_eligible and requested_commit,
+        "push_eligible": push_eligible,
+        "commit_message": commit_message or f"Release chatgpt_claudecode_workflow {artifact_version or artifact_ref or ''}".strip(),
+        "blocked_reasons": blocked_reasons,
     }
 
 
@@ -8246,6 +8412,215 @@ async def cmd_release_policy_sync(backend: Any, args: argparse.Namespace) -> int
 
 
 
+async def cmd_release_git_sync(backend: Any, args: argparse.Namespace) -> int:
+    """Plan or perform guarded Git commit/push for release lifecycle state.
+
+    This command is intentionally conservative. It never stages unsafe paths,
+    never commits unless --commit is explicit, and never pushes unless --push is
+    explicit and a commit succeeded in the same command invocation.
+    """
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    plan_only = bool(getattr(args, "plan", False))
+    commit_requested = bool(getattr(args, "commit", False))
+    push_requested = bool(getattr(args, "push", False))
+    commit_message_arg = getattr(args, "message", None)
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not config_payload.get("ok"):
+        block("release_config_invalid", "Git sync requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if not artifact_payload.get("attempted"):
+        block("release_git_sync_artifact_required", "release git-sync requires --artifact ZIP so policy and commit context can be verified.")
+    elif not artifact_payload.get("ok"):
+        block("release_git_sync_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+
+    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_git_sync_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+
+    policy_path = _release_policy_file_path(config_payload, repo_root)
+    try:
+        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
+    except ValueError:
+        policy_rel = str(policy_path)
+        block("release_policy_path_escapes_repo", "Configured policy file must resolve inside the repository root.", policy_path=str(policy_path))
+
+    plan = _release_git_sync_plan(
+        repo_root=repo_root,
+        config_payload=config_payload,
+        artifact_ref=artifact_filename or None,
+        artifact_version=artifact_version or requested_version,
+        policy_file_repo_relative=policy_rel,
+        requested_commit=commit_requested,
+        requested_push=push_requested,
+        commit_message=commit_message_arg,
+    )
+    if push_requested and not commit_requested:
+        block("release_git_sync_push_requires_commit", "--push requires --commit so the push is tied to a same-run guarded commit.")
+    if commit_requested and not plan.get("commit_allowed"):
+        block("release_git_sync_commit_blocked", "Git commit was requested but safety checks are not green.", blocked_reasons=plan.get("blocked_reasons") or [])
+    if push_requested and not plan.get("push_eligible"):
+        block("release_git_sync_push_blocked", "Git push was requested but upstream safety checks are not green.", upstream=plan.get("upstream"))
+
+    base_payload = {
+        "ok": False,
+        "action": "release_git_sync",
+        "status": "blocked" if blockers else ("planned" if plan_only or not commit_requested else "ready_to_commit"),
+        "schema_version": 1,
+        "version": requested_version or artifact_version,
+        "target_version": target_version,
+        "repo_path": str(repo_root),
+        "read_only": bool(plan_only or not commit_requested),
+        "plan_only": plan_only,
+        "artifact": artifact_payload,
+        "artifact_ref": artifact_filename or None,
+        "artifact_version": artifact_version,
+        "policy_file": str(policy_path),
+        "policy_file_repo_relative": policy_rel,
+        "git_sync_plan": plan,
+        "commit_requested": commit_requested,
+        "push_requested": push_requested,
+        "commit_performed": False,
+        "push_performed": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+            print(f"commit_performed={str(bool(payload.get('commit_performed'))).lower()}")
+            print(f"push_performed={str(bool(payload.get('push_performed'))).lower()}")
+        return code
+
+    if blockers:
+        return emit({**base_payload, "operator_instruction": "Release Git sync is blocked. Resolve policy, unsafe path, or upstream blockers before retrying."}, 1)
+
+    if plan_only or not commit_requested:
+        return emit({
+            **base_payload,
+            "ok": True,
+            "status": "planned" if plan_only else "git_sync_not_requested",
+            "operator_instruction": "Read-only Git sync plan. No files were staged, committed, or pushed." if plan_only else "Git sync inspected state only. Pass --commit to stage and commit allowed release files.",
+        }, 0)
+
+    paths_to_stage = [str(path) for path in (plan.get("paths_to_stage") or []) if str(path or "").strip()]
+    if not paths_to_stage:
+        return emit({
+            **base_payload,
+            "ok": True,
+            "status": "git_sync_no_changes",
+            "read_only": True,
+            "operator_instruction": "No allowed dirty release files were present, so no commit was created.",
+        }, 0)
+
+    stage_result = subprocess.run(
+        ["git", "add", "--", *paths_to_stage],
+        cwd=str(repo_root),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30.0,
+        check=False,
+    )
+    if stage_result.returncode != 0:
+        payload = {**base_payload, "status": "git_stage_failed", "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "operator_instruction": "Git staging failed; no commit or push was attempted."}
+        payload["blockers"] = [{"code": "release_git_sync_stage_failed", "severity": "blocked", "message": "Git staging failed."}]
+        payload["blocker_codes"] = ["release_git_sync_stage_failed"]
+        return emit(payload, 1)
+
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", str(plan.get("commit_message") or f"Release {artifact_version or artifact_filename}")],
+        cwd=str(repo_root),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=60.0,
+        check=False,
+    )
+    if commit_result.returncode != 0:
+        payload = {**base_payload, "status": "git_commit_failed", "read_only": False, "mutating_actions_executed": True, "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]}, "operator_instruction": "Git commit failed after staging allowed paths. Inspect Git output and working tree state."}
+        payload["blockers"] = [{"code": "release_git_sync_commit_failed", "severity": "blocked", "message": "Git commit failed."}]
+        payload["blocker_codes"] = ["release_git_sync_commit_failed"]
+        return emit(payload, 1)
+
+    push_performed = False
+    push_payload: dict[str, Any] | None = None
+    if push_requested:
+        post_commit_plan = _release_git_sync_plan(
+            repo_root=repo_root,
+            config_payload=config_payload,
+            artifact_ref=artifact_filename or None,
+            artifact_version=artifact_version or requested_version,
+            policy_file_repo_relative=policy_rel,
+            requested_commit=True,
+            requested_push=True,
+            commit_message=commit_message_arg,
+        )
+        if not post_commit_plan.get("push_eligible"):
+            payload = {**base_payload, "ok": False, "status": "git_push_precheck_failed_after_commit", "read_only": False, "mutating_actions_executed": True, "commit_performed": True, "git_commit_performed": True, "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]}, "post_commit_git_sync_plan": post_commit_plan, "operator_instruction": "Commit succeeded, but push precheck failed. Push was not attempted."}
+            payload["blockers"] = [{"code": "release_git_sync_push_precheck_failed_after_commit", "severity": "blocked", "message": "Push precheck failed after commit."}]
+            payload["blocker_codes"] = ["release_git_sync_push_precheck_failed_after_commit"]
+            return emit(payload, 1)
+        push_result = subprocess.run(
+            ["git", "push"],
+            cwd=str(repo_root),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120.0,
+            check=False,
+        )
+        push_payload = {"rc": push_result.returncode, "stdout": push_result.stdout[-4000:], "stderr": push_result.stderr[-4000:]}
+        push_performed = push_result.returncode == 0
+        if not push_performed:
+            payload = {**base_payload, "ok": False, "status": "git_push_failed", "read_only": False, "mutating_actions_executed": True, "commit_performed": True, "git_commit_performed": True, "push_performed": False, "git_push_performed": False, "git_push": push_payload, "operator_instruction": "Commit succeeded, but git push failed."}
+            payload["blockers"] = [{"code": "release_git_sync_push_failed", "severity": "blocked", "message": "Git push failed."}]
+            payload["blocker_codes"] = ["release_git_sync_push_failed"]
+            return emit(payload, 1)
+
+    final_status = _release_git_status_entries(repo_root)
+    result = {
+        **base_payload,
+        "ok": True,
+        "status": "git_sync_committed_and_pushed" if push_performed else "git_sync_committed",
+        "read_only": False,
+        "mutating_actions_executed": True,
+        "commit_performed": True,
+        "git_commit_performed": True,
+        "push_performed": push_performed,
+        "git_push_performed": push_performed,
+        "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]},
+        "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]},
+        "git_push": push_payload,
+        "final_git_status": final_status,
+        "operator_instruction": "Release Git sync committed allowed release files." + (" Push also succeeded." if push_performed else " Push was not requested."),
+    }
+    return emit(result, 0)
+
+
 def _release_lifecycle_namespace(args: argparse.Namespace, **overrides: Any) -> argparse.Namespace:
     values = dict(vars(args))
     values.update(overrides)
@@ -8314,14 +8689,15 @@ async def _release_lifecycle_capture_phase(
 async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     """Plan or execute the native release lifecycle through policy sync.
 
-    v0.0.254 deliberately executes the largest controllable subset of the final
-    MVP: doctor, bounded install + source upload, acceptance hooks, gated adopt,
-    and policy sync. Git commit/push are still blocked and represented only in
-    the final safety plan.
+    v0.0.255 executes the guarded native lifecycle through policy sync and
+    optionally through Git sync when explicit --commit/--push flags are supplied.
+    Commit and push remain disabled by default.
     """
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     plan_only = bool(getattr(args, "plan", False))
+    commit_requested = bool(getattr(args, "commit", False))
+    push_requested = bool(getattr(args, "push", False))
     config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
     artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
     requested_version = _candidate_version_normalized(getattr(args, "version", None))
@@ -8358,9 +8734,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
         {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
         {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "git_safety", "command": "internal git safety planner", "will_execute_in_plan": True, "will_execute": True},
-        {"phase": "git_commit", "command": "blocked; future explicit --commit flag only", "will_execute_in_plan": False, "will_execute": False},
-        {"phase": "git_push", "command": "blocked; future explicit --push flag only", "will_execute_in_plan": False, "will_execute": False},
+        {"phase": "git_sync", "command": "pb release git-sync --artifact {artifact} --version {version} --target-version {target_version} --plan --json", "will_execute_in_plan": True, "will_execute": True},
     ]
     rendered_commands = []
     for item in phase_plan:
@@ -8400,8 +8774,8 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "would_run_acceptance_hooks": True,
         "would_adopt_artifact": True,
         "would_sync_policy": True,
-        "would_commit_git": False,
-        "would_push_git": False,
+        "would_commit_git": bool(commit_requested),
+        "would_push_git": bool(push_requested),
         "install_performed": False,
         "candidate_test_performed": False,
         "adoption_performed": False,
@@ -8417,7 +8791,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "warning_codes": [item["code"] for item in warnings],
         "blockers": blockers,
         "blocker_codes": [item["code"] for item in blockers],
-        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed." if plan_only else "Guarded native lifecycle is ready to execute through policy sync. Git commit/push remain blocked.",
+        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed." if plan_only else "Guarded native lifecycle is ready to execute through policy sync. Git commit/push require explicit --commit/--push flags.",
     }
 
     def emit(payload: dict[str, Any], code: int) -> int:
@@ -8459,6 +8833,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         ("test", cmd_release_test, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), hook=None, plan=False, hook_timeout=float(getattr(args, "hook_timeout", 3600.0) or 3600.0), stop_on_failure=True, json=True)),
         ("adopt", cmd_release_adopt, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, acceptance_report=None, repo_path=str(repo_root), plan=False, keep_open=bool(getattr(args, "keep_open", False)), json=True)),
         ("policy_sync", cmd_release_policy_sync, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=False, json=True)),
+        ("git_sync", cmd_release_git_sync, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=not commit_requested, commit=commit_requested, push=push_requested, message=getattr(args, "message", None), json=True)),
     ]
     for phase_name, phase_func, phase_args in phases:
         phase_result = await _release_lifecycle_capture_phase(phase_name, phase_func, backend, phase_args)
@@ -8473,6 +8848,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     test_payload = phase_payloads.get("test") or {}
     adopt_payload = phase_payloads.get("adopt") or {}
     policy_payload = phase_payloads.get("policy_sync") or {}
+    git_sync_payload = phase_payloads.get("git_sync") or {}
     any_mutation = any(bool(payload.get("mutating_actions_executed")) for payload in phase_payloads.values() if isinstance(payload, dict))
     final_ok = stop_reason is None and len(phase_results) == len(phases)
     final_status = "release_lifecycle_completed" if final_ok else "release_lifecycle_failed"
@@ -8485,10 +8861,10 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "policy_synced": bool(policy_payload.get("policy_sync_performed")),
         "project_source_verified": bool((install_payload.get("source_upload_verification") or {}).get("ok")) if isinstance(install_payload, dict) else False,
         "acceptance_status": test_payload.get("acceptance_status") if isinstance(test_payload, dict) else None,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "git_commit_eligible": bool(final_git_plan.get("commit_eligible")),
-        "git_push_eligible": bool(final_git_plan.get("push_eligible")),
+        "git_commit_performed": bool(git_sync_payload.get("git_commit_performed")),
+        "git_push_performed": bool(git_sync_payload.get("git_push_performed")),
+        "git_commit_eligible": bool(((git_sync_payload.get("git_sync_plan") or final_git_plan) or {}).get("commit_eligible")),
+        "git_push_eligible": bool(((git_sync_payload.get("git_sync_plan") or final_git_plan) or {}).get("push_eligible")),
         "next_normal_version": target_version,
     }
     lifecycle_blockers = [] if final_ok else [{"code": stop_reason or "release_lifecycle_failed", "severity": "blocked", "message": "Native lifecycle stopped before all guarded phases completed."}]
@@ -8511,12 +8887,12 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "artifact_registry_updated": bool(adopt_payload.get("artifact_registry_updated")),
         "state_artifact_updated": bool(adopt_payload.get("state_artifact_updated")),
         "state_source_updated": bool(adopt_payload.get("state_source_updated")),
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "mutating_actions_executed": any_mutation,
+        "git_commit_performed": bool(git_sync_payload.get("git_commit_performed")),
+        "git_push_performed": bool(git_sync_payload.get("git_push_performed")),
+        "mutating_actions_executed": any_mutation or bool(git_sync_payload.get("mutating_actions_executed")),
         "blockers": lifecycle_blockers,
         "blocker_codes": [item["code"] for item in lifecycle_blockers],
-        "operator_instruction": "Native lifecycle completed through policy sync. Git commit/push were not performed; review git_safety_plan before any manual Git sync." if final_ok else "Native lifecycle stopped on a failed guarded phase. No later phases were executed after the failure.",
+        "operator_instruction": "Native lifecycle completed through policy sync and Git sync planning/execution. Git commit/push run only when explicitly requested." if final_ok else "Native lifecycle stopped on a failed guarded phase. No later phases were executed after the failure.",
     }
     return emit(result, 0 if final_ok else 1)
 
@@ -8939,6 +9315,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_adopt(backend, args)
     if args.release_command == "policy-sync":
         return await cmd_release_policy_sync(backend, args)
+    if args.release_command == "git-sync":
+        return await cmd_release_git_sync(backend, args)
     if args.release_command == "lifecycle":
         return await cmd_release_lifecycle(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
@@ -11734,7 +12112,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_policy_sync.add_argument("--plan", action="store_true", help="Show policy sync plan without writing the policy file.")
     release_policy_sync.add_argument("--json", action="store_true")
 
-    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan or execute the guarded native release lifecycle through policy sync; Git commit/push remain blocked.")
+    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan or execute the guarded native release lifecycle; Git commit/push require explicit flags.")
     release_lifecycle.add_argument("--artifact", help="Candidate release ZIP to carry through the lifecycle.")
     release_lifecycle.add_argument("--version", help="Candidate release version such as v0.0.253.")
     release_lifecycle.add_argument("--target-version", help="Next target version.")
@@ -11747,7 +12125,22 @@ def make_parser() -> argparse.ArgumentParser:
     release_lifecycle.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds for the doctor phase. Defaults to 3.")
     release_lifecycle.add_argument("--source-timeout", type=float, default=60.0, help="Project Source listing timeout in seconds for the doctor phase. Defaults to 60.")
     release_lifecycle.add_argument("--skip-service-health", action="store_true", help="Skip Docker/service /healthz probe in the lifecycle doctor phase.")
+    release_lifecycle.add_argument("--commit", action="store_true", help="After successful lifecycle phases, stage and commit only Git-sync-safe release files.")
+    release_lifecycle.add_argument("--push", action="store_true", help="After a same-run guarded commit, push to the configured upstream when safe.")
+    release_lifecycle.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
     release_lifecycle.add_argument("--json", action="store_true")
+
+    release_git_sync = release_subparsers.add_parser("git-sync", help="Plan or perform guarded Git commit/push for release lifecycle state.")
+    release_git_sync.add_argument("--artifact", help="Accepted release ZIP used to verify policy baseline before committing.")
+    release_git_sync.add_argument("--version", help="Accepted release version such as v0.0.255.")
+    release_git_sync.add_argument("--target-version", help="Next target version for operator context.")
+    release_git_sync.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
+    release_git_sync.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+    release_git_sync.add_argument("--plan", action="store_true", help="Show Git sync plan without staging, committing, or pushing.")
+    release_git_sync.add_argument("--commit", action="store_true", help="Stage and commit only allowed release files after safety checks pass.")
+    release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
+    release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
+    release_git_sync.add_argument("--json", action="store_true")
 
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")
