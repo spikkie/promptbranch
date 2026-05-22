@@ -8245,8 +8245,80 @@ async def cmd_release_policy_sync(backend: Any, args: argparse.Namespace) -> int
     return emit(payload, 0 if verification.get("ok") else 1)
 
 
+
+def _release_lifecycle_namespace(args: argparse.Namespace, **overrides: Any) -> argparse.Namespace:
+    values = dict(vars(args))
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
+async def _release_lifecycle_capture_phase(
+    phase: str,
+    func: Any,
+    backend: Any,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Run an existing release subcommand and capture its JSON payload.
+
+    The native lifecycle command composes already-hardened release primitives while
+    keeping a single machine-readable JSON object at the outer boundary. Each
+    phase is forced to --json and its stdout is parsed; invalid phase output is a
+    hard failure because the lifecycle must not infer success from prose.
+    """
+
+    stdout = io.StringIO()
+    started_at = utc_now()
+    try:
+        with redirect_stdout(stdout):
+            rc = await func(backend, args)
+    except Exception as exc:  # pragma: no cover - defensive around live browser/subprocess boundaries
+        return {
+            "phase": phase,
+            "ok": False,
+            "rc": 1,
+            "status": "phase_exception",
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "error": str(exc),
+            "payload": None,
+            "stdout_tail": stdout.getvalue()[-4000:],
+        }
+    text = stdout.getvalue()
+    try:
+        payload = json.loads(text) if text.strip() else {}
+    except json.JSONDecodeError as exc:
+        return {
+            "phase": phase,
+            "ok": False,
+            "rc": rc,
+            "status": "phase_json_invalid",
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "error": str(exc),
+            "payload": None,
+            "stdout_tail": text[-4000:],
+        }
+    phase_ok = rc == 0 and bool(payload.get("ok", rc == 0))
+    return {
+        "phase": phase,
+        "ok": phase_ok,
+        "rc": rc,
+        "status": payload.get("status") or ("passed" if phase_ok else "failed"),
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        "payload": payload,
+        "stdout_tail": "",
+    }
+
+
 async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
-    """Plan the native release lifecycle without executing lifecycle mutations."""
+    """Plan or execute the native release lifecycle through policy sync.
+
+    v0.0.254 deliberately executes the largest controllable subset of the final
+    MVP: doctor, bounded install + source upload, acceptance hooks, gated adopt,
+    and policy sync. Git commit/push are still blocked and represented only in
+    the final safety plan.
+    """
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     plan_only = bool(getattr(args, "plan", False))
@@ -8265,28 +8337,30 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
 
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+
     def block(code: str, message: str, **extra: Any) -> None:
         blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-    if not plan_only:
-        block("release_lifecycle_execute_not_implemented", "v0.0.253 supports release lifecycle --plan only; guarded execution is intentionally deferred.")
+
     if not config_payload.get("ok"):
         block("release_config_invalid", "Lifecycle planning requires a valid release config.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
     if not artifact_payload.get("attempted"):
-        block("release_lifecycle_artifact_required", "release lifecycle --plan requires --artifact ZIP.")
+        block("release_lifecycle_artifact_required", "release lifecycle requires --artifact ZIP.")
     elif not artifact_payload.get("ok"):
         block("release_lifecycle_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
     if requested_version and artifact_version and requested_version != artifact_version:
         block("release_lifecycle_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if not plan_only and backend is None:
+        block("release_lifecycle_backend_unavailable", "guarded lifecycle execution requires a Promptbranch backend for Project Source upload and adoption verification")
 
     phase_plan = [
-        {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
-        {"phase": "install", "command": "pb release install --artifact {artifact} --version {version} --target-version {target_version} --upload-source --json", "will_execute_in_plan": False},
-        {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
-        {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
-        {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False},
-        {"phase": "git_safety", "command": "internal git safety planner", "will_execute_in_plan": True},
-        {"phase": "git_commit", "command": "deferred; future explicit --commit flag only", "will_execute_in_plan": False},
-        {"phase": "git_push", "command": "deferred; future explicit --push flag only", "will_execute_in_plan": False},
+        {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
+        {"phase": "install", "command": "pb release install --artifact {artifact} --version {version} --target-version {target_version} --upload-source --json", "will_execute_in_plan": False, "will_execute": not plan_only},
+        {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
+        {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
+        {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
+        {"phase": "git_safety", "command": "internal git safety planner", "will_execute_in_plan": True, "will_execute": True},
+        {"phase": "git_commit", "command": "blocked; future explicit --commit flag only", "will_execute_in_plan": False, "will_execute": False},
+        {"phase": "git_push", "command": "blocked; future explicit --push flag only", "will_execute_in_plan": False, "will_execute": False},
     ]
     rendered_commands = []
     for item in phase_plan:
@@ -8300,13 +8374,13 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         rendered["command"] = command
         rendered_commands.append(rendered)
 
-    payload = {
+    base_payload = {
         "ok": not blockers,
         "action": "release_lifecycle",
-        "status": "planned" if not blockers else "blocked",
+        "status": "planned" if plan_only and not blockers else ("blocked" if blockers else "ready_to_execute"),
         "schema_version": 1,
-        "read_only": True,
-        "plan_only": True,
+        "read_only": plan_only,
+        "plan_only": plan_only,
         "version": requested_version or artifact_version,
         "target_version": target_version,
         "repo_path": str(repo_root),
@@ -8319,6 +8393,8 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "git_safety_plan": git_plan,
         "phase_plan": rendered_commands,
         "phase_count": len(rendered_commands),
+        "phase_results": [],
+        "executed_phase_count": 0,
         "would_install_candidate_zip": True,
         "would_upload_project_source": True,
         "would_run_acceptance_hooks": True,
@@ -8326,27 +8402,123 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "would_sync_policy": True,
         "would_commit_git": False,
         "would_push_git": False,
-        "mutating_actions_executed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
         "policy_sync_performed": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
         "project_source_mutated": False,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
         "blockers": blockers,
         "blocker_codes": [item["code"] for item in blockers],
-        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed.",
+        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed." if plan_only else "Guarded native lifecycle is ready to execute through policy sync. Git commit/push remain blocked.",
     }
-    if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print(f"status={payload.get('status')}")
-        print(f"ok={str(bool(payload.get('ok'))).lower()}")
-        print(f"phase_count={payload.get('phase_count')}")
-    return 0 if payload.get("ok") else 1
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+            print(f"phase_count={payload.get('phase_count')}")
+            print(f"executed_phase_count={payload.get('executed_phase_count')}")
+        return code
+
+    if blockers:
+        return emit({**base_payload, "operator_instruction": "Native lifecycle is blocked before execution. Resolve config/artifact/backend blockers first."}, 1)
+    if plan_only:
+        return emit(base_payload, 0)
+
+    artifact_arg = str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")
+    phase_results: list[dict[str, Any]] = []
+    stop_reason: str | None = None
+
+    doctor_args = _release_lifecycle_namespace(
+        args,
+        artifact=artifact_arg,
+        version=requested_version or artifact_version,
+        target_version=target_version,
+        repo_path=str(repo_root),
+        health_url=getattr(args, "health_url", None),
+        health_timeout=float(getattr(args, "health_timeout", 3.0) or 3.0),
+        source_timeout=float(getattr(args, "source_timeout", 60.0) or 60.0),
+        skip_service_health=bool(getattr(args, "skip_service_health", False)),
+        skip_project_sources=False,
+        keep_open=bool(getattr(args, "keep_open", False)),
+        json=True,
+    )
+    phases = [
+        ("doctor", cmd_release_doctor, doctor_args),
+        ("install", cmd_release_install, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=False, upload_source=True, keep_open=bool(getattr(args, "keep_open", False)), json=True)),
+        ("test", cmd_release_test, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), hook=None, plan=False, hook_timeout=float(getattr(args, "hook_timeout", 3600.0) or 3600.0), stop_on_failure=True, json=True)),
+        ("adopt", cmd_release_adopt, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, acceptance_report=None, repo_path=str(repo_root), plan=False, keep_open=bool(getattr(args, "keep_open", False)), json=True)),
+        ("policy_sync", cmd_release_policy_sync, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=False, json=True)),
+    ]
+    for phase_name, phase_func, phase_args in phases:
+        phase_result = await _release_lifecycle_capture_phase(phase_name, phase_func, backend, phase_args)
+        phase_results.append(phase_result)
+        if not phase_result.get("ok"):
+            stop_reason = f"{phase_name}_failed"
+            break
+
+    final_git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
+    phase_payloads = {item["phase"]: item.get("payload") for item in phase_results if isinstance(item.get("payload"), dict)}
+    install_payload = phase_payloads.get("install") or {}
+    test_payload = phase_payloads.get("test") or {}
+    adopt_payload = phase_payloads.get("adopt") or {}
+    policy_payload = phase_payloads.get("policy_sync") or {}
+    any_mutation = any(bool(payload.get("mutating_actions_executed")) for payload in phase_payloads.values() if isinstance(payload, dict))
+    final_ok = stop_reason is None and len(phase_results) == len(phases)
+    final_status = "release_lifecycle_completed" if final_ok else "release_lifecycle_failed"
+    final_summary = {
+        "candidate": artifact_filename or None,
+        "candidate_version": requested_version or artifact_version,
+        "promptbranch_current": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_ref") if isinstance(adopt_payload, dict) else None),
+        "promptbranch_version": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_version") if isinstance(adopt_payload, dict) else None),
+        "policy_file": str(policy_path),
+        "policy_synced": bool(policy_payload.get("policy_sync_performed")),
+        "project_source_verified": bool((install_payload.get("source_upload_verification") or {}).get("ok")) if isinstance(install_payload, dict) else False,
+        "acceptance_status": test_payload.get("acceptance_status") if isinstance(test_payload, dict) else None,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "git_commit_eligible": bool(final_git_plan.get("commit_eligible")),
+        "git_push_eligible": bool(final_git_plan.get("push_eligible")),
+        "next_normal_version": target_version,
+    }
+    lifecycle_blockers = [] if final_ok else [{"code": stop_reason or "release_lifecycle_failed", "severity": "blocked", "message": "Native lifecycle stopped before all guarded phases completed."}]
+    result = {
+        **base_payload,
+        "ok": final_ok,
+        "status": final_status,
+        "read_only": False,
+        "plan_only": False,
+        "phase_results": phase_results,
+        "executed_phase_count": len(phase_results),
+        "stop_reason": stop_reason,
+        "git_safety_plan": final_git_plan,
+        "final_summary": final_summary,
+        "install_performed": bool(install_payload.get("install_performed")),
+        "candidate_test_performed": bool(test_payload.get("candidate_test_performed")),
+        "adoption_performed": bool(adopt_payload.get("adoption_performed")),
+        "policy_sync_performed": bool(policy_payload.get("policy_sync_performed")),
+        "project_source_mutated": bool(install_payload.get("project_source_mutated")),
+        "artifact_registry_updated": bool(adopt_payload.get("artifact_registry_updated")),
+        "state_artifact_updated": bool(adopt_payload.get("state_artifact_updated")),
+        "state_source_updated": bool(adopt_payload.get("state_source_updated")),
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": any_mutation,
+        "blockers": lifecycle_blockers,
+        "blocker_codes": [item["code"] for item in lifecycle_blockers],
+        "operator_instruction": "Native lifecycle completed through policy sync. Git commit/push were not performed; review git_safety_plan before any manual Git sync." if final_ok else "Native lifecycle stopped on a failed guarded phase. No later phases were executed after the failure.",
+    }
+    return emit(result, 0 if final_ok else 1)
 
 def _release_doctor_consistency(
     *,
@@ -11562,13 +11734,19 @@ def make_parser() -> argparse.ArgumentParser:
     release_policy_sync.add_argument("--plan", action="store_true", help="Show policy sync plan without writing the policy file.")
     release_policy_sync.add_argument("--json", action="store_true")
 
-    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan the native release lifecycle; v0.0.253 is read-only plan only.")
+    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan or execute the guarded native release lifecycle through policy sync; Git commit/push remain blocked.")
     release_lifecycle.add_argument("--artifact", help="Candidate release ZIP to carry through the lifecycle.")
     release_lifecycle.add_argument("--version", help="Candidate release version such as v0.0.253.")
     release_lifecycle.add_argument("--target-version", help="Next target version.")
     release_lifecycle.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
     release_lifecycle.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
-    release_lifecycle.add_argument("--plan", action="store_true", help="Required in v0.0.253: emit lifecycle plan without executing lifecycle mutations.")
+    release_lifecycle.add_argument("--plan", action="store_true", help="Emit lifecycle plan without executing lifecycle mutations.")
+    release_lifecycle.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification phases.")
+    release_lifecycle.add_argument("--hook-timeout", type=float, default=3600.0, help="Timeout in seconds per acceptance hook during lifecycle execution. Defaults to 3600.")
+    release_lifecycle.add_argument("--health-url", help="Service health URL for the doctor phase.")
+    release_lifecycle.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds for the doctor phase. Defaults to 3.")
+    release_lifecycle.add_argument("--source-timeout", type=float, default=60.0, help="Project Source listing timeout in seconds for the doctor phase. Defaults to 60.")
+    release_lifecycle.add_argument("--skip-service-health", action="store_true", help="Skip Docker/service /healthz probe in the lifecycle doctor phase.")
     release_lifecycle.add_argument("--json", action="store_true")
 
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
