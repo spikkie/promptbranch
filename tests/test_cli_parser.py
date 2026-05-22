@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.255" in out
+    assert "0.0.256" in out
     assert "promptbranch" in out
 
 
@@ -438,6 +438,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
         "--execute-until-blocked",
         "--max-steps", "3",
         "--require-complete",
+        "--require-real-candidate",
         "--step-timeout", "123",
         "--json",
     ])
@@ -450,6 +451,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_candidate_run.execute_until_blocked is True
     assert artifact_candidate_run.max_steps == 3
     assert artifact_candidate_run.require_complete is True
+    assert artifact_candidate_run.require_real_candidate is True
     assert artifact_candidate_run.step_timeout == 123.0
     assert artifact_candidate_run.json is True
 
@@ -666,7 +668,7 @@ def test_parser_accepts_release_doctor_command() -> None:
     args = parser.parse_args([
         "release", "doctor",
         "--version", "v0.0.247",
-        "--target-version", "v0.0.255",
+        "--target-version", "v0.0.256",
         "--artifact", "chatgpt_claudecode_workflow_v0.0.247.zip",
         "--repo-path", "/tmp/repo",
         "--skip-service-health",
@@ -677,7 +679,7 @@ def test_parser_accepts_release_doctor_command() -> None:
     assert args.command == "release"
     assert args.release_command == "doctor"
     assert args.version == "v0.0.247"
-    assert args.target_version == "v0.0.255"
+    assert args.target_version == "v0.0.256"
     assert args.artifact == "chatgpt_claudecode_workflow_v0.0.247.zip"
     assert args.repo_path == "/tmp/repo"
     assert args.skip_service_health is True
@@ -691,9 +693,9 @@ def test_parser_accepts_release_install_plan_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "install",
-        "--artifact", "chatgpt_claudecode_workflow_v0.0.255.zip",
-        "--version", "v0.0.255",
-        "--target-version", "v0.0.255",
+        "--artifact", "chatgpt_claudecode_workflow_v0.0.256.zip",
+        "--version", "v0.0.256",
+        "--target-version", "v0.0.256",
         "--config", ".promptbranch-release.yml",
         "--repo-path", "/tmp/repo",
         "--plan",
@@ -704,9 +706,9 @@ def test_parser_accepts_release_install_plan_command() -> None:
 
     assert args.command == "release"
     assert args.release_command == "install"
-    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.255.zip"
-    assert args.version == "v0.0.255"
-    assert args.target_version == "v0.0.255"
+    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.256.zip"
+    assert args.version == "v0.0.256"
+    assert args.target_version == "v0.0.256"
     assert args.config == ".promptbranch-release.yml"
     assert args.repo_path == "/tmp/repo"
     assert args.plan is True
@@ -719,9 +721,9 @@ def test_parser_accepts_release_test_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "test",
-        "--artifact", "chatgpt_claudecode_workflow_v0.0.255.zip",
-        "--version", "v0.0.255",
-        "--target-version", "v0.0.255",
+        "--artifact", "chatgpt_claudecode_workflow_v0.0.256.zip",
+        "--version", "v0.0.256",
+        "--target-version", "v0.0.256",
         "--config", ".promptbranch-release.yml",
         "--repo-path", "/tmp/repo",
         "--hook", "preflight",
@@ -733,9 +735,9 @@ def test_parser_accepts_release_test_command() -> None:
 
     assert args.command == "release"
     assert args.release_command == "test"
-    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.255.zip"
-    assert args.version == "v0.0.255"
-    assert args.target_version == "v0.0.255"
+    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.256.zip"
+    assert args.version == "v0.0.256"
+    assert args.target_version == "v0.0.256"
     assert args.config == ".promptbranch-release.yml"
     assert args.repo_path == "/tmp/repo"
     assert args.hook == ["preflight", "local_acceptance"]
@@ -748,10 +750,10 @@ def test_parser_accepts_release_adopt_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "adopt",
-        "--artifact", "chatgpt_claudecode_workflow_v0.0.255.zip",
-        "--version", "v0.0.255",
-        "--target-version", "v0.0.255",
-        "--acceptance-report", ".pb_profile/release_acceptance/v0.0.255/release_acceptance.fixture.json",
+        "--artifact", "chatgpt_claudecode_workflow_v0.0.256.zip",
+        "--version", "v0.0.256",
+        "--target-version", "v0.0.256",
+        "--acceptance-report", ".pb_profile/release_acceptance/v0.0.256/release_acceptance.fixture.json",
         "--repo-path", "/tmp/repo",
         "--plan",
         "--keep-open",
@@ -760,9 +762,9 @@ def test_parser_accepts_release_adopt_command() -> None:
 
     assert args.command == "release"
     assert args.release_command == "adopt"
-    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.255.zip"
-    assert args.version == "v0.0.255"
-    assert args.target_version == "v0.0.255"
+    assert args.artifact == "chatgpt_claudecode_workflow_v0.0.256.zip"
+    assert args.version == "v0.0.256"
+    assert args.target_version == "v0.0.256"
     assert args.acceptance_report.endswith("release_acceptance.fixture.json")
     assert args.repo_path == "/tmp/repo"
     assert args.plan is True

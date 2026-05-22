@@ -20,6 +20,7 @@ skip_artifact_intake=0
 skip_candidate_run=0
 require_candidate_mvp_complete=0
 complete_candidate_mvp=0
+require_real_candidate_mvp=0
 candidate_mvp_max_steps="${PROMPTBRANCH_CANDIDATE_MVP_MAX_STEPS:-4}"
 candidate_run_step_timeout_seconds="${PROMPTBRANCH_CANDIDATE_RUN_STEP_TIMEOUT_SECONDS:-3600}"
 skip_tests=0
@@ -61,6 +62,10 @@ Options:
                               Run candidate-run with --execute-until-blocked --require-complete
                               after protocol/intake gates. This can execute existing allowlisted
                               candidate lifecycle steps and stops fail-closed.
+      --require-real-candidate-mvp
+                              Add --require-real-candidate to candidate-run. The no_artifact
+                              protocol-smoke precondition is then a hard failure, not a
+                              normalized terminal state.
       --candidate-mvp-max-steps N
                               Maximum candidate-run lifecycle steps for --complete-candidate-mvp.
                               Default: ${candidate_mvp_max_steps}.
@@ -195,6 +200,7 @@ while [[ $# -gt 0 ]]; do
     --skip-candidate-run) skip_candidate_run=1; shift ;;
     --require-candidate-mvp-complete) require_candidate_mvp_complete=1; shift ;;
     --complete-candidate-mvp) complete_candidate_mvp=1; require_candidate_mvp_complete=1; shift ;;
+    --require-real-candidate-mvp) require_real_candidate_mvp=1; shift ;;
     --candidate-mvp-max-steps)
       [[ $# -ge 2 ]] || { echo "ERROR: --candidate-mvp-max-steps requires a value" >&2; exit 2; }
       candidate_mvp_max_steps="$2"
@@ -430,9 +436,15 @@ run_artifact_candidate_run_step() {
     local candidate_run_label="artifact candidate-run plan (${phase})"
     if [[ "${complete_candidate_mvp}" -eq 1 ]]; then
       candidate_run_args=(artifact candidate-run --execute-until-blocked --max-steps "${candidate_mvp_max_steps}" --step-timeout "${candidate_run_step_timeout_seconds}" --require-complete --json)
+      if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
+        candidate_run_args+=(--require-real-candidate)
+      fi
       candidate_run_label="artifact candidate-run complete-candidate-mvp (${phase})"
     elif [[ "${require_candidate_mvp_complete}" -eq 1 ]]; then
       candidate_run_args=(artifact candidate-run --require-complete --json)
+      if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
+        candidate_run_args+=(--require-real-candidate)
+      fi
       candidate_run_label="artifact candidate-run require-complete (${phase})"
     fi
     set +e
@@ -441,7 +453,7 @@ run_artifact_candidate_run_step() {
     local candidate_rc=$?
     set -u
     if [[ "${candidate_rc}" -ne 0 ]]; then
-      if [[ "${complete_candidate_mvp}" -eq 1 ]] && candidate_run_no_artifact_precondition "${candidate_run_log}"; then
+      if [[ "${complete_candidate_mvp}" -eq 1 && "${require_real_candidate_mvp}" -eq 0 ]] && candidate_run_no_artifact_precondition "${candidate_run_log}"; then
         echo "artifact candidate-run complete-candidate-mvp stopped at no_artifact precondition; treating this as a valid no-candidate terminal state for post-release validation"
         rc_candidate_run=0
       else
@@ -685,6 +697,7 @@ python3 - \
   "${require_adopted_baseline}" \
   "${require_candidate_mvp_complete}" \
   "${complete_candidate_mvp}" \
+  "${require_real_candidate_mvp}" \
   "${candidate_mvp_max_steps}" \
   "${candidate_run_step_timeout_seconds}" \
   "${adopt_performed}" \
@@ -718,6 +731,7 @@ from pathlib import Path
     require_adopted_baseline,
     require_candidate_mvp_complete,
     complete_candidate_mvp,
+    require_real_candidate_mvp,
     candidate_mvp_max_steps,
     candidate_run_step_timeout_seconds,
     adopt_performed,
@@ -782,6 +796,7 @@ summary = {
     "require_adopted_baseline": bool(int(require_adopted_baseline)),
     "require_candidate_mvp_complete": bool(int(require_candidate_mvp_complete)),
     "complete_candidate_mvp": bool(int(complete_candidate_mvp)),
+    "require_real_candidate_mvp": bool(int(require_real_candidate_mvp)),
     "candidate_mvp_max_steps": int(candidate_mvp_max_steps),
     "candidate_run_step_timeout_seconds": float(candidate_run_step_timeout_seconds),
     "steps": {
@@ -793,6 +808,7 @@ summary = {
             "rc": int(rc_candidate_run),
             "phase": candidate_run_phase,
             "require_complete": bool(int(require_candidate_mvp_complete)),
+            "require_real_candidate": bool(int(require_real_candidate_mvp)),
             **candidate_run_summary,
         },
         "test_full": {"rc": int(rc_test_full)},

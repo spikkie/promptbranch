@@ -4550,7 +4550,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
@@ -10523,6 +10523,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     timeout_seconds = float(getattr(args, "step_timeout", 3600.0) or 3600.0)
     max_steps = max(1, int(getattr(args, "max_steps", 4) or 4))
     require_complete = bool(getattr(args, "require_complete", False))
+    require_real_candidate = bool(getattr(args, "require_real_candidate", False))
 
     completion_report = _candidate_run_mvp_completion_report(
         backend,
@@ -10543,6 +10544,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "execute_until_blocked": execute_until_blocked,
         "max_steps": max_steps,
         "require_complete": require_complete,
+        "require_real_candidate": require_real_candidate,
         "mvp_completion": completion_report,
         "download_performed": False,
         "verification_performed": False,
@@ -10589,7 +10591,23 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "operator_instruction": "Plan-only candidate lifecycle runner. Re-run with --execute-next for one step or --execute-until-blocked for a bounded lifecycle cycle.",
     }
 
-    if execute and execute_until_blocked:
+    if require_real_candidate and kind == "no_artifact_candidate":
+        precondition = next_payload.get("candidate_intake_precondition") if isinstance(next_payload.get("candidate_intake_precondition"), dict) else None
+        payload.update({
+            "ok": False,
+            "status": "candidate_run_real_candidate_required",
+            "error": "a real release-candidate artifact is required, but the latest validated protocol reply has no artifact candidate",
+            "candidate_intake_precondition": precondition,
+            "mutating_actions_executed": False,
+            "download_performed": False,
+            "verification_performed": False,
+            "migration_performed": False,
+            "candidate_test_performed": False,
+            "adoption_performed": False,
+            "operator_instruction": "Run a protocol ask that returns exactly one expected ZIP candidate, then rerun candidate-run with --execute-until-blocked --require-complete --require-real-candidate.",
+        })
+        code = 1
+    elif execute and execute_until_blocked:
         payload.update({
             "ok": False,
             "status": "candidate_run_invalid_mode",
@@ -12249,6 +12267,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_run.add_argument("--execute-until-blocked", action="store_true", help="Execute allowlisted lifecycle commands until accepted, blocked, failed, or --max-steps is reached.")
     artifact_candidate_run.add_argument("--max-steps", type=int, default=4, help="Maximum number of lifecycle steps for --execute-until-blocked. Defaults to 4.")
     artifact_candidate_run.add_argument("--require-complete", action="store_true", help="Return nonzero unless the artifact-candidate MVP lifecycle completion proof is satisfied after planning or execution.")
+    artifact_candidate_run.add_argument("--require-real-candidate", action="store_true", help="Fail closed when the latest validated protocol reply is no_artifact; require a real ZIP candidate before candidate-run can pass.")
     artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for each executed lifecycle step. Defaults to 3600.")
     artifact_candidate_run.add_argument("--json", action="store_true")
 
