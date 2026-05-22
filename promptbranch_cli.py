@@ -7430,6 +7430,113 @@ def _record_release_acceptance_report(repo_root: Path, *, version: str, report: 
     return record_path
 
 
+def _release_acceptance_report_paths(repo_root: Path, *, version: str | None = None) -> list[Path]:
+    root = _release_test_records_dir(repo_root)
+    paths: list[Path] = []
+    if version:
+        version_key = _candidate_version_normalized(version) or _safe_artifact_inbox_component(version, fallback="unknown")
+        paths.extend((root / version_key).glob("release_acceptance.*.json"))
+    else:
+        paths.extend(root.glob("*/release_acceptance.*.json"))
+    return sorted([path for path in paths if path.is_file()], key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
+
+
+def _load_release_acceptance_report(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return {"ok": False, "status": "release_acceptance_report_read_error", "path": str(path), "error": str(exc)}
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "status": "release_acceptance_report_json_invalid", "path": str(path), "error": str(exc)}
+    if not isinstance(payload, dict):
+        return {"ok": False, "status": "release_acceptance_report_not_mapping", "path": str(path)}
+    return {"ok": True, "status": "release_acceptance_report_loaded", "path": str(path), "report": payload}
+
+
+def _select_release_acceptance_report(repo_root: Path, *, version: str | None, explicit_path: str | None) -> dict[str, Any]:
+    if explicit_path:
+        path = Path(explicit_path).expanduser()
+        if not path.is_absolute():
+            path = repo_root / path
+        return _load_release_acceptance_report(path.resolve())
+    paths = _release_acceptance_report_paths(repo_root, version=version)
+    if not paths:
+        return {
+            "ok": False,
+            "status": "release_acceptance_report_missing",
+            "version": version,
+            "search_root": str(_release_test_records_dir(repo_root)),
+            "error": "no structured release acceptance report exists for the requested version",
+        }
+    loaded = _load_release_acceptance_report(paths[0])
+    return {**loaded, "selected_by": "latest_for_version", "candidate_count": len(paths)}
+
+
+def _release_acceptance_report_gate(
+    report: dict[str, Any],
+    *,
+    version: str | None,
+    artifact: dict[str, Any],
+) -> dict[str, Any]:
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    if report.get("schema") != "promptbranch.release.acceptance_report":
+        block("release_acceptance_report_schema_invalid", "Acceptance report schema is not promptbranch.release.acceptance_report.", schema=report.get("schema"))
+    if str(report.get("schema_version") or "") != "1.0":
+        block("release_acceptance_report_schema_version_invalid", "Acceptance report schema_version must be 1.0.", schema_version=report.get("schema_version"))
+    if report.get("accepted") is not True or report.get("status") != "accepted":
+        block("release_acceptance_report_not_green", "Acceptance report is not green.", accepted=report.get("accepted"), status=report.get("status"))
+
+    report_version = _candidate_version_normalized(report.get("version"))
+    requested_version = _candidate_version_normalized(version)
+    artifact_version = _candidate_version_normalized(artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
+    if requested_version and report_version and requested_version != report_version:
+        block("release_acceptance_report_version_mismatch", "Acceptance report version does not match requested version.", requested_version=requested_version, report_version=report_version)
+    if artifact_version and report_version and artifact_version != report_version:
+        block("release_acceptance_report_artifact_version_mismatch", "Acceptance report version does not match artifact version.", artifact_version=artifact_version, report_version=report_version)
+
+    report_artifact = report.get("artifact") if isinstance(report.get("artifact"), dict) else {}
+    report_filename = str(report_artifact.get("filename") or "")
+    artifact_filename = str(artifact.get("filename") or "")
+    if report_filename and artifact_filename and report_filename != artifact_filename:
+        block("release_acceptance_report_artifact_filename_mismatch", "Acceptance report artifact filename does not match selected artifact.", report_filename=report_filename, artifact_filename=artifact_filename)
+
+    report_sha = str(report_artifact.get("sha256") or "")
+    artifact_sha = str(artifact.get("sha256") or "")
+    if report_sha and artifact_sha and report_sha != artifact_sha:
+        block("release_acceptance_report_artifact_sha_mismatch", "Acceptance report artifact sha256 does not match selected artifact.", report_sha256=report_sha, artifact_sha256=artifact_sha)
+    if not report_sha:
+        warn("release_acceptance_report_sha_missing", "Acceptance report does not include artifact sha256; artifact identity is checked by filename/version only.")
+
+    hook_results = report.get("hook_results") if isinstance(report.get("hook_results"), list) else []
+    if not hook_results:
+        block("release_acceptance_report_no_hooks", "Acceptance report has no hook results.")
+    failed_hooks = [item.get("hook") for item in hook_results if isinstance(item, dict) and item.get("ok") is not True]
+    if failed_hooks:
+        block("release_acceptance_report_failed_hooks", "Acceptance report contains failed hooks.", failed_hooks=failed_hooks)
+
+    return {
+        "ok": not blockers,
+        "status": "release_acceptance_report_green" if not blockers else "release_acceptance_report_blocked",
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "report_version": report_version,
+        "artifact_version": artifact_version,
+        "artifact_filename": artifact.get("filename"),
+        "hook_count": len(hook_results),
+    }
+
+
 async def cmd_release_test(backend: Any, args: argparse.Namespace) -> int:
     """Run configured release acceptance hooks and persist a structured report.
 
@@ -7631,6 +7738,190 @@ async def cmd_release_test(backend: Any, args: argparse.Namespace) -> int:
         ),
     }
     return emit(payload, 0 if all_passed else 1)
+
+
+async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
+    """Adopt a release ZIP only after a green structured acceptance report."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    registry = _artifact_registry_from_args(args)
+    project_url = _artifact_state_project_url(backend)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
+    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+
+    report_selection = _select_release_acceptance_report(
+        repo_root,
+        version=requested_version or artifact_version,
+        explicit_path=getattr(args, "acceptance_report", None),
+    )
+    report = report_selection.get("report") if isinstance(report_selection.get("report"), dict) else {}
+    report_gate = _release_acceptance_report_gate(report, version=requested_version or artifact_version, artifact=artifact_payload) if report_selection.get("ok") else {
+        "ok": False,
+        "status": report_selection.get("status"),
+        "severity": "blocked",
+        "blockers": [{"code": str(report_selection.get("status") or "release_acceptance_report_unavailable"), "severity": "blocked", "message": str(report_selection.get("error") or "release acceptance report could not be loaded")}],
+        "blocker_codes": [str(report_selection.get("status") or "release_acceptance_report_unavailable")],
+        "warnings": [],
+        "warning_codes": [],
+    }
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    if not artifact_payload.get("attempted"):
+        block("release_adopt_artifact_required", "release adopt requires --artifact ZIP.")
+    elif not artifact_payload.get("ok"):
+        block("release_adopt_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_adopt_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if not report_gate.get("ok"):
+        blockers.extend(report_gate.get("blockers") or [])
+    warnings.extend(report_gate.get("warnings") or [])
+    if not project_url:
+        block("release_adopt_workspace_not_selected", "select a workspace before release adoption so artifact/source state can be updated")
+
+    source_payload: dict[str, Any] | None = None
+    matched_source: dict[str, Any] | None = None
+    source_verified = False
+    source_list_attempted = False
+    if artifact_filename and not blockers:
+        source_list_attempted = True
+        try:
+            source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+        except Exception as exc:  # pragma: no cover - defensive around external browser/service boundary
+            source_result = _operation_error_payload("release_adopt_source_list", exc)
+        matched_sources, source_payload = _project_sources_matching_filename(source_result, artifact_filename)
+        if not bool(source_payload.get("ok")):
+            block("release_adopt_source_list_unavailable", "could not verify Project Sources before adoption", source_list_status=source_payload.get("status"))
+        elif len(matched_sources) != 1:
+            block("release_adopt_project_source_match_count_invalid", f"expected exactly one matching Project Source named {artifact_filename}, found {len(matched_sources)}", matching_expected_count=len(matched_sources))
+        else:
+            source_verified = True
+            matched_source = matched_sources[0]
+
+    plan_only = bool(getattr(args, "plan", False))
+    base_payload = {
+        "ok": False,
+        "action": "release_adopt",
+        "status": "release_adopt_blocked" if blockers else ("planned" if plan_only else "ready_to_adopt"),
+        "version": requested_version or artifact_version,
+        "target_version": target_version,
+        "repo_path": str(repo_root),
+        "project_url": project_url,
+        "artifact": artifact_payload,
+        "artifact_ref": artifact_filename or None,
+        "artifact_version": artifact_version,
+        "acceptance_report_selection": {k: v for k, v in report_selection.items() if k != "report"},
+        "acceptance_report": report if report_selection.get("ok") else None,
+        "acceptance_report_gate": report_gate,
+        "source_list_attempted": source_list_attempted,
+        "source_verified": source_verified,
+        "source_list": source_payload,
+        "matched_source": matched_source,
+        "read_only": plan_only,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "not_performed": [
+            "project_source_mutation",
+            "release_acceptance_hook_execution",
+            "git_commit",
+            "git_push",
+            "policy_sync",
+        ],
+    }
+
+    def emit(payload: dict[str, Any], code: int) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+            if payload.get("error"):
+                print(f"error={payload.get('error')}")
+            if payload.get("artifact_ref"):
+                print(f"artifact_ref={payload.get('artifact_ref')}")
+        return code
+
+    if blockers:
+        return emit({**base_payload, "operator_instruction": "Release adoption is blocked. A verified artifact, exactly one matching Project Source, selected workspace, and green structured acceptance report are required."}, 1)
+
+    if plan_only:
+        return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release adopt plan. Green acceptance report and Project Source visibility are verified; no local artifact/source state was advanced."}, 0)
+
+    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser().resolve()
+    zip_check = artifact_payload.get("verification") if isinstance(artifact_payload.get("verification"), dict) else verify_zip_artifact(artifact_path)
+    record = ArtifactRecord(
+        path=str(artifact_path),
+        filename=artifact_filename,
+        kind="adopted_release",
+        version=artifact_version,
+        repo_path=None,
+        sha256=str(artifact_payload.get("sha256") or zip_check.get("sha256") or ""),
+        size_bytes=int(artifact_payload.get("size_bytes") or zip_check.get("size_bytes") or artifact_path.stat().st_size),
+        file_count=int(artifact_payload.get("entry_count") or zip_check.get("entry_count") or 0),
+        created_at=utc_now(),
+        source_ref=artifact_filename,
+        project_url=project_url,
+    )
+    artifact_record = registry.add(record)
+    _state_store_from_args(args).remember_artifact(
+        project_url=project_url,
+        artifact_ref=artifact_filename,
+        artifact_version=artifact_version,
+        source_ref=artifact_filename,
+        source_version=artifact_version,
+    )
+    current_payload = _artifact_current_payload(backend, registry)
+    current_ok, current_checks = _report_artifact_current_matches_candidate(
+        current_payload,
+        filename=artifact_filename,
+        version=artifact_version or "",
+        require_runtime_code_match=False,
+    )
+    result = {
+        **base_payload,
+        "ok": current_ok,
+        "status": "release_adopted" if current_ok else "release_adoption_verification_failed",
+        "local_artifact": artifact_record,
+        "artifact_current": current_payload,
+        "current_checks": current_checks,
+        "adoption_performed": True,
+        "artifact_registry_updated": True,
+        "state_artifact_updated": bool(current_checks.get("state_artifact_ref_matches_candidate") and current_checks.get("state_artifact_version_matches_candidate")),
+        "state_source_updated": bool(current_checks.get("state_source_ref_matches_candidate") and current_checks.get("state_source_version_matches_candidate")),
+        "project_source_mutated": False,
+        "mutating_actions_executed": True,
+        "mutated_local_state_only": True,
+        "operator_instruction": (
+            "Release artifact was adopted as the local artifact/source baseline after green structured acceptance report and Project Source verification."
+            if current_ok else
+            "Release adoption was attempted, but artifact current verification failed; inspect current_checks before continuing."
+        ),
+    }
+    if not current_ok:
+        result["blockers"] = [{"code": "release_adopt_current_mismatch", "severity": "blocked", "message": "artifact current does not match adopted release after local state update"}]
+        result["blocker_codes"] = ["release_adopt_current_mismatch"]
+    return emit(result, 0 if current_ok else 1)
+
 
 def _release_doctor_consistency(
     *,
@@ -8047,6 +8338,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_install(backend, args)
     if args.release_command == "test":
         return await cmd_release_test(backend, args)
+    if args.release_command == "adopt":
+        return await cmd_release_adopt(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -10872,6 +11165,16 @@ def make_parser() -> argparse.ArgumentParser:
     release_test.add_argument("--stop-on-failure", action="store_true", default=True, help="Stop after the first failing hook. Default: true.")
     release_test.add_argument("--no-stop-on-failure", dest="stop_on_failure", action="store_false", help="Continue running later hooks after a hook fails.")
     release_test.add_argument("--json", action="store_true")
+
+    release_adopt = release_subparsers.add_parser("adopt", help="Adopt a release artifact only after a green structured acceptance report and Project Source verification.")
+    release_adopt.add_argument("--artifact", required=True, help="Candidate release ZIP to adopt as the local artifact/source baseline.")
+    release_adopt.add_argument("--version", help="Expected candidate version such as v0.0.252.")
+    release_adopt.add_argument("--target-version", help="Optional next target version for operator context.")
+    release_adopt.add_argument("--acceptance-report", help="Explicit structured acceptance report path. Defaults to the latest report for --version under .pb_profile/release_acceptance/.")
+    release_adopt.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_adopt.add_argument("--plan", action="store_true", help="Verify adoption preconditions without mutating artifact/source state.")
+    release_adopt.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
+    release_adopt.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
