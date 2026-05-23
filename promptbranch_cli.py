@@ -1933,6 +1933,67 @@ def _artifact_inbox_dir(*, profile_dir: str | Path, conversation_id: Any, answer
     return root / conversation_component / answer_component / request_component
 
 
+
+def _artifact_download_transport(url: str | None) -> dict[str, Any]:
+    """Classify whether an artifact reference is directly downloadable.
+
+    ChatGPT session-local artifact links may appear as sandbox:/mnt/data/...
+    references. Those are valid inside the assistant sandbox, but they are not
+    directly fetchable by the operator's local Promptbranch runtime. They must
+    fail closed with an explicit handoff instead of being reported as a generic
+    download failure.
+    """
+
+    text = str(url or "").strip()
+    if not text:
+        return {
+            "ok": False,
+            "status": "artifact_download_url_missing",
+            "scheme": None,
+            "direct_download_supported": False,
+            "requires_browser_context": False,
+            "manual_import_supported": True,
+            "reason": "selected candidate has no download.url",
+        }
+    parsed = urllib.parse.urlparse(text)
+    scheme = (parsed.scheme or "file").lower()
+    direct_supported = scheme in {"file", "http", "https"}
+    requires_browser_context = scheme == "sandbox"
+    if direct_supported:
+        return {
+            "ok": True,
+            "status": "artifact_download_url_supported",
+            "scheme": scheme,
+            "direct_download_supported": True,
+            "requires_browser_context": False,
+            "manual_import_supported": True,
+            "url": text,
+        }
+    reason = (
+        "sandbox artifact references are ChatGPT-session-local and require browser/session-context download before local import"
+        if requires_browser_context
+        else f"unsupported artifact download URL scheme: {scheme}"
+    )
+    return {
+        "ok": False,
+        "status": "artifact_download_url_unsupported",
+        "scheme": scheme,
+        "direct_download_supported": False,
+        "requires_browser_context": requires_browser_context,
+        "manual_import_supported": True,
+        "url": text,
+        "reason": reason,
+    }
+
+
+def _artifact_manual_import_command(filename: str) -> str:
+    safe_filename = Path(filename).name or "artifact.zip"
+    return (
+        "pb artifact intake --from-last-answer "
+        f"--local-file /path/to/{safe_filename} "
+        "--verify --migrate --json"
+    )
+
 def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: float) -> None:
     parsed = urllib.parse.urlparse(url)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2295,7 +2356,7 @@ def _path_is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any) -> dict[str, Any]:
-    if result.get("status") not in {"verified_candidate", "download_verified"} or not result.get("verification_performed") or not result.get("ok"):
+    if result.get("status") not in {"verified_candidate", "download_verified", "manual_import_verified"} or not result.get("verification_performed") or not result.get("ok"):
         return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be successfully verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
@@ -2407,6 +2468,212 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
     }
 
 
+
+def _manual_import_selected_artifact_candidate(
+    result: dict[str, Any],
+    *,
+    profile_dir: str | Path,
+    conversation_id: Any,
+    answer_id: Any,
+    local_file: str | Path,
+) -> dict[str, Any]:
+    """Copy a browser/session-downloaded artifact into artifact_inbox.
+
+    This is the explicit handoff path for sandbox:/ artifacts. It preserves the
+    normal candidate validation, verification and migration flow while avoiding
+    any claim that the local process directly downloaded the ChatGPT sandbox URL.
+    """
+
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found"} or not isinstance(result.get("selected_candidate"), dict):
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_candidate_not_selected",
+            "manual_import_performed": False,
+            "manual_import_error": "a single valid candidate must be selected before manual import",
+            "download_performed": False,
+            "intake_stage": "candidate_extraction",
+        }
+    candidate = dict(result["selected_candidate"])
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    if not filename:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_wrong_filename",
+            "manual_import_performed": False,
+            "manual_import_error": "selected candidate filename must be a basename ending in .zip",
+            "download_performed": False,
+            "intake_stage": "candidate_extraction",
+        }
+    kind = str(candidate.get("kind") or "").strip().lower()
+    if kind and kind != "zip":
+        return {
+            **result,
+            "ok": False,
+            "status": "unsupported_artifact_type",
+            "manual_import_performed": False,
+            "manual_import_error": "selected candidate kind must be zip",
+            "download_performed": False,
+            "intake_stage": "manual_import_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+    role = str(candidate.get("role") or "").strip()
+    if role and role not in {"candidate_release", "repair_candidate"}:
+        return {
+            **result,
+            "ok": False,
+            "status": "unsupported_artifact_role",
+            "manual_import_performed": False,
+            "manual_import_error": "selected candidate role must be candidate_release or repair_candidate",
+            "download_performed": False,
+            "intake_stage": "manual_import_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    source_path = Path(local_file).expanduser().resolve()
+    if not source_path.is_file():
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_manual_import_source_missing",
+            "manual_import_performed": False,
+            "manual_import_error": f"manual import file does not exist: {source_path}",
+            "manual_import_source_path": str(source_path),
+            "download_performed": False,
+            "intake_stage": "manual_import_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+    if source_path.suffix.lower() != ".zip":
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_manual_import_not_zip",
+            "manual_import_performed": False,
+            "manual_import_error": "manual import file must be a ZIP artifact",
+            "manual_import_source_path": str(source_path),
+            "download_performed": False,
+            "intake_stage": "manual_import_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    inbox_dir = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=result.get("reply_request_id"),
+    )
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    target_path = inbox_dir / filename
+    overwritten = target_path.exists()
+    try:
+        tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+        shutil.copy2(source_path, tmp_path)
+        tmp_path.replace(target_path)
+        metadata = _artifact_file_metadata(target_path)
+    except OSError as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_manual_import_failed",
+            "manual_import_performed": False,
+            "manual_import_error": str(exc),
+            "manual_import_source_path": str(source_path),
+            "artifact_inbox_dir": str(inbox_dir),
+            "download_performed": False,
+            "intake_stage": "manual_import_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+    if metadata["size_bytes"] <= 0:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_manual_import_empty",
+            "manual_import_performed": True,
+            "manual_import": metadata,
+            "manual_import_source_path": str(source_path),
+            "download": metadata,
+            "download_performed": False,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "manual_imported",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    transport = {
+        "ok": True,
+        "status": "artifact_manual_imported",
+        "scheme": "file",
+        "direct_download_supported": False,
+        "requires_browser_context": False,
+        "manual_import_supported": True,
+        "mode": "manual_import",
+        "source_path": str(source_path),
+    }
+    intake_record = {
+        "schema": "promptbranch.artifact.intake.manual_import",
+        "schema_version": "1.0",
+        "status": "manual_imported",
+        "candidate": candidate,
+        "manual_import": metadata,
+        "manual_import_source_path": str(source_path),
+        "download": metadata,
+        "download_url": _selected_candidate_download_url(candidate),
+        "download_transport": transport,
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "created_at": utc_now(),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    try:
+        (inbox_dir / "intake.json").write_text(json.dumps(intake_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_manual_import_metadata_failed",
+            "manual_import_performed": True,
+            "manual_import": metadata,
+            "manual_import_error": str(exc),
+            "manual_import_source_path": str(source_path),
+            "download": metadata,
+            "download_performed": False,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "manual_imported",
+        }
+
+    return {
+        **result,
+        "ok": True,
+        "status": "manual_imported",
+        "intake_stage": "manual_imported",
+        "manual_import_performed": True,
+        "manual_import": metadata,
+        "manual_import_source_path": str(source_path),
+        "manual_import_source_filename": source_path.name,
+        "manual_import_filename_matches_candidate": source_path.name == filename,
+        "download_performed": False,
+        "download": metadata,
+        "download_url": _selected_candidate_download_url(candidate),
+        "download_transport": transport,
+        "download_overwrote_existing": overwritten,
+        "artifact_inbox_dir": str(inbox_dir),
+        "intake_record_path": str(inbox_dir / "intake.json"),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "operator_instruction": "Artifact was manually imported into .pb_profile/artifact_inbox. Run/continue with --verify --migrate to validate and register it as a candidate_release.",
+    }
+
 def _download_selected_artifact_candidate(
     result: dict[str, Any],
     *,
@@ -2478,8 +2745,37 @@ def _download_selected_artifact_candidate(
             "ok": False,
             "status": "artifact_download_url_missing",
             "download_performed": False,
+            "manual_import_performed": False,
             "download_error": "selected candidate has no download.url",
             "intake_stage": "download_requested",
+        }
+    transport = _artifact_download_transport(url)
+    if not transport.get("direct_download_supported"):
+        handoff = {
+            "required": True,
+            "reason": transport.get("reason"),
+            "artifact_ref": url,
+            "filename": filename,
+            "manual_import_command": _artifact_manual_import_command(filename),
+        }
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_url_unsupported",
+            "download_performed": False,
+            "manual_import_performed": False,
+            "download_error": transport.get("reason") or f"unsupported artifact download URL scheme: {transport.get('scheme')}",
+            "download_url": url,
+            "download_url_scheme": transport.get("scheme"),
+            "download_transport": transport,
+            "requires_browser_context": bool(transport.get("requires_browser_context")),
+            "manual_import_supported": True,
+            "browser_download_handoff": handoff,
+            "manual_import_command": handoff["manual_import_command"],
+            "intake_stage": "download_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+            "operator_instruction": "Artifact URL is not directly downloadable by the local runtime. Download it through the browser/session context, then rerun artifact intake with --local-file.",
         }
     inbox_dir = _artifact_inbox_dir(
         profile_dir=profile_dir,
@@ -2523,6 +2819,7 @@ def _download_selected_artifact_candidate(
         "candidate": candidate,
         "download": metadata,
         "download_url": url,
+        "download_transport": transport,
         "reply_request_id": result.get("reply_request_id"),
         "reply_correlation_id": result.get("reply_correlation_id"),
         "conversation_id": conversation_id,
@@ -2554,6 +2851,7 @@ def _download_selected_artifact_candidate(
         "download_performed": True,
         "download": metadata,
         "download_url": url,
+        "download_transport": transport,
         "download_overwrote_existing": overwritten,
         "artifact_inbox_dir": str(inbox_dir),
         "intake_record_path": str(inbox_dir / "intake.json"),
@@ -2578,7 +2876,7 @@ def _verify_intake_artifact_candidate(
     """
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
-    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded"} or candidate is None:
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded", "manual_imported"} or candidate is None:
         return {
             **result,
             "ok": False,
@@ -2654,9 +2952,13 @@ def _verify_intake_artifact_candidate(
 
     # Prefer specific semantic errors over the generic artifact_zip_invalid when possible.
     if not verification_errors:
-        status = "download_verified" if result.get("download_performed") else "verified_candidate"
+        if result.get("manual_import_performed"):
+            status = "manual_import_verified"
+            intake_stage = "manual_imported_verified"
+        else:
+            status = "download_verified" if result.get("download_performed") else "verified_candidate"
+            intake_stage = "downloaded_verified" if result.get("download_performed") else "verified"
         ok = True
-        intake_stage = "downloaded_verified" if result.get("download_performed") else "verified"
     else:
         status = next((item for item in verification_errors if item != "artifact_zip_invalid"), verification_errors[0])
         ok = False
@@ -2780,6 +3082,15 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
         lines.append(f"downloaded={download.get('path')} size={download.get('size_bytes')} sha256={download.get('sha256')}")
     if result.get("download_error"):
         lines.append(f"download_error={result.get('download_error')}")
+    if result.get("requires_browser_context"):
+        lines.append("requires_browser_context=true")
+    if result.get("manual_import_command"):
+        lines.append(f"manual_import_command={result.get('manual_import_command')}")
+    if result.get("manual_import_performed"):
+        manual_import = result.get("manual_import") if isinstance(result.get("manual_import"), dict) else {}
+        lines.append(f"manual_imported={manual_import.get('path')} size={manual_import.get('size_bytes')} sha256={manual_import.get('sha256')}")
+    if result.get("manual_import_error"):
+        lines.append(f"manual_import_error={result.get('manual_import_error')}")
     if result.get("verification_performed"):
         lines.append(f"verification={result.get('status')} zip_version={result.get('zip_version')} filename_version={result.get('filename_version')}")
     if result.get("verification_error"):
@@ -2919,7 +3230,28 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
                 "answer_text_length": len(str(answer.get("text") or "")),
             }
         )
-    if getattr(args, "download", False):
+    local_file = getattr(args, "local_file", None)
+    if local_file and getattr(args, "download", False):
+        result = {
+            **result,
+            "ok": False,
+            "status": "artifact_intake_mode_conflict",
+            "error": "--local-file is a manual import path and cannot be combined with --download",
+            "download_performed": False,
+            "manual_import_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+            "intake_stage": result.get("intake_stage") or "candidate_extraction",
+        }
+    elif local_file:
+        result = _manual_import_selected_artifact_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=conversation_id_for_artifact,
+            answer_id=answer_id_for_artifact,
+            local_file=local_file,
+        )
+    elif getattr(args, "download", False):
         result = _download_selected_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
@@ -12590,6 +12922,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
+    artifact_intake.add_argument("--local-file", "--manual-import-file", dest="local_file", help="Manual artifact handoff path: copy an already downloaded ZIP into .pb_profile/artifact_inbox/ for verification/migration. Use this for sandbox:/ artifacts that require browser/session download.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
     artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--migrate", action="store_true", help="Copy a successfully verified candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as a candidate. Does not adopt.")

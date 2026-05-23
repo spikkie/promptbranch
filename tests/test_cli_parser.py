@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.257" in out
+    assert "0.0.258" in out
     assert "promptbranch" in out
 
 
@@ -336,7 +336,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_verify.json is True
 
     artifact_intake = parser.parse_args([
-        "artifact", "intake", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--expect-artifact", "release.zip", "--expect-version", "v0.0.209", "--expect-repo", "repo", "--download", "--download-timeout", "7", "--verify", "--migrate", "--repo-path", "/tmp/repo", "--json"
+        "artifact", "intake", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--expect-artifact", "release.zip", "--expect-version", "v0.0.209", "--expect-repo", "repo", "--download", "--local-file", "/tmp/release.zip", "--download-timeout", "7", "--verify", "--migrate", "--repo-path", "/tmp/repo", "--json"
     ])
     assert artifact_intake.command == "artifact"
     assert artifact_intake.artifact_command == "intake"
@@ -347,6 +347,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_intake.expect_version == "v0.0.209"
     assert artifact_intake.expect_repo == "repo"
     assert artifact_intake.download is True
+    assert artifact_intake.local_file == "/tmp/release.zip"
     assert artifact_intake.download_timeout == 7.0
     assert artifact_intake.verify is True
     assert artifact_intake.migrate is True
