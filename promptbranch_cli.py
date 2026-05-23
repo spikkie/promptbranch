@@ -1562,6 +1562,97 @@ def _resolve_task_answer(message: dict[str, Any], *, answer_index: str | None = 
     raise ValueError(f"invalid answer index: {answer_index}")
 
 
+def _resolve_task_answer_globally(messages: list[dict[str, Any]], answer_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve an assistant answer id across all user messages.
+
+    `pb task answer parse --answer-id <id>` was initially scoped to the
+    selected user message. In practice operators often discover the assistant
+    answer id from `pb task messages list --json` and expect that id to be
+    sufficient.  Global resolution keeps the old scoped behavior when a message
+    selector is present, but removes the fragile two-id requirement for the
+    common unique-answer case.
+    """
+
+    target = str(answer_id or "").strip()
+    if not target:
+        raise ValueError("answer id is required")
+
+    exact: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    prefix: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for message in messages:
+        answers = message.get("answers") if isinstance(message.get("answers"), list) else []
+        for answer in answers:
+            candidate_id = str(answer.get("id") or "")
+            if candidate_id == target:
+                exact.append((message, answer))
+            elif candidate_id.startswith(target):
+                prefix.append((message, answer))
+
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise ValueError(f"multiple answers matched id: {target}")
+    if len(prefix) == 1:
+        return prefix[0]
+    if len(prefix) > 1:
+        raise ValueError(f"multiple answers matched id prefix: {target}")
+    raise ValueError(f"answer not found: {target}")
+
+
+def _resolve_task_answer_parse_selection(messages: list[dict[str, Any]], args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    explicit_message_selector = (
+        getattr(args, "message_id", None)
+        or getattr(args, "message_index", None)
+        or getattr(args, "id_or_index", None)
+    )
+
+    if explicit_message_selector:
+        message = _resolve_task_message(messages, str(explicit_message_selector))
+        answer = _resolve_task_answer(
+            message,
+            answer_index=getattr(args, "answer_index", None),
+            answer_id=getattr(args, "answer_id", None),
+        )
+        return message, answer, {
+            "policy": "explicit_message_selector",
+            "message_selector": str(explicit_message_selector),
+            "answer_selector": str(getattr(args, "answer_id", None) or getattr(args, "answer_index", None) or "latest"),
+            "global_answer_id_resolution": False,
+        }
+
+    if getattr(args, "latest", False):
+        message = _resolve_task_message(messages, "latest")
+        answer = _resolve_task_answer(
+            message,
+            answer_index=getattr(args, "answer_index", None),
+            answer_id=getattr(args, "answer_id", None),
+        )
+        return message, answer, {
+            "policy": "latest_message",
+            "message_selector": "latest",
+            "answer_selector": str(getattr(args, "answer_id", None) or getattr(args, "answer_index", None) or "latest"),
+            "global_answer_id_resolution": False,
+        }
+
+    if getattr(args, "answer_id", None):
+        message, answer = _resolve_task_answer_globally(messages, str(getattr(args, "answer_id")))
+        return message, answer, {
+            "policy": "global_answer_id",
+            "message_selector": None,
+            "answer_selector": str(getattr(args, "answer_id", None)),
+            "global_answer_id_resolution": True,
+        }
+
+    message = _resolve_task_message(messages, "latest")
+    answer = _resolve_task_answer(message, answer_index=getattr(args, "answer_index", None), answer_id=None)
+    return message, answer, {
+        "policy": "latest_message_default",
+        "message_selector": "latest",
+        "answer_selector": str(getattr(args, "answer_index", None) or "latest"),
+        "global_answer_id_resolution": False,
+    }
+
+
 def _render_task_answer_parse_result(result: dict[str, Any]) -> str:
     lines = [
         f"status={result.get('status')}",
@@ -1590,13 +1681,7 @@ def _render_task_answer_parse_result(result: dict[str, Any]) -> str:
 async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
     try:
         payload = await _fetch_task_messages_payload(backend, args, getattr(args, "target", None))
-        message_selector = "latest" if getattr(args, "latest", False) or not getattr(args, "id_or_index", None) else args.id_or_index
-        message = _resolve_task_message(payload["messages"], message_selector)
-        answer = _resolve_task_answer(
-            message,
-            answer_index=getattr(args, "answer_index", None),
-            answer_id=getattr(args, "answer_id", None),
-        )
+        message, answer, selection_policy = _resolve_task_answer_parse_selection(payload["messages"], args)
     except ValueError as exc:
         result = {
             "ok": False,
@@ -1623,6 +1708,7 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
         "selected_answer": selected,
+        "answer_selection": selection_policy,
         "selected_request_id": parsed.get("request_id"),
         "selected_message_id": selected.get("message_id"),
         "selected_answer_id": selected.get("answer_id"),
@@ -13130,8 +13216,10 @@ def make_parser() -> argparse.ArgumentParser:
     task_answer_parse = task_answer_subparsers.add_parser("parse", help="Parse one assistant answer for a Promptbranch reply envelope.")
     task_answer_parse.add_argument("id_or_index", nargs="?", help="User message index/id. Defaults to latest when --latest is used or no selector is provided.")
     task_answer_parse.add_argument("--latest", action="store_true", help="Parse the latest assistant answer on the latest user message.")
+    task_answer_parse.add_argument("--message-id", help="Explicit user message id or unique id prefix. Equivalent to the positional message selector.")
+    task_answer_parse.add_argument("--message-index", help="Explicit user message index. Equivalent to the positional message selector.")
     task_answer_parse.add_argument("--answer-index", help="Assistant answer index for the selected user message. Defaults to latest.")
-    task_answer_parse.add_argument("--answer-id", help="Assistant answer exact id or unique id prefix.")
+    task_answer_parse.add_argument("--answer-id", help="Assistant answer exact id or unique id prefix. When no message selector is supplied, resolves globally across the task.")
     task_answer_parse.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_answer_parse.add_argument("--json", action="store_true", help="Emit parsed protocol reply as JSON.")
     task_answer_parse.add_argument("--keep-open", action="store_true")
