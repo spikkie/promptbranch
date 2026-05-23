@@ -447,6 +447,9 @@ run_artifact_candidate_run_step() {
       fi
       candidate_run_label="artifact candidate-run require-complete (${phase})"
     fi
+    if [[ "${adopt_if_accepted}" -eq 1 && "${phase}" == post_adoption* && ( "${complete_candidate_mvp}" -eq 1 || "${require_candidate_mvp_complete}" -eq 1 ) ]]; then
+      candidate_run_args+=(--version "${version}")
+    fi
     set +e
     run_step "${candidate_run_label}" "${candidate_run_log}" \
       "${pb_cmd}" "${candidate_run_args[@]}"
