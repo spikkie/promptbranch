@@ -33,6 +33,7 @@ from promptbranch_mcp import (
     agent_doctor,
     agent_mcp_llm_smoke,
     agent_run,
+    agent_release_readiness,
     agent_summarize_log,
     agent_tool_call,
     mcp_tool_call_via_stdio,
@@ -5521,7 +5522,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
-        "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
+        "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
         "test": ["smoke", "browser", "agent", "full", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
@@ -12712,6 +12713,14 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
             command=getattr(args, "mcp_executable", None),
             mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
         )
+    elif args.agent_command == "release-readiness":
+        payload = agent_release_readiness(
+            repo_path=args.path,
+            profile_dir=getattr(args, "profile_dir", None),
+            require_ready=getattr(args, "require_ready", False),
+            command=getattr(args, "mcp_executable", None),
+            mcp_timeout_seconds=getattr(args, "mcp_timeout_seconds", 8.0),
+        )
     elif args.agent_command == "host-smoke":
         payload = mcp_host_smoke(
             repo_path=args.path,
@@ -12807,6 +12816,16 @@ async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
         print(f"count={payload.get('count', 0)}")
         for name in payload.get("model_names", []) if isinstance(payload.get("model_names"), list) else []:
             print(f"model={name}")
+        return 0 if payload.get("ok") else 1
+
+    if args.agent_command == "release-readiness":
+        gate = payload.get("gate") if isinstance(payload.get("gate"), dict) else {}
+        report = payload.get("report") if isinstance(payload.get("report"), dict) else {}
+        print(f"status={payload.get('status')}")
+        print(f"gate_passed={str(bool(gate.get('passed'))).lower()}")
+        print(f"report_status={report.get('status') or gate.get('report_status')}")
+        for blocker in gate.get("blockers", []) if isinstance(gate.get("blockers"), list) else []:
+            print(f"blocker={blocker}")
         return 0 if payload.get("ok") else 1
 
     if args.agent_command == "tool-call":
@@ -13503,6 +13522,13 @@ def make_parser() -> argparse.ArgumentParser:
     agent_run_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
     agent_run_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for each MCP stdio tool call.")
     agent_run_parser.add_argument("--json", action="store_true")
+
+    agent_release_readiness_parser = agent_subparsers.add_parser("release-readiness", help="Run the built-in release-readiness skill and emit a read-only gate verdict.")
+    agent_release_readiness_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")
+    agent_release_readiness_parser.add_argument("--require-ready", action="store_true", help="Exit non-zero when the read-only readiness gate has blockers.")
+    agent_release_readiness_parser.add_argument("--command", dest="mcp_executable", help="Executable used to launch pb mcp serve. Defaults to promptbranch resolved on PATH.")
+    agent_release_readiness_parser.add_argument("--mcp-timeout-seconds", type=float, default=8.0, help="Timeout for each MCP stdio tool call.")
+    agent_release_readiness_parser.add_argument("--json", action="store_true")
 
     agent_host_smoke_parser = agent_subparsers.add_parser("host-smoke", help="Smoke-test Promptbranch as an MCP host/client by launching pb mcp serve over stdio.")
     agent_host_smoke_parser.add_argument("--path", default=".", help="Repo path exposed to read-only MCP tools. Defaults to current directory.")

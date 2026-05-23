@@ -1986,6 +1986,95 @@ def _build_agent_report(skill: str | None, results: list[dict[str, Any]], *, ok:
         return _build_release_readiness_report(results, ok=ok)
     return None
 
+
+def _release_readiness_gate_from_report(report: dict[str, Any] | None, *, require_ready: bool = False) -> dict[str, Any]:
+    """Build a deterministic read-only gate around the release-readiness report.
+
+    The gate is intentionally advisory by default. With ``require_ready=True`` it
+    becomes a CI/finalizer-friendly precondition and fails closed when any
+    readiness blocker is present. It never mutates state.
+    """
+
+    report = report if isinstance(report, dict) else {}
+    checks = report.get("checks") if isinstance(report.get("checks"), dict) else {}
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    if not report:
+        blockers.append("release_readiness_report_missing")
+    if not bool(checks.get("tools_ok")):
+        blockers.append("release_readiness_tools_failed")
+    if not bool(checks.get("version_file_read")):
+        blockers.append("version_file_not_read")
+    if not bool(checks.get("artifact_current_available")):
+        blockers.append("artifact_current_missing")
+    if not bool(checks.get("worktree_clean")):
+        blockers.append("worktree_dirty")
+    if not bool(checks.get("version_matches_current_artifact")):
+        blockers.append("version_current_artifact_mismatch")
+
+    status = str(report.get("status") or "report_missing")
+    if status == "working_tree_version_differs_from_adopted_baseline" and "version_current_artifact_mismatch" in blockers:
+        warnings.append("normal_after_install_before_adoption_or_policy_sync")
+
+    passed = not blockers
+    return {
+        "passed": passed,
+        "status": "ready" if passed else "blocked",
+        "require_ready": bool(require_ready),
+        "blockers": blockers,
+        "warnings": warnings,
+        "report_status": status,
+        "mutation_performed": False,
+    }
+
+
+def agent_release_readiness(
+    *,
+    repo_path: str | Path = ".",
+    profile_dir: str | Path | None = None,
+    require_ready: bool = False,
+    command: str | None = None,
+    mcp_timeout_seconds: float = 8.0,
+) -> dict[str, Any]:
+    """Run the built-in release-readiness skill and return a gate verdict.
+
+    This is the first-class CLI wrapper for the read-only release readiness
+    workflow introduced in v0.0.263. It keeps agent execution read-only while
+    making the result directly usable as a precondition in release-control
+    scripts.
+    """
+
+    run_payload = agent_run(
+        "check release readiness",
+        repo_path=repo_path,
+        profile_dir=profile_dir,
+        skill="release-readiness",
+        command=command,
+        mcp_timeout_seconds=mcp_timeout_seconds,
+    )
+    report = run_payload.get("report") if isinstance(run_payload.get("report"), dict) else None
+    gate = _release_readiness_gate_from_report(report, require_ready=require_ready)
+    ok = bool(run_payload.get("ok")) and (gate["passed"] or not require_ready)
+    return {
+        "ok": ok,
+        "action": "agent_release_readiness",
+        "status": "ready" if gate["passed"] else "blocked" if require_ready else "reported",
+        "mode": "promptbranch_native_host",
+        "skill": "release-readiness",
+        "repo_path": str(Path(repo_path).expanduser().resolve()),
+        "require_ready": bool(require_ready),
+        "gate": gate,
+        "report": report,
+        "run": run_payload,
+        "safety": {
+            "read_only_skill": True,
+            "mcp_transport": "stdio",
+            "write_tools_blocked": True,
+            "mutation_performed": False,
+        },
+    }
+
 def agent_run(
     request: str,
     *,
