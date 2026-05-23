@@ -5,6 +5,8 @@ docs/release-v0.0.246.md
 docs/release-v0.0.247.md
 docs/release-v0.0.248.md
 docs/release-v0.0.249.md
+docs/release-v0.0.255.md
+docs/release-v0.0.256.md
 docs/repair-v0.0.226.2.md
 docs/repair-v0.0.245.11.md
 docs/repair-v0.0.245.13.md
