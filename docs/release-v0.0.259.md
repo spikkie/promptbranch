@@ -2,26 +2,20 @@
 
 ## Scope
 
-This release fixes artifact-intake state recovery for the real release-candidate path.
+Normal release from accepted baseline `chatgpt_claudecode_workflow_v0.0.258.zip`.
 
-It keeps the strict real-candidate gate unchanged, but allows the operator to continue when `pb ask-release` times out at the service-client layer after ChatGPT later writes a valid release-candidate reply into the transcript.
+This release keeps the artifact-intake behavior stable and removes stale version-specific wording from operator-facing artifact-intake diagnostics.
 
 ## Changes
 
-- `pb task answer parse --latest --json` now promotes a valid parsed protocol reply into `.pb_profile/ask_protocol_runs/` when it can be matched to an existing request id.
-- `pb artifact intake --from-last-answer` can recover from the live latest parsed task answer when the latest persisted protocol-run record is stale, failed, or a previous no-artifact smoke.
-- `--local-file` / `--manual-import-file` manual import can proceed when exactly one valid ZIP candidate exists in the recovered parsed latest answer.
-- The strict `--require-real-candidate` gate is preserved and still fails closed when no real candidate exists.
+- Bumped project/package version to `v0.0.259`.
+- Reworded stale `v0.0.225` operator-facing artifact-intake messages into version-neutral diagnostics.
+- Preserved the `sandbox:` transport classification and `--local-file` / `--manual-import-file` handoff path introduced in `v0.0.258`.
+- Preserved strict real-candidate behavior; no-artifact replies still cannot satisfy `--require-real-candidate`.
+- No adoption, Project Source mutation, Git commit, or Git push is performed by this candidate.
 
 ## Validation
 
-- `python3 -m compileall -q .`
-- `pytest -q tests/test_cli_parser.py tests/test_promptbranch_cli.py`
-- ZIP layout and hygiene verification after packaging.
-
-## Non-goals
-
-- No automatic browser-context download for `sandbox:` artifacts.
-- No Project Source mutation.
-- No local adoption.
-- No Git commit or push.
+- Python compilation.
+- Focused CLI/parser tests.
+- ZIP layout/hygiene verification.

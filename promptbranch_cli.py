@@ -1611,14 +1611,8 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
         return 1
 
     parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
-    promotion = _promote_parsed_protocol_reply_record(
-        args,
-        parsed,
-        payload=payload,
-        message=message,
-        answer=answer,
-        source="task_answer_parse",
-    )
+    selected = _protocol_answer_metadata(message, answer)
+    promotion = _promote_task_answer_protocol_run(args, payload=payload, message=message, answer=answer, parsed=parsed)
     result = {
         **parsed,
         "action": "task_answer_parse",
@@ -1628,7 +1622,18 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
         "title": payload.get("title"),
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
-        "selected_answer": _protocol_answer_metadata(message, answer),
+        "selected_answer": selected,
+        "selected_request_id": parsed.get("request_id"),
+        "selected_message_id": selected.get("message_id"),
+        "selected_answer_id": selected.get("answer_id"),
+        "selected_protocol_reply": _protocol_selection_summary(
+            request_id=parsed.get("request_id"),
+            correlation_id=parsed.get("correlation_id"),
+            message=message,
+            answer=answer,
+            conversation_id=payload.get("conversation_id"),
+            conversation_url=payload.get("conversation_url"),
+        ),
         "answer_text_length": len(str(answer.get("text") or "")),
         "protocol_run_promotion": promotion,
         "protocol_run_promoted": bool(promotion.get("performed")),
@@ -1702,114 +1707,6 @@ def _load_latest_validated_protocol_run(profile_dir: str | Path) -> tuple[Path |
         diagnostic["latest_invalid"] = latest_invalid
         diagnostic["latest_invalid_path"] = str(latest_invalid_path) if latest_invalid_path else None
     return None, None, diagnostic
-
-
-
-def _load_protocol_run_record_by_request_id(profile_dir: str | Path, request_id: Any) -> tuple[Path | None, dict[str, Any] | None, dict[str, Any]]:
-    """Load the protocol-run record for a parsed reply request id, if present."""
-
-    if not request_id:
-        return None, None, {"available": False, "status": "protocol_run_request_id_missing"}
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(request_id)).strip("._") or "unknown"
-    path = _protocol_run_records_dir(profile_dir) / f"{safe}.json"
-    if not path.is_file():
-        return path, None, {"available": False, "status": "protocol_run_record_missing", "path": str(path)}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return path, None, {"available": False, "status": "protocol_run_record_unreadable", "path": str(path), "error": str(exc)}
-    if not isinstance(payload, dict):
-        return path, None, {"available": False, "status": "protocol_run_record_invalid_payload", "path": str(path)}
-    return path, payload, {"available": True, "status": "protocol_run_record_loaded", "path": str(path)}
-
-
-def _promote_parsed_protocol_reply_record(
-    args: argparse.Namespace,
-    parsed: dict[str, Any],
-    *,
-    payload: dict[str, Any] | None,
-    message: dict[str, Any] | None,
-    answer: dict[str, Any] | None,
-    source: str,
-) -> dict[str, Any]:
-    """Promote a validated transcript reply into ask_protocol_runs.
-
-    A service timeout can leave a valid assistant reply visible in the task
-    transcript while the latest persisted protocol-run record remains a failed
-    timeout or an older no-artifact smoke.  Artifact intake must be able to use
-    the host-validated transcript reply, but only after it is promoted into the
-    same registry that candidate-run/intake already trust.
-    """
-
-    promotion: dict[str, Any] = {
-        "attempted": False,
-        "performed": False,
-        "source": source,
-        "reason": None,
-    }
-    if not isinstance(parsed, dict) or not parsed.get("ok"):
-        promotion["reason"] = "parsed_reply_not_valid"
-        return promotion
-    request_id = parsed.get("request_id")
-    if not request_id:
-        promotion["reason"] = "request_id_missing"
-        return promotion
-
-    profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
-    existing_path, existing_record, existing_diag = _load_protocol_run_record_by_request_id(profile_dir, request_id)
-    promotion.update({
-        "attempted": True,
-        "request_id": request_id,
-        "correlation_id": parsed.get("correlation_id"),
-        "existing_record": existing_diag,
-    })
-
-    request = existing_record.get("request") if isinstance(existing_record, dict) and isinstance(existing_record.get("request"), dict) else None
-    validation_ok = True
-    validation_errors: list[str] = []
-    if isinstance(request, dict):
-        validation_ok, validation_errors = _validate_protocol_reply_against_request(parsed, request)
-    else:
-        promotion["request_missing"] = True
-
-    if not validation_ok:
-        promotion["reason"] = "reply_validation_failed"
-        promotion["reply_validation_errors"] = validation_errors
-        return promotion
-
-    msg = message if isinstance(message, dict) else {}
-    ans = answer if isinstance(answer, dict) else {}
-    conversation_payload = payload if isinstance(payload, dict) else {}
-    promoted = {
-        **parsed,
-        "ok": True,
-        "action": "ask_protocol_run",
-        "status": "reply_validated_from_task_answer",
-        "request": request or {},
-        "request_baseline": _baseline_from_protocol_request(request or {}),
-        "reply_validation_ok": True,
-        "reply_validation_errors": [],
-        "conversation_url": conversation_payload.get("conversation_url"),
-        "conversation_id": conversation_payload.get("conversation_id"),
-        "title": conversation_payload.get("title"),
-        "message": {key: value for key, value in msg.items() if key not in {"answers", "text"}},
-        "answer": {key: value for key, value in ans.items() if key != "text"},
-        "selected_answer": _protocol_answer_metadata(msg, ans) if msg and ans else None,
-        "answer_text_length": len(str(ans.get("text") or "")),
-        "promoted_from_task_answer": True,
-        "previous_protocol_run_status": existing_record.get("status") if isinstance(existing_record, dict) else None,
-        "automation_performed": False,
-        "download_performed": False,
-        "migration_performed": False,
-        "adoption_performed": False,
-        "operator_instruction": "A parsed task transcript reply was promoted to the validated protocol-run registry. No artifact download, migration, adoption, or Project Source mutation was performed.",
-    }
-    path = _persist_protocol_run_record(args, promoted)
-    if path:
-        promotion.update({"performed": True, "path": path, "status": promoted["status"]})
-    else:
-        promotion.update({"performed": False, "reason": "persist_failed"})
-    return promotion
 
 
 def _candidate_expected_filename(repo: str | None, version: str | None) -> str | None:
@@ -2206,6 +2103,28 @@ def _candidate_version_normalized(value: Any) -> str | None:
     return text if valid_version_text(text) else None
 
 
+def _candidate_protocol_selection(candidate: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(candidate, dict):
+        return None
+    selected = candidate.get("selected_protocol_reply") if isinstance(candidate.get("selected_protocol_reply"), dict) else {}
+    request_id = candidate.get("reply_request_id") or selected.get("request_id")
+    message_id = candidate.get("message_id") or selected.get("message_id")
+    answer_id = candidate.get("answer_id") or selected.get("answer_id")
+    conversation_id = candidate.get("conversation_id") or selected.get("conversation_id")
+    if not any([request_id, message_id, answer_id, conversation_id]):
+        return None
+    return {
+        "request_id": request_id,
+        "correlation_id": candidate.get("reply_correlation_id") or selected.get("correlation_id"),
+        "conversation_id": conversation_id,
+        "conversation_url": selected.get("conversation_url"),
+        "message_id": message_id,
+        "message_index": selected.get("message_index"),
+        "answer_id": answer_id,
+        "answer_index": selected.get("answer_index"),
+    }
+
+
 def _select_artifact_candidate_record(
     profile_dir: str | Path,
     *,
@@ -2474,7 +2393,7 @@ def _path_is_relative_to(path: Path, root: Path) -> bool:
     return True
 
 
-def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any) -> dict[str, Any]:
+def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any, message_id: Any = None) -> dict[str, Any]:
     if result.get("status") not in {"verified_candidate", "download_verified", "manual_import_verified"} or not result.get("verification_performed") or not result.get("ok"):
         return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be successfully verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
 
@@ -2539,7 +2458,9 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
         "reply_request_id": result.get("reply_request_id"),
         "reply_correlation_id": result.get("reply_correlation_id"),
         "conversation_id": conversation_id,
+        "message_id": message_id or result.get("selected_message_id"),
         "answer_id": answer_id,
+        "selected_protocol_reply": result.get("selected_protocol_reply"),
         "verification": verification,
         "zip_version": zip_version,
         "filename_version": filename_version,
@@ -3144,13 +3065,13 @@ def _verify_intake_artifact_candidate(
         "verification_performed": True,
         "migration_performed": False,
         "adoption_performed": False,
-        "operator_instruction": "Artifact ZIP was verified inside .pb_profile/artifact_inbox only. Migration and adoption are intentionally not performed in v0.0.225.",
+        "operator_instruction": "Artifact ZIP was verified inside .pb_profile/artifact_inbox only. Migration and adoption remain separate, explicit guarded steps.",
     }
 
 
 
 def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str, Any]:
-    """Make the v0.0.225 artifact-intake boundary explicit.
+    """Make the artifact-intake no-state-mutation boundary explicit.
 
     Download/verification may create files under .pb_profile/artifact_inbox and
     migration may copy a verified candidate ZIP to the repo root plus update the
@@ -3171,7 +3092,7 @@ def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str
 
 
 def _artifact_intake_migration_not_supported(result: dict[str, Any]) -> dict[str, Any]:
-    """Compatibility helper retained for older tests/callers; not used by v0.0.225 CLI."""
+    """Compatibility helper retained for older tests/callers; CLI uses the verified migration path."""
 
     return _artifact_intake_no_state_mutation_flags({
         **result,
@@ -3179,7 +3100,7 @@ def _artifact_intake_migration_not_supported(result: dict[str, Any]) -> dict[str
         "status": "artifact_migration_not_supported_in_previous_mvp",
         "intake_stage": result.get("intake_stage") or "migration_requested",
         "migration_performed": False,
-        "migration_error": "v0.0.225 supports verified candidate migration; run with --verify --migrate and a valid repo path.",
+        "migration_error": "Artifact intake supports verified candidate migration; run with --verify --migrate and a valid repo path.",
         "adoption_performed": False,
         "operator_instruction": "Use --download --verify --migrate to copy a verified candidate to the repo root. Adoption remains a later explicit step.",
     })
@@ -3239,7 +3160,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "ok": False,
             "action": "artifact_intake",
             "status": "intake_source_required",
-            "error": "v0.0.225 supports --from-last-answer/--from-last-protocol-run only",
+            "error": "artifact intake supports --from-last-answer/--from-last-protocol-run only",
             "automation_performed": False,
             "download_performed": False,
             "migration_performed": False,
@@ -3248,14 +3169,85 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print("error: v0.0.225 supports --from-last-answer/--from-last-protocol-run only", file=sys.stderr)
+            print("error: artifact intake supports --from-last-answer/--from-last-protocol-run only", file=sys.stderr)
         return 1
 
     profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
     conversation_id_for_artifact: Any = None
     answer_id_for_artifact: Any = None
+    message_id_for_artifact: Any = None
+    explicit_answer_selection = bool(
+        getattr(args, "message_id", None)
+        or getattr(args, "message_index", None)
+        or getattr(args, "answer_id", None)
+        or getattr(args, "answer_index", None)
+    )
     run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_dir)
-    if run_record is not None:
+    if explicit_answer_selection and getattr(args, "from_last_answer", False):
+        try:
+            task_target = getattr(args, "target", None)
+            payload = await _fetch_task_messages_payload(backend, args, task_target)
+            message = _resolve_task_message_for_artifact_intake(payload["messages"], args)
+            answer = _resolve_task_answer(
+                message,
+                answer_index=getattr(args, "answer_index", None),
+                answer_id=getattr(args, "answer_id", None),
+            )
+        except ValueError as exc:
+            result = {
+                "ok": False,
+                "action": "artifact_intake",
+                "status": "answer_selection_failed",
+                "error": str(exc),
+                "automation_performed": False,
+                "download_performed": False,
+                "migration_performed": False,
+                "adoption_performed": False,
+            }
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                print(f"error: {exc}", file=sys.stderr)
+            return 1
+        parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
+        promotion = _promote_task_answer_protocol_run(args, payload=payload, message=message, answer=answer, parsed=parsed, source="artifact_intake_explicit_answer")
+        result = _artifact_intake_from_parsed_answer(
+            parsed,
+            expected_filename=getattr(args, "expect_artifact", None),
+            expected_version=getattr(args, "expect_version", None),
+            expected_repo=getattr(args, "expect_repo", None),
+        )
+        conversation_id_for_artifact = payload.get("conversation_id")
+        answer_id_for_artifact = answer.get("id")
+        message_id_for_artifact = message.get("id")
+        selected = _protocol_answer_metadata(message, answer)
+        result.update({
+            "source": "explicit_task_answer",
+            "lookup": lookup,
+            "project_url": payload.get("project_url"),
+            "conversation_url": payload.get("conversation_url"),
+            "conversation_id": payload.get("conversation_id"),
+            "title": payload.get("title"),
+            "message": {key: value for key, value in message.items() if key != "answers"},
+            "answer": {key: value for key, value in answer.items() if key != "text"},
+            "selected_answer": selected,
+            "selected_request_id": parsed.get("request_id"),
+            "selected_message_id": selected.get("message_id"),
+            "selected_answer_id": selected.get("answer_id"),
+            "selected_protocol_reply": _protocol_selection_summary(
+                request_id=parsed.get("request_id"),
+                correlation_id=parsed.get("correlation_id"),
+                message=message,
+                answer=answer,
+                conversation_id=payload.get("conversation_id"),
+                conversation_url=payload.get("conversation_url"),
+            ),
+            "answer_text_length": len(str(answer.get("text") or "")),
+            "protocol_run_promotion": promotion,
+            "protocol_run_promoted": bool(promotion.get("performed")),
+            "promoted_protocol_run_record_path": promotion.get("path"),
+        })
+    elif run_record is not None:
         result = _artifact_intake_from_protocol_run_record(
             run_record,
             run_path=run_path,
@@ -3271,6 +3263,15 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         answer = run_record.get("answer") if isinstance(run_record.get("answer"), dict) else {}
         conversation_id_for_artifact = run_record.get("conversation_id") or task.get("conversation_id")
         answer_id_for_artifact = answer.get("id")
+        message_id_for_artifact = message.get("id")
+        selection = _protocol_selection_summary(
+            request_id=result.get("reply_request_id") or run_record.get("request_id"),
+            correlation_id=result.get("reply_correlation_id") or run_record.get("correlation_id"),
+            message=message,
+            answer=answer,
+            conversation_id=conversation_id_for_artifact,
+            conversation_url=run_record.get("conversation_url") or task.get("conversation_url"),
+        )
         result.update({
             "project_url": workspace.get("project_home_url"),
             "conversation_url": run_record.get("conversation_url") or task.get("conversation_url"),
@@ -3278,72 +3279,12 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "title": run_record.get("title"),
             "message": {key: value for key, value in message.items() if key != "text"},
             "answer": {key: value for key, value in answer.items() if key != "text"},
+            "selected_request_id": selection.get("request_id"),
+            "selected_message_id": selection.get("message_id"),
+            "selected_answer_id": selection.get("answer_id"),
+            "selected_protocol_reply": selection,
             "answer_text_length": int(run_record.get("answer_text_length") or 0),
         })
-        should_recover_from_live_answer = (
-            getattr(args, "from_last_answer", False)
-            and (getattr(args, "local_file", None) or getattr(args, "download", False) or getattr(args, "expect_artifact", None) or getattr(args, "expect_version", None))
-            and not (result.get("ok") and int(result.get("valid_zip_candidate_count") or 0) == 1)
-        )
-        if should_recover_from_live_answer:
-            try:
-                task_target = getattr(args, "target", None)
-                live_payload = await _fetch_task_messages_payload(backend, args, task_target)
-                live_message = _resolve_task_message(live_payload["messages"], "latest")
-                live_answer = _resolve_task_answer(live_message, answer_index="latest")
-                live_parsed = parse_promptbranch_reply(str(live_answer.get("text") or ""))
-                live_result = _artifact_intake_from_parsed_answer(
-                    live_parsed,
-                    expected_filename=getattr(args, "expect_artifact", None),
-                    expected_version=getattr(args, "expect_version", None),
-                    expected_repo=getattr(args, "expect_repo", None),
-                )
-                live_promotion = _promote_parsed_protocol_reply_record(
-                    args,
-                    live_parsed,
-                    payload=live_payload,
-                    message=live_message,
-                    answer=live_answer,
-                    source="artifact_intake_live_latest_answer_recovery",
-                )
-                if live_result.get("ok") and int(live_result.get("valid_zip_candidate_count") or 0) == 1:
-                    result = live_result
-                    conversation_id_for_artifact = live_payload.get("conversation_id")
-                    answer_id_for_artifact = live_answer.get("id")
-                    result.update({
-                        "source": "live_latest_task_answer_recovery",
-                        "lookup": lookup,
-                        "superseded_protocol_run_record_path": str(run_path) if run_path else None,
-                        "superseded_protocol_run_status": run_record.get("status"),
-                        "protocol_run_promotion": live_promotion,
-                        "protocol_run_promoted": bool(live_promotion.get("performed")),
-                        "promoted_protocol_run_record_path": live_promotion.get("path"),
-                        "project_url": live_payload.get("project_url"),
-                        "conversation_url": live_payload.get("conversation_url"),
-                        "conversation_id": live_payload.get("conversation_id"),
-                        "title": live_payload.get("title"),
-                        "message": {key: value for key, value in live_message.items() if key != "answers"},
-                        "answer": {key: value for key, value in live_answer.items() if key != "text"},
-                        "answer_text_length": len(str(live_answer.get("text") or "")),
-                    })
-                else:
-                    result["live_latest_task_answer_recovery"] = {
-                        "attempted": True,
-                        "accepted": False,
-                        "status": live_result.get("status"),
-                        "ok": live_result.get("ok"),
-                        "artifact_candidate_count": live_result.get("artifact_candidate_count"),
-                        "valid_zip_candidate_count": live_result.get("valid_zip_candidate_count"),
-                        "protocol_run_promotion": live_promotion,
-                    }
-            except Exception as exc:
-                result["live_latest_task_answer_recovery"] = {
-                    "attempted": True,
-                    "accepted": False,
-                    "status": "recovery_failed",
-                    "error_type": exc.__class__.__name__,
-                    "error": str(exc),
-                }
     elif getattr(args, "from_last_protocol_run", False):
         result = {
             "ok": False,
@@ -3400,6 +3341,8 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         )
         conversation_id_for_artifact = payload.get("conversation_id")
         answer_id_for_artifact = answer.get("id")
+        message_id_for_artifact = message.get("id")
+        selected = _protocol_answer_metadata(message, answer)
         result.update(
             {
                 "source": "live_latest_task_answer_fallback",
@@ -3410,6 +3353,18 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
                 "title": payload.get("title"),
                 "message": {key: value for key, value in message.items() if key != "answers"},
                 "answer": {key: value for key, value in answer.items() if key != "text"},
+                "selected_answer": selected,
+                "selected_request_id": parsed.get("request_id"),
+                "selected_message_id": selected.get("message_id"),
+                "selected_answer_id": selected.get("answer_id"),
+                "selected_protocol_reply": _protocol_selection_summary(
+                    request_id=parsed.get("request_id"),
+                    correlation_id=parsed.get("correlation_id"),
+                    message=message,
+                    answer=answer,
+                    conversation_id=payload.get("conversation_id"),
+                    conversation_url=payload.get("conversation_url"),
+                ),
                 "answer_text_length": len(str(answer.get("text") or "")),
             }
         )
@@ -3456,6 +3411,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             repo_path=getattr(args, "repo_path", ".") or ".",
             conversation_id=conversation_id_for_artifact,
             answer_id=answer_id_for_artifact,
+            message_id=message_id_for_artifact,
         )
     result = _artifact_intake_no_state_mutation_flags(result)
     if args.json:
@@ -4416,6 +4372,144 @@ def _protocol_answer_metadata(message: dict[str, Any] | None, answer: dict[str, 
     }
 
 
+def _protocol_selection_summary(*, request_id: Any = None, correlation_id: Any = None, message: dict[str, Any] | None = None, answer: dict[str, Any] | None = None, conversation_id: Any = None, conversation_url: Any = None) -> dict[str, Any]:
+    """Compact identity block for candidate-intake/candidate-run reporting."""
+
+    selected = _protocol_answer_metadata(message, answer)
+    return {
+        "request_id": request_id,
+        "correlation_id": correlation_id,
+        "conversation_id": conversation_id,
+        "conversation_url": conversation_url,
+        "message_id": selected.get("message_id"),
+        "message_index": selected.get("message_index"),
+        "message_turn_index": selected.get("message_turn_index"),
+        "answer_id": selected.get("answer_id"),
+        "answer_index": selected.get("answer_index"),
+        "answer_turn_index": selected.get("answer_turn_index"),
+    }
+
+
+def _protocol_run_record_path_for_profile(profile_dir: str | Path, request_id: Any) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(request_id or "unknown")).strip("._") or "unknown"
+    return Path(profile_dir).expanduser().resolve() / "ask_protocol_runs" / f"{safe}.json"
+
+
+def _load_protocol_run_record_for_request_id(profile_dir: str | Path, request_id: Any) -> tuple[Path, dict[str, Any] | None, dict[str, Any]]:
+    path = _protocol_run_record_path_for_profile(profile_dir, request_id)
+    if not path.is_file():
+        return path, None, {"available": False, "status": "protocol_run_record_missing", "path": str(path)}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return path, None, {"available": False, "status": "protocol_run_record_unreadable", "path": str(path), "error": str(exc)}
+    if not isinstance(payload, dict):
+        return path, None, {"available": False, "status": "protocol_run_record_invalid_payload", "path": str(path)}
+    return path, payload, {"available": True, "status": "protocol_run_record_loaded", "path": str(path)}
+
+
+def _promote_task_answer_protocol_run(args: argparse.Namespace, *, payload: dict[str, Any], message: dict[str, Any], answer: dict[str, Any], parsed: dict[str, Any], source: str = "task_answer_parse") -> dict[str, Any]:
+    """Persist a valid parsed task answer as the selected validated protocol run.
+
+    This closes the service-timeout/operator-recovery gap: once an operator has
+    selected the exact message/answer pair, later artifact-intake commands can
+    read the same validated protocol run from .pb_profile/ask_protocol_runs
+    instead of accidentally falling back to newer diagnostic prose.
+    """
+
+    request_id = parsed.get("request_id")
+    correlation_id = parsed.get("correlation_id")
+    diagnostic: dict[str, Any] = {
+        "attempted": bool(request_id),
+        "performed": False,
+        "source": source,
+        "reason": None,
+        "request_id": request_id,
+        "correlation_id": correlation_id,
+    }
+    if not request_id:
+        diagnostic["reason"] = "request_id_missing"
+        return diagnostic
+    if parsed.get("ok") is not True or not isinstance(parsed.get("reply"), dict):
+        diagnostic["reason"] = "parsed_reply_not_valid"
+        return diagnostic
+
+    profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
+    record_path, existing, existing_diag = _load_protocol_run_record_for_request_id(profile_dir, request_id)
+    diagnostic["existing_record"] = existing_diag
+    request = existing.get("request") if isinstance(existing, dict) and isinstance(existing.get("request"), dict) else {}
+    validation_ok = True
+    validation_errors: list[str] = []
+    if request:
+        validation_ok, validation_errors = _validate_protocol_reply_against_request(parsed, request)
+    if not validation_ok:
+        diagnostic["reason"] = "reply_validation_failed:" + ",".join(validation_errors)
+        diagnostic["reply_validation_errors"] = validation_errors
+        return diagnostic
+
+    selected = _protocol_answer_metadata(message, answer)
+    record = dict(existing) if isinstance(existing, dict) else {}
+    record.update({
+        "ok": True,
+        "action": "ask_protocol_run",
+        "status": "reply_validated_from_task_answer",
+        "request_id": request_id,
+        "correlation_id": correlation_id,
+        "request": request,
+        "reply": parsed.get("reply"),
+        "reply_validation_ok": True,
+        "reply_validation_errors": [],
+        "reply_status": parsed.get("reply_status"),
+        "result_type": parsed.get("result_type"),
+        "artifact_candidate_count": int(parsed.get("artifact_candidate_count") or 0),
+        "conversation_url": payload.get("conversation_url"),
+        "conversation_id": payload.get("conversation_id"),
+        "title": payload.get("title"),
+        "message": {key: value for key, value in message.items() if key != "answers"},
+        "answer": {key: value for key, value in answer.items() if key != "text"},
+        "selected_answer": selected,
+        "answer_text_length": len(str(answer.get("text") or "")),
+        "task_answer_parse_promotion": {
+            "performed": True,
+            "source": source,
+            "promoted_at": utc_now(),
+            "message_id": selected.get("message_id"),
+            "answer_id": selected.get("answer_id"),
+        },
+        "automation_performed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    })
+    if not record.get("request_baseline") and request:
+        record["request_baseline"] = _baseline_from_protocol_request(request)
+    try:
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        diagnostic["reason"] = "protocol_run_record_write_failed"
+        diagnostic["error"] = str(exc)
+        diagnostic["path"] = str(record_path)
+        return diagnostic
+
+    diagnostic.update({
+        "performed": True,
+        "reason": None,
+        "path": str(record_path),
+        "status": "reply_validated_from_task_answer",
+        "message_id": selected.get("message_id"),
+        "answer_id": selected.get("answer_id"),
+    })
+    return diagnostic
+
+
+def _resolve_task_message_for_artifact_intake(messages: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+    message_selector = getattr(args, "message_id", None) or getattr(args, "message_index", None)
+    if not message_selector:
+        message_selector = "latest"
+    return _resolve_task_message(messages, str(message_selector))
+
+
 def _select_protocol_reply_message_answer(
     messages: list[dict[str, Any]],
     *,
@@ -5339,7 +5433,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
@@ -10507,10 +10601,15 @@ def _artifact_candidate_lifecycle_status(
     elif candidate_migrated:
         status = "candidate_migrated_needs_verification"
 
+    selected_protocol_reply = _candidate_protocol_selection(candidate)
     return {
         **base,
         "status": status,
         "candidate": candidate,
+        "selected_protocol_reply": selected_protocol_reply,
+        "selected_request_id": selected_protocol_reply.get("request_id") if selected_protocol_reply else None,
+        "selected_message_id": selected_protocol_reply.get("message_id") if selected_protocol_reply else None,
+        "selected_answer_id": selected_protocol_reply.get("answer_id") if selected_protocol_reply else None,
         "artifact_ref": filename,
         "artifact_version": candidate_version,
         "candidate_path": str(candidate_path) if filename else None,
@@ -10584,6 +10683,7 @@ def _artifact_candidate_lifecycle_status_all(
             "lifecycle": report.get("lifecycle"),
             "checks": report.get("checks"),
             "recommended_next_command": report.get("recommended_next_command"),
+            "selected_protocol_reply": report.get("selected_protocol_reply"),
         }
         reports.append(compact)
         status_text = str(compact.get("status") or "unknown")
@@ -10884,6 +10984,8 @@ def _latest_protocol_artifact_candidate_precondition(profile_root: Path) -> dict
     result_type = parsed.get("result_type")
     parse_ok = bool(parsed.get("ok"))
     no_artifact = parse_ok and reply_status == "no_artifact" and not candidates
+    message = run_record.get("message") if isinstance(run_record.get("message"), dict) else {}
+    answer = run_record.get("answer") if isinstance(run_record.get("answer"), dict) else {}
     return {
         **base,
         "status": "candidate_mvp_no_artifact_candidate" if no_artifact else ("artifact_candidate_available" if candidates else "artifact_candidate_not_found"),
@@ -10895,6 +10997,16 @@ def _latest_protocol_artifact_candidate_precondition(profile_root: Path) -> dict
         "reply_parse_status": parsed.get("status"),
         "request_id": parsed.get("request_id"),
         "correlation_id": parsed.get("correlation_id"),
+        "message_id": message.get("id"),
+        "answer_id": answer.get("id"),
+        "selected_protocol_reply": _protocol_selection_summary(
+            request_id=parsed.get("request_id"),
+            correlation_id=parsed.get("correlation_id"),
+            message=message,
+            answer=answer,
+            conversation_id=run_record.get("conversation_id"),
+            conversation_url=run_record.get("conversation_url"),
+        ),
         "blocks_intake": bool(no_artifact),
     }
 
@@ -11234,11 +11346,16 @@ def _candidate_run_mvp_completion_report(
                 "reason": "no accepted candidate completion proof is available",
             }
 
+    selected_protocol_reply = selected_accepted.get("selected_protocol_reply") if isinstance(selected_accepted, dict) and isinstance(selected_accepted.get("selected_protocol_reply"), dict) else _candidate_protocol_selection(selected_accepted)
     return {
         "ok": mvp_complete,
         "status": status,
         "candidate_count": len(candidates),
         "accepted_candidate": selected_accepted,
+        "selected_protocol_reply": selected_protocol_reply,
+        "selected_request_id": selected_protocol_reply.get("request_id") if selected_protocol_reply else None,
+        "selected_message_id": selected_protocol_reply.get("message_id") if selected_protocol_reply else None,
+        "selected_answer_id": selected_protocol_reply.get("answer_id") if selected_protocol_reply else None,
         "accepted_candidate_count": len(accepted_matches),
         "pending_counts": {
             "adoption_ready": len(adoption_ready),
@@ -11365,11 +11482,16 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         candidate_version = _candidate_version_normalized(selected_candidate.get("artifact_version") or selected_candidate.get("version"))
     command = _candidate_run_safe_command(kind, candidate_version=candidate_version, repo_root=repo_root)
 
+    selected_protocol_reply = selected_candidate.get("selected_protocol_reply") if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("selected_protocol_reply"), dict) else None
     payload: dict[str, Any] = {
         **base,
         "status": "candidate_run_ready" if command else next_payload.get("status", "candidate_run_no_action"),
         "candidate_count": candidate_count,
         "selected_candidate": selected_candidate,
+        "selected_protocol_reply": selected_protocol_reply,
+        "selected_request_id": selected_protocol_reply.get("request_id") if selected_protocol_reply else None,
+        "selected_message_id": selected_protocol_reply.get("message_id") if selected_protocol_reply else None,
+        "selected_answer_id": selected_protocol_reply.get("answer_id") if selected_protocol_reply else None,
         "recommended_next_command": recommendation,
         "safe_command": command,
         "allowlisted_step": bool(command),
@@ -11437,11 +11559,16 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
             if isinstance(loop_selected_candidate, dict):
                 loop_candidate_version = _candidate_version_normalized(loop_selected_candidate.get("artifact_version") or loop_selected_candidate.get("version"))
             loop_command = _candidate_run_safe_command(loop_kind, candidate_version=loop_candidate_version, repo_root=repo_root)
+            loop_selected_protocol_reply = loop_selected_candidate.get("selected_protocol_reply") if isinstance(loop_selected_candidate, dict) and isinstance(loop_selected_candidate.get("selected_protocol_reply"), dict) else None
             step_plan = {
                 "step_index": step_index,
                 "kind": loop_kind,
                 "candidate_count": loop_candidate_count,
                 "selected_candidate": loop_selected_candidate,
+                "selected_protocol_reply": loop_selected_protocol_reply,
+                "selected_request_id": loop_selected_protocol_reply.get("request_id") if loop_selected_protocol_reply else None,
+                "selected_message_id": loop_selected_protocol_reply.get("message_id") if loop_selected_protocol_reply else None,
+                "selected_answer_id": loop_selected_protocol_reply.get("answer_id") if loop_selected_protocol_reply else None,
                 "recommended_next_command": loop_recommendation,
                 "safe_command": loop_command,
                 "inventory_summary": {
@@ -13104,6 +13231,10 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.221 or 0.0.221.")
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
+    artifact_intake.add_argument("--message-id", help="Explicit user message id, unique id prefix, or index whose assistant answer contains the Promptbranch reply envelope. Used with --from-last-answer.")
+    artifact_intake.add_argument("--message-index", help="Explicit user message index whose assistant answer contains the Promptbranch reply envelope. Used with --from-last-answer.")
+    artifact_intake.add_argument("--answer-id", help="Explicit assistant answer id or unique id prefix for the selected user message. Used with --from-last-answer.")
+    artifact_intake.add_argument("--answer-index", help="Assistant answer index for the selected user message. Defaults to latest when explicit message selection is used.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
     artifact_intake.add_argument("--local-file", "--manual-import-file", dest="local_file", help="Manual artifact handoff path: copy an already downloaded ZIP into .pb_profile/artifact_inbox/ for verification/migration. Use this for sandbox:/ artifacts that require browser/session download.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")

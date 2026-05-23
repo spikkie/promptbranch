@@ -111,3 +111,6 @@ chatgpt_claudecode_workflow_v0.0.146/
 # Project package metadata is intentionally tracked for version/API regression tests.
 !promptbranch.egg-info/
 !promptbranch.egg-info/**
+
+# Promptbranch task transcript/debug exports
+*.task.show.json
