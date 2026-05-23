@@ -4,7 +4,6 @@ import argparse
 import copy
 import asyncio
 import hashlib
-import fnmatch
 import importlib.metadata
 import json
 import io
@@ -83,7 +82,6 @@ LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
     "login-check",
     "ask",
-    "ask-release",
     "shell",
     "ws",
     "task",
@@ -1933,67 +1931,6 @@ def _artifact_inbox_dir(*, profile_dir: str | Path, conversation_id: Any, answer
     return root / conversation_component / answer_component / request_component
 
 
-
-def _artifact_download_transport(url: str | None) -> dict[str, Any]:
-    """Classify whether an artifact reference is directly downloadable.
-
-    ChatGPT session-local artifact links may appear as sandbox:/mnt/data/...
-    references. Those are valid inside the assistant sandbox, but they are not
-    directly fetchable by the operator's local Promptbranch runtime. They must
-    fail closed with an explicit handoff instead of being reported as a generic
-    download failure.
-    """
-
-    text = str(url or "").strip()
-    if not text:
-        return {
-            "ok": False,
-            "status": "artifact_download_url_missing",
-            "scheme": None,
-            "direct_download_supported": False,
-            "requires_browser_context": False,
-            "manual_import_supported": True,
-            "reason": "selected candidate has no download.url",
-        }
-    parsed = urllib.parse.urlparse(text)
-    scheme = (parsed.scheme or "file").lower()
-    direct_supported = scheme in {"file", "http", "https"}
-    requires_browser_context = scheme == "sandbox"
-    if direct_supported:
-        return {
-            "ok": True,
-            "status": "artifact_download_url_supported",
-            "scheme": scheme,
-            "direct_download_supported": True,
-            "requires_browser_context": False,
-            "manual_import_supported": True,
-            "url": text,
-        }
-    reason = (
-        "sandbox artifact references are ChatGPT-session-local and require browser/session-context download before local import"
-        if requires_browser_context
-        else f"unsupported artifact download URL scheme: {scheme}"
-    )
-    return {
-        "ok": False,
-        "status": "artifact_download_url_unsupported",
-        "scheme": scheme,
-        "direct_download_supported": False,
-        "requires_browser_context": requires_browser_context,
-        "manual_import_supported": True,
-        "url": text,
-        "reason": reason,
-    }
-
-
-def _artifact_manual_import_command(filename: str) -> str:
-    safe_filename = Path(filename).name or "artifact.zip"
-    return (
-        "pb artifact intake --from-last-answer "
-        f"--local-file /path/to/{safe_filename} "
-        "--verify --migrate --json"
-    )
-
 def _copy_or_download_to_path(url: str, target_path: Path, *, timeout_seconds: float) -> None:
     parsed = urllib.parse.urlparse(url)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2306,8 +2243,6 @@ def _record_artifact_candidate_test(profile_dir: str | Path, *, candidate: dict[
         "result": test_result,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -2356,7 +2291,7 @@ def _path_is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profile_dir: str | Path, repo_path: str | Path, conversation_id: Any, answer_id: Any) -> dict[str, Any]:
-    if result.get("status") not in {"verified_candidate", "download_verified", "manual_import_verified"} or not result.get("verification_performed") or not result.get("ok"):
+    if result.get("status") not in {"verified_candidate", "download_verified"} or not result.get("verification_performed") or not result.get("ok"):
         return {**result, "ok": False, "status": "candidate_not_verified", "migration_performed": False, "migration_error": "candidate must be successfully verified before migration; run artifact intake with --verify --migrate", "intake_stage": result.get("intake_stage") or "migration_requested", "adoption_performed": False}
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
@@ -2468,212 +2403,6 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
     }
 
 
-
-def _manual_import_selected_artifact_candidate(
-    result: dict[str, Any],
-    *,
-    profile_dir: str | Path,
-    conversation_id: Any,
-    answer_id: Any,
-    local_file: str | Path,
-) -> dict[str, Any]:
-    """Copy a browser/session-downloaded artifact into artifact_inbox.
-
-    This is the explicit handoff path for sandbox:/ artifacts. It preserves the
-    normal candidate validation, verification and migration flow while avoiding
-    any claim that the local process directly downloaded the ChatGPT sandbox URL.
-    """
-
-    if result.get("status") not in {"candidate_selected", "artifact_candidates_found"} or not isinstance(result.get("selected_candidate"), dict):
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_candidate_not_selected",
-            "manual_import_performed": False,
-            "manual_import_error": "a single valid candidate must be selected before manual import",
-            "download_performed": False,
-            "intake_stage": "candidate_extraction",
-        }
-    candidate = dict(result["selected_candidate"])
-    filename = _safe_artifact_filename(candidate.get("filename"))
-    if not filename:
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_wrong_filename",
-            "manual_import_performed": False,
-            "manual_import_error": "selected candidate filename must be a basename ending in .zip",
-            "download_performed": False,
-            "intake_stage": "candidate_extraction",
-        }
-    kind = str(candidate.get("kind") or "").strip().lower()
-    if kind and kind != "zip":
-        return {
-            **result,
-            "ok": False,
-            "status": "unsupported_artifact_type",
-            "manual_import_performed": False,
-            "manual_import_error": "selected candidate kind must be zip",
-            "download_performed": False,
-            "intake_stage": "manual_import_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-    role = str(candidate.get("role") or "").strip()
-    if role and role not in {"candidate_release", "repair_candidate"}:
-        return {
-            **result,
-            "ok": False,
-            "status": "unsupported_artifact_role",
-            "manual_import_performed": False,
-            "manual_import_error": "selected candidate role must be candidate_release or repair_candidate",
-            "download_performed": False,
-            "intake_stage": "manual_import_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-
-    source_path = Path(local_file).expanduser().resolve()
-    if not source_path.is_file():
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_manual_import_source_missing",
-            "manual_import_performed": False,
-            "manual_import_error": f"manual import file does not exist: {source_path}",
-            "manual_import_source_path": str(source_path),
-            "download_performed": False,
-            "intake_stage": "manual_import_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-    if source_path.suffix.lower() != ".zip":
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_manual_import_not_zip",
-            "manual_import_performed": False,
-            "manual_import_error": "manual import file must be a ZIP artifact",
-            "manual_import_source_path": str(source_path),
-            "download_performed": False,
-            "intake_stage": "manual_import_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-
-    inbox_dir = _artifact_inbox_dir(
-        profile_dir=profile_dir,
-        conversation_id=conversation_id,
-        answer_id=answer_id,
-        request_id=result.get("reply_request_id"),
-    )
-    inbox_dir.mkdir(parents=True, exist_ok=True)
-    target_path = inbox_dir / filename
-    overwritten = target_path.exists()
-    try:
-        tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
-        shutil.copy2(source_path, tmp_path)
-        tmp_path.replace(target_path)
-        metadata = _artifact_file_metadata(target_path)
-    except OSError as exc:
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_manual_import_failed",
-            "manual_import_performed": False,
-            "manual_import_error": str(exc),
-            "manual_import_source_path": str(source_path),
-            "artifact_inbox_dir": str(inbox_dir),
-            "download_performed": False,
-            "intake_stage": "manual_import_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-    if metadata["size_bytes"] <= 0:
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_manual_import_empty",
-            "manual_import_performed": True,
-            "manual_import": metadata,
-            "manual_import_source_path": str(source_path),
-            "download": metadata,
-            "download_performed": False,
-            "artifact_inbox_dir": str(inbox_dir),
-            "intake_stage": "manual_imported",
-            "migration_performed": False,
-            "adoption_performed": False,
-        }
-
-    transport = {
-        "ok": True,
-        "status": "artifact_manual_imported",
-        "scheme": "file",
-        "direct_download_supported": False,
-        "requires_browser_context": False,
-        "manual_import_supported": True,
-        "mode": "manual_import",
-        "source_path": str(source_path),
-    }
-    intake_record = {
-        "schema": "promptbranch.artifact.intake.manual_import",
-        "schema_version": "1.0",
-        "status": "manual_imported",
-        "candidate": candidate,
-        "manual_import": metadata,
-        "manual_import_source_path": str(source_path),
-        "download": metadata,
-        "download_url": _selected_candidate_download_url(candidate),
-        "download_transport": transport,
-        "reply_request_id": result.get("reply_request_id"),
-        "reply_correlation_id": result.get("reply_correlation_id"),
-        "conversation_id": conversation_id,
-        "answer_id": answer_id,
-        "created_at": utc_now(),
-        "verification_performed": False,
-        "migration_performed": False,
-        "adoption_performed": False,
-    }
-    try:
-        (inbox_dir / "intake.json").write_text(json.dumps(intake_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    except OSError as exc:
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_manual_import_metadata_failed",
-            "manual_import_performed": True,
-            "manual_import": metadata,
-            "manual_import_error": str(exc),
-            "manual_import_source_path": str(source_path),
-            "download": metadata,
-            "download_performed": False,
-            "artifact_inbox_dir": str(inbox_dir),
-            "intake_stage": "manual_imported",
-        }
-
-    return {
-        **result,
-        "ok": True,
-        "status": "manual_imported",
-        "intake_stage": "manual_imported",
-        "manual_import_performed": True,
-        "manual_import": metadata,
-        "manual_import_source_path": str(source_path),
-        "manual_import_source_filename": source_path.name,
-        "manual_import_filename_matches_candidate": source_path.name == filename,
-        "download_performed": False,
-        "download": metadata,
-        "download_url": _selected_candidate_download_url(candidate),
-        "download_transport": transport,
-        "download_overwrote_existing": overwritten,
-        "artifact_inbox_dir": str(inbox_dir),
-        "intake_record_path": str(inbox_dir / "intake.json"),
-        "verification_performed": False,
-        "migration_performed": False,
-        "adoption_performed": False,
-        "operator_instruction": "Artifact was manually imported into .pb_profile/artifact_inbox. Run/continue with --verify --migrate to validate and register it as a candidate_release.",
-    }
-
 def _download_selected_artifact_candidate(
     result: dict[str, Any],
     *,
@@ -2745,37 +2474,8 @@ def _download_selected_artifact_candidate(
             "ok": False,
             "status": "artifact_download_url_missing",
             "download_performed": False,
-            "manual_import_performed": False,
             "download_error": "selected candidate has no download.url",
             "intake_stage": "download_requested",
-        }
-    transport = _artifact_download_transport(url)
-    if not transport.get("direct_download_supported"):
-        handoff = {
-            "required": True,
-            "reason": transport.get("reason"),
-            "artifact_ref": url,
-            "filename": filename,
-            "manual_import_command": _artifact_manual_import_command(filename),
-        }
-        return {
-            **result,
-            "ok": False,
-            "status": "artifact_download_url_unsupported",
-            "download_performed": False,
-            "manual_import_performed": False,
-            "download_error": transport.get("reason") or f"unsupported artifact download URL scheme: {transport.get('scheme')}",
-            "download_url": url,
-            "download_url_scheme": transport.get("scheme"),
-            "download_transport": transport,
-            "requires_browser_context": bool(transport.get("requires_browser_context")),
-            "manual_import_supported": True,
-            "browser_download_handoff": handoff,
-            "manual_import_command": handoff["manual_import_command"],
-            "intake_stage": "download_requested",
-            "migration_performed": False,
-            "adoption_performed": False,
-            "operator_instruction": "Artifact URL is not directly downloadable by the local runtime. Download it through the browser/session context, then rerun artifact intake with --local-file.",
         }
     inbox_dir = _artifact_inbox_dir(
         profile_dir=profile_dir,
@@ -2819,7 +2519,6 @@ def _download_selected_artifact_candidate(
         "candidate": candidate,
         "download": metadata,
         "download_url": url,
-        "download_transport": transport,
         "reply_request_id": result.get("reply_request_id"),
         "reply_correlation_id": result.get("reply_correlation_id"),
         "conversation_id": conversation_id,
@@ -2851,7 +2550,6 @@ def _download_selected_artifact_candidate(
         "download_performed": True,
         "download": metadata,
         "download_url": url,
-        "download_transport": transport,
         "download_overwrote_existing": overwritten,
         "artifact_inbox_dir": str(inbox_dir),
         "intake_record_path": str(inbox_dir / "intake.json"),
@@ -2876,7 +2574,7 @@ def _verify_intake_artifact_candidate(
     """
 
     candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
-    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded", "manual_imported"} or candidate is None:
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded"} or candidate is None:
         return {
             **result,
             "ok": False,
@@ -2952,13 +2650,9 @@ def _verify_intake_artifact_candidate(
 
     # Prefer specific semantic errors over the generic artifact_zip_invalid when possible.
     if not verification_errors:
-        if result.get("manual_import_performed"):
-            status = "manual_import_verified"
-            intake_stage = "manual_imported_verified"
-        else:
-            status = "download_verified" if result.get("download_performed") else "verified_candidate"
-            intake_stage = "downloaded_verified" if result.get("download_performed") else "verified"
+        status = "download_verified" if result.get("download_performed") else "verified_candidate"
         ok = True
+        intake_stage = "downloaded_verified" if result.get("download_performed") else "verified"
     else:
         status = next((item for item in verification_errors if item != "artifact_zip_invalid"), verification_errors[0])
         ok = False
@@ -3042,8 +2736,6 @@ def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str
     return {
         **result,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -3082,15 +2774,6 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
         lines.append(f"downloaded={download.get('path')} size={download.get('size_bytes')} sha256={download.get('sha256')}")
     if result.get("download_error"):
         lines.append(f"download_error={result.get('download_error')}")
-    if result.get("requires_browser_context"):
-        lines.append("requires_browser_context=true")
-    if result.get("manual_import_command"):
-        lines.append(f"manual_import_command={result.get('manual_import_command')}")
-    if result.get("manual_import_performed"):
-        manual_import = result.get("manual_import") if isinstance(result.get("manual_import"), dict) else {}
-        lines.append(f"manual_imported={manual_import.get('path')} size={manual_import.get('size_bytes')} sha256={manual_import.get('sha256')}")
-    if result.get("manual_import_error"):
-        lines.append(f"manual_import_error={result.get('manual_import_error')}")
     if result.get("verification_performed"):
         lines.append(f"verification={result.get('status')} zip_version={result.get('zip_version')} filename_version={result.get('filename_version')}")
     if result.get("verification_error"):
@@ -3230,28 +2913,7 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
                 "answer_text_length": len(str(answer.get("text") or "")),
             }
         )
-    local_file = getattr(args, "local_file", None)
-    if local_file and getattr(args, "download", False):
-        result = {
-            **result,
-            "ok": False,
-            "status": "artifact_intake_mode_conflict",
-            "error": "--local-file is a manual import path and cannot be combined with --download",
-            "download_performed": False,
-            "manual_import_performed": False,
-            "migration_performed": False,
-            "adoption_performed": False,
-            "intake_stage": result.get("intake_stage") or "candidate_extraction",
-        }
-    elif local_file:
-        result = _manual_import_selected_artifact_candidate(
-            result,
-            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-            conversation_id=conversation_id_for_artifact,
-            answer_id=answer_id_for_artifact,
-            local_file=local_file,
-        )
-    elif getattr(args, "download", False):
+    if getattr(args, "download", False):
         result = _download_selected_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
@@ -4323,8 +3985,6 @@ async def _capture_pre_ask_protocol_marker(backend: Any, args: argparse.Namespac
 
 
 def _is_protocol_parse_ask(args: argparse.Namespace) -> bool:
-    if getattr(args, "command", None) == "ask-release":
-        return not bool(getattr(args, "no_parse_reply", False))
     return bool(getattr(args, "command", None) == "ask" and getattr(args, "protocol", False) and getattr(args, "parse_reply", False))
 
 
@@ -4737,277 +4397,6 @@ def _repo_name_from_artifact_name(filename: str) -> str | None:
     return name[: match.start()].rstrip("_.-") or None
 
 
-
-
-def _normalize_version_token(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text if text.startswith("v") else f"v{text}"
-
-
-def _ask_release_expected_from_envelope(envelope: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
-    artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
-    expected_repo = str(getattr(args, "expect_repo", None) or artifact.get("repo") or "").strip() or None
-    expected_version = _normalize_version_token(getattr(args, "expect_version", None) or artifact.get("target_version"))
-    expected_artifact = str(getattr(args, "expect_artifact", None) or "").strip() or None
-    if expected_artifact:
-        expected_artifact = Path(expected_artifact).name
-    elif expected_repo and expected_version:
-        expected_artifact = _candidate_expected_filename(expected_repo, expected_version)
-    return {
-        "expected_repo": expected_repo,
-        "expected_version": expected_version,
-        "expected_artifact": expected_artifact,
-        "expected_role": "candidate_release",
-        "exact_artifact_count": 1,
-    }
-
-
-def _augment_release_candidate_request(envelope: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
-    enriched = copy.deepcopy(envelope)
-    artifact = enriched.setdefault("artifact", {})
-    if isinstance(artifact, dict):
-        if expected.get("expected_repo") and not artifact.get("repo"):
-            artifact["repo"] = expected.get("expected_repo")
-        if expected.get("expected_version") and not artifact.get("target_version"):
-            artifact["target_version"] = expected.get("expected_version")
-        artifact["expected_output_artifact"] = expected.get("expected_artifact")
-        artifact["expected_output_version"] = expected.get("expected_version")
-        artifact["expected_artifact_role"] = expected.get("expected_role")
-        artifact["artifact_count_policy"] = "exactly_one_expected_zip_candidate"
-        artifact["no_artifact_reply_allowed"] = False
-        artifact["download_policy"] = "direct_url_or_chatgpt_attachment_link_required"
-    constraints = enriched.setdefault("constraints", {})
-    if isinstance(constraints, dict):
-        constraints["exactly_one_zip_artifact_required"] = True
-        constraints["expected_output_artifact_required"] = True
-        constraints["no_artifact_reply_allowed"] = False
-        constraints["no_auto_adopt"] = True
-    expected_reply = enriched.setdefault("expected_reply", {})
-    if isinstance(expected_reply, dict):
-        expected_reply["result_type_required"] = "release_candidate"
-        expected_reply["artifact_policy"] = {
-            "exact_count": 1,
-            "expected_filename": expected.get("expected_artifact"),
-            "expected_version": expected.get("expected_version"),
-            "expected_role": expected.get("expected_role"),
-            "download_available_required": True,
-        }
-    decisions = enriched.setdefault("protocol_decisions", {})
-    if isinstance(decisions, dict):
-        decisions["no_artifact_reply_allowed"] = False
-        decisions["release_candidate_artifact_required"] = True
-        decisions["candidate_run_next_step_required"] = True
-    return enriched
-
-
-def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], envelope: dict[str, Any]) -> str:
-    artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
-    baseline = artifact.get("current_baseline")
-    current_version = artifact.get("current_version")
-    target_version = expected.get("expected_version") or artifact.get("target_version")
-    expected_artifact = expected.get("expected_artifact")
-    prompt_text = str(base_prompt or "").strip()
-    if not prompt_text:
-        prompt_text = (
-            f"Build {expected_artifact} from accepted baseline {baseline}. "
-            f"Implement the target version {target_version} as requested by the current project plan."
-        )
-    return (
-        f"Release-candidate request. Create exactly one ZIP artifact named {expected_artifact}.\n"
-        f"Input baseline: {baseline}\n"
-        f"Input version: {current_version}\n"
-        f"Target version: {target_version}\n"
-        "The reply envelope MUST use status completed and result_type release_candidate. "
-        "The reply envelope artifacts array MUST contain exactly one ZIP candidate with the expected filename, version, role candidate_release, and a downloadable ChatGPT attachment/link when available. "
-        "Do not return status no_artifact or result_type no_change for this command. "
-        "Do not claim adoption, Project Source mutation, Git commit, or Git push.\n\n"
-        "Requested implementation scope:\n"
-        f"{prompt_text}"
-    )
-
-
-def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
-    validated = copy.deepcopy(result)
-    checks: dict[str, Any] = {
-        "reply_validated": bool(validated.get("ok") is True and validated.get("reply_validation_ok") is True),
-        "expected_artifact": expected.get("expected_artifact"),
-        "expected_version": expected.get("expected_version"),
-        "exact_artifact_count": False,
-        "filename_matches": False,
-        "version_matches": False,
-        "role_matches": False,
-        "download_available": False,
-        "status_release_candidate": False,
-    }
-    reply = validated.get("reply") if isinstance(validated.get("reply"), dict) else {}
-    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
-    checks["artifact_count"] = len(artifacts)
-    checks["exact_artifact_count"] = len(artifacts) == 1
-    checks["status_release_candidate"] = reply.get("status") == "completed" and reply.get("result_type") == "release_candidate"
-    if len(artifacts) == 1 and isinstance(artifacts[0], dict):
-        candidate = artifacts[0]
-        download = candidate.get("download") if isinstance(candidate.get("download"), dict) else {}
-        checks["filename_matches"] = Path(str(candidate.get("filename") or candidate.get("name") or "")).name == expected.get("expected_artifact")
-        checks["version_matches"] = _normalize_version_token(candidate.get("version")) == expected.get("expected_version")
-        checks["role_matches"] = candidate.get("role") == expected.get("expected_role")
-        checks["download_available"] = bool(download.get("available") or download.get("url") or download.get("link_text"))
-    failures = [name for name, ok in checks.items() if name in {"reply_validated", "exact_artifact_count", "filename_matches", "version_matches", "role_matches", "download_available", "status_release_candidate"} and not ok]
-    validated["ask_release_validation"] = {
-        "ok": not failures,
-        "failures": failures,
-        "checks": checks,
-        "operator_instruction": "Run `pb artifact candidate-run --execute-until-blocked --require-complete --require-real-candidate --json` only after ask-release validation is green.",
-    }
-    validated["expected_artifact"] = expected.get("expected_artifact")
-    validated["expected_version"] = expected.get("expected_version")
-    validated["candidate_producing_protocol_flow"] = True
-    if failures:
-        validated["ok"] = False
-        validated["status"] = "release_candidate_validation_failed"
-        validated["reply_validation_ok"] = False
-        errors = list(validated.get("reply_validation_errors") or [])
-        errors.extend(f"ask_release:{failure}" for failure in failures)
-        validated["reply_validation_errors"] = errors
-        validated["error"] = "release-candidate protocol reply did not contain exactly one expected downloadable ZIP candidate"
-    else:
-        validated["status"] = "reply_validated"
-        validated["reply_validation_ok"] = True
-        validated["operator_instruction"] = "Validated exactly one expected release-candidate ZIP in the protocol reply. Next run strict candidate-run with --require-real-candidate."
-    return validated
-
-
-async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> int:
-    try:
-        raw_prompt = _merge_prompt_text(getattr(args, "prompt", None), getattr(args, "prompt_file", None))
-    except (OSError, UnicodeError) as exc:
-        print(f"error: could not read prompt file: {exc}", file=sys.stderr)
-        return 2
-
-    args.protocol = True
-    args.intent_kind = "software_release_candidate_request"
-    protocol_payload = _protocol_request_from_current_baseline(backend, args, prompt=raw_prompt or "release candidate request")
-    expected = _ask_release_expected_from_envelope(protocol_payload["request"], args)
-    if not expected.get("expected_artifact") or not expected.get("expected_version"):
-        payload = {
-            "ok": False,
-            "action": "ask_release",
-            "status": "expected_artifact_unresolved",
-            "error": "ask-release requires a resolvable repo and target version; pass --target-version and ensure pb artifact current is set, or pass --expect-artifact/--expect-version/--expect-repo",
-            "expected": expected,
-            "request": protocol_payload.get("request"),
-        }
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-        return 2
-
-    envelope = _augment_release_candidate_request(protocol_payload["request"], expected)
-    protocol_payload["request"] = envelope
-    protocol_payload["action"] = "ask_release"
-    protocol_payload["expected"] = expected
-    protocol_payload["candidate_producing_protocol_flow"] = True
-    protocol_payload["strict_real_candidate_required"] = True
-    if getattr(args, "print_request_json", False):
-        print(json.dumps(protocol_payload, indent=2, ensure_ascii=False))
-        return 0
-
-    release_prompt = _build_ask_release_user_prompt(raw_prompt, expected, envelope)
-    prompt = render_protocol_ask_prompt(envelope, user_prompt=release_prompt)
-    attachment_paths = _collect_ask_attachment_paths(args)
-    for attachment_path in attachment_paths:
-        if not Path(attachment_path).is_file():
-            print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)
-            return 2
-    legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) else None
-    repeatable_attachments = attachment_paths if not legacy_single_file else None
-    parse_reply = not bool(getattr(args, "no_parse_reply", False))
-    pre_ask_marker = await _capture_pre_ask_protocol_marker(backend, args) if parse_reply else None
-    try:
-        response = await backend.ask(
-            prompt=prompt,
-            file_path=legacy_single_file,
-            attachment_paths=repeatable_attachments,
-            conversation_url=args.conversation_url,
-            expect_json=False,
-            keep_open=args.keep_open,
-            retries=args.retries,
-        )
-    except Exception as exc:
-        if parse_reply:
-            lowered = f"{exc.__class__.__name__}: {exc}".lower()
-            status = "service_read_timeout" if exc.__class__.__name__ in {"ReadTimeout", "TimeoutException"} else ("response_timeout" if "timeout" in lowered or "timed out" in lowered else "ask_failed")
-            recovery_diagnostic: dict[str, Any] | None = None
-            if status == "service_read_timeout":
-                recovered, recovery_diagnostic = await _recover_protocol_reply_after_service_timeout(
-                    backend,
-                    args,
-                    envelope=envelope,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                    pre_ask_marker=pre_ask_marker,
-                )
-                if recovered is not None:
-                    recovered = _validate_ask_release_candidate_result(recovered, expected)
-                    return _emit_protocol_result(args, recovered)
-            result = _protocol_failure_result(
-                args,
-                envelope=envelope,
-                status=status,
-                error=str(exc),
-                error_type=exc.__class__.__name__,
-                pre_ask_marker=pre_ask_marker,
-            )
-            result["action"] = "ask_release"
-            result["expected"] = expected
-            if status == "service_read_timeout":
-                result["timeout_layer"] = "service_client"
-                result["service_timeout_recovery"] = recovery_diagnostic or {"attempted": False}
-            return _emit_protocol_result(args, result)
-        raise
-
-    if not parse_reply:
-        payload = {
-            **protocol_payload,
-            "ok": True,
-            "status": "submitted_without_parse",
-            "ask_response": response,
-            "automation_performed": True,
-            "download_performed": False,
-            "migration_performed": False,
-            "adoption_performed": False,
-            "operator_instruction": "ask-release submitted the candidate-producing protocol request without parsing. Rerun with default parsing before candidate-run.",
-        }
-        if args.json:
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload['status']}")
-        return 0
-
-    if isinstance(response, dict):
-        response_failure = _protocol_ask_response_failure_result(args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
-        if response_failure is not None:
-            response_failure["action"] = "ask_release"
-            response_failure["expected"] = expected
-            return _emit_protocol_result(args, response_failure)
-    try:
-        result = await _parse_protocol_reply_after_ask(backend, args, envelope=envelope, ask_response=response, pre_ask_marker=pre_ask_marker)
-    except Exception as exc:
-        result = _protocol_failure_result(
-            args,
-            envelope=envelope,
-            status="reply_parse_failed",
-            error=str(exc),
-            error_type=exc.__class__.__name__,
-            ask_response=response if isinstance(response, dict) else {"answer": response},
-            pre_ask_marker=pre_ask_marker,
-        )
-    result["action"] = "ask_release"
-    result["expected"] = expected
-    result = _validate_ask_release_candidate_result(result, expected)
-    return _emit_protocol_result(args, result)
-
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     try:
         prompt = _merge_prompt_text(args.prompt, getattr(args, "prompt_file", None))
@@ -5156,7 +4545,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--from-last-answer", "--from-last-protocol-run", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill"],
         "skill": ["list", "show", "validate", "--json", "--path"],
@@ -5189,7 +4578,6 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "completion": [],
         "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
-        "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
@@ -5905,12 +5293,6 @@ def _verify_project_source_upload_change(
     matched_after = [item for item in after_sources if isinstance(item, dict) and _source_matches_filename(item, expected_filename)]
     removed_keys = sorted(before_keys - after_keys)
     added_keys = sorted(after_keys - before_keys)
-    expected_removed_keys = sorted({
-        _source_stable_key(item)
-        for item in matched_before
-        if isinstance(item, dict) and _source_stable_key(item)
-    } & set(removed_keys))
-    collateral_removed_keys = sorted(set(removed_keys) - set(expected_removed_keys))
 
     upload_ok = bool(isinstance(upload_result, dict) and upload_result.get("ok"))
     checks = {
@@ -5918,8 +5300,7 @@ def _verify_project_source_upload_change(
         "before_source_list_ok": bool(before.get("ok")),
         "after_source_list_ok": bool(after.get("ok")),
         "expected_source_present_after": bool(matched_after),
-        "expected_source_replaced": bool(expected_removed_keys and matched_after),
-        "collateral_sources_removed": bool(collateral_removed_keys),
+        "collateral_sources_removed": bool(removed_keys),
     }
     ok = (
         checks["upload_result_ok"]
@@ -5961,9 +5342,7 @@ def _verify_project_source_upload_change(
         "matched_after": matched_after[:3],
         "added_source_keys": added_keys,
         "removed_source_keys": removed_keys,
-        "expected_removed_source_keys": expected_removed_keys,
-        "collateral_removed_source_keys": collateral_removed_keys,
-        "collateral_change_detected": bool(collateral_removed_keys),
+        "collateral_change_detected": bool(removed_keys),
         "upload_result_status": upload_result.get("status") if isinstance(upload_result, dict) else None,
     }
 
@@ -7356,8 +6735,6 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7444,7 +6821,6 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         warnings.append({"code": code, "severity": "warning", "message": message, **extra})
 
     plan_only = bool(getattr(args, "plan", False))
-    upload_source_requested = bool(getattr(args, "upload_source", False))
 
     if not config_payload.get("ok"):
         block("release_config_invalid", "Release install requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
@@ -7497,8 +6873,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "would_overwrite_repo_files": True,
         "would_verify_installed_version": True,
         "would_update_artifact_registry": False,
-        "would_upload_project_source": upload_source_requested,
-        "would_verify_project_source_visibility": upload_source_requested,
+        "would_upload_project_source": False,
         "would_adopt_artifact": False,
         "would_commit_git": False,
         "would_push_git": False,
@@ -7510,8 +6885,6 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "install_entry_count": len(install_entries),
         "install_entry_sample": install_entries[:30],
         "install_entry_sample_truncated": len(install_entries) > 30,
-        "upload_source_requested": upload_source_requested,
-        "project_source_filename": artifact_filename or None,
         "preserve_paths": preserve_paths,
         "preserved_conflict_count": len(preserved_conflicts),
         "preserved_conflict_sample": preserved_conflicts[:20],
@@ -7523,7 +6896,6 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
             "preserve configured local runtime paths",
             "extract candidate ZIP entries into repo root",
             "verify installed VERSION after extraction",
-            *( ["list Project Sources before upload", "upload candidate artifact ZIP as Project Source", "list Project Sources after upload", "verify expected source is visible and no collateral source was removed"] if upload_source_requested else [] ),
         ],
     }
 
@@ -7542,7 +6914,6 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "version_file": version_file,
         "git": git_status,
         "install_plan": plan,
-        "upload_source_requested": upload_source_requested,
         "warnings": warnings,
         "blockers": blockers,
         "warning_codes": [item["code"] for item in warnings],
@@ -7553,8 +6924,6 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7720,8 +7089,6 @@ def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, 
         "repo_install_performed": True,
         "mutating_actions_executed": True,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -7754,135 +7121,10 @@ def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, 
     return payload
 
 
-async def _release_install_upload_source_payload(
-    payload: dict[str, Any],
-    backend: Any,
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    """Upload the candidate release artifact as a Project Source and verify it.
-
-    This is intentionally a bounded lifecycle step: it may mutate ChatGPT Project
-    Sources, but it does not advance artifact registry, Promptbranch state,
-    adoption, Git commit, or Git push state. The source mutation is trusted only
-    when before/after source-list verification succeeds.
-    """
-
-    result = copy.deepcopy(payload)
-    if not bool(result.get("ok")):
-        return result
-    if not bool(result.get("upload_source_requested")):
-        return result
-    if backend is None:
-        blocker = {
-            "code": "release_install_source_backend_unavailable",
-            "severity": "blocked",
-            "message": "Project Source upload was requested but no Promptbranch backend is available.",
-        }
-        result.update({
-            "ok": False,
-            "status": "source_upload_backend_unavailable",
-            "severity": "blocked",
-            "project_source_mutated": False,
-            "project_source_mutation": "not_verified",
-            "mutating_actions_executed": bool(result.get("mutating_actions_executed")),
-            "blockers": list(result.get("blockers") or []) + [blocker],
-            "blocker_codes": list(result.get("blocker_codes") or []) + [blocker["code"]],
-        })
-        return result
-
-    install_plan = result.get("install_plan") if isinstance(result.get("install_plan"), dict) else {}
-    artifact_path = str(install_plan.get("artifact_path") or ((result.get("artifact") or {}).get("path")) or "")
-    artifact_filename = str(install_plan.get("artifact_filename") or ((result.get("artifact") or {}).get("filename")) or Path(artifact_path).name)
-    keep_open = bool(getattr(args, "keep_open", False))
-
-    try:
-        before_result = await backend.list_project_sources(keep_open=keep_open)
-    except Exception as exc:
-        before_result = _operation_error_payload("release_install_source_list_before_upload", exc)
-
-    before_snapshot = _project_sources_snapshot_from_result(before_result)
-    upload_result: dict[str, Any]
-    after_result: Any = before_result
-    if not before_snapshot.get("ok"):
-        upload_result = {
-            "ok": False,
-            "action": "source_add",
-            "status": "before_source_list_unavailable",
-            "error": "project source list before upload was not readable; upload was not attempted",
-        }
-    else:
-        try:
-            upload_result = await backend.add_project_source(
-                source_kind="file",
-                file_path=artifact_path,
-                display_name=artifact_filename,
-                keep_open=keep_open,
-                overwrite_existing=True,
-            )
-        except Exception as exc:
-            upload_result = _operation_error_payload("release_install_source_add", exc)
-        try:
-            after_result = await backend.list_project_sources(keep_open=keep_open)
-        except Exception as exc:
-            after_result = _operation_error_payload("release_install_source_list_after_upload", exc)
-
-    verification = _verify_project_source_upload_change(
-        before_result=before_result,
-        after_result=after_result,
-        upload_result=upload_result,
-        expected_filename=artifact_filename,
-    )
-    verified = bool(verification.get("ok"))
-    ambiguous = verification.get("status") == "upload_ambiguous"
-    source_mutation = "verified" if verified else ("ambiguous" if ambiguous else "not_verified")
-    status = "installed_source_uploaded" if verified else ("installed_source_upload_ambiguous" if ambiguous else "installed_source_upload_not_verified")
-    blocker_codes = list(result.get("blocker_codes") or [])
-    blockers = list(result.get("blockers") or [])
-    if not verified:
-        blockers.append({
-            "code": "release_install_source_upload_not_verified",
-            "severity": "blocked",
-            "message": "Project Source upload did not verify from before/after source-list snapshots.",
-            "verification_status": verification.get("status"),
-        })
-        blocker_codes.append("release_install_source_upload_not_verified")
-
-    result.update({
-        "ok": verified,
-        "status": status,
-        "severity": "ok" if verified and not result.get("warnings") else ("warning" if verified else "blocked"),
-        "project_source_mutated": verified,
-        "project_source_mutation": source_mutation,
-        "operator_review_required": bool(ambiguous),
-        "source_upload_result": upload_result,
-        "source_upload_verification": verification,
-        "project_source_before_upload": _project_sources_snapshot_from_result(before_result),
-        "project_source_after_upload": _project_sources_snapshot_from_result(after_result),
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "adoption_performed": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "blockers": blockers,
-        "blocker_codes": blocker_codes,
-        "operator_instruction": (
-            "Controlled repo install and Project Source upload verification completed. "
-            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
-            if verified else
-            "Controlled repo install completed, but Project Source upload did not verify. "
-            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
-        ),
-    })
-    return result
-
-
 async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
     payload = _release_install_plan_payload(args)
     if payload.get("ok") and not getattr(args, "plan", False):
         payload = _release_install_execute_payload(payload)
-    if payload.get("ok") and not getattr(args, "plan", False) and getattr(args, "upload_source", False):
-        payload = await _release_install_upload_source_payload(payload, backend, args)
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -7893,1615 +7135,6 @@ async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
-
-
-_RELEASE_TEST_DEFAULT_HOOK_ORDER = ["doctor", "preflight", "local_acceptance", "live_acceptance", "release_status"]
-
-
-def _release_test_records_dir(repo_root: Path) -> Path:
-    return repo_root / ".pb_profile" / "release_acceptance"
-
-
-def _release_test_selected_hooks(config: dict[str, Any], requested_hooks: list[str] | None) -> tuple[list[tuple[str, dict[str, Any]]], list[dict[str, Any]]]:
-    hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
-    blockers: list[dict[str, Any]] = []
-    selected: list[tuple[str, dict[str, Any]]] = []
-    if requested_hooks:
-        names = [str(item).strip() for item in requested_hooks if str(item).strip()]
-    else:
-        configured_names = [name for name in _RELEASE_TEST_DEFAULT_HOOK_ORDER if name in hooks]
-        extra_names = sorted(name for name in hooks.keys() if name not in set(_RELEASE_TEST_DEFAULT_HOOK_ORDER))
-        names = configured_names + extra_names
-    for name in names:
-        hook = hooks.get(name)
-        if not isinstance(hook, dict):
-            blockers.append({
-                "code": "release_test_hook_missing",
-                "severity": "blocked",
-                "message": f"Configured release hook is missing: {name}.",
-                "hook": name,
-            })
-            continue
-        command = hook.get("command")
-        if not isinstance(command, str) or not command.strip():
-            blockers.append({
-                "code": "release_test_hook_command_missing",
-                "severity": "blocked",
-                "message": f"Configured release hook has no command: {name}.",
-                "hook": name,
-            })
-            continue
-        selected.append((name, hook))
-    if not names:
-        blockers.append({
-            "code": "release_test_no_hooks_configured",
-            "severity": "blocked",
-            "message": "No release hooks are configured for release test execution.",
-        })
-    return selected, blockers
-
-
-def _release_test_render_command(command_template: str, *, version: str | None, target_version: str | None, artifact: str, repo_path: str) -> tuple[list[str], str | None, str | None]:
-    placeholders = _release_config_command_placeholders(command_template)
-    missing: list[str] = []
-    values = {
-        "version": version or "",
-        "target_version": target_version or "",
-        "artifact": artifact,
-        "repo_path": repo_path,
-    }
-    for name in placeholders:
-        if not str(values.get(name) or ""):
-            missing.append(name)
-    if missing:
-        return [], None, f"missing placeholder values: {', '.join(sorted(missing))}"
-    try:
-        rendered = command_template.format(**values)
-    except Exception as exc:
-        return [], None, f"command template render failed: {exc}"
-    try:
-        argv = shlex.split(rendered)
-    except ValueError as exc:
-        return [], rendered, f"command split failed: {exc}"
-    if not argv:
-        return [], rendered, "rendered command is empty"
-    return argv, rendered, None
-
-
-def _run_release_test_hook(
-    *,
-    hook_name: str,
-    hook: dict[str, Any],
-    repo_root: Path,
-    version: str | None,
-    target_version: str | None,
-    artifact_path: Path,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    command_template = str(hook.get("command") or "")
-    started_at = utc_now()
-    argv, rendered, error = _release_test_render_command(
-        command_template,
-        version=version,
-        target_version=target_version,
-        artifact=str(artifact_path),
-        repo_path=str(repo_root),
-    )
-    base = {
-        "hook": hook_name,
-        "command_template": command_template,
-        "command": argv,
-        "rendered_command": rendered,
-        "started_at": started_at,
-        "timeout_seconds": timeout_seconds,
-    }
-    if error:
-        return {**base, "ok": False, "status": "hook_command_invalid", "error": error, "finished_at": utc_now()}
-    try:
-        completed = subprocess.run(
-            argv,
-            cwd=str(repo_root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=max(1.0, float(timeout_seconds)),
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            **base,
-            "ok": False,
-            "status": "hook_timeout",
-            "finished_at": utc_now(),
-            "returncode": None,
-            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
-            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
-        }
-    return {
-        **base,
-        "ok": completed.returncode == 0,
-        "status": "hook_passed" if completed.returncode == 0 else "hook_failed",
-        "finished_at": utc_now(),
-        "returncode": completed.returncode,
-        "stdout_tail": (completed.stdout or "")[-4000:],
-        "stderr_tail": (completed.stderr or "")[-4000:],
-    }
-
-
-def _record_release_acceptance_report(repo_root: Path, *, version: str, report: dict[str, Any]) -> Path:
-    version_key = _candidate_version_normalized(version) or "unknown"
-    record_dir = _release_test_records_dir(repo_root) / version_key
-    record_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = re.sub(r"[^0-9A-Za-z_.-]+", "_", utc_now())
-    record_path = record_dir / f"release_acceptance.{timestamp}.json"
-    record_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return record_path
-
-
-def _release_acceptance_report_paths(repo_root: Path, *, version: str | None = None) -> list[Path]:
-    root = _release_test_records_dir(repo_root)
-    paths: list[Path] = []
-    if version:
-        version_key = _candidate_version_normalized(version) or _safe_artifact_inbox_component(version, fallback="unknown")
-        paths.extend((root / version_key).glob("release_acceptance.*.json"))
-    else:
-        paths.extend(root.glob("*/release_acceptance.*.json"))
-    return sorted([path for path in paths if path.is_file()], key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
-
-
-def _load_release_acceptance_report(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        return {"ok": False, "status": "release_acceptance_report_read_error", "path": str(path), "error": str(exc)}
-    except json.JSONDecodeError as exc:
-        return {"ok": False, "status": "release_acceptance_report_json_invalid", "path": str(path), "error": str(exc)}
-    if not isinstance(payload, dict):
-        return {"ok": False, "status": "release_acceptance_report_not_mapping", "path": str(path)}
-    return {"ok": True, "status": "release_acceptance_report_loaded", "path": str(path), "report": payload}
-
-
-def _select_release_acceptance_report(repo_root: Path, *, version: str | None, explicit_path: str | None) -> dict[str, Any]:
-    if explicit_path:
-        path = Path(explicit_path).expanduser()
-        if not path.is_absolute():
-            path = repo_root / path
-        return _load_release_acceptance_report(path.resolve())
-    paths = _release_acceptance_report_paths(repo_root, version=version)
-    if not paths:
-        return {
-            "ok": False,
-            "status": "release_acceptance_report_missing",
-            "version": version,
-            "search_root": str(_release_test_records_dir(repo_root)),
-            "error": "no structured release acceptance report exists for the requested version",
-        }
-    loaded = _load_release_acceptance_report(paths[0])
-    return {**loaded, "selected_by": "latest_for_version", "candidate_count": len(paths)}
-
-
-def _release_acceptance_report_gate(
-    report: dict[str, Any],
-    *,
-    version: str | None,
-    artifact: dict[str, Any],
-) -> dict[str, Any]:
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    def warn(code: str, message: str, **extra: Any) -> None:
-        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
-
-    if report.get("schema") != "promptbranch.release.acceptance_report":
-        block("release_acceptance_report_schema_invalid", "Acceptance report schema is not promptbranch.release.acceptance_report.", schema=report.get("schema"))
-    if str(report.get("schema_version") or "") != "1.0":
-        block("release_acceptance_report_schema_version_invalid", "Acceptance report schema_version must be 1.0.", schema_version=report.get("schema_version"))
-    if report.get("accepted") is not True or report.get("status") != "accepted":
-        block("release_acceptance_report_not_green", "Acceptance report is not green.", accepted=report.get("accepted"), status=report.get("status"))
-
-    report_version = _candidate_version_normalized(report.get("version"))
-    requested_version = _candidate_version_normalized(version)
-    artifact_version = _candidate_version_normalized(artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
-    if requested_version and report_version and requested_version != report_version:
-        block("release_acceptance_report_version_mismatch", "Acceptance report version does not match requested version.", requested_version=requested_version, report_version=report_version)
-    if artifact_version and report_version and artifact_version != report_version:
-        block("release_acceptance_report_artifact_version_mismatch", "Acceptance report version does not match artifact version.", artifact_version=artifact_version, report_version=report_version)
-
-    report_artifact = report.get("artifact") if isinstance(report.get("artifact"), dict) else {}
-    report_filename = str(report_artifact.get("filename") or "")
-    artifact_filename = str(artifact.get("filename") or "")
-    if report_filename and artifact_filename and report_filename != artifact_filename:
-        block("release_acceptance_report_artifact_filename_mismatch", "Acceptance report artifact filename does not match selected artifact.", report_filename=report_filename, artifact_filename=artifact_filename)
-
-    report_sha = str(report_artifact.get("sha256") or "")
-    artifact_sha = str(artifact.get("sha256") or "")
-    if report_sha and artifact_sha and report_sha != artifact_sha:
-        block("release_acceptance_report_artifact_sha_mismatch", "Acceptance report artifact sha256 does not match selected artifact.", report_sha256=report_sha, artifact_sha256=artifact_sha)
-    if not report_sha:
-        warn("release_acceptance_report_sha_missing", "Acceptance report does not include artifact sha256; artifact identity is checked by filename/version only.")
-
-    hook_results = report.get("hook_results") if isinstance(report.get("hook_results"), list) else []
-    if not hook_results:
-        block("release_acceptance_report_no_hooks", "Acceptance report has no hook results.")
-    failed_hooks = [item.get("hook") for item in hook_results if isinstance(item, dict) and item.get("ok") is not True]
-    if failed_hooks:
-        block("release_acceptance_report_failed_hooks", "Acceptance report contains failed hooks.", failed_hooks=failed_hooks)
-
-    return {
-        "ok": not blockers,
-        "status": "release_acceptance_report_green" if not blockers else "release_acceptance_report_blocked",
-        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-        "report_version": report_version,
-        "artifact_version": artifact_version,
-        "artifact_filename": artifact.get("filename"),
-        "hook_count": len(hook_results),
-    }
-
-
-async def cmd_release_test(backend: Any, args: argparse.Namespace) -> int:
-    """Run configured release acceptance hooks and persist a structured report.
-
-    This command is intentionally evidence-producing only. It can execute configured
-    project hook commands, but it does not itself adopt artifacts, update Promptbranch
-    source/artifact state, update the artifact registry, or commit/push Git state.
-    """
-
-    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
-    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
-    requested_version = _candidate_version_normalized(getattr(args, "version", None))
-    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    timeout_seconds = float(getattr(args, "hook_timeout", 3600.0) or 3600.0)
-    plan_only = bool(getattr(args, "plan", False))
-    requested_hooks = list(getattr(args, "hook", None) or [])
-
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    if not config_payload.get("ok"):
-        block("release_config_invalid", "Release test requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
-    if not artifact_payload.get("attempted"):
-        block("release_test_artifact_required", "release test requires --artifact ZIP.")
-    elif not artifact_payload.get("ok"):
-        block("release_test_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
-
-    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
-    if requested_version and artifact_version and requested_version != artifact_version:
-        block("release_test_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
-    if not requested_version and artifact_version:
-        requested_version = artifact_version
-        warnings.append({
-            "code": "release_test_version_inferred",
-            "severity": "warning",
-            "message": "No --version was supplied; candidate version is inferred from the artifact ZIP.",
-            "artifact_version": artifact_version,
-        })
-
-    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
-    selected_hooks, hook_selection_blockers = _release_test_selected_hooks(config, requested_hooks)
-    blockers.extend(hook_selection_blockers)
-
-    hook_plan = [
-        {
-            "hook": name,
-            "command_template": str(hook.get("command") or ""),
-            "risk": str(hook.get("risk") or "process"),
-        }
-        for name, hook in selected_hooks
-    ]
-    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser()
-    if artifact_path and not artifact_path.is_absolute():
-        artifact_path = (repo_root / artifact_path).resolve()
-
-    base_payload: dict[str, Any] = {
-        "ok": False,
-        "action": "release_test",
-        "status": "blocked" if blockers else ("planned" if plan_only else "ready"),
-        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
-        "mode": "plan_only" if plan_only else "execute",
-        "read_only": plan_only,
-        "repo_path": str(repo_root),
-        "config": config_payload,
-        "artifact": artifact_payload,
-        "version": requested_version,
-        "target_version": target_version,
-        "hook_timeout_seconds": timeout_seconds,
-        "hook_plan": hook_plan,
-        "hook_count": len(hook_plan),
-        "hook_results": [],
-        "acceptance_report_written": False,
-        "acceptance_report_path": None,
-        "acceptance_status": "not_run" if plan_only or blockers else "pending",
-        "candidate_test_performed": False,
-        "adoption_performed": False,
-        "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "mutating_actions_executed": not plan_only and not bool(blockers),
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-        "not_performed": [
-            "artifact_download",
-            "candidate_migration",
-            "candidate_adoption",
-            "project_source_mutation",
-            "artifact_registry_update",
-            "state_artifact_update",
-            "state_source_update",
-            "git_commit",
-            "git_push",
-        ],
-    }
-
-    def emit(payload: dict[str, Any], code: int) -> int:
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"acceptance_status={payload.get('acceptance_status')}")
-            print(f"hook_count={payload.get('hook_count')}")
-            print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
-            print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
-            if payload.get("acceptance_report_path"):
-                print(f"acceptance_report_path={payload.get('acceptance_report_path')}")
-        return code
-
-    if blockers:
-        base_payload["operator_instruction"] = "Release acceptance hook execution is blocked. Resolve blockers before running project hooks."
-        return emit(base_payload, 1)
-    if plan_only:
-        base_payload.update({
-            "ok": True,
-            "status": "planned",
-            "acceptance_status": "planned",
-            "operator_instruction": "Read-only release test plan. No hooks were executed and no lifecycle state was advanced.",
-        })
-        return emit(base_payload, 0)
-
-    hook_results: list[dict[str, Any]] = []
-    for name, hook in selected_hooks:
-        result = _run_release_test_hook(
-            hook_name=name,
-            hook=hook,
-            repo_root=repo_root,
-            version=requested_version,
-            target_version=target_version,
-            artifact_path=artifact_path,
-            timeout_seconds=timeout_seconds,
-        )
-        hook_results.append(result)
-        if not result.get("ok") and bool(getattr(args, "stop_on_failure", True)):
-            break
-
-    all_passed = bool(hook_results) and all(bool(item.get("ok")) for item in hook_results)
-    report = {
-        "schema": "promptbranch.release.acceptance_report",
-        "schema_version": "1.0",
-        "created_at": utc_now(),
-        "version": requested_version,
-        "target_version": target_version,
-        "artifact": artifact_payload,
-        "repo_path": str(repo_root),
-        "hook_results": hook_results,
-        "hook_count": len(hook_results),
-        "accepted": all_passed,
-        "status": "accepted" if all_passed else "rejected",
-        "adoption_performed": False,
-        "project_source_mutated": False,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-    }
-    report_path = _record_release_acceptance_report(repo_root, version=requested_version or "unknown", report=report)
-
-    payload = {
-        **base_payload,
-        "ok": all_passed,
-        "status": "release_acceptance_passed" if all_passed else "release_acceptance_failed",
-        "severity": "ok" if all_passed and not warnings else ("warning" if all_passed else "blocked"),
-        "hook_results": hook_results,
-        "hook_count": len(hook_results),
-        "acceptance_status": "accepted" if all_passed else "rejected",
-        "acceptance_report": report,
-        "acceptance_report_written": True,
-        "acceptance_report_path": str(report_path),
-        "candidate_test_performed": True,
-        "adoption_performed": False,
-        "project_source_mutated": False,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "blockers": [] if all_passed else [{
-            "code": "release_acceptance_hooks_failed",
-            "severity": "blocked",
-            "message": "One or more release acceptance hooks failed.",
-            "failed_hooks": [item.get("hook") for item in hook_results if not item.get("ok")],
-        }],
-        "blocker_codes": [] if all_passed else ["release_acceptance_hooks_failed"],
-        "operator_instruction": (
-            "Release acceptance hooks passed and a structured report was written. Adoption, source/artifact state advancement, Git commit, and Git push were not performed."
-            if all_passed else
-            "Release acceptance hooks failed. The structured report was written, but adoption and state advancement remain blocked."
-        ),
-    }
-    return emit(payload, 0 if all_passed else 1)
-
-
-async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
-    """Adopt a release ZIP only after a green structured acceptance report."""
-
-    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    registry = _artifact_registry_from_args(args)
-    project_url = _artifact_state_project_url(backend)
-    requested_version = _candidate_version_normalized(getattr(args, "version", None))
-    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
-    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
-    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
-
-    report_selection = _select_release_acceptance_report(
-        repo_root,
-        version=requested_version or artifact_version,
-        explicit_path=getattr(args, "acceptance_report", None),
-    )
-    report = report_selection.get("report") if isinstance(report_selection.get("report"), dict) else {}
-    report_gate = _release_acceptance_report_gate(report, version=requested_version or artifact_version, artifact=artifact_payload) if report_selection.get("ok") else {
-        "ok": False,
-        "status": report_selection.get("status"),
-        "severity": "blocked",
-        "blockers": [{"code": str(report_selection.get("status") or "release_acceptance_report_unavailable"), "severity": "blocked", "message": str(report_selection.get("error") or "release acceptance report could not be loaded")}],
-        "blocker_codes": [str(report_selection.get("status") or "release_acceptance_report_unavailable")],
-        "warnings": [],
-        "warning_codes": [],
-    }
-
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    def warn(code: str, message: str, **extra: Any) -> None:
-        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
-
-    if not artifact_payload.get("attempted"):
-        block("release_adopt_artifact_required", "release adopt requires --artifact ZIP.")
-    elif not artifact_payload.get("ok"):
-        block("release_adopt_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
-    if requested_version and artifact_version and requested_version != artifact_version:
-        block("release_adopt_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
-    if not report_gate.get("ok"):
-        blockers.extend(report_gate.get("blockers") or [])
-    warnings.extend(report_gate.get("warnings") or [])
-    if not project_url:
-        block("release_adopt_workspace_not_selected", "select a workspace before release adoption so artifact/source state can be updated")
-
-    source_payload: dict[str, Any] | None = None
-    matched_source: dict[str, Any] | None = None
-    source_verified = False
-    source_list_attempted = False
-    if artifact_filename and not blockers:
-        source_list_attempted = True
-        try:
-            source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
-        except Exception as exc:  # pragma: no cover - defensive around external browser/service boundary
-            source_result = _operation_error_payload("release_adopt_source_list", exc)
-        matched_sources, source_payload = _project_sources_matching_filename(source_result, artifact_filename)
-        if not bool(source_payload.get("ok")):
-            block("release_adopt_source_list_unavailable", "could not verify Project Sources before adoption", source_list_status=source_payload.get("status"))
-        elif len(matched_sources) != 1:
-            block("release_adopt_project_source_match_count_invalid", f"expected exactly one matching Project Source named {artifact_filename}, found {len(matched_sources)}", matching_expected_count=len(matched_sources))
-        else:
-            source_verified = True
-            matched_source = matched_sources[0]
-
-    plan_only = bool(getattr(args, "plan", False))
-    base_payload = {
-        "ok": False,
-        "action": "release_adopt",
-        "status": "release_adopt_blocked" if blockers else ("planned" if plan_only else "ready_to_adopt"),
-        "version": requested_version or artifact_version,
-        "target_version": target_version,
-        "repo_path": str(repo_root),
-        "project_url": project_url,
-        "artifact": artifact_payload,
-        "artifact_ref": artifact_filename or None,
-        "artifact_version": artifact_version,
-        "acceptance_report_selection": {k: v for k, v in report_selection.items() if k != "report"},
-        "acceptance_report": report if report_selection.get("ok") else None,
-        "acceptance_report_gate": report_gate,
-        "source_list_attempted": source_list_attempted,
-        "source_verified": source_verified,
-        "source_list": source_payload,
-        "matched_source": matched_source,
-        "read_only": plan_only,
-        "adoption_performed": False,
-        "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-        "not_performed": [
-            "project_source_mutation",
-            "release_acceptance_hook_execution",
-            "git_commit",
-            "git_push",
-            "policy_sync",
-        ],
-    }
-
-    def emit(payload: dict[str, Any], code: int) -> int:
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"ok={str(bool(payload.get('ok'))).lower()}")
-            if payload.get("error"):
-                print(f"error={payload.get('error')}")
-            if payload.get("artifact_ref"):
-                print(f"artifact_ref={payload.get('artifact_ref')}")
-        return code
-
-    if blockers:
-        return emit({**base_payload, "operator_instruction": "Release adoption is blocked. A verified artifact, exactly one matching Project Source, selected workspace, and green structured acceptance report are required."}, 1)
-
-    if plan_only:
-        return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release adopt plan. Green acceptance report and Project Source visibility are verified; no local artifact/source state was advanced."}, 0)
-
-    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser().resolve()
-    zip_check = artifact_payload.get("verification") if isinstance(artifact_payload.get("verification"), dict) else verify_zip_artifact(artifact_path)
-    record = ArtifactRecord(
-        path=str(artifact_path),
-        filename=artifact_filename,
-        kind="adopted_release",
-        version=artifact_version,
-        repo_path=None,
-        sha256=str(artifact_payload.get("sha256") or zip_check.get("sha256") or ""),
-        size_bytes=int(artifact_payload.get("size_bytes") or zip_check.get("size_bytes") or artifact_path.stat().st_size),
-        file_count=int(artifact_payload.get("entry_count") or zip_check.get("entry_count") or 0),
-        created_at=utc_now(),
-        source_ref=artifact_filename,
-        project_url=project_url,
-    )
-    artifact_record = registry.add(record)
-    _state_store_from_args(args).remember_artifact(
-        project_url=project_url,
-        artifact_ref=artifact_filename,
-        artifact_version=artifact_version,
-        source_ref=artifact_filename,
-        source_version=artifact_version,
-    )
-    current_payload = _artifact_current_payload(backend, registry)
-    current_ok, current_checks = _report_artifact_current_matches_candidate(
-        current_payload,
-        filename=artifact_filename,
-        version=artifact_version or "",
-        require_runtime_code_match=False,
-    )
-    result = {
-        **base_payload,
-        "ok": current_ok,
-        "status": "release_adopted" if current_ok else "release_adoption_verification_failed",
-        "local_artifact": artifact_record,
-        "artifact_current": current_payload,
-        "current_checks": current_checks,
-        "adoption_performed": True,
-        "artifact_registry_updated": True,
-        "state_artifact_updated": bool(current_checks.get("state_artifact_ref_matches_candidate") and current_checks.get("state_artifact_version_matches_candidate")),
-        "state_source_updated": bool(current_checks.get("state_source_ref_matches_candidate") and current_checks.get("state_source_version_matches_candidate")),
-        "project_source_mutated": False,
-        "mutating_actions_executed": True,
-        "mutated_local_state_only": True,
-        "operator_instruction": (
-            "Release artifact was adopted as the local artifact/source baseline after green structured acceptance report and Project Source verification."
-            if current_ok else
-            "Release adoption was attempted, but artifact current verification failed; inspect current_checks before continuing."
-        ),
-    }
-    if not current_ok:
-        result["blockers"] = [{"code": "release_adopt_current_mismatch", "severity": "blocked", "message": "artifact current does not match adopted release after local state update"}]
-        result["blocker_codes"] = ["release_adopt_current_mismatch"]
-    return emit(result, 0 if current_ok else 1)
-
-
-
-
-def _release_policy_file_path(config_payload: dict[str, Any], repo_root: Path) -> Path:
-    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
-    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
-    raw = str(artifact_cfg.get("policy_file") or ".promptbranch-project.json").strip() or ".promptbranch-project.json"
-    path = Path(raw).expanduser()
-    if not path.is_absolute():
-        path = repo_root / path
-    return path.resolve()
-
-
-def _load_release_policy(path: Path) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "path": str(path),
-        "present": path.is_file(),
-        "ok": False,
-        "status": "missing",
-        "policy": None,
-    }
-    if not path.exists():
-        payload.update({"ok": True, "status": "missing"})
-        return payload
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        payload.update({"status": "invalid_json", "error": str(exc)})
-        return payload
-    except OSError as exc:
-        payload.update({"status": "read_error", "error": str(exc)})
-        return payload
-    if not isinstance(raw, dict):
-        payload.update({"status": "policy_not_mapping", "error": "policy file root must be a JSON object"})
-        return payload
-    payload.update({"ok": True, "status": "loaded", "policy": raw})
-    return payload
-
-
-def _release_policy_payload_matches(policy: dict[str, Any], *, artifact_ref: str, artifact_version: str) -> dict[str, Any]:
-    accepted = policy.get("accepted_baseline") if isinstance(policy.get("accepted_baseline"), dict) else {}
-    artifact_section = policy.get("artifact") if isinstance(policy.get("artifact"), dict) else {}
-    source_section = policy.get("source") if isinstance(policy.get("source"), dict) else {}
-    checks = {
-        "accepted_artifact_ref_matches": accepted.get("artifact_ref") == artifact_ref,
-        "accepted_artifact_version_matches": _candidate_version_normalized(accepted.get("artifact_version")) == artifact_version,
-        "accepted_source_ref_matches": accepted.get("source_ref") == artifact_ref,
-        "accepted_source_version_matches": _candidate_version_normalized(accepted.get("source_version")) == artifact_version,
-        "artifact_section_ref_matches": artifact_section.get("ref") == artifact_ref,
-        "artifact_section_version_matches": _candidate_version_normalized(artifact_section.get("version")) == artifact_version,
-        "source_section_ref_matches": source_section.get("ref") == artifact_ref,
-        "source_section_version_matches": _candidate_version_normalized(source_section.get("version")) == artifact_version,
-    }
-    return {
-        "ok": all(checks.values()),
-        "status": "verified" if all(checks.values()) else "policy_mismatch",
-        "checks": checks,
-    }
-
-
-def _build_release_policy_payload(
-    *,
-    existing_policy: dict[str, Any] | None,
-    artifact_ref: str,
-    artifact_version: str,
-    artifact_payload: dict[str, Any],
-    repo_root: Path,
-    project_url: str | None,
-    target_version: str | None,
-) -> dict[str, Any]:
-    existing = existing_policy if isinstance(existing_policy, dict) else {}
-    payload = copy.deepcopy(existing)
-    now = utc_now()
-    payload.update({
-        "schema": "promptbranch.release.policy",
-        "schema_version": 1,
-        "updated_at": now,
-        "repo_path": str(repo_root),
-        "project_url": project_url,
-        "target_version": target_version,
-        "accepted_baseline": {
-            "artifact_ref": artifact_ref,
-            "artifact_version": artifact_version,
-            "source_ref": artifact_ref,
-            "source_version": artifact_version,
-            "synced_at": now,
-        },
-        "artifact": {
-            "ref": artifact_ref,
-            "version": artifact_version,
-            "sha256": artifact_payload.get("sha256"),
-            "size_bytes": artifact_payload.get("size_bytes"),
-            "entry_count": artifact_payload.get("entry_count"),
-        },
-        "source": {
-            "ref": artifact_ref,
-            "version": artifact_version,
-        },
-        "lifecycle": {
-            "policy_synced": True,
-            "policy_synced_at": now,
-            "git_commit_performed": False,
-            "git_push_performed": False,
-        },
-    })
-    return payload
-
-
-def _release_git_status_entries(repo_root: Path) -> dict[str, Any]:
-    payload = _release_doctor_git_status(repo_root)
-    entries: list[dict[str, Any]] = []
-    if payload.get("is_git_repo"):
-        try:
-            result = subprocess.run(
-                ["git", "status", "--porcelain=v1"],
-                cwd=str(repo_root),
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=5.0,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            payload.update({"status": "git_status_error", "error": str(exc), "entries": []})
-            return payload
-        if result.returncode != 0:
-            payload.update({"status": "git_status_error", "error": result.stderr.strip(), "entries": []})
-            return payload
-        for line in result.stdout.splitlines():
-            if not line.strip():
-                continue
-            status = line[:2]
-            path_text = line[3:].strip()
-            # Rename/copy status may be formatted as "old -> new"; commit safety cares about the destination path.
-            if " -> " in path_text:
-                path_text = path_text.split(" -> ", 1)[1].strip()
-            entries.append({"status": status, "path": path_text})
-    payload["entries"] = entries
-    payload["dirty_paths"] = [item["path"] for item in entries]
-    payload["dirty_count"] = len(entries)
-    payload["dirty"] = bool(entries)
-    return payload
-
-
-def _release_path_matches_any(path_text: str, patterns: list[str]) -> bool:
-    normalized = path_text.strip().replace("\\", "/")
-    for raw in patterns:
-        pattern = str(raw or "").strip().replace("\\", "/").strip("/")
-        if not pattern:
-            continue
-        if fnmatch.fnmatch(normalized, pattern) or normalized == pattern or normalized.startswith(pattern.rstrip("/") + "/"):
-            return True
-    return False
-
-
-def _release_git_safety_plan(
-    *,
-    repo_root: Path,
-    config_payload: dict[str, Any],
-    expected_paths: list[str],
-) -> dict[str, Any]:
-    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
-    git_cfg = config.get("git") if isinstance(config.get("git"), dict) else {}
-    unsafe_patterns = [str(item) for item in (git_cfg.get("unsafe_paths") if isinstance(git_cfg.get("unsafe_paths"), list) else [])]
-    expected = sorted({str(path).strip().replace("\\", "/").strip("/") for path in expected_paths if str(path or "").strip()})
-    status = _release_git_status_entries(repo_root)
-    entries = status.get("entries") if isinstance(status.get("entries"), list) else []
-    dirty_paths = [str(item.get("path") or "") for item in entries if isinstance(item, dict)]
-    unsafe_dirty = [path for path in dirty_paths if _release_path_matches_any(path, unsafe_patterns)]
-    expected_dirty = [path for path in dirty_paths if path in expected]
-    unexpected_dirty = [path for path in dirty_paths if path not in expected_dirty]
-    safe = bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty
-    return {
-        "ok": safe,
-        "status": "safe_to_commit" if safe else ("not_git_repo" if not status.get("is_git_repo") else "unsafe_or_unexpected_dirty_paths"),
-        "repo_path": str(repo_root),
-        "git_status": status,
-        "commit_allowed": safe,
-        "commit_eligible": safe,
-        "push_allowed": safe,
-        "push_eligible": safe,
-        "commit_performed": False,
-        "push_performed": False,
-        "expected_paths": expected,
-        "unsafe_patterns": unsafe_patterns,
-        "dirty_paths": dirty_paths,
-        "expected_dirty_paths": expected_dirty,
-        "unexpected_dirty_paths": unexpected_dirty,
-        "unsafe_dirty_paths": unsafe_dirty,
-        "operator_instruction": "Git safety planner only; no files were staged, committed, or pushed.",
-    }
-
-
-def _release_git_upstream_status(repo_root: Path) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "attempted": True,
-        "has_upstream": False,
-        "branch": None,
-        "upstream": None,
-        "ahead": None,
-        "behind": None,
-        "push_precheck_ok": False,
-        "status": "unknown",
-    }
-    try:
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(repo_root),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=5.0,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        payload.update({"status": "git_branch_error", "error": str(exc)})
-        return payload
-    if branch_result.returncode != 0:
-        payload.update({"status": "git_branch_error", "error": branch_result.stderr.strip()})
-        return payload
-    payload["branch"] = branch_result.stdout.strip()
-    upstream_result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-        cwd=str(repo_root),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=5.0,
-        check=False,
-    )
-    if upstream_result.returncode != 0:
-        payload.update({"status": "no_upstream", "error": upstream_result.stderr.strip()})
-        return payload
-    payload["has_upstream"] = True
-    payload["upstream"] = upstream_result.stdout.strip()
-    rev_result = subprocess.run(
-        ["git", "rev-list", "--left-right", "--count", "HEAD...@{u}"],
-        cwd=str(repo_root),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=10.0,
-        check=False,
-    )
-    if rev_result.returncode != 0:
-        payload.update({"status": "ahead_behind_error", "error": rev_result.stderr.strip()})
-        return payload
-    parts = rev_result.stdout.strip().split()
-    if len(parts) == 2:
-        try:
-            payload["ahead"] = int(parts[0])
-            payload["behind"] = int(parts[1])
-        except ValueError:
-            payload.update({"status": "ahead_behind_parse_error", "raw": rev_result.stdout.strip()})
-            return payload
-    payload["push_precheck_ok"] = payload.get("has_upstream") is True and int(payload.get("behind") or 0) == 0
-    payload["status"] = "push_precheck_ok" if payload["push_precheck_ok"] else "branch_behind_upstream"
-    return payload
-
-
-def _release_git_sync_plan(
-    *,
-    repo_root: Path,
-    config_payload: dict[str, Any],
-    artifact_ref: str | None,
-    artifact_version: str | None,
-    policy_file_repo_relative: str | None,
-    requested_commit: bool,
-    requested_push: bool,
-    commit_message: str | None = None,
-) -> dict[str, Any]:
-    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
-    git_cfg = config.get("git") if isinstance(config.get("git"), dict) else {}
-    unsafe_patterns = [str(item) for item in (git_cfg.get("unsafe_paths") if isinstance(git_cfg.get("unsafe_paths"), list) else [])]
-    configured_expected = git_cfg.get("expected_paths") if isinstance(git_cfg.get("expected_paths"), list) else []
-    expected_patterns = [str(item) for item in configured_expected if str(item or "").strip()]
-    expected_policy = "configured_expected_paths" if expected_patterns else "all_non_unsafe_dirty_paths"
-    status = _release_git_status_entries(repo_root)
-    entries = status.get("entries") if isinstance(status.get("entries"), list) else []
-    dirty_paths = [str(item.get("path") or "") for item in entries if isinstance(item, dict)]
-    unsafe_dirty = [path for path in dirty_paths if _release_path_matches_any(path, unsafe_patterns)]
-    if expected_patterns:
-        expected_dirty = [path for path in dirty_paths if _release_path_matches_any(path, expected_patterns)]
-        unexpected_dirty = [path for path in dirty_paths if path not in expected_dirty and path not in unsafe_dirty]
-    else:
-        expected_dirty = [path for path in dirty_paths if path not in unsafe_dirty]
-        unexpected_dirty = []
-    clean = not dirty_paths
-    policy_ok = False
-    policy_status = "not_checked"
-    policy_path = repo_root / str(policy_file_repo_relative or ".promptbranch-project.json")
-    policy_payload = _load_release_policy(policy_path)
-    if policy_payload.get("ok") and isinstance(policy_payload.get("policy"), dict):
-        verification = _release_policy_payload_matches(
-            policy_payload["policy"],
-            artifact_ref=artifact_ref or "",
-            artifact_version=artifact_version or "",
-        )
-        policy_ok = bool(verification.get("ok"))
-        policy_status = str(verification.get("status") or ("verified" if policy_ok else "mismatch"))
-    else:
-        policy_status = str(policy_payload.get("status") or "policy_missing_or_invalid")
-    upstream = _release_git_upstream_status(repo_root) if bool(status.get("is_git_repo")) else {"attempted": False, "status": "not_git_repo"}
-    config_commit_enabled = bool(git_cfg.get("commit_release", True))
-    config_push_enabled = bool(git_cfg.get("push_release", True))
-    safe_dirty = bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty
-    commit_eligible = safe_dirty and policy_ok and not clean and config_commit_enabled
-    push_eligible = bool(upstream.get("push_precheck_ok")) and config_push_enabled
-    blocked_reasons: list[str] = []
-    if not status.get("is_git_repo"):
-        blocked_reasons.append("not_git_repo")
-    if unsafe_dirty:
-        blocked_reasons.append("unsafe_dirty_paths")
-    if unexpected_dirty:
-        blocked_reasons.append("unexpected_dirty_paths")
-    if not policy_ok:
-        blocked_reasons.append("policy_not_synced")
-    if clean:
-        blocked_reasons.append("nothing_to_commit")
-    if not config_commit_enabled:
-        blocked_reasons.append("commit_disabled_by_config")
-    if requested_push and not requested_commit:
-        blocked_reasons.append("push_requires_commit_flag")
-    if requested_push and not push_eligible:
-        blocked_reasons.append("push_precheck_failed")
-    return {
-        "ok": bool(status.get("is_git_repo")) and not unsafe_dirty and not unexpected_dirty and policy_ok,
-        "status": "git_sync_ready" if commit_eligible else ("git_sync_clean" if clean and bool(status.get("is_git_repo")) and policy_ok and not unsafe_dirty and not unexpected_dirty else "git_sync_blocked"),
-        "repo_path": str(repo_root),
-        "artifact_ref": artifact_ref,
-        "artifact_version": artifact_version,
-        "policy_file_repo_relative": policy_file_repo_relative,
-        "policy_status": policy_status,
-        "policy_verified": policy_ok,
-        "git_status": status,
-        "upstream": upstream,
-        "expected_policy": expected_policy,
-        "expected_patterns": expected_patterns,
-        "unsafe_patterns": unsafe_patterns,
-        "dirty_paths": dirty_paths,
-        "expected_dirty_paths": expected_dirty,
-        "unexpected_dirty_paths": unexpected_dirty,
-        "unsafe_dirty_paths": unsafe_dirty,
-        "paths_to_stage": expected_dirty,
-        "clean": clean,
-        "commit_requested": requested_commit,
-        "push_requested": requested_push,
-        "commit_allowed": commit_eligible,
-        "commit_eligible": commit_eligible,
-        "push_allowed": push_eligible and requested_commit,
-        "push_eligible": push_eligible,
-        "commit_message": commit_message or f"Release chatgpt_claudecode_workflow {artifact_version or artifact_ref or ''}".strip(),
-        "blocked_reasons": blocked_reasons,
-    }
-
-
-async def cmd_release_policy_sync(backend: Any, args: argparse.Namespace) -> int:
-    """Synchronize repo-local release policy to the accepted artifact/source baseline."""
-
-    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
-    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
-    requested_version = _candidate_version_normalized(getattr(args, "version", None))
-    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    plan_only = bool(getattr(args, "plan", False))
-    try:
-        project_url = _artifact_state_project_url(backend) if backend is not None else None
-    except Exception:
-        project_url = None
-
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    if not config_payload.get("ok"):
-        block("release_config_invalid", "Policy sync requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
-    if not artifact_payload.get("attempted"):
-        block("release_policy_sync_artifact_required", "release policy-sync requires --artifact ZIP.")
-    elif not artifact_payload.get("ok"):
-        block("release_policy_sync_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
-
-    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
-    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
-    if requested_version and artifact_version and requested_version != artifact_version:
-        block("release_policy_sync_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
-    if not artifact_version:
-        block("release_policy_sync_version_missing", "Could not determine artifact version for policy sync.")
-    if not artifact_filename:
-        block("release_policy_sync_artifact_filename_missing", "Could not determine artifact filename for policy sync.")
-
-    policy_path = _release_policy_file_path(config_payload, repo_root)
-    try:
-        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
-    except ValueError:
-        policy_rel = str(policy_path)
-        block("release_policy_path_escapes_repo", "Configured policy file must resolve inside the repository root.", policy_path=str(policy_path))
-    existing_policy = _load_release_policy(policy_path)
-    if existing_policy.get("present") and not existing_policy.get("ok"):
-        block("release_policy_sync_existing_policy_invalid", "Existing policy file could not be safely loaded.", policy_status=existing_policy.get("status"), error=existing_policy.get("error"))
-
-    desired_policy = _build_release_policy_payload(
-        existing_policy=existing_policy.get("policy") if isinstance(existing_policy.get("policy"), dict) else {},
-        artifact_ref=artifact_filename,
-        artifact_version=artifact_version or requested_version or "",
-        artifact_payload=artifact_payload,
-        repo_root=repo_root,
-        project_url=project_url,
-        target_version=target_version,
-    )
-    desired_check = _release_policy_payload_matches(desired_policy, artifact_ref=artifact_filename, artifact_version=artifact_version or requested_version or "")
-    git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
-
-    base_payload = {
-        "ok": False,
-        "action": "release_policy_sync",
-        "status": "blocked" if blockers else ("planned" if plan_only else "ready_to_sync"),
-        "version": requested_version or artifact_version,
-        "target_version": target_version,
-        "repo_path": str(repo_root),
-        "read_only": plan_only,
-        "policy_file": str(policy_path),
-        "policy_file_repo_relative": policy_rel,
-        "existing_policy": existing_policy,
-        "desired_policy": desired_policy,
-        "desired_policy_verification": desired_check,
-        "artifact": artifact_payload,
-        "artifact_ref": artifact_filename,
-        "artifact_version": artifact_version,
-        "git_safety_plan": git_plan,
-        "policy_sync_performed": False,
-        "policy_verified": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "project_source_mutated": False,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "mutating_actions_executed": False,
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-        "not_performed": ["git_commit", "git_push", "project_source_mutation", "artifact_registry_update", "state_artifact_update", "state_source_update"],
-    }
-
-    def emit(payload: dict[str, Any], code: int) -> int:
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"ok={str(bool(payload.get('ok'))).lower()}")
-            print(f"policy_file={payload.get('policy_file')}")
-        return code
-
-    if blockers:
-        return emit({**base_payload, "operator_instruction": "Release policy sync is blocked. Resolve artifact/config/policy path blockers before mutating policy state."}, 1)
-    if plan_only:
-        return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release policy sync plan. No policy file, Git state, Project Sources, or artifact state was changed."}, 0)
-
-    policy_path.parent.mkdir(parents=True, exist_ok=True)
-    policy_path.write_text(json.dumps(desired_policy, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    readback = _load_release_policy(policy_path)
-    readback_policy = readback.get("policy") if isinstance(readback.get("policy"), dict) else {}
-    verification = _release_policy_payload_matches(readback_policy, artifact_ref=artifact_filename, artifact_version=artifact_version or requested_version or "") if readback.get("ok") else {"ok": False, "status": readback.get("status"), "checks": {}}
-    git_plan_after = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
-    payload = {
-        **base_payload,
-        "ok": bool(verification.get("ok")),
-        "status": "release_policy_synced" if verification.get("ok") else "release_policy_sync_verification_failed",
-        "read_only": False,
-        "existing_policy": existing_policy,
-        "policy_readback": readback,
-        "policy_verification": verification,
-        "git_safety_plan": git_plan_after,
-        "policy_sync_performed": True,
-        "policy_verified": bool(verification.get("ok")),
-        "mutating_actions_executed": True,
-        "mutated_local_state_only": True,
-        "operator_instruction": "Release policy file was synchronized to the accepted artifact/source baseline. Git commit/push were not performed." if verification.get("ok") else "Policy file was written, but verification failed; inspect policy_verification before continuing.",
-    }
-    if not verification.get("ok"):
-        payload["blockers"] = [{"code": "release_policy_sync_verification_failed", "severity": "blocked", "message": "Policy readback does not match expected accepted baseline."}]
-        payload["blocker_codes"] = ["release_policy_sync_verification_failed"]
-    return emit(payload, 0 if verification.get("ok") else 1)
-
-
-
-async def cmd_release_git_sync(backend: Any, args: argparse.Namespace) -> int:
-    """Plan or perform guarded Git commit/push for release lifecycle state.
-
-    This command is intentionally conservative. It never stages unsafe paths,
-    never commits unless --commit is explicit, and never pushes unless --push is
-    explicit and a commit succeeded in the same command invocation.
-    """
-
-    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
-    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
-    requested_version = _candidate_version_normalized(getattr(args, "version", None))
-    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    plan_only = bool(getattr(args, "plan", False))
-    commit_requested = bool(getattr(args, "commit", False))
-    push_requested = bool(getattr(args, "push", False))
-    commit_message_arg = getattr(args, "message", None)
-
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    if not config_payload.get("ok"):
-        block("release_config_invalid", "Git sync requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
-    if not artifact_payload.get("attempted"):
-        block("release_git_sync_artifact_required", "release git-sync requires --artifact ZIP so policy and commit context can be verified.")
-    elif not artifact_payload.get("ok"):
-        block("release_git_sync_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
-
-    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
-    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
-    if requested_version and artifact_version and requested_version != artifact_version:
-        block("release_git_sync_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
-
-    policy_path = _release_policy_file_path(config_payload, repo_root)
-    try:
-        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
-    except ValueError:
-        policy_rel = str(policy_path)
-        block("release_policy_path_escapes_repo", "Configured policy file must resolve inside the repository root.", policy_path=str(policy_path))
-
-    plan = _release_git_sync_plan(
-        repo_root=repo_root,
-        config_payload=config_payload,
-        artifact_ref=artifact_filename or None,
-        artifact_version=artifact_version or requested_version,
-        policy_file_repo_relative=policy_rel,
-        requested_commit=commit_requested,
-        requested_push=push_requested,
-        commit_message=commit_message_arg,
-    )
-    if push_requested and not commit_requested:
-        block("release_git_sync_push_requires_commit", "--push requires --commit so the push is tied to a same-run guarded commit.")
-    if commit_requested and not plan.get("commit_allowed"):
-        block("release_git_sync_commit_blocked", "Git commit was requested but safety checks are not green.", blocked_reasons=plan.get("blocked_reasons") or [])
-    if push_requested and not plan.get("push_eligible"):
-        block("release_git_sync_push_blocked", "Git push was requested but upstream safety checks are not green.", upstream=plan.get("upstream"))
-
-    base_payload = {
-        "ok": False,
-        "action": "release_git_sync",
-        "status": "blocked" if blockers else ("planned" if plan_only or not commit_requested else "ready_to_commit"),
-        "schema_version": 1,
-        "version": requested_version or artifact_version,
-        "target_version": target_version,
-        "repo_path": str(repo_root),
-        "read_only": bool(plan_only or not commit_requested),
-        "plan_only": plan_only,
-        "artifact": artifact_payload,
-        "artifact_ref": artifact_filename or None,
-        "artifact_version": artifact_version,
-        "policy_file": str(policy_path),
-        "policy_file_repo_relative": policy_rel,
-        "git_sync_plan": plan,
-        "commit_requested": commit_requested,
-        "push_requested": push_requested,
-        "commit_performed": False,
-        "push_performed": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "mutating_actions_executed": False,
-        "project_source_mutated": False,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-    }
-
-    def emit(payload: dict[str, Any], code: int) -> int:
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"ok={str(bool(payload.get('ok'))).lower()}")
-            print(f"commit_performed={str(bool(payload.get('commit_performed'))).lower()}")
-            print(f"push_performed={str(bool(payload.get('push_performed'))).lower()}")
-        return code
-
-    if blockers:
-        return emit({**base_payload, "operator_instruction": "Release Git sync is blocked. Resolve policy, unsafe path, or upstream blockers before retrying."}, 1)
-
-    if plan_only or not commit_requested:
-        return emit({
-            **base_payload,
-            "ok": True,
-            "status": "planned" if plan_only else "git_sync_not_requested",
-            "operator_instruction": "Read-only Git sync plan. No files were staged, committed, or pushed." if plan_only else "Git sync inspected state only. Pass --commit to stage and commit allowed release files.",
-        }, 0)
-
-    paths_to_stage = [str(path) for path in (plan.get("paths_to_stage") or []) if str(path or "").strip()]
-    if not paths_to_stage:
-        return emit({
-            **base_payload,
-            "ok": True,
-            "status": "git_sync_no_changes",
-            "read_only": True,
-            "operator_instruction": "No allowed dirty release files were present, so no commit was created.",
-        }, 0)
-
-    stage_result = subprocess.run(
-        ["git", "add", "--", *paths_to_stage],
-        cwd=str(repo_root),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=30.0,
-        check=False,
-    )
-    if stage_result.returncode != 0:
-        payload = {**base_payload, "status": "git_stage_failed", "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "operator_instruction": "Git staging failed; no commit or push was attempted."}
-        payload["blockers"] = [{"code": "release_git_sync_stage_failed", "severity": "blocked", "message": "Git staging failed."}]
-        payload["blocker_codes"] = ["release_git_sync_stage_failed"]
-        return emit(payload, 1)
-
-    commit_result = subprocess.run(
-        ["git", "commit", "-m", str(plan.get("commit_message") or f"Release {artifact_version or artifact_filename}")],
-        cwd=str(repo_root),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=60.0,
-        check=False,
-    )
-    if commit_result.returncode != 0:
-        payload = {**base_payload, "status": "git_commit_failed", "read_only": False, "mutating_actions_executed": True, "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]}, "operator_instruction": "Git commit failed after staging allowed paths. Inspect Git output and working tree state."}
-        payload["blockers"] = [{"code": "release_git_sync_commit_failed", "severity": "blocked", "message": "Git commit failed."}]
-        payload["blocker_codes"] = ["release_git_sync_commit_failed"]
-        return emit(payload, 1)
-
-    push_performed = False
-    push_payload: dict[str, Any] | None = None
-    if push_requested:
-        post_commit_plan = _release_git_sync_plan(
-            repo_root=repo_root,
-            config_payload=config_payload,
-            artifact_ref=artifact_filename or None,
-            artifact_version=artifact_version or requested_version,
-            policy_file_repo_relative=policy_rel,
-            requested_commit=True,
-            requested_push=True,
-            commit_message=commit_message_arg,
-        )
-        if not post_commit_plan.get("push_eligible"):
-            payload = {**base_payload, "ok": False, "status": "git_push_precheck_failed_after_commit", "read_only": False, "mutating_actions_executed": True, "commit_performed": True, "git_commit_performed": True, "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]}, "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]}, "post_commit_git_sync_plan": post_commit_plan, "operator_instruction": "Commit succeeded, but push precheck failed. Push was not attempted."}
-            payload["blockers"] = [{"code": "release_git_sync_push_precheck_failed_after_commit", "severity": "blocked", "message": "Push precheck failed after commit."}]
-            payload["blocker_codes"] = ["release_git_sync_push_precheck_failed_after_commit"]
-            return emit(payload, 1)
-        push_result = subprocess.run(
-            ["git", "push"],
-            cwd=str(repo_root),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=120.0,
-            check=False,
-        )
-        push_payload = {"rc": push_result.returncode, "stdout": push_result.stdout[-4000:], "stderr": push_result.stderr[-4000:]}
-        push_performed = push_result.returncode == 0
-        if not push_performed:
-            payload = {**base_payload, "ok": False, "status": "git_push_failed", "read_only": False, "mutating_actions_executed": True, "commit_performed": True, "git_commit_performed": True, "push_performed": False, "git_push_performed": False, "git_push": push_payload, "operator_instruction": "Commit succeeded, but git push failed."}
-            payload["blockers"] = [{"code": "release_git_sync_push_failed", "severity": "blocked", "message": "Git push failed."}]
-            payload["blocker_codes"] = ["release_git_sync_push_failed"]
-            return emit(payload, 1)
-
-    final_status = _release_git_status_entries(repo_root)
-    result = {
-        **base_payload,
-        "ok": True,
-        "status": "git_sync_committed_and_pushed" if push_performed else "git_sync_committed",
-        "read_only": False,
-        "mutating_actions_executed": True,
-        "commit_performed": True,
-        "git_commit_performed": True,
-        "push_performed": push_performed,
-        "git_push_performed": push_performed,
-        "git_stage": {"rc": stage_result.returncode, "stdout": stage_result.stdout[-4000:], "stderr": stage_result.stderr[-4000:]},
-        "git_commit": {"rc": commit_result.returncode, "stdout": commit_result.stdout[-4000:], "stderr": commit_result.stderr[-4000:]},
-        "git_push": push_payload,
-        "final_git_status": final_status,
-        "operator_instruction": "Release Git sync committed allowed release files." + (" Push also succeeded." if push_performed else " Push was not requested."),
-    }
-    return emit(result, 0)
-
-
-def _release_lifecycle_namespace(args: argparse.Namespace, **overrides: Any) -> argparse.Namespace:
-    values = dict(vars(args))
-    values.update(overrides)
-    return argparse.Namespace(**values)
-
-
-async def _release_lifecycle_capture_phase(
-    phase: str,
-    func: Any,
-    backend: Any,
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    """Run an existing release subcommand and capture its JSON payload.
-
-    The native lifecycle command composes already-hardened release primitives while
-    keeping a single machine-readable JSON object at the outer boundary. Each
-    phase is forced to --json and its stdout is parsed; invalid phase output is a
-    hard failure because the lifecycle must not infer success from prose.
-    """
-
-    stdout = io.StringIO()
-    started_at = utc_now()
-    try:
-        with redirect_stdout(stdout):
-            rc = await func(backend, args)
-    except Exception as exc:  # pragma: no cover - defensive around live browser/subprocess boundaries
-        return {
-            "phase": phase,
-            "ok": False,
-            "rc": 1,
-            "status": "phase_exception",
-            "started_at": started_at,
-            "finished_at": utc_now(),
-            "error": str(exc),
-            "payload": None,
-            "stdout_tail": stdout.getvalue()[-4000:],
-        }
-    text = stdout.getvalue()
-    try:
-        payload = json.loads(text) if text.strip() else {}
-    except json.JSONDecodeError as exc:
-        return {
-            "phase": phase,
-            "ok": False,
-            "rc": rc,
-            "status": "phase_json_invalid",
-            "started_at": started_at,
-            "finished_at": utc_now(),
-            "error": str(exc),
-            "payload": None,
-            "stdout_tail": text[-4000:],
-        }
-    phase_ok = rc == 0 and bool(payload.get("ok", rc == 0))
-    return {
-        "phase": phase,
-        "ok": phase_ok,
-        "rc": rc,
-        "status": payload.get("status") or ("passed" if phase_ok else "failed"),
-        "started_at": started_at,
-        "finished_at": utc_now(),
-        "payload": payload,
-        "stdout_tail": "",
-    }
-
-
-async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
-    """Plan or execute the native release lifecycle through policy sync.
-
-    v0.0.255 executes the guarded native lifecycle through policy sync and
-    optionally through Git sync when explicit --commit/--push flags are supplied.
-    Commit and push remain disabled by default.
-    """
-
-    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    plan_only = bool(getattr(args, "plan", False))
-    commit_requested = bool(getattr(args, "commit", False))
-    push_requested = bool(getattr(args, "push", False))
-    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
-    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
-    requested_version = _candidate_version_normalized(getattr(args, "version", None))
-    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
-    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
-    policy_path = _release_policy_file_path(config_payload, repo_root)
-    try:
-        policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
-    except ValueError:
-        policy_rel = str(policy_path)
-    git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
-
-    blockers: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-
-    def block(code: str, message: str, **extra: Any) -> None:
-        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
-
-    if not config_payload.get("ok"):
-        block("release_config_invalid", "Lifecycle planning requires a valid release config.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
-    if not artifact_payload.get("attempted"):
-        block("release_lifecycle_artifact_required", "release lifecycle requires --artifact ZIP.")
-    elif not artifact_payload.get("ok"):
-        block("release_lifecycle_artifact_invalid", "Candidate artifact ZIP did not pass verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
-    if requested_version and artifact_version and requested_version != artifact_version:
-        block("release_lifecycle_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
-    if not plan_only and backend is None:
-        block("release_lifecycle_backend_unavailable", "guarded lifecycle execution requires a Promptbranch backend for Project Source upload and adoption verification")
-
-    phase_plan = [
-        {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "install", "command": "pb release install --artifact {artifact} --version {version} --target-version {target_version} --upload-source --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "git_sync", "command": "pb release git-sync --artifact {artifact} --version {version} --target-version {target_version} --plan --json", "will_execute_in_plan": True, "will_execute": True},
-    ]
-    rendered_commands = []
-    for item in phase_plan:
-        command = str(item["command"]).format(
-            artifact=str(artifact_payload.get("path") or getattr(args, "artifact", "") or ""),
-            version=requested_version or artifact_version or "",
-            target_version=target_version or "",
-            repo_path=str(repo_root),
-        ) if "{" in str(item["command"]) else str(item["command"])
-        rendered = dict(item)
-        rendered["command"] = command
-        rendered_commands.append(rendered)
-
-    base_payload = {
-        "ok": not blockers,
-        "action": "release_lifecycle",
-        "status": "planned" if plan_only and not blockers else ("blocked" if blockers else "ready_to_execute"),
-        "schema_version": 1,
-        "read_only": plan_only,
-        "plan_only": plan_only,
-        "version": requested_version or artifact_version,
-        "target_version": target_version,
-        "repo_path": str(repo_root),
-        "artifact": artifact_payload,
-        "artifact_ref": artifact_filename or None,
-        "artifact_version": artifact_version,
-        "config": config_payload,
-        "policy_file": str(policy_path),
-        "policy_file_repo_relative": policy_rel,
-        "git_safety_plan": git_plan,
-        "phase_plan": rendered_commands,
-        "phase_count": len(rendered_commands),
-        "phase_results": [],
-        "executed_phase_count": 0,
-        "would_install_candidate_zip": True,
-        "would_upload_project_source": True,
-        "would_run_acceptance_hooks": True,
-        "would_adopt_artifact": True,
-        "would_sync_policy": True,
-        "would_commit_git": bool(commit_requested),
-        "would_push_git": bool(push_requested),
-        "install_performed": False,
-        "candidate_test_performed": False,
-        "adoption_performed": False,
-        "policy_sync_performed": False,
-        "project_source_mutated": False,
-        "artifact_registry_updated": False,
-        "state_artifact_updated": False,
-        "state_source_updated": False,
-        "git_commit_performed": False,
-        "git_push_performed": False,
-        "mutating_actions_executed": False,
-        "warnings": warnings,
-        "warning_codes": [item["code"] for item in warnings],
-        "blockers": blockers,
-        "blocker_codes": [item["code"] for item in blockers],
-        "operator_instruction": "Read-only native lifecycle plan. No install, source upload, hooks, adoption, policy sync, git commit, or git push was executed." if plan_only else "Guarded native lifecycle is ready to execute through policy sync. Git commit/push require explicit --commit/--push flags.",
-    }
-
-    def emit(payload: dict[str, Any], code: int) -> int:
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"ok={str(bool(payload.get('ok'))).lower()}")
-            print(f"phase_count={payload.get('phase_count')}")
-            print(f"executed_phase_count={payload.get('executed_phase_count')}")
-        return code
-
-    if blockers:
-        return emit({**base_payload, "operator_instruction": "Native lifecycle is blocked before execution. Resolve config/artifact/backend blockers first."}, 1)
-    if plan_only:
-        return emit(base_payload, 0)
-
-    artifact_arg = str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")
-    phase_results: list[dict[str, Any]] = []
-    stop_reason: str | None = None
-
-    doctor_args = _release_lifecycle_namespace(
-        args,
-        artifact=artifact_arg,
-        version=requested_version or artifact_version,
-        target_version=target_version,
-        repo_path=str(repo_root),
-        health_url=getattr(args, "health_url", None),
-        health_timeout=float(getattr(args, "health_timeout", 3.0) or 3.0),
-        source_timeout=float(getattr(args, "source_timeout", 60.0) or 60.0),
-        skip_service_health=bool(getattr(args, "skip_service_health", False)),
-        skip_project_sources=False,
-        keep_open=bool(getattr(args, "keep_open", False)),
-        json=True,
-    )
-    phases = [
-        ("doctor", cmd_release_doctor, doctor_args),
-        ("install", cmd_release_install, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=False, upload_source=True, keep_open=bool(getattr(args, "keep_open", False)), json=True)),
-        ("test", cmd_release_test, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), hook=None, plan=False, hook_timeout=float(getattr(args, "hook_timeout", 3600.0) or 3600.0), stop_on_failure=True, json=True)),
-        ("adopt", cmd_release_adopt, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, acceptance_report=None, repo_path=str(repo_root), plan=False, keep_open=bool(getattr(args, "keep_open", False)), json=True)),
-        ("policy_sync", cmd_release_policy_sync, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=False, json=True)),
-        ("git_sync", cmd_release_git_sync, _release_lifecycle_namespace(args, artifact=artifact_arg, version=requested_version or artifact_version, target_version=target_version, config=getattr(args, "config", ".promptbranch-release.yml"), repo_path=str(repo_root), plan=not commit_requested, commit=commit_requested, push=push_requested, message=getattr(args, "message", None), json=True)),
-    ]
-    for phase_name, phase_func, phase_args in phases:
-        phase_result = await _release_lifecycle_capture_phase(phase_name, phase_func, backend, phase_args)
-        phase_results.append(phase_result)
-        if not phase_result.get("ok"):
-            stop_reason = f"{phase_name}_failed"
-            break
-
-    final_git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
-    phase_payloads = {item["phase"]: item.get("payload") for item in phase_results if isinstance(item.get("payload"), dict)}
-    install_payload = phase_payloads.get("install") or {}
-    test_payload = phase_payloads.get("test") or {}
-    adopt_payload = phase_payloads.get("adopt") or {}
-    policy_payload = phase_payloads.get("policy_sync") or {}
-    git_sync_payload = phase_payloads.get("git_sync") or {}
-    any_mutation = any(bool(payload.get("mutating_actions_executed")) for payload in phase_payloads.values() if isinstance(payload, dict))
-    final_ok = stop_reason is None and len(phase_results) == len(phases)
-    final_status = "release_lifecycle_completed" if final_ok else "release_lifecycle_failed"
-    final_summary = {
-        "candidate": artifact_filename or None,
-        "candidate_version": requested_version or artifact_version,
-        "promptbranch_current": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_ref") if isinstance(adopt_payload, dict) else None),
-        "promptbranch_version": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_version") if isinstance(adopt_payload, dict) else None),
-        "policy_file": str(policy_path),
-        "policy_synced": bool(policy_payload.get("policy_sync_performed")),
-        "project_source_verified": bool((install_payload.get("source_upload_verification") or {}).get("ok")) if isinstance(install_payload, dict) else False,
-        "acceptance_status": test_payload.get("acceptance_status") if isinstance(test_payload, dict) else None,
-        "git_commit_performed": bool(git_sync_payload.get("git_commit_performed")),
-        "git_push_performed": bool(git_sync_payload.get("git_push_performed")),
-        "git_commit_eligible": bool(((git_sync_payload.get("git_sync_plan") or final_git_plan) or {}).get("commit_eligible")),
-        "git_push_eligible": bool(((git_sync_payload.get("git_sync_plan") or final_git_plan) or {}).get("push_eligible")),
-        "next_normal_version": target_version,
-    }
-    lifecycle_blockers = [] if final_ok else [{"code": stop_reason or "release_lifecycle_failed", "severity": "blocked", "message": "Native lifecycle stopped before all guarded phases completed."}]
-    result = {
-        **base_payload,
-        "ok": final_ok,
-        "status": final_status,
-        "read_only": False,
-        "plan_only": False,
-        "phase_results": phase_results,
-        "executed_phase_count": len(phase_results),
-        "stop_reason": stop_reason,
-        "git_safety_plan": final_git_plan,
-        "final_summary": final_summary,
-        "install_performed": bool(install_payload.get("install_performed")),
-        "candidate_test_performed": bool(test_payload.get("candidate_test_performed")),
-        "adoption_performed": bool(adopt_payload.get("adoption_performed")),
-        "policy_sync_performed": bool(policy_payload.get("policy_sync_performed")),
-        "project_source_mutated": bool(install_payload.get("project_source_mutated")),
-        "artifact_registry_updated": bool(adopt_payload.get("artifact_registry_updated")),
-        "state_artifact_updated": bool(adopt_payload.get("state_artifact_updated")),
-        "state_source_updated": bool(adopt_payload.get("state_source_updated")),
-        "git_commit_performed": bool(git_sync_payload.get("git_commit_performed")),
-        "git_push_performed": bool(git_sync_payload.get("git_push_performed")),
-        "mutating_actions_executed": any_mutation or bool(git_sync_payload.get("mutating_actions_executed")),
-        "blockers": lifecycle_blockers,
-        "blocker_codes": [item["code"] for item in lifecycle_blockers],
-        "operator_instruction": "Native lifecycle completed through policy sync and Git sync planning/execution. Git commit/push run only when explicitly requested." if final_ok else "Native lifecycle stopped on a failed guarded phase. No later phases were executed after the failure.",
-    }
-    return emit(result, 0 if final_ok else 1)
 
 def _release_doctor_consistency(
     *,
@@ -9851,8 +7484,6 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -9916,16 +7547,6 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_config(backend, args)
     if args.release_command == "install":
         return await cmd_release_install(backend, args)
-    if args.release_command == "test":
-        return await cmd_release_test(backend, args)
-    if args.release_command == "adopt":
-        return await cmd_release_adopt(backend, args)
-    if args.release_command == "policy-sync":
-        return await cmd_release_policy_sync(backend, args)
-    if args.release_command == "git-sync":
-        return await cmd_release_git_sync(backend, args)
-    if args.release_command == "lifecycle":
-        return await cmd_release_lifecycle(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
@@ -9987,8 +7608,6 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
         "migration_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -10223,8 +7842,6 @@ def _artifact_candidate_lifecycle_status(
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -10467,8 +8084,6 @@ def _artifact_candidate_lifecycle_status_all(
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -10598,8 +8213,6 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -10764,8 +8377,6 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -11130,7 +8741,6 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     timeout_seconds = float(getattr(args, "step_timeout", 3600.0) or 3600.0)
     max_steps = max(1, int(getattr(args, "max_steps", 4) or 4))
     require_complete = bool(getattr(args, "require_complete", False))
-    require_real_candidate = bool(getattr(args, "require_real_candidate", False))
 
     completion_report = _candidate_run_mvp_completion_report(
         backend,
@@ -11151,7 +8761,6 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "execute_until_blocked": execute_until_blocked,
         "max_steps": max_steps,
         "require_complete": require_complete,
-        "require_real_candidate": require_real_candidate,
         "mvp_completion": completion_report,
         "download_performed": False,
         "verification_performed": False,
@@ -11159,8 +8768,6 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "candidate_test_performed": False,
         "adoption_performed": False,
         "project_source_mutated": False,
-        "project_source_mutation": "not_requested",
-        "source_upload_verification": None,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
@@ -11198,23 +8805,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "operator_instruction": "Plan-only candidate lifecycle runner. Re-run with --execute-next for one step or --execute-until-blocked for a bounded lifecycle cycle.",
     }
 
-    if require_real_candidate and kind == "no_artifact_candidate":
-        precondition = next_payload.get("candidate_intake_precondition") if isinstance(next_payload.get("candidate_intake_precondition"), dict) else None
-        payload.update({
-            "ok": False,
-            "status": "candidate_run_real_candidate_required",
-            "error": "a real release-candidate artifact is required, but the latest validated protocol reply has no artifact candidate",
-            "candidate_intake_precondition": precondition,
-            "mutating_actions_executed": False,
-            "download_performed": False,
-            "verification_performed": False,
-            "migration_performed": False,
-            "candidate_test_performed": False,
-            "adoption_performed": False,
-            "operator_instruction": "Run a protocol ask that returns exactly one expected ZIP candidate, then rerun candidate-run with --execute-until-blocked --require-complete --require-real-candidate.",
-        })
-        code = 1
-    elif execute and execute_until_blocked:
+    if execute and execute_until_blocked:
         payload.update({
             "ok": False,
             "status": "candidate_run_invalid_mode",
@@ -12728,45 +10319,6 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
-    release_policy_sync = release_subparsers.add_parser("policy-sync", help="Synchronize .promptbranch-project.json to an accepted release baseline; no git commit/push.")
-    release_policy_sync.add_argument("--artifact", help="Accepted release ZIP used to set artifact/source policy baseline.")
-    release_policy_sync.add_argument("--version", help="Accepted release version such as v0.0.253.")
-    release_policy_sync.add_argument("--target-version", help="Next target version for policy metadata.")
-    release_policy_sync.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
-    release_policy_sync.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
-    release_policy_sync.add_argument("--plan", action="store_true", help="Show policy sync plan without writing the policy file.")
-    release_policy_sync.add_argument("--json", action="store_true")
-
-    release_lifecycle = release_subparsers.add_parser("lifecycle", help="Plan or execute the guarded native release lifecycle; Git commit/push require explicit flags.")
-    release_lifecycle.add_argument("--artifact", help="Candidate release ZIP to carry through the lifecycle.")
-    release_lifecycle.add_argument("--version", help="Candidate release version such as v0.0.253.")
-    release_lifecycle.add_argument("--target-version", help="Next target version.")
-    release_lifecycle.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
-    release_lifecycle.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
-    release_lifecycle.add_argument("--plan", action="store_true", help="Emit lifecycle plan without executing lifecycle mutations.")
-    release_lifecycle.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification phases.")
-    release_lifecycle.add_argument("--hook-timeout", type=float, default=3600.0, help="Timeout in seconds per acceptance hook during lifecycle execution. Defaults to 3600.")
-    release_lifecycle.add_argument("--health-url", help="Service health URL for the doctor phase.")
-    release_lifecycle.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds for the doctor phase. Defaults to 3.")
-    release_lifecycle.add_argument("--source-timeout", type=float, default=60.0, help="Project Source listing timeout in seconds for the doctor phase. Defaults to 60.")
-    release_lifecycle.add_argument("--skip-service-health", action="store_true", help="Skip Docker/service /healthz probe in the lifecycle doctor phase.")
-    release_lifecycle.add_argument("--commit", action="store_true", help="After successful lifecycle phases, stage and commit only Git-sync-safe release files.")
-    release_lifecycle.add_argument("--push", action="store_true", help="After a same-run guarded commit, push to the configured upstream when safe.")
-    release_lifecycle.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
-    release_lifecycle.add_argument("--json", action="store_true")
-
-    release_git_sync = release_subparsers.add_parser("git-sync", help="Plan or perform guarded Git commit/push for release lifecycle state.")
-    release_git_sync.add_argument("--artifact", help="Accepted release ZIP used to verify policy baseline before committing.")
-    release_git_sync.add_argument("--version", help="Accepted release version such as v0.0.255.")
-    release_git_sync.add_argument("--target-version", help="Next target version for operator context.")
-    release_git_sync.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
-    release_git_sync.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
-    release_git_sync.add_argument("--plan", action="store_true", help="Show Git sync plan without staging, committing, or pushing.")
-    release_git_sync.add_argument("--commit", action="store_true", help="Stage and commit only allowed release files after safety checks pass.")
-    release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
-    release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
-    release_git_sync.add_argument("--json", action="store_true")
-
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
@@ -12792,32 +10344,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_install.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
     release_install.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_install.add_argument("--plan", action="store_true", help="Emit the read-only install plan and perform no mutation.")
-    release_install.add_argument("--upload-source", action="store_true", help="After a controlled install, add the candidate ZIP to Project Sources and verify before/after source-list state. In --plan mode this only reports the intended source upload.")
-    release_install.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
     release_install.add_argument("--json", action="store_true")
-
-    release_test = release_subparsers.add_parser("test", help="Run configured release acceptance hooks and write a structured acceptance report.")
-    release_test.add_argument("--artifact", required=True, help="Candidate release ZIP to verify before hook execution.")
-    release_test.add_argument("--version", help="Expected candidate version such as v0.0.251.")
-    release_test.add_argument("--target-version", help="Optional next target version for hook placeholders and operator context.")
-    release_test.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
-    release_test.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
-    release_test.add_argument("--hook", action="append", help="Specific hook name to run. May be passed multiple times. Defaults to configured lifecycle hook order.")
-    release_test.add_argument("--plan", action="store_true", help="Emit the hook execution plan and perform no hook execution.")
-    release_test.add_argument("--hook-timeout", type=float, default=3600.0, help="Timeout in seconds per hook. Defaults to 3600.")
-    release_test.add_argument("--stop-on-failure", action="store_true", default=True, help="Stop after the first failing hook. Default: true.")
-    release_test.add_argument("--no-stop-on-failure", dest="stop_on_failure", action="store_false", help="Continue running later hooks after a hook fails.")
-    release_test.add_argument("--json", action="store_true")
-
-    release_adopt = release_subparsers.add_parser("adopt", help="Adopt a release artifact only after a green structured acceptance report and Project Source verification.")
-    release_adopt.add_argument("--artifact", required=True, help="Candidate release ZIP to adopt as the local artifact/source baseline.")
-    release_adopt.add_argument("--version", help="Expected candidate version such as v0.0.252.")
-    release_adopt.add_argument("--target-version", help="Optional next target version for operator context.")
-    release_adopt.add_argument("--acceptance-report", help="Explicit structured acceptance report path. Defaults to the latest report for --version under .pb_profile/release_acceptance/.")
-    release_adopt.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
-    release_adopt.add_argument("--plan", action="store_true", help="Verify adoption preconditions without mutating artifact/source state.")
-    release_adopt.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
-    release_adopt.add_argument("--json", action="store_true")
 
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
@@ -12874,7 +10401,6 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_run.add_argument("--execute-until-blocked", action="store_true", help="Execute allowlisted lifecycle commands until accepted, blocked, failed, or --max-steps is reached.")
     artifact_candidate_run.add_argument("--max-steps", type=int, default=4, help="Maximum number of lifecycle steps for --execute-until-blocked. Defaults to 4.")
     artifact_candidate_run.add_argument("--require-complete", action="store_true", help="Return nonzero unless the artifact-candidate MVP lifecycle completion proof is satisfied after planning or execution.")
-    artifact_candidate_run.add_argument("--require-real-candidate", action="store_true", help="Fail closed when the latest validated protocol reply is no_artifact; require a real ZIP candidate before candidate-run can pass.")
     artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for each executed lifecycle step. Defaults to 3600.")
     artifact_candidate_run.add_argument("--json", action="store_true")
 
@@ -12922,7 +10448,6 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake.add_argument("--expect-repo", help="Expected artifact project/repo prefix such as chatgpt_claudecode_workflow.")
     artifact_intake.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
-    artifact_intake.add_argument("--local-file", "--manual-import-file", dest="local_file", help="Manual artifact handoff path: copy an already downloaded ZIP into .pb_profile/artifact_inbox/ for verification/migration. Use this for sandbox:/ artifacts that require browser/session download.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
     artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/.")
     artifact_intake.add_argument("--migrate", action="store_true", help="Copy a successfully verified candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as a candidate. Does not adopt.")
@@ -13295,30 +10820,6 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--project-list-debug-manual-pause", action="store_true")
     test_suite.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
 
-    ask_release = subparsers.add_parser("ask-release", help="Send a strict release-candidate protocol request that must produce exactly one expected ZIP candidate.")
-    ask_release.add_argument("prompt", nargs="?", help="Release implementation request. If omitted, a default candidate-producing request is generated from the current baseline and target version.")
-    ask_release.add_argument("--prompt-file", help="Read additional release request text from a UTF-8 file.")
-    ask_release.add_argument("--file", help="Legacy single chat attachment. Prefer repeatable --attach for multiple files.")
-    ask_release.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
-    ask_release.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
-    ask_release.add_argument("--target-version", help="Target output version to include in the release-candidate request envelope.")
-    ask_release.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope.")
-    ask_release.add_argument("--expect-artifact", help="Exact expected ZIP artifact filename. Defaults to <repo>_<target-version>.zip.")
-    ask_release.add_argument("--expect-version", help="Expected artifact version. Defaults to --target-version.")
-    ask_release.add_argument("--expect-repo", help="Expected repo/artifact prefix. Defaults to the repo inferred from current baseline.")
-    ask_release.add_argument("--request-id", help="Explicit protocol request_id. Defaults to a generated timestamp id.")
-    ask_release.add_argument("--correlation-id", help="Explicit protocol correlation_id. Defaults to request_id.")
-    ask_release.add_argument("--print-request-json", action="store_true", help="Print the strict release-candidate protocol request envelope without sending the ask.")
-    ask_release.add_argument("--no-parse-reply", action="store_true", help="Submit only; do not fetch/validate the release-candidate reply. Not suitable for the strict candidate proof.")
-    ask_release.add_argument("--protocol-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS, help="Bounded timeout for protocol ask/parse-reply service calls. Defaults to 120 seconds.")
-    ask_release.add_argument("--protocol-fresh-turn-timeout-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS, help="Seconds to poll after submit until a fresh user turn or request_id-matched turn is visible. Defaults to 12 seconds.")
-    ask_release.add_argument("--protocol-fresh-turn-poll-seconds", type=float, default=DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS, help="Polling interval for fresh-turn visibility after protocol submit. Defaults to 1 second.")
-    ask_release.add_argument("--answer-index", help="Assistant answer index to parse after submit. Defaults to latest.")
-    ask_release.add_argument("--answer-id", help="Assistant answer id or unique prefix to parse after submit.")
-    ask_release.add_argument("--json", action="store_true", help="Emit strict release-candidate protocol result as JSON.")
-    ask_release.add_argument("--keep-open", action="store_true")
-    ask_release.add_argument("--retries", type=int)
-
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--prompt-file", help="Read additional prompt text from a UTF-8 file. If prompt text is also provided, both are joined with a blank line.")
@@ -13422,8 +10923,6 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_src(backend, args)
     if args.command == "artifact":
         return await cmd_artifact(backend, args)
-    if args.command == "ask-release":
-        return await cmd_ask_release(backend, args)
     if args.command == "release":
         return await cmd_release(backend, args)
     if args.command == "agent":
