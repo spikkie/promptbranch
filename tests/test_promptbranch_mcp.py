@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.257"
+    assert init["result"]["serverInfo"]["version"] == "0.0.263"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -643,3 +643,128 @@ def test_agent_summarize_log_model_failure_preserves_read_metadata(monkeypatch, 
     assert payload["deterministic_summary"]["counts"]["ok_false"] == 0
     assert payload["ollama"]["summary"]["status"] == "unavailable"
     assert payload["ollama"]["fallback_used"] is True
+
+
+def test_skill_list_includes_builtin_release_readiness() -> None:
+    payload = skill_list()
+    skills = {item["name"]: item for item in payload["skills"]}
+
+    assert payload["ok"] is True
+    assert "release-readiness" in skills
+    assert skills["release-readiness"]["risk"] == "read"
+    assert "artifact.registry.current" in skills["release-readiness"]["allowed_tools"]
+
+
+def test_agent_run_release_readiness_builds_structured_report(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def fake_mcp(tool, arguments=None, **kwargs):
+        calls.append((tool, arguments or {}))
+        structured_by_tool = {
+            "filesystem.read": {
+                "ok": True,
+                "tool": "filesystem.read",
+                "relative_path": "VERSION",
+                "text": "v9.9.9\n",
+            },
+            "artifact.registry.current": {
+                "ok": True,
+                "tool": "artifact.registry.current",
+                "current": {
+                    "filename": "chatgpt_claudecode_workflow_v9.9.8.zip",
+                    "version": "v9.9.8",
+                    "kind": "adopted_release",
+                    "source_ref": "chatgpt_claudecode_workflow_v9.9.8.zip",
+                },
+            },
+            "git.status": {
+                "ok": True,
+                "tool": "git.status",
+                "git": {
+                    "is_repo": True,
+                    "branch": "main",
+                    "short_sha": "abc1234",
+                    "dirty": False,
+                    "status_lines": ["## main"],
+                },
+            },
+            "git.diff.summary": {
+                "ok": True,
+                "tool": "git.diff.summary",
+                "diff_stat": "",
+            },
+        }
+        return {
+            "ok": True,
+            "action": "mcp_tool_call_via_stdio",
+            "status": "verified",
+            "tool": tool,
+            "arguments": arguments or {},
+            "tool_response": {"result": {"structuredContent": structured_by_tool[tool]}},
+        }
+
+    monkeypatch.setattr("promptbranch_mcp.mcp_tool_call_via_stdio", fake_mcp)
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+
+    payload = agent_run("check release readiness", repo_path=tmp_path, skill="release-readiness")
+
+    assert payload["ok"] is True
+    assert payload["planner"] == "skill:release-readiness"
+    assert [item[0] for item in calls] == ["filesystem.read", "artifact.registry.current", "git.status", "git.diff.summary"]
+    report = payload["report"]
+    assert report["kind"] == "release_readiness"
+    assert report["status"] == "working_tree_version_differs_from_adopted_baseline"
+    assert report["version_file"]["version"] == "v9.9.9"
+    assert report["artifact_current"]["version"] == "v9.9.8"
+    assert report["checks"]["worktree_clean"] is True
+    assert report["checks"]["version_matches_current_artifact"] is False
+    assert report["mutation_performed"] is False
+
+
+def test_agent_run_repo_inspection_builds_structured_report(monkeypatch, tmp_path: Path) -> None:
+    def fake_mcp(tool, arguments=None, **kwargs):
+        structured_by_tool = {
+            "filesystem.read": {
+                "ok": True,
+                "tool": "filesystem.read",
+                "relative_path": "VERSION",
+                "text": "v1.2.3\n",
+            },
+            "git.status": {
+                "ok": True,
+                "tool": "git.status",
+                "git": {
+                    "is_repo": True,
+                    "branch": "main",
+                    "short_sha": "abc1234",
+                    "dirty": True,
+                    "status_lines": ["## main", " M promptbranch_mcp.py"],
+                },
+            },
+            "git.diff.summary": {
+                "ok": True,
+                "tool": "git.diff.summary",
+                "diff_stat": " promptbranch_mcp.py | 10 +++++-----",
+            },
+        }
+        return {
+            "ok": True,
+            "action": "mcp_tool_call_via_stdio",
+            "status": "verified",
+            "tool": tool,
+            "arguments": arguments or {},
+            "tool_response": {"result": {"structuredContent": structured_by_tool[tool]}},
+        }
+
+    monkeypatch.setattr("promptbranch_mcp.mcp_tool_call_via_stdio", fake_mcp)
+    (tmp_path / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+
+    payload = agent_run("inspect repo", repo_path=tmp_path, skill="repo-inspection")
+
+    report = payload["report"]
+    assert report["kind"] == "repo_inspection"
+    assert report["status"] == "dirty"
+    assert report["version"] == "v1.2.3"
+    assert report["git"]["dirty"] is True
+    assert "promptbranch_mcp.py" in report["diff_stat"]
+    assert report["mutation_performed"] is False
