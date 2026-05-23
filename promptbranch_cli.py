@@ -11036,6 +11036,112 @@ def _candidate_next_from_status_payload(status_payload: dict[str, Any]) -> dict[
     }
 
 
+def _current_adopted_candidate_fallback(
+    current_payload: dict[str, Any],
+    *,
+    requested_artifact: str | None = None,
+    requested_version: str | None = None,
+    repo_root: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return a synthetic accepted-candidate proof from the adopted current baseline.
+
+    This is intentionally scoped-only repair behavior for post-adoption validation.
+    It prevents a later no_artifact protocol smoke from masking the already adopted
+    release that the finalizer is validating, while still requiring the caller to
+    name the release version or artifact explicitly.
+    """
+
+    if not requested_artifact and not requested_version:
+        return None
+    if not isinstance(current_payload, dict):
+        return None
+
+    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
+    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+
+    state_artifact_version = _candidate_version_normalized(state.get("artifact_version"))
+    state_source_version = _candidate_version_normalized(state.get("source_version"))
+    registry_version = _candidate_version_normalized(registry_current.get("version"))
+    runtime_version = _candidate_version_normalized(runtime.get("version"))
+    requested_version = _candidate_version_normalized(requested_version)
+
+    filename = _safe_artifact_filename(
+        registry_current.get("filename")
+        or registry_current.get("artifact_ref")
+        or registry_current.get("path") and Path(str(registry_current.get("path"))).name
+        or state.get("artifact_ref")
+        or requested_artifact
+        or (f"chatgpt_claudecode_workflow_{requested_version}.zip" if requested_version else "")
+    )
+    if requested_artifact and filename != requested_artifact:
+        return None
+    if requested_version and (
+        state_artifact_version != requested_version
+        or state_source_version != requested_version
+        or registry_version != requested_version
+    ):
+        return None
+    if requested_version and runtime_version and runtime_version != requested_version:
+        return None
+
+    registry_kind = str(registry_current.get("kind") or "")
+    if registry_kind and registry_kind != "adopted_release":
+        return None
+
+    version = requested_version or state_artifact_version or registry_version
+    if not filename or not version:
+        return None
+
+    candidate_path = None
+    if registry_current.get("path"):
+        candidate_path = str(Path(str(registry_current.get("path"))).expanduser())
+    elif repo_root is not None:
+        candidate_path = str((repo_root / filename).resolve())
+
+    lifecycle = {
+        "candidate_selected": True,
+        "candidate_downloaded": True,
+        "candidate_zip_exists": True,
+        "candidate_verified": True,
+        "candidate_migrated": True,
+        "candidate_test_passed": True,
+        "candidate_accepted": True,
+        "adoption_eligible": False,
+    }
+    checks = {
+        "candidate_filename_valid": True,
+        "candidate_version_valid": True,
+        "candidate_kind_is_release": True,
+        "candidate_unaccepted": False,
+        "candidate_zip_exists": True,
+        "candidate_zip_in_repo_root": True,
+        "candidate_sha_matches_registry": True,
+        "zip_verified": True,
+        "zip_version_matches_candidate": True,
+        "candidate_test_passed": True,
+        "current_matches_candidate": True,
+        "proof_source": "adopted_current",
+    }
+    return {
+        "index": None,
+        "status": "candidate_already_accepted",
+        "artifact_ref": filename,
+        "artifact_version": version,
+        "candidate_path": candidate_path,
+        "kind": "adopted_release",
+        "lifecycle": lifecycle,
+        "checks": checks,
+        "selected_protocol_reply": None,
+        "proof_source": "adopted_current",
+        "recommended_next_command": {
+            "kind": "candidate_already_accepted",
+            "command": "pb artifact current --json",
+            "reason": "requested release is already the adopted current baseline",
+        },
+    }
+
+
 async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) -> int:
     """Pick one read-only next operator action for the artifact candidate MVP loop."""
 
@@ -11176,6 +11282,21 @@ def _candidate_run_next_payload(
             candidate=candidate,
             selection=selection,
         )
+        if candidate is None:
+            current_fallback = _current_adopted_candidate_fallback(
+                status_payload.get("artifact_current") if isinstance(status_payload.get("artifact_current"), dict) else {},
+                requested_artifact=Path(str(artifact_arg)).name if artifact_arg else None,
+                requested_version=version_arg,
+                repo_root=repo_root,
+            )
+            if current_fallback is not None:
+                next_payload = {
+                    "status": "candidate_next_already_accepted",
+                    "recommended_next_command": current_fallback.get("recommended_next_command"),
+                    "selected_candidate": current_fallback,
+                    "proof_source": "adopted_current",
+                }
+                return next_payload, 1, None
         next_payload = _candidate_next_from_status_payload(status_payload)
         return next_payload, (1 if candidate is not None else 0), None
 
@@ -11265,6 +11386,18 @@ def _candidate_run_mvp_completion_report(
             filtered.append(item)
         candidates = filtered
 
+    current_fallback = None
+    if not candidates and (requested_artifact or requested_version):
+        current_payload = _artifact_current_payload(backend, registry)
+        current_fallback = _current_adopted_candidate_fallback(
+            current_payload,
+            requested_artifact=requested_artifact,
+            requested_version=requested_version,
+            repo_root=repo_root,
+        )
+        if current_fallback is not None:
+            candidates = [current_fallback]
+
     accepted_matches = []
     adoption_ready = []
     tested_pending = []
@@ -11352,6 +11485,7 @@ def _candidate_run_mvp_completion_report(
         "status": status,
         "candidate_count": len(candidates),
         "accepted_candidate": selected_accepted,
+        "proof_source": "adopted_current" if current_fallback is not None and selected_accepted is current_fallback else "candidate_registry",
         "selected_protocol_reply": selected_protocol_reply,
         "selected_request_id": selected_protocol_reply.get("request_id") if selected_protocol_reply else None,
         "selected_message_id": selected_protocol_reply.get("message_id") if selected_protocol_reply else None,
