@@ -42,7 +42,6 @@ Options forwarded to post-release-validation.sh:
       --skip-artifact-intake
       --skip-tests
       --skip-zip-hygiene
-      --require-real-candidate-mvp
   -h, --help
 
 Environment:
@@ -65,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       args+=("$1")
       shift
       ;;
-    --skip-protocol-smoke|--skip-artifact-intake|--skip-tests|--skip-zip-hygiene|--require-real-candidate-mvp)
+    --skip-protocol-smoke|--skip-artifact-intake|--skip-tests|--skip-zip-hygiene)
       args+=("$1")
       shift
       ;;
