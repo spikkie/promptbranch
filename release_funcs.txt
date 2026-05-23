@@ -1,0 +1,1126 @@
+  6800	    return False
+  6801	
+  6802	
+  6803	def _release_install_zip_entries(path: Path) -> dict[str, Any]:
+  6804	    payload: dict[str, Any] = {
+  6805	        "path": str(path),
+  6806	        "entry_count": 0,
+  6807	        "entries": [],
+  6808	        "error": None,
+  6809	    }
+  6810	    try:
+  6811	        with zipfile.ZipFile(path) as archive:
+  6812	            entries = [name for name in archive.namelist() if name and not name.endswith("/")]
+  6813	    except (OSError, zipfile.BadZipFile) as exc:
+  6814	        payload.update({"error": str(exc), "entries": []})
+  6815	        return payload
+  6816	    payload.update({"entry_count": len(entries), "entries": sorted(entries)})
+  6817	    return payload
+  6818	
+  6819	
+  6820	def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
+  6821	    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+  6822	    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+  6823	    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+  6824	    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+  6825	    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+  6826	    version_file = _release_doctor_version_from_file(repo_root)
+  6827	    git_status = _release_doctor_git_status(repo_root)
+  6828	
+  6829	    blockers: list[dict[str, Any]] = []
+  6830	    warnings: list[dict[str, Any]] = []
+  6831	
+  6832	    def block(code: str, message: str, **extra: Any) -> None:
+  6833	        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+  6834	
+  6835	    def warn(code: str, message: str, **extra: Any) -> None:
+  6836	        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+  6837	
+  6838	    plan_only = bool(getattr(args, "plan", False))
+  6839	    upload_source_requested = bool(getattr(args, "upload_source", False))
+  6840	
+  6841	    if not config_payload.get("ok"):
+  6842	        block("release_config_invalid", "Release install requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+  6843	    if not artifact_payload.get("attempted"):
+  6844	        block("release_install_artifact_required", "release install --plan requires --artifact ZIP.")
+  6845	    elif not artifact_payload.get("ok"):
+  6846	        block("release_install_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+  6847	
+  6848	    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+  6849	    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+  6850	    install_cfg = config.get("install") if isinstance(config.get("install"), dict) else {}
+  6851	    preserve_paths = install_cfg.get("preserve") if isinstance(install_cfg.get("preserve"), list) else []
+  6852	    expected_prefix = str(artifact_cfg.get("prefix") or "")
+  6853	    expected_suffix = str(artifact_cfg.get("suffix") or "")
+  6854	    artifact_filename = str(artifact_payload.get("filename") or "")
+  6855	    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+  6856	
+  6857	    if expected_prefix and artifact_filename and not artifact_filename.startswith(expected_prefix):
+  6858	        block("release_install_artifact_prefix_mismatch", "Candidate artifact filename does not match release config artifact.prefix.", expected_prefix=expected_prefix, artifact_filename=artifact_filename)
+  6859	    if expected_suffix and artifact_filename and not artifact_filename.endswith(expected_suffix):
+  6860	        block("release_install_artifact_suffix_mismatch", "Candidate artifact filename does not match release config artifact.suffix.", expected_suffix=expected_suffix, artifact_filename=artifact_filename)
+  6861	    if requested_version and artifact_version and requested_version != artifact_version:
+  6862	        block("release_install_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+  6863	    if not requested_version and artifact_version:
+  6864	        warn("release_install_version_inferred", "No --version was supplied; candidate version is inferred from the artifact ZIP.", artifact_version=artifact_version)
+  6865	
+  6866	    artifact_path_text = str(artifact_payload.get("path") or "")
+  6867	    zip_entry_payload = _release_install_zip_entries(Path(artifact_path_text)) if artifact_path_text else {"entry_count": 0, "entries": []}
+  6868	    entries = [str(item) for item in zip_entry_payload.get("entries") or []]
+  6869	    preserved_conflicts = [entry for entry in entries if _release_install_entry_under_preserve(entry, preserve_paths)]
+  6870	    install_entries = [entry for entry in entries if entry not in preserved_conflicts]
+  6871	    if preserved_conflicts:
+  6872	        block(
+  6873	            "release_install_artifact_contains_preserved_path",
+  6874	            "Candidate ZIP contains entries under install.preserve paths; install planning refuses implicit overwrite/skip ambiguity.",
+  6875	            preserved_conflict_count=len(preserved_conflicts),
+  6876	            preserved_conflict_sample=preserved_conflicts[:20],
+  6877	        )
+  6878	    if "VERSION" not in entries and artifact_payload.get("present"):
+  6879	        block("release_install_version_file_missing", "Candidate ZIP must contain VERSION at repository root.")
+  6880	
+  6881	    plan = {
+  6882	        "schema_version": 1,
+  6883	        "phase": "release_install_plan" if plan_only else "release_install_execute",
+  6884	        "read_only": plan_only,
+  6885	        "mutation_allowed": not plan_only,
+  6886	        "would_install_artifact": True,
+  6887	        "would_extract_zip": True,
+  6888	        "would_preserve_paths": preserve_paths,
+  6889	        "would_overwrite_repo_files": True,
+  6890	        "would_verify_installed_version": True,
+  6891	        "would_update_artifact_registry": False,
+  6892	        "would_upload_project_source": upload_source_requested,
+  6893	        "would_verify_project_source_visibility": upload_source_requested,
+  6894	        "would_adopt_artifact": False,
+  6895	        "would_commit_git": False,
+  6896	        "would_push_git": False,
+  6897	        "repo_path": str(repo_root),
+  6898	        "artifact_path": artifact_payload.get("path"),
+  6899	        "artifact_filename": artifact_filename or None,
+  6900	        "artifact_version": artifact_version,
+  6901	        "target_version": target_version,
+  6902	        "install_entry_count": len(install_entries),
+  6903	        "install_entry_sample": install_entries[:30],
+  6904	        "install_entry_sample_truncated": len(install_entries) > 30,
+  6905	        "upload_source_requested": upload_source_requested,
+  6906	        "project_source_filename": artifact_filename or None,
+  6907	        "preserve_paths": preserve_paths,
+  6908	        "preserved_conflict_count": len(preserved_conflicts),
+  6909	        "preserved_conflict_sample": preserved_conflicts[:20],
+  6910	        "verification_plan": [
+  6911	            "validate release config",
+  6912	            "verify candidate ZIP immutability and hygiene",
+  6913	            "verify candidate VERSION matches filename and requested version",
+  6914	            "verify ZIP contains no preserved-path entries",
+  6915	            "preserve configured local runtime paths",
+  6916	            "extract candidate ZIP entries into repo root",
+  6917	            "verify installed VERSION after extraction",
+  6918	            *( ["list Project Sources before upload", "upload candidate artifact ZIP as Project Source", "list Project Sources after upload", "verify expected source is visible and no collateral source was removed"] if upload_source_requested else [] ),
+  6919	        ],
+  6920	    }
+  6921	
+  6922	    status = ("planned" if plan_only else "ready_to_install") if not blockers else "blocked"
+  6923	    severity = "blocked" if blockers else "warning" if warnings else "ok"
+  6924	    return {
+  6925	        "ok": not blockers,
+  6926	        "action": "release_install",
+  6927	        "status": status,
+  6928	        "severity": severity,
+  6929	        "mode": "plan_only" if plan_only else "install",
+  6930	        "read_only": plan_only,
+  6931	        "repo_path": str(repo_root),
+  6932	        "config": config_payload,
+  6933	        "artifact": artifact_payload,
+  6934	        "version_file": version_file,
+  6935	        "git": git_status,
+  6936	        "install_plan": plan,
+  6937	        "upload_source_requested": upload_source_requested,
+  6938	        "warnings": warnings,
+  6939	        "blockers": blockers,
+  6940	        "warning_codes": [item["code"] for item in warnings],
+  6941	        "blocker_codes": [item["code"] for item in blockers],
+  6942	        "download_performed": False,
+  6943	        "migration_performed": False,
+  6944	        "install_performed": False,
+  6945	        "candidate_test_performed": False,
+  6946	        "adoption_performed": False,
+  6947	        "project_source_mutated": False,
+  6948	        "project_source_mutation": "not_requested",
+  6949	        "source_upload_verification": None,
+  6950	        "artifact_registry_updated": False,
+  6951	        "state_artifact_updated": False,
+  6952	        "state_source_updated": False,
+  6953	        "git_commit_performed": False,
+  6954	        "git_push_performed": False,
+  6955	        "mutating_actions_executed": False,
+  6956	        "not_performed": ([
+  6957	            "artifact_download",
+  6958	            "candidate_migration",
+  6959	            "repo_install",
+  6960	            "candidate_test_execution",
+  6961	            "candidate_adoption",
+  6962	            "project_source_mutation",
+  6963	            "artifact_registry_update",
+  6964	            "state_artifact_update",
+  6965	            "state_source_update",
+  6966	            "git_commit",
+  6967	            "git_push",
+  6968	        ] if plan_only else [
+  6969	            "artifact_download",
+  6970	            "candidate_migration",
+  6971	            "candidate_test_execution",
+  6972	            "candidate_adoption",
+  6973	            "project_source_mutation",
+  6974	            "artifact_registry_update",
+  6975	            "state_artifact_update",
+  6976	            "state_source_update",
+  6977	            "git_commit",
+  6978	            "git_push",
+  6979	        ]),
+  6980	        "operator_instruction": (
+  6981	            "Read-only release install plan. Inspect this contract before a future controlled install mutation; no files, sources, registry, state, git commits, or pushes were changed."
+  6982	            if plan_only
+  6983	            else "Controlled release install is ready. The command will overwrite ZIP entries into the repository root without deleting extra files and without source upload, adoption, registry, state, git commit, or push."
+  6984	        ),
+  6985	    }
+  6986	
+  6987	
+  6988	def _release_install_preflight_targets(repo_root: Path, install_entries: list[str]) -> list[dict[str, Any]]:
+  6989	    blockers: list[dict[str, Any]] = []
+  6990	    for entry in install_entries:
+  6991	        target = (repo_root / entry).resolve()
+  6992	        try:
+  6993	            target.relative_to(repo_root)
+  6994	        except ValueError:
+  6995	            blockers.append({
+  6996	                "code": "release_install_target_escapes_repo",
+  6997	                "severity": "blocked",
+  6998	                "message": "Candidate ZIP entry would extract outside the repository root.",
+  6999	                "entry": entry,
+  7000	            })
+  7001	            continue
+  7002	        if target.exists() and target.is_dir():
+  7003	            blockers.append({
+  7004	                "code": "release_install_target_is_directory",
+  7005	                "severity": "blocked",
+  7006	                "message": "Candidate ZIP entry targets an existing directory, not a file.",
+  7007	                "entry": entry,
+  7008	                "target": str(target),
+  7009	            })
+  7010	    return blockers
+  7011	
+  7012	
+  7013	def _release_install_execute_payload(plan_payload: dict[str, Any]) -> dict[str, Any]:
+  7014	    install_plan = plan_payload.get("install_plan") if isinstance(plan_payload.get("install_plan"), dict) else {}
+  7015	    repo_root = Path(str(install_plan.get("repo_path") or plan_payload.get("repo_path") or ".")).expanduser().resolve()
+  7016	    artifact_path = Path(str(install_plan.get("artifact_path") or "")).expanduser().resolve()
+  7017	    artifact_version = _candidate_version_normalized(install_plan.get("artifact_version"))
+  7018	    install_entries = [str(item) for item in install_plan.get("install_entry_sample") or []]
+  7019	    # Use the complete entry list from the verified ZIP rather than the truncated sample.
+  7020	    zip_entries_payload = _release_install_zip_entries(artifact_path)
+  7021	    entries = [str(item) for item in zip_entries_payload.get("entries") or []]
+  7022	    preserve_paths = [str(item) for item in install_plan.get("preserve_paths") or []]
+  7023	    install_entries = [entry for entry in entries if not _release_install_entry_under_preserve(entry, preserve_paths)]
+  7024	
+  7025	    execution_blockers = _release_install_preflight_targets(repo_root, install_entries)
+  7026	    if execution_blockers:
+  7027	        payload = copy.deepcopy(plan_payload)
+  7028	        payload.update({
+  7029	            "ok": False,
+  7030	            "status": "blocked",
+  7031	            "severity": "blocked",
+  7032	            "read_only": False,
+  7033	            "install_performed": False,
+  7034	            "mutating_actions_executed": False,
+  7035	            "execution": {
+  7036	                "ok": False,
+  7037	                "status": "blocked",
+  7038	                "installed_entry_count": 0,
+  7039	                "blockers": execution_blockers,
+  7040	            },
+  7041	            "blockers": list(payload.get("blockers") or []) + execution_blockers,
+  7042	            "blocker_codes": list(payload.get("blocker_codes") or []) + [item["code"] for item in execution_blockers],
+  7043	        })
+  7044	        return payload
+  7045	
+  7046	    installed: list[dict[str, Any]] = []
+  7047	    overwritten_count = 0
+  7048	    created_count = 0
+  7049	    start_time = time.time()
+  7050	    with tempfile.TemporaryDirectory(prefix="promptbranch-release-install-") as tmp_name:
+  7051	        staging_root = Path(tmp_name) / "staging"
+  7052	        with zipfile.ZipFile(artifact_path) as archive:
+  7053	            for entry in install_entries:
+  7054	                info = archive.getinfo(entry)
+  7055	                staged = staging_root / entry
+  7056	                staged.parent.mkdir(parents=True, exist_ok=True)
+  7057	                with archive.open(info) as src, staged.open("wb") as dst:
+  7058	                    shutil.copyfileobj(src, dst)
+  7059	                mode = (info.external_attr >> 16) & 0o777
+  7060	                if mode:
+  7061	                    try:
+  7062	                        staged.chmod(mode)
+  7063	                    except OSError:
+  7064	                        pass
+  7065	        for entry in install_entries:
+  7066	            staged = staging_root / entry
+  7067	            target = (repo_root / entry).resolve()
+  7068	            existed = target.exists()
+  7069	            if existed:
+  7070	                overwritten_count += 1
+  7071	            else:
+  7072	                created_count += 1
+  7073	            target.parent.mkdir(parents=True, exist_ok=True)
+  7074	            tmp_target = target.with_name(f".{target.name}.promptbranch-install.tmp")
+  7075	            shutil.copy2(staged, tmp_target)
+  7076	            os.replace(tmp_target, target)
+  7077	            installed.append({
+  7078	                "entry": entry,
+  7079	                "target": str(target),
+  7080	                "overwrote_existing": existed,
+  7081	                "size_bytes": target.stat().st_size if target.exists() else None,
+  7082	            })
+  7083	
+  7084	    installed_version_payload = _release_doctor_version_from_file(repo_root)
+  7085	    installed_version = _candidate_version_normalized(installed_version_payload.get("normalized_version") or installed_version_payload.get("version"))
+  7086	    version_ok = bool(artifact_version and installed_version == artifact_version)
+  7087	    execution = {
+  7088	        "ok": version_ok,
+  7089	        "status": "installed" if version_ok else "installed_version_mismatch",
+  7090	        "duration_seconds": round(time.time() - start_time, 3),
+  7091	        "installed_entry_count": len(installed),
+  7092	        "installed_entry_sample": installed[:30],
+  7093	        "installed_entry_sample_truncated": len(installed) > 30,
+  7094	        "overwritten_entry_count": overwritten_count,
+  7095	        "created_entry_count": created_count,
+  7096	        "deleted_entry_count": 0,
+  7097	        "delete_performed": False,
+  7098	        "installed_version": installed_version,
+  7099	        "expected_version": artifact_version,
+  7100	        "installed_version_matches_artifact": version_ok,
+  7101	    }
+  7102	    payload = copy.deepcopy(plan_payload)
+  7103	    payload.update({
+  7104	        "ok": version_ok,
+  7105	        "status": "installed" if version_ok else "installed_version_mismatch",
+  7106	        "severity": "ok" if version_ok and not payload.get("warnings") else ("warning" if version_ok else "blocked"),
+  7107	        "mode": "install",
+  7108	        "read_only": False,
+  7109	        "version_file_after_install": installed_version_payload,
+  7110	        "execution": execution,
+  7111	        "install_performed": True,
+  7112	        "repo_install_performed": True,
+  7113	        "mutating_actions_executed": True,
+  7114	        "project_source_mutated": False,
+  7115	        "project_source_mutation": "not_requested",
+  7116	        "source_upload_verification": None,
+  7117	        "artifact_registry_updated": False,
+  7118	        "state_artifact_updated": False,
+  7119	        "state_source_updated": False,
+  7120	        "git_commit_performed": False,
+  7121	        "git_push_performed": False,
+  7122	        "not_performed": [
+  7123	            "artifact_download",
+  7124	            "candidate_migration",
+  7125	            "candidate_test_execution",
+  7126	            "candidate_adoption",
+  7127	            "project_source_mutation",
+  7128	            "artifact_registry_update",
+  7129	            "state_artifact_update",
+  7130	            "state_source_update",
+  7131	            "git_commit",
+  7132	            "git_push",
+  7133	        ],
+  7134	        "operator_instruction": "Controlled repo install completed. Candidate ZIP entries were extracted into the repository root without deleting extra files and without source upload, adoption, registry, state, git commit, or push.",
+  7135	    })
+  7136	    if not version_ok:
+  7137	        blocker = {
+  7138	            "code": "release_install_installed_version_mismatch",
+  7139	            "severity": "blocked",
+  7140	            "message": "Installed VERSION does not match the candidate artifact version after extraction.",
+  7141	            "installed_version": installed_version,
+  7142	            "expected_version": artifact_version,
+  7143	        }
+  7144	        payload["blockers"] = list(payload.get("blockers") or []) + [blocker]
+  7145	        payload["blocker_codes"] = list(payload.get("blocker_codes") or []) + [blocker["code"]]
+  7146	    return payload
+  7147	
+  7148	
+  7149	async def _release_install_upload_source_payload(
+  7150	    payload: dict[str, Any],
+  7151	    backend: Any,
+  7152	    args: argparse.Namespace,
+  7153	) -> dict[str, Any]:
+  7154	    """Upload the candidate release artifact as a Project Source and verify it.
+  7155	
+  7156	    This is intentionally a bounded lifecycle step: it may mutate ChatGPT Project
+  7157	    Sources, but it does not advance artifact registry, Promptbranch state,
+  7158	    adoption, Git commit, or Git push state. The source mutation is trusted only
+  7159	    when before/after source-list verification succeeds.
+  7160	    """
+  7161	
+  7162	    result = copy.deepcopy(payload)
+  7163	    if not bool(result.get("ok")):
+  7164	        return result
+  7165	    if not bool(result.get("upload_source_requested")):
+  7166	        return result
+  7167	    if backend is None:
+  7168	        blocker = {
+  7169	            "code": "release_install_source_backend_unavailable",
+  7170	            "severity": "blocked",
+  7171	            "message": "Project Source upload was requested but no Promptbranch backend is available.",
+  7172	        }
+  7173	        result.update({
+  7174	            "ok": False,
+  7175	            "status": "source_upload_backend_unavailable",
+  7176	            "severity": "blocked",
+  7177	            "project_source_mutated": False,
+  7178	            "project_source_mutation": "not_verified",
+  7179	            "mutating_actions_executed": bool(result.get("mutating_actions_executed")),
+  7180	            "blockers": list(result.get("blockers") or []) + [blocker],
+  7181	            "blocker_codes": list(result.get("blocker_codes") or []) + [blocker["code"]],
+  7182	        })
+  7183	        return result
+  7184	
+  7185	    install_plan = result.get("install_plan") if isinstance(result.get("install_plan"), dict) else {}
+  7186	    artifact_path = str(install_plan.get("artifact_path") or ((result.get("artifact") or {}).get("path")) or "")
+  7187	    artifact_filename = str(install_plan.get("artifact_filename") or ((result.get("artifact") or {}).get("filename")) or Path(artifact_path).name)
+  7188	    keep_open = bool(getattr(args, "keep_open", False))
+  7189	
+  7190	    try:
+  7191	        before_result = await backend.list_project_sources(keep_open=keep_open)
+  7192	    except Exception as exc:
+  7193	        before_result = _operation_error_payload("release_install_source_list_before_upload", exc)
+  7194	
+  7195	    before_snapshot = _project_sources_snapshot_from_result(before_result)
+  7196	    upload_result: dict[str, Any]
+  7197	    after_result: Any = before_result
+  7198	    if not before_snapshot.get("ok"):
+  7199	        upload_result = {
+  7200	            "ok": False,
+  7201	            "action": "source_add",
+  7202	            "status": "before_source_list_unavailable",
+  7203	            "error": "project source list before upload was not readable; upload was not attempted",
+  7204	        }
+  7205	    else:
+  7206	        try:
+  7207	            upload_result = await backend.add_project_source(
+  7208	                source_kind="file",
+  7209	                file_path=artifact_path,
+  7210	                display_name=artifact_filename,
+  7211	                keep_open=keep_open,
+  7212	                overwrite_existing=True,
+  7213	            )
+  7214	        except Exception as exc:
+  7215	            upload_result = _operation_error_payload("release_install_source_add", exc)
+  7216	        try:
+  7217	            after_result = await backend.list_project_sources(keep_open=keep_open)
+  7218	        except Exception as exc:
+  7219	            after_result = _operation_error_payload("release_install_source_list_after_upload", exc)
+  7220	
+  7221	    verification = _verify_project_source_upload_change(
+  7222	        before_result=before_result,
+  7223	        after_result=after_result,
+  7224	        upload_result=upload_result,
+  7225	        expected_filename=artifact_filename,
+  7226	    )
+  7227	    verified = bool(verification.get("ok"))
+  7228	    ambiguous = verification.get("status") == "upload_ambiguous"
+  7229	    source_mutation = "verified" if verified else ("ambiguous" if ambiguous else "not_verified")
+  7230	    status = "installed_source_uploaded" if verified else ("installed_source_upload_ambiguous" if ambiguous else "installed_source_upload_not_verified")
+  7231	    blocker_codes = list(result.get("blocker_codes") or [])
+  7232	    blockers = list(result.get("blockers") or [])
+  7233	    if not verified:
+  7234	        blockers.append({
+  7235	            "code": "release_install_source_upload_not_verified",
+  7236	            "severity": "blocked",
+  7237	            "message": "Project Source upload did not verify from before/after source-list snapshots.",
+  7238	            "verification_status": verification.get("status"),
+  7239	        })
+  7240	        blocker_codes.append("release_install_source_upload_not_verified")
+  7241	
+  7242	    result.update({
+  7243	        "ok": verified,
+  7244	        "status": status,
+  7245	        "severity": "ok" if verified and not result.get("warnings") else ("warning" if verified else "blocked"),
+  7246	        "project_source_mutated": verified,
+  7247	        "project_source_mutation": source_mutation,
+  7248	        "operator_review_required": bool(ambiguous),
+  7249	        "source_upload_result": upload_result,
+  7250	        "source_upload_verification": verification,
+  7251	        "project_source_before_upload": _project_sources_snapshot_from_result(before_result),
+  7252	        "project_source_after_upload": _project_sources_snapshot_from_result(after_result),
+  7253	        "artifact_registry_updated": False,
+  7254	        "state_artifact_updated": False,
+  7255	        "state_source_updated": False,
+  7256	        "adoption_performed": False,
+  7257	        "git_commit_performed": False,
+  7258	        "git_push_performed": False,
+  7259	        "blockers": blockers,
+  7260	        "blocker_codes": blocker_codes,
+  7261	        "operator_instruction": (
+  7262	            "Controlled repo install and Project Source upload verification completed. "
+  7263	            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
+  7264	            if verified else
+  7265	            "Controlled repo install completed, but Project Source upload did not verify. "
+  7266	            "Artifact registry, Promptbranch state, adoption, Git commit, and Git push were not advanced."
+  7267	        ),
+  7268	    })
+  7269	    return result
+  7270	
+  7271	
+  7272	async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
+  7273	    payload = _release_install_plan_payload(args)
+  7274	    if payload.get("ok") and not getattr(args, "plan", False):
+  7275	        payload = _release_install_execute_payload(payload)
+  7276	    if payload.get("ok") and not getattr(args, "plan", False) and getattr(args, "upload_source", False):
+  7277	        payload = await _release_install_upload_source_payload(payload, backend, args)
+  7278	    if getattr(args, "json", False):
+  7279	        print(json.dumps(payload, indent=2, ensure_ascii=False))
+  7280	    else:
+  7281	        print(f"status={payload.get('status')}")
+  7282	        print(f"severity={payload.get('severity')}")
+  7283	        print(f"artifact={((payload.get('artifact') or {}).get('filename')) or 'none'}")
+  7284	        print(f"install_entry_count={((payload.get('install_plan') or {}).get('install_entry_count')) or 0}")
+  7285	        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+  7286	        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+  7287	    return 0 if payload.get("ok") else 1
+  7288	
+  7289	
+  7290	_RELEASE_TEST_DEFAULT_HOOK_ORDER = ["doctor", "preflight", "local_acceptance", "live_acceptance", "release_status"]
+  7291	
+  7292	
+  7293	def _release_test_records_dir(repo_root: Path) -> Path:
+  7294	    return repo_root / ".pb_profile" / "release_acceptance"
+  7295	
+  7296	
+  7297	def _release_test_selected_hooks(config: dict[str, Any], requested_hooks: list[str] | None) -> tuple[list[tuple[str, dict[str, Any]]], list[dict[str, Any]]]:
+  7298	    hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
+  7299	    blockers: list[dict[str, Any]] = []
+  7300	    selected: list[tuple[str, dict[str, Any]]] = []
+  7301	    if requested_hooks:
+  7302	        names = [str(item).strip() for item in requested_hooks if str(item).strip()]
+  7303	    else:
+  7304	        configured_names = [name for name in _RELEASE_TEST_DEFAULT_HOOK_ORDER if name in hooks]
+  7305	        extra_names = sorted(name for name in hooks.keys() if name not in set(_RELEASE_TEST_DEFAULT_HOOK_ORDER))
+  7306	        names = configured_names + extra_names
+  7307	    for name in names:
+  7308	        hook = hooks.get(name)
+  7309	        if not isinstance(hook, dict):
+  7310	            blockers.append({
+  7311	                "code": "release_test_hook_missing",
+  7312	                "severity": "blocked",
+  7313	                "message": f"Configured release hook is missing: {name}.",
+  7314	                "hook": name,
+  7315	            })
+  7316	            continue
+  7317	        command = hook.get("command")
+  7318	        if not isinstance(command, str) or not command.strip():
+  7319	            blockers.append({
+  7320	                "code": "release_test_hook_command_missing",
+  7321	                "severity": "blocked",
+  7322	                "message": f"Configured release hook has no command: {name}.",
+  7323	                "hook": name,
+  7324	            })
+  7325	            continue
+  7326	        selected.append((name, hook))
+  7327	    if not names:
+  7328	        blockers.append({
+  7329	            "code": "release_test_no_hooks_configured",
+  7330	            "severity": "blocked",
+  7331	            "message": "No release hooks are configured for release test execution.",
+  7332	        })
+  7333	    return selected, blockers
+  7334	
+  7335	
+  7336	def _release_test_render_command(command_template: str, *, version: str | None, target_version: str | None, artifact: str, repo_path: str) -> tuple[list[str], str | None, str | None]:
+  7337	    placeholders = _release_config_command_placeholders(command_template)
+  7338	    missing: list[str] = []
+  7339	    values = {
+  7340	        "version": version or "",
+  7341	        "target_version": target_version or "",
+  7342	        "artifact": artifact,
+  7343	        "repo_path": repo_path,
+  7344	    }
+  7345	    for name in placeholders:
+  7346	        if not str(values.get(name) or ""):
+  7347	            missing.append(name)
+  7348	    if missing:
+  7349	        return [], None, f"missing placeholder values: {', '.join(sorted(missing))}"
+  7350	    try:
+  7351	        rendered = command_template.format(**values)
+  7352	    except Exception as exc:
+  7353	        return [], None, f"command template render failed: {exc}"
+  7354	    try:
+  7355	        argv = shlex.split(rendered)
+  7356	    except ValueError as exc:
+  7357	        return [], rendered, f"command split failed: {exc}"
+  7358	    if not argv:
+  7359	        return [], rendered, "rendered command is empty"
+  7360	    return argv, rendered, None
+  7361	
+  7362	
+  7363	def _run_release_test_hook(
+  7364	    *,
+  7365	    hook_name: str,
+  7366	    hook: dict[str, Any],
+  7367	    repo_root: Path,
+  7368	    version: str | None,
+  7369	    target_version: str | None,
+  7370	    artifact_path: Path,
+  7371	    timeout_seconds: float,
+  7372	) -> dict[str, Any]:
+  7373	    command_template = str(hook.get("command") or "")
+  7374	    started_at = utc_now()
+  7375	    argv, rendered, error = _release_test_render_command(
+  7376	        command_template,
+  7377	        version=version,
+  7378	        target_version=target_version,
+  7379	        artifact=str(artifact_path),
+  7380	        repo_path=str(repo_root),
+  7381	    )
+  7382	    base = {
+  7383	        "hook": hook_name,
+  7384	        "command_template": command_template,
+  7385	        "command": argv,
+  7386	        "rendered_command": rendered,
+  7387	        "started_at": started_at,
+  7388	        "timeout_seconds": timeout_seconds,
+  7389	    }
+  7390	    if error:
+  7391	        return {**base, "ok": False, "status": "hook_command_invalid", "error": error, "finished_at": utc_now()}
+  7392	    try:
+  7393	        completed = subprocess.run(
+  7394	            argv,
+  7395	            cwd=str(repo_root),
+  7396	            stdout=subprocess.PIPE,
+  7397	            stderr=subprocess.PIPE,
+  7398	            text=True,
+  7399	            timeout=max(1.0, float(timeout_seconds)),
+  7400	            check=False,
+  7401	        )
+  7402	    except subprocess.TimeoutExpired as exc:
+  7403	        return {
+  7404	            **base,
+  7405	            "ok": False,
+  7406	            "status": "hook_timeout",
+  7407	            "finished_at": utc_now(),
+  7408	            "returncode": None,
+  7409	            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
+  7410	            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
+  7411	        }
+  7412	    return {
+  7413	        **base,
+  7414	        "ok": completed.returncode == 0,
+  7415	        "status": "hook_passed" if completed.returncode == 0 else "hook_failed",
+  7416	        "finished_at": utc_now(),
+  7417	        "returncode": completed.returncode,
+  7418	        "stdout_tail": (completed.stdout or "")[-4000:],
+  7419	        "stderr_tail": (completed.stderr or "")[-4000:],
+  7420	    }
+  7421	
+  7422	
+  7423	def _record_release_acceptance_report(repo_root: Path, *, version: str, report: dict[str, Any]) -> Path:
+  7424	    version_key = _candidate_version_normalized(version) or "unknown"
+  7425	    record_dir = _release_test_records_dir(repo_root) / version_key
+  7426	    record_dir.mkdir(parents=True, exist_ok=True)
+  7427	    timestamp = re.sub(r"[^0-9A-Za-z_.-]+", "_", utc_now())
+  7428	    record_path = record_dir / f"release_acceptance.{timestamp}.json"
+  7429	    record_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+  7430	    return record_path
+  7431	
+  7432	
+  7433	def _release_acceptance_report_paths(repo_root: Path, *, version: str | None = None) -> list[Path]:
+  7434	    root = _release_test_records_dir(repo_root)
+  7435	    paths: list[Path] = []
+  7436	    if version:
+  7437	        version_key = _candidate_version_normalized(version) or _safe_artifact_inbox_component(version, fallback="unknown")
+  7438	        paths.extend((root / version_key).glob("release_acceptance.*.json"))
+  7439	    else:
+  7440	        paths.extend(root.glob("*/release_acceptance.*.json"))
+  7441	    return sorted([path for path in paths if path.is_file()], key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
+  7442	
+  7443	
+  7444	def _load_release_acceptance_report(path: Path) -> dict[str, Any]:
+  7445	    try:
+  7446	        payload = json.loads(path.read_text(encoding="utf-8"))
+  7447	    except OSError as exc:
+  7448	        return {"ok": False, "status": "release_acceptance_report_read_error", "path": str(path), "error": str(exc)}
+  7449	    except json.JSONDecodeError as exc:
+  7450	        return {"ok": False, "status": "release_acceptance_report_json_invalid", "path": str(path), "error": str(exc)}
+  7451	    if not isinstance(payload, dict):
+  7452	        return {"ok": False, "status": "release_acceptance_report_not_mapping", "path": str(path)}
+  7453	    return {"ok": True, "status": "release_acceptance_report_loaded", "path": str(path), "report": payload}
+  7454	
+  7455	
+  7456	def _select_release_acceptance_report(repo_root: Path, *, version: str | None, explicit_path: str | None) -> dict[str, Any]:
+  7457	    if explicit_path:
+  7458	        path = Path(explicit_path).expanduser()
+  7459	        if not path.is_absolute():
+  7460	            path = repo_root / path
+  7461	        return _load_release_acceptance_report(path.resolve())
+  7462	    paths = _release_acceptance_report_paths(repo_root, version=version)
+  7463	    if not paths:
+  7464	        return {
+  7465	            "ok": False,
+  7466	            "status": "release_acceptance_report_missing",
+  7467	            "version": version,
+  7468	            "search_root": str(_release_test_records_dir(repo_root)),
+  7469	            "error": "no structured release acceptance report exists for the requested version",
+  7470	        }
+  7471	    loaded = _load_release_acceptance_report(paths[0])
+  7472	    return {**loaded, "selected_by": "latest_for_version", "candidate_count": len(paths)}
+  7473	
+  7474	
+  7475	def _release_acceptance_report_gate(
+  7476	    report: dict[str, Any],
+  7477	    *,
+  7478	    version: str | None,
+  7479	    artifact: dict[str, Any],
+  7480	) -> dict[str, Any]:
+  7481	    blockers: list[dict[str, Any]] = []
+  7482	    warnings: list[dict[str, Any]] = []
+  7483	
+  7484	    def block(code: str, message: str, **extra: Any) -> None:
+  7485	        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+  7486	
+  7487	    def warn(code: str, message: str, **extra: Any) -> None:
+  7488	        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+  7489	
+  7490	    if report.get("schema") != "promptbranch.release.acceptance_report":
+  7491	        block("release_acceptance_report_schema_invalid", "Acceptance report schema is not promptbranch.release.acceptance_report.", schema=report.get("schema"))
+  7492	    if str(report.get("schema_version") or "") != "1.0":
+  7493	        block("release_acceptance_report_schema_version_invalid", "Acceptance report schema_version must be 1.0.", schema_version=report.get("schema_version"))
+  7494	    if report.get("accepted") is not True or report.get("status") != "accepted":
+  7495	        block("release_acceptance_report_not_green", "Acceptance report is not green.", accepted=report.get("accepted"), status=report.get("status"))
+  7496	
+  7497	    report_version = _candidate_version_normalized(report.get("version"))
+  7498	    requested_version = _candidate_version_normalized(version)
+  7499	    artifact_version = _candidate_version_normalized(artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
+  7500	    if requested_version and report_version and requested_version != report_version:
+  7501	        block("release_acceptance_report_version_mismatch", "Acceptance report version does not match requested version.", requested_version=requested_version, report_version=report_version)
+  7502	    if artifact_version and report_version and artifact_version != report_version:
+  7503	        block("release_acceptance_report_artifact_version_mismatch", "Acceptance report version does not match artifact version.", artifact_version=artifact_version, report_version=report_version)
+  7504	
+  7505	    report_artifact = report.get("artifact") if isinstance(report.get("artifact"), dict) else {}
+  7506	    report_filename = str(report_artifact.get("filename") or "")
+  7507	    artifact_filename = str(artifact.get("filename") or "")
+  7508	    if report_filename and artifact_filename and report_filename != artifact_filename:
+  7509	        block("release_acceptance_report_artifact_filename_mismatch", "Acceptance report artifact filename does not match selected artifact.", report_filename=report_filename, artifact_filename=artifact_filename)
+  7510	
+  7511	    report_sha = str(report_artifact.get("sha256") or "")
+  7512	    artifact_sha = str(artifact.get("sha256") or "")
+  7513	    if report_sha and artifact_sha and report_sha != artifact_sha:
+  7514	        block("release_acceptance_report_artifact_sha_mismatch", "Acceptance report artifact sha256 does not match selected artifact.", report_sha256=report_sha, artifact_sha256=artifact_sha)
+  7515	    if not report_sha:
+  7516	        warn("release_acceptance_report_sha_missing", "Acceptance report does not include artifact sha256; artifact identity is checked by filename/version only.")
+  7517	
+  7518	    hook_results = report.get("hook_results") if isinstance(report.get("hook_results"), list) else []
+  7519	    if not hook_results:
+  7520	        block("release_acceptance_report_no_hooks", "Acceptance report has no hook results.")
+  7521	    failed_hooks = [item.get("hook") for item in hook_results if isinstance(item, dict) and item.get("ok") is not True]
+  7522	    if failed_hooks:
+  7523	        block("release_acceptance_report_failed_hooks", "Acceptance report contains failed hooks.", failed_hooks=failed_hooks)
+  7524	
+  7525	    return {
+  7526	        "ok": not blockers,
+  7527	        "status": "release_acceptance_report_green" if not blockers else "release_acceptance_report_blocked",
+  7528	        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+  7529	        "warnings": warnings,
+  7530	        "warning_codes": [item["code"] for item in warnings],
+  7531	        "blockers": blockers,
+  7532	        "blocker_codes": [item["code"] for item in blockers],
+  7533	        "report_version": report_version,
+  7534	        "artifact_version": artifact_version,
+  7535	        "artifact_filename": artifact.get("filename"),
+  7536	        "hook_count": len(hook_results),
+  7537	    }
+  7538	
+  7539	
+  7540	async def cmd_release_test(backend: Any, args: argparse.Namespace) -> int:
+  7541	    """Run configured release acceptance hooks and persist a structured report.
+  7542	
+  7543	    This command is intentionally evidence-producing only. It can execute configured
+  7544	    project hook commands, but it does not itself adopt artifacts, update Promptbranch
+  7545	    source/artifact state, update the artifact registry, or commit/push Git state.
+  7546	    """
+  7547	
+  7548	    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+  7549	    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+  7550	    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+  7551	    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+  7552	    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+  7553	    timeout_seconds = float(getattr(args, "hook_timeout", 3600.0) or 3600.0)
+  7554	    plan_only = bool(getattr(args, "plan", False))
+  7555	    requested_hooks = list(getattr(args, "hook", None) or [])
+  7556	
+  7557	    blockers: list[dict[str, Any]] = []
+  7558	    warnings: list[dict[str, Any]] = []
+  7559	
+  7560	    def block(code: str, message: str, **extra: Any) -> None:
+  7561	        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+  7562	
+  7563	    if not config_payload.get("ok"):
+  7564	        block("release_config_invalid", "Release test requires a valid .promptbranch-release.yml.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+  7565	    if not artifact_payload.get("attempted"):
+  7566	        block("release_test_artifact_required", "release test requires --artifact ZIP.")
+  7567	    elif not artifact_payload.get("ok"):
+  7568	        block("release_test_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+  7569	
+  7570	    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+  7571	    if requested_version and artifact_version and requested_version != artifact_version:
+  7572	        block("release_test_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+  7573	    if not requested_version and artifact_version:
+  7574	        requested_version = artifact_version
+  7575	        warnings.append({
+  7576	            "code": "release_test_version_inferred",
+  7577	            "severity": "warning",
+  7578	            "message": "No --version was supplied; candidate version is inferred from the artifact ZIP.",
+  7579	            "artifact_version": artifact_version,
+  7580	        })
+  7581	
+  7582	    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+  7583	    selected_hooks, hook_selection_blockers = _release_test_selected_hooks(config, requested_hooks)
+  7584	    blockers.extend(hook_selection_blockers)
+  7585	
+  7586	    hook_plan = [
+  7587	        {
+  7588	            "hook": name,
+  7589	            "command_template": str(hook.get("command") or ""),
+  7590	            "risk": str(hook.get("risk") or "process"),
+  7591	        }
+  7592	        for name, hook in selected_hooks
+  7593	    ]
+  7594	    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser()
+  7595	    if artifact_path and not artifact_path.is_absolute():
+  7596	        artifact_path = (repo_root / artifact_path).resolve()
+  7597	
+  7598	    base_payload: dict[str, Any] = {
+  7599	        "ok": False,
+  7600	        "action": "release_test",
+  7601	        "status": "blocked" if blockers else ("planned" if plan_only else "ready"),
+  7602	        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+  7603	        "mode": "plan_only" if plan_only else "execute",
+  7604	        "read_only": plan_only,
+  7605	        "repo_path": str(repo_root),
+  7606	        "config": config_payload,
+  7607	        "artifact": artifact_payload,
+  7608	        "version": requested_version,
+  7609	        "target_version": target_version,
+  7610	        "hook_timeout_seconds": timeout_seconds,
+  7611	        "hook_plan": hook_plan,
+  7612	        "hook_count": len(hook_plan),
+  7613	        "hook_results": [],
+  7614	        "acceptance_report_written": False,
+  7615	        "acceptance_report_path": None,
+  7616	        "acceptance_status": "not_run" if plan_only or blockers else "pending",
+  7617	        "candidate_test_performed": False,
+  7618	        "adoption_performed": False,
+  7619	        "project_source_mutated": False,
+  7620	        "project_source_mutation": "not_requested",
+  7621	        "source_upload_verification": None,
+  7622	        "artifact_registry_updated": False,
+  7623	        "state_artifact_updated": False,
+  7624	        "state_source_updated": False,
+  7625	        "git_commit_performed": False,
+  7626	        "git_push_performed": False,
+  7627	        "mutating_actions_executed": not plan_only and not bool(blockers),
+  7628	        "warnings": warnings,
+  7629	        "warning_codes": [item["code"] for item in warnings],
+  7630	        "blockers": blockers,
+  7631	        "blocker_codes": [item["code"] for item in blockers],
+  7632	        "not_performed": [
+  7633	            "artifact_download",
+  7634	            "candidate_migration",
+  7635	            "candidate_adoption",
+  7636	            "project_source_mutation",
+  7637	            "artifact_registry_update",
+  7638	            "state_artifact_update",
+  7639	            "state_source_update",
+  7640	            "git_commit",
+  7641	            "git_push",
+  7642	        ],
+  7643	    }
+  7644	
+  7645	    def emit(payload: dict[str, Any], code: int) -> int:
+  7646	        if getattr(args, "json", False):
+  7647	            print(json.dumps(payload, indent=2, ensure_ascii=False))
+  7648	        else:
+  7649	            print(f"status={payload.get('status')}")
+  7650	            print(f"acceptance_status={payload.get('acceptance_status')}")
+  7651	            print(f"hook_count={payload.get('hook_count')}")
+  7652	            print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+  7653	            print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+  7654	            if payload.get("acceptance_report_path"):
+  7655	                print(f"acceptance_report_path={payload.get('acceptance_report_path')}")
+  7656	        return code
+  7657	
+  7658	    if blockers:
+  7659	        base_payload["operator_instruction"] = "Release acceptance hook execution is blocked. Resolve blockers before running project hooks."
+  7660	        return emit(base_payload, 1)
+  7661	    if plan_only:
+  7662	        base_payload.update({
+  7663	            "ok": True,
+  7664	            "status": "planned",
+  7665	            "acceptance_status": "planned",
+  7666	            "operator_instruction": "Read-only release test plan. No hooks were executed and no lifecycle state was advanced.",
+  7667	        })
+  7668	        return emit(base_payload, 0)
+  7669	
+  7670	    hook_results: list[dict[str, Any]] = []
+  7671	    for name, hook in selected_hooks:
+  7672	        result = _run_release_test_hook(
+  7673	            hook_name=name,
+  7674	            hook=hook,
+  7675	            repo_root=repo_root,
+  7676	            version=requested_version,
+  7677	            target_version=target_version,
+  7678	            artifact_path=artifact_path,
+  7679	            timeout_seconds=timeout_seconds,
+  7680	        )
+  7681	        hook_results.append(result)
+  7682	        if not result.get("ok") and bool(getattr(args, "stop_on_failure", True)):
+  7683	            break
+  7684	
+  7685	    all_passed = bool(hook_results) and all(bool(item.get("ok")) for item in hook_results)
+  7686	    report = {
+  7687	        "schema": "promptbranch.release.acceptance_report",
+  7688	        "schema_version": "1.0",
+  7689	        "created_at": utc_now(),
+  7690	        "version": requested_version,
+  7691	        "target_version": target_version,
+  7692	        "artifact": artifact_payload,
+  7693	        "repo_path": str(repo_root),
+  7694	        "hook_results": hook_results,
+  7695	        "hook_count": len(hook_results),
+  7696	        "accepted": all_passed,
+  7697	        "status": "accepted" if all_passed else "rejected",
+  7698	        "adoption_performed": False,
+  7699	        "project_source_mutated": False,
+  7700	        "artifact_registry_updated": False,
+  7701	        "state_artifact_updated": False,
+  7702	        "state_source_updated": False,
+  7703	        "git_commit_performed": False,
+  7704	        "git_push_performed": False,
+  7705	    }
+  7706	    report_path = _record_release_acceptance_report(repo_root, version=requested_version or "unknown", report=report)
+  7707	
+  7708	    payload = {
+  7709	        **base_payload,
+  7710	        "ok": all_passed,
+  7711	        "status": "release_acceptance_passed" if all_passed else "release_acceptance_failed",
+  7712	        "severity": "ok" if all_passed and not warnings else ("warning" if all_passed else "blocked"),
+  7713	        "hook_results": hook_results,
+  7714	        "hook_count": len(hook_results),
+  7715	        "acceptance_status": "accepted" if all_passed else "rejected",
+  7716	        "acceptance_report": report,
+  7717	        "acceptance_report_written": True,
+  7718	        "acceptance_report_path": str(report_path),
+  7719	        "candidate_test_performed": True,
+  7720	        "adoption_performed": False,
+  7721	        "project_source_mutated": False,
+  7722	        "artifact_registry_updated": False,
+  7723	        "state_artifact_updated": False,
+  7724	        "state_source_updated": False,
+  7725	        "git_commit_performed": False,
+  7726	        "git_push_performed": False,
+  7727	        "blockers": [] if all_passed else [{
+  7728	            "code": "release_acceptance_hooks_failed",
+  7729	            "severity": "blocked",
+  7730	            "message": "One or more release acceptance hooks failed.",
+  7731	            "failed_hooks": [item.get("hook") for item in hook_results if not item.get("ok")],
+  7732	        }],
+  7733	        "blocker_codes": [] if all_passed else ["release_acceptance_hooks_failed"],
+  7734	        "operator_instruction": (
+  7735	            "Release acceptance hooks passed and a structured report was written. Adoption, source/artifact state advancement, Git commit, and Git push were not performed."
+  7736	            if all_passed else
+  7737	            "Release acceptance hooks failed. The structured report was written, but adoption and state advancement remain blocked."
+  7738	        ),
+  7739	    }
+  7740	    return emit(payload, 0 if all_passed else 1)
+  7741	
+  7742	
+  7743	async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
+  7744	    """Adopt a release ZIP only after a green structured acceptance report."""
+  7745	
+  7746	    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+  7747	    registry = _artifact_registry_from_args(args)
+  7748	    project_url = _artifact_state_project_url(backend)
+  7749	    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+  7750	    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+  7751	    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+  7752	    artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
+  7753	    artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+  7754	
+  7755	    report_selection = _select_release_acceptance_report(
+  7756	        repo_root,
+  7757	        version=requested_version or artifact_version,
+  7758	        explicit_path=getattr(args, "acceptance_report", None),
+  7759	    )
+  7760	    report = report_selection.get("report") if isinstance(report_selection.get("report"), dict) else {}
+  7761	    report_gate = _release_acceptance_report_gate(report, version=requested_version or artifact_version, artifact=artifact_payload) if report_selection.get("ok") else {
+  7762	        "ok": False,
+  7763	        "status": report_selection.get("status"),
+  7764	        "severity": "blocked",
+  7765	        "blockers": [{"code": str(report_selection.get("status") or "release_acceptance_report_unavailable"), "severity": "blocked", "message": str(report_selection.get("error") or "release acceptance report could not be loaded")}],
+  7766	        "blocker_codes": [str(report_selection.get("status") or "release_acceptance_report_unavailable")],
+  7767	        "warnings": [],
+  7768	        "warning_codes": [],
+  7769	    }
+  7770	
+  7771	    blockers: list[dict[str, Any]] = []
+  7772	    warnings: list[dict[str, Any]] = []
+  7773	
+  7774	    def block(code: str, message: str, **extra: Any) -> None:
+  7775	        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+  7776	
+  7777	    def warn(code: str, message: str, **extra: Any) -> None:
+  7778	        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+  7779	
+  7780	    if not artifact_payload.get("attempted"):
+  7781	        block("release_adopt_artifact_required", "release adopt requires --artifact ZIP.")
+  7782	    elif not artifact_payload.get("ok"):
+  7783	        block("release_adopt_artifact_invalid", "Candidate artifact ZIP did not pass read-only verification.", artifact_status=artifact_payload.get("status"), blocking_errors=artifact_payload.get("blocking_errors") or [])
+  7784	    if requested_version and artifact_version and requested_version != artifact_version:
+  7785	        block("release_adopt_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+  7786	    if not report_gate.get("ok"):
+  7787	        blockers.extend(report_gate.get("blockers") or [])
+  7788	    warnings.extend(report_gate.get("warnings") or [])
+  7789	    if not project_url:
+  7790	        block("release_adopt_workspace_not_selected", "select a workspace before release adoption so artifact/source state can be updated")
+  7791	
+  7792	    source_payload: dict[str, Any] | None = None
+  7793	    matched_source: dict[str, Any] | None = None
+  7794	    source_verified = False
+  7795	    source_list_attempted = False
+  7796	    if artifact_filename and not blockers:
+  7797	        source_list_attempted = True
+  7798	        try:
+  7799	            source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+  7800	        except Exception as exc:  # pragma: no cover - defensive around external browser/service boundary
+  7801	            source_result = _operation_error_payload("release_adopt_source_list", exc)
+  7802	        matched_sources, source_payload = _project_sources_matching_filename(source_result, artifact_filename)
+  7803	        if not bool(source_payload.get("ok")):
+  7804	            block("release_adopt_source_list_unavailable", "could not verify Project Sources before adoption", source_list_status=source_payload.get("status"))
+  7805	        elif len(matched_sources) != 1:
+  7806	            block("release_adopt_project_source_match_count_invalid", f"expected exactly one matching Project Source named {artifact_filename}, found {len(matched_sources)}", matching_expected_count=len(matched_sources))
+  7807	        else:
+  7808	            source_verified = True
+  7809	            matched_source = matched_sources[0]
+  7810	
+  7811	    plan_only = bool(getattr(args, "plan", False))
+  7812	    base_payload = {
+  7813	        "ok": False,
+  7814	        "action": "release_adopt",
+  7815	        "status": "release_adopt_blocked" if blockers else ("planned" if plan_only else "ready_to_adopt"),
+  7816	        "version": requested_version or artifact_version,
+  7817	        "target_version": target_version,
+  7818	        "repo_path": str(repo_root),
+  7819	        "project_url": project_url,
+  7820	        "artifact": artifact_payload,
+  7821	        "artifact_ref": artifact_filename or None,
+  7822	        "artifact_version": artifact_version,
+  7823	        "acceptance_report_selection": {k: v for k, v in report_selection.items() if k != "report"},
+  7824	        "acceptance_report": report if report_selection.get("ok") else None,
+  7825	        "acceptance_report_gate": report_gate,
+  7826	        "source_list_attempted": source_list_attempted,
+  7827	        "source_verified": source_verified,
+  7828	        "source_list": source_payload,
+  7829	        "matched_source": matched_source,
+  7830	        "read_only": plan_only,
+  7831	        "adoption_performed": False,
+  7832	        "project_source_mutated": False,
+  7833	        "project_source_mutation": "not_requested",
+  7834	        "artifact_registry_updated": False,
+  7835	        "state_artifact_updated": False,
+  7836	        "state_source_updated": False,
+  7837	        "git_commit_performed": False,
+  7838	        "git_push_performed": False,
+  7839	        "warnings": warnings,
+  7840	        "warning_codes": [item["code"] for item in warnings],
+  7841	        "blockers": blockers,
+  7842	        "blocker_codes": [item["code"] for item in blockers],
+  7843	        "not_performed": [
+  7844	            "project_source_mutation",
+  7845	            "release_acceptance_hook_execution",
+  7846	            "git_commit",
+  7847	            "git_push",
+  7848	            "policy_sync",
+  7849	        ],
+  7850	    }
+  7851	
+  7852	    def emit(payload: dict[str, Any], code: int) -> int:
+  7853	        if getattr(args, "json", False):
+  7854	            print(json.dumps(payload, indent=2, ensure_ascii=False))
+  7855	        else:
+  7856	            print(f"status={payload.get('status')}")
+  7857	            print(f"ok={str(bool(payload.get('ok'))).lower()}")
+  7858	            if payload.get("error"):
+  7859	                print(f"error={payload.get('error')}")
+  7860	            if payload.get("artifact_ref"):
+  7861	                print(f"artifact_ref={payload.get('artifact_ref')}")
+  7862	        return code
+  7863	
+  7864	    if blockers:
+  7865	        return emit({**base_payload, "operator_instruction": "Release adoption is blocked. A verified artifact, exactly one matching Project Source, selected workspace, and green structured acceptance report are required."}, 1)
+  7866	
+  7867	    if plan_only:
+  7868	        return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release adopt plan. Green acceptance report and Project Source visibility are verified; no local artifact/source state was advanced."}, 0)
+  7869	
+  7870	    artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser().resolve()
+  7871	    zip_check = artifact_payload.get("verification") if isinstance(artifact_payload.get("verification"), dict) else verify_zip_artifact(artifact_path)
+  7872	    record = ArtifactRecord(
+  7873	        path=str(artifact_path),
+  7874	        filename=artifact_filename,
+  7875	        kind="adopted_release",
+  7876	        version=artifact_version,
+  7877	        repo_path=None,
+  7878	        sha256=str(artifact_payload.get("sha256") or zip_check.get("sha256") or ""),
+  7879	        size_bytes=int(artifact_payload.get("size_bytes") or zip_check.get("size_bytes") or artifact_path.stat().st_size),
+  7880	        file_count=int(artifact_payload.get("entry_count") or zip_check.get("entry_count") or 0),
+  7881	        created_at=utc_now(),
+  7882	        source_ref=artifact_filename,
+  7883	        project_url=project_url,
+  7884	    )
+  7885	    artifact_record = registry.add(record)
+  7886	    _state_store_from_args(args).remember_artifact(
+  7887	        project_url=project_url,
+  7888	        artifact_ref=artifact_filename,
+  7889	        artifact_version=artifact_version,
+  7890	        source_ref=artifact_filename,
+  7891	        source_version=artifact_version,
+  7892	    )
+  7893	    current_payload = _artifact_current_payload(backend, registry)
+  7894	    current_ok, current_checks = _report_artifact_current_matches_candidate(
+  7895	        current_payload,
+  7896	        filename=artifact_filename,
+  7897	        version=artifact_version or "",
+  7898	        require_runtime_code_match=False,
+  7899	    )
+  7900	    result = {
+  7901	        **base_payload,
+  7902	        "ok": current_ok,
+  7903	        "status": "release_adopted" if current_ok else "release_adoption_verification_failed",
+  7904	        "local_artifact": artifact_record,
+  7905	        "artifact_current": current_payload,
+  7906	        "current_checks": current_checks,
+  7907	        "adoption_performed": True,
+  7908	        "artifact_registry_updated": True,
+  7909	        "state_artifact_updated": bool(current_checks.get("state_artifact_ref_matches_candidate") and current_checks.get("state_artifact_version_matches_candidate")),
+  7910	        "state_source_updated": bool(current_checks.get("state_source_ref_matches_candidate") and current_checks.get("state_source_version_matches_candidate")),
+  7911	        "project_source_mutated": False,
+  7912	        "mutating_actions_executed": True,
+  7913	        "mutated_local_state_only": True,
+  7914	        "operator_instruction": (
+  7915	            "Release artifact was adopted as the local artifact/source baseline after green structured acceptance report and Project Source verification."
+  7916	            if current_ok else
+  7917	            "Release adoption was attempted, but artifact current verification failed; inspect current_checks before continuing."
+  7918	        ),
+  7919	    }
+  7920	    if not current_ok:
+  7921	        result["blockers"] = [{"code": "release_adopt_current_mismatch", "severity": "blocked", "message": "artifact current does not match adopted release after local state update"}]
+  7922	        result["blocker_codes"] = ["release_adopt_current_mismatch"]
+  7923	    return emit(result, 0 if current_ok else 1)
+  7924	
+  7925	
