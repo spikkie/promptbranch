@@ -1271,6 +1271,12 @@ def classify_agent_request_risk(request: str) -> dict[str, Any]:
         " make zip ",
         " rename ",
     )
+    read_only_release_terms = (
+        " release readiness ",
+        " release ready ",
+        " check release readiness ",
+        " inspect release readiness ",
+    )
     controlled_process_terms = (
         " run smoke test ",
         " run smoke tests ",
@@ -1286,6 +1292,10 @@ def classify_agent_request_risk(request: str) -> dict[str, Any]:
         " run command ",
         " shell ",
     )
+
+    matched_read_only_release = [term.strip() for term in read_only_release_terms if term in text]
+    if matched_read_only_release:
+        return {"risk": ToolRisk.READ.value, "auto_allowed": True, "status": "read_only_release_readiness", "matched_terms": matched_read_only_release}
 
     matched = [term.strip() for term in destructive_terms if term in text]
     if matched:
@@ -1504,6 +1514,29 @@ prechecks:
 4. Report version, branch, short SHA, dirty state, and risk.
 5. Never execute write tools.
 """,
+    "release-readiness": """---
+name: release-readiness
+description: Inspect whether the local repo is ready for the next Promptbranch release using read-only MCP tools.
+risk: read
+allowed_tools:
+  - filesystem.read
+  - git.status
+  - git.diff.summary
+  - artifact.registry.current
+prechecks:
+  - repo_path_exists
+  - tool_read_only
+---
+
+## Procedure
+
+1. Read VERSION.
+2. Read the current artifact registry entry.
+3. Run git.status.
+4. Run git.diff.summary.
+5. Report version, adopted artifact/source baseline, dirty state, baseline consistency signals, and release risk.
+6. Never create, install, migrate, adopt, commit, push, or mutate project sources.
+""",
 }
 
 SKILL_SEARCH_DIR_NAMES: tuple[str, ...] = (".promptbranch/skills", "skills")
@@ -1701,20 +1734,33 @@ def skill_list(*, repo_path: str | Path = ".", profile_dir: str | Path | None = 
 def _plan_tool_calls_for_skill(skill_name: str, request: str, *, repo_path: str | Path = ".") -> tuple[list[dict[str, Any]], list[str]]:
     normalized_name = str(skill_name or "").strip()
     notes: list[str] = []
-    if normalized_name != "repo-inspection":
-        notes.append("unknown_skill_plan_defaulted_to_read_only_request_classifier")
-        return [dict(item) for item in _read_only_tool_specs_for_request(request)], notes
     root = Path(repo_path).expanduser().resolve()
-    calls: list[dict[str, Any]] = []
-    if (root / "VERSION").is_file():
-        calls.append({"name": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}})
-    else:
-        notes.append("VERSION file not present; skipped filesystem.read VERSION")
-    calls.append({"name": "git.status", "arguments": {}})
-    # git.diff.summary is included; callers can inspect empty diff output. This keeps the skill deterministic
-    # and avoids hidden branching on a pre-read git result.
-    calls.append({"name": "git.diff.summary", "arguments": {}})
-    return calls, notes
+
+    if normalized_name == "repo-inspection":
+        calls: list[dict[str, Any]] = []
+        if (root / "VERSION").is_file():
+            calls.append({"name": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}})
+        else:
+            notes.append("VERSION file not present; skipped filesystem.read VERSION")
+        calls.append({"name": "git.status", "arguments": {}})
+        # git.diff.summary is included; callers can inspect empty diff output. This keeps the skill deterministic
+        # and avoids hidden branching on a pre-read git result.
+        calls.append({"name": "git.diff.summary", "arguments": {}})
+        return calls, notes
+
+    if normalized_name == "release-readiness":
+        calls = []
+        if (root / "VERSION").is_file():
+            calls.append({"name": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}})
+        else:
+            notes.append("VERSION file not present; release readiness cannot confirm runtime version from file")
+        calls.append({"name": "artifact.registry.current", "arguments": {}})
+        calls.append({"name": "git.status", "arguments": {}})
+        calls.append({"name": "git.diff.summary", "arguments": {}})
+        return calls, notes
+
+    notes.append("unknown_skill_plan_defaulted_to_read_only_request_classifier")
+    return [dict(item) for item in _read_only_tool_specs_for_request(request)], notes
 
 
 def agent_summarize_log(
@@ -1821,6 +1867,124 @@ def agent_summarize_log(
         "safety": {"repo_bound_read": True, "write_tools_blocked": True, "model_has_execution_authority": False},
     }
 
+
+
+
+def _mcp_structured_content(result: dict[str, Any]) -> dict[str, Any]:
+    """Return the tool structuredContent from an MCP stdio call result."""
+
+    if not isinstance(result, dict):
+        return {}
+    tool_response = result.get("tool_response") if isinstance(result.get("tool_response"), dict) else {}
+    response_result = tool_response.get("result") if isinstance(tool_response.get("result"), dict) else {}
+    structured = response_result.get("structuredContent") if isinstance(response_result.get("structuredContent"), dict) else None
+    if isinstance(structured, dict):
+        return structured
+    nested = result.get("result") if isinstance(result.get("result"), dict) else {}
+    return nested
+
+
+def _first_tool_payload(results: list[dict[str, Any]], tool_name: str, *, relative_path: str | None = None) -> dict[str, Any] | None:
+    for result in results:
+        if str(result.get("tool") or "") != tool_name:
+            continue
+        payload = _mcp_structured_content(result)
+        if relative_path is not None and str(payload.get("relative_path") or "") != relative_path:
+            continue
+        return payload
+    return None
+
+
+def _version_from_tool_payload(payload: dict[str, Any] | None) -> str | None:
+    if not payload or not payload.get("ok"):
+        return None
+    text = str(payload.get("text") or "").strip()
+    return text.splitlines()[0].strip() if text else None
+
+
+def _build_repo_inspection_report(results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any]:
+    version_payload = _first_tool_payload(results, "filesystem.read", relative_path="VERSION")
+    git_payload = _first_tool_payload(results, "git.status") or {}
+    diff_payload = _first_tool_payload(results, "git.diff.summary") or {}
+    git = git_payload.get("git") if isinstance(git_payload.get("git"), dict) else {}
+    dirty = bool(git.get("dirty"))
+    return {
+        "ok": bool(ok),
+        "kind": "repo_inspection",
+        "status": "dirty" if dirty else "clean" if ok else "inspection_failed",
+        "version": _version_from_tool_payload(version_payload),
+        "git": {
+            "is_repo": bool(git.get("is_repo")),
+            "branch": git.get("branch"),
+            "short_sha": git.get("short_sha"),
+            "dirty": dirty,
+            "status_lines": git.get("status_lines") if isinstance(git.get("status_lines"), list) else [],
+        },
+        "diff_stat": diff_payload.get("diff_stat") if isinstance(diff_payload, dict) else "",
+        "risk": "read",
+        "mutation_performed": False,
+    }
+
+
+def _build_release_readiness_report(results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any]:
+    version_payload = _first_tool_payload(results, "filesystem.read", relative_path="VERSION")
+    registry_payload = _first_tool_payload(results, "artifact.registry.current") or {}
+    git_payload = _first_tool_payload(results, "git.status") or {}
+    diff_payload = _first_tool_payload(results, "git.diff.summary") or {}
+    version = _version_from_tool_payload(version_payload)
+    current = registry_payload.get("current") if isinstance(registry_payload.get("current"), dict) else {}
+    current_version = current.get("version") or current.get("artifact_version")
+    git = git_payload.get("git") if isinstance(git_payload.get("git"), dict) else {}
+    dirty = bool(git.get("dirty"))
+    if not ok:
+        status = "inspection_failed"
+    elif dirty:
+        status = "dirty_worktree"
+    elif not current:
+        status = "no_current_artifact"
+    elif version and current_version and str(version) != str(current_version):
+        status = "working_tree_version_differs_from_adopted_baseline"
+    else:
+        status = "release_ready_read_only"
+    return {
+        "ok": bool(ok),
+        "kind": "release_readiness",
+        "status": status,
+        "version_file": {"version": version, "read_ok": bool(version_payload and version_payload.get("ok"))},
+        "artifact_current": {
+            "available": bool(current),
+            "filename": current.get("filename"),
+            "kind": current.get("kind"),
+            "version": current_version,
+            "source_ref": current.get("source_ref"),
+        },
+        "git": {
+            "is_repo": bool(git.get("is_repo")),
+            "branch": git.get("branch"),
+            "short_sha": git.get("short_sha"),
+            "dirty": dirty,
+            "status_lines": git.get("status_lines") if isinstance(git.get("status_lines"), list) else [],
+        },
+        "diff_stat": diff_payload.get("diff_stat") if isinstance(diff_payload, dict) else "",
+        "checks": {
+            "tools_ok": bool(ok),
+            "version_file_read": bool(version_payload and version_payload.get("ok")),
+            "artifact_current_available": bool(current),
+            "worktree_clean": not dirty,
+            "version_matches_current_artifact": bool(version and current_version and str(version) == str(current_version)),
+        },
+        "risk": "read",
+        "mutation_performed": False,
+    }
+
+
+def _build_agent_report(skill: str | None, results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any] | None:
+    normalized_skill = str(skill or "").strip()
+    if normalized_skill == "repo-inspection":
+        return _build_repo_inspection_report(results, ok=ok)
+    if normalized_skill == "release-readiness":
+        return _build_release_readiness_report(results, ok=ok)
+    return None
 
 def agent_run(
     request: str,
@@ -1966,6 +2130,7 @@ def agent_run(
         )
         results.append(result)
     ok = all(bool(item.get("ok")) for item in results)
+    report = _build_agent_report(skill, results, ok=ok)
     return {
         "ok": ok,
         "action": "agent_run",
@@ -1980,8 +2145,9 @@ def agent_run(
         "ollama_proposal": proposal,
         "plan": plan,
         "results": results,
+        "report": report,
         "notes": notes,
-        "safety": {"original_request_risk_checked": True, "mcp_transport": "stdio", "write_tools_blocked": True, "model_has_execution_authority": False},
+        "safety": {"original_request_risk_checked": True, "mcp_transport": "stdio", "write_tools_blocked": True, "model_has_execution_authority": False, "mutation_performed": False},
     }
 
 def _read_only_tool_specs_for_request(request: str) -> tuple[dict[str, Any], ...]:
