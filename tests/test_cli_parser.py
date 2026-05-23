@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.261" in out
+    assert "0.0.262" in out
     assert "promptbranch" in out
 
 
@@ -812,3 +812,29 @@ def test_parser_accepts_ask_release_strict_candidate_request() -> None:
     assert args.expect_version == "v0.0.257"
     assert args.print_request_json is True
     assert args.json is True
+
+
+def test_task_answer_parse_parser_accepts_answer_selectors() -> None:
+    args = make_parser().parse_args(["task", "answer", "parse", "42", "--answer-index", "2", "--answer-id", "abc", "--json"])
+    assert args.command == "task"
+    assert args.task_command == "answer"
+    assert args.task_answer_command == "parse"
+    assert args.id_or_index == "42"
+    assert args.answer_index == "2"
+    assert args.answer_id == "abc"
+    assert args.json is True
+
+
+def test_task_answer_parse_parser_accepts_explicit_message_selectors() -> None:
+    args = make_parser().parse_args(["task", "answer", "parse", "--message-id", "msg-1", "--answer-id", "ans-1", "--json"])
+    assert args.command == "task"
+    assert args.task_command == "answer"
+    assert args.task_answer_command == "parse"
+    assert args.id_or_index is None
+    assert args.message_id == "msg-1"
+    assert args.answer_id == "ans-1"
+    assert args.json is True
+
+    args = make_parser().parse_args(["task", "answer", "parse", "--message-index", "7", "--answer-index", "2", "--json"])
+    assert args.message_index == "7"
+    assert args.answer_index == "2"
