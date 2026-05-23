@@ -239,6 +239,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
         archive.writestr("ollama_mcp_verification_harness_v2/README.md", "tracked harness v2\n")
         archive.writestr("promptbranch.egg-info/PKG-INFO", "Metadata-Version: 2.4\n")
         archive.writestr("scripts/example.sh", "#!/usr/bin/env bash\n")
+        archive.writestr("run_chatgpt_service.sh", "#!/usr/bin/env bash\n")
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
@@ -312,6 +313,9 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     assert (repo / ".gitignore").is_file()
     assert (repo / ".not_to_zip").is_file()
     assert (repo / artifact).is_file()
+    assert os.access(repo / "run_chatgpt_service.sh", os.X_OK)
+    assert os.access(repo / "chatgpt_claudecode_workflow_release_control.sh", os.X_OK)
+    assert os.access(repo / "scripts" / "example.sh", os.X_OK)
 
 
 def _extract_first_json_object(text: str) -> dict:
@@ -522,6 +526,10 @@ def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_fil
     assert 'assert_release_staging_safe' in text
     assert 'normalize_generated_ownership "pre-import"' in text
     assert 'normalize_generated_ownership "post-release"' in text
+    assert "find \"${repo_root}\" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +" in text
+    assert "find \"${repo_root}/scripts\" -type f -name '*.sh' -exec chmod +x {} +" in text
+    assert "find \"${repo_root}/docker\" -type f -name '*.sh' -exec chmod +x {} +" in text
+    assert 'service script not executable and chmod failed' in text
 
 
 def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> None:

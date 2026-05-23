@@ -822,7 +822,16 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
   cp "${download_zip}" "${repo_root}/${artifact_zip}"
-  chmod +x "${repo_root}/chatgpt_claudecode_workflow_release_control.sh" "${repo_root}"/scripts/*.sh 2>/dev/null || true
+  # ZIP archives produced by browser/download handoff may not reliably preserve
+  # executable bits. Restore repository shell entrypoint permissions after
+  # install before any service/test/finalizer step can evaluate them.
+  find "${repo_root}" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  if [[ -d "${repo_root}/scripts" ]]; then
+    find "${repo_root}/scripts" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  fi
+  if [[ -d "${repo_root}/docker" ]]; then
+    find "${repo_root}/docker" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  fi
   echo "Installed ${download_zip} into ${repo_root}"
 
   if [[ ${keep_workdir} -eq 0 ]]; then
@@ -1336,6 +1345,9 @@ deploy_promptbranch_service_detached() {
 
 # Start/restart ChatGPT service using deterministic Docker Compose recreation.
 if [[ ${skip_service} -eq 0 ]]; then
+  if [[ -f "./run_chatgpt_service.sh" && ! -x "./run_chatgpt_service.sh" ]]; then
+    chmod +x ./run_chatgpt_service.sh || fail "service script not executable and chmod failed: ./run_chatgpt_service.sh"
+  fi
   [[ -x "./run_chatgpt_service.sh" ]] || fail "service script not executable: ./run_chatgpt_service.sh"
   if [[ "${service_mode}" == "detached" ]]; then
     echo "Recreating Docker service detached; output -> ${service_start_log}"
