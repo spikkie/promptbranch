@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.263"
+    assert init["result"]["serverInfo"]["version"] == "0.0.264"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -481,7 +481,7 @@ def test_ollama_proposal_accepts_alias_tool_call(monkeypatch) -> None:
     assert payload["selected"]["tool"] == "filesystem.read"
     assert payload["selected"]["alias_tool"] == "read_file"
 
-from promptbranch_mcp import agent_run, skill_list, skill_show, skill_validate
+from promptbranch_mcp import agent_release_readiness, agent_run, skill_list, skill_show, skill_validate
 
 
 def test_skill_list_includes_builtin_repo_inspection() -> None:
@@ -720,6 +720,66 @@ def test_agent_run_release_readiness_builds_structured_report(monkeypatch, tmp_p
     assert report["checks"]["version_matches_current_artifact"] is False
     assert report["mutation_performed"] is False
 
+
+
+
+def test_agent_release_readiness_gate_can_require_ready(monkeypatch, tmp_path: Path) -> None:
+    def fake_agent_run(*args, **kwargs):
+        return {
+            "ok": True,
+            "report": {
+                "ok": True,
+                "kind": "release_readiness",
+                "status": "release_ready_read_only",
+                "checks": {
+                    "tools_ok": True,
+                    "version_file_read": True,
+                    "artifact_current_available": True,
+                    "worktree_clean": True,
+                    "version_matches_current_artifact": True,
+                },
+                "mutation_performed": False,
+            },
+        }
+
+    monkeypatch.setattr("promptbranch_mcp.agent_run", fake_agent_run)
+
+    payload = agent_release_readiness(repo_path=tmp_path, require_ready=True)
+
+    assert payload["ok"] is True
+    assert payload["status"] == "ready"
+    assert payload["gate"]["passed"] is True
+    assert payload["gate"]["blockers"] == []
+    assert payload["safety"]["mutation_performed"] is False
+
+
+def test_agent_release_readiness_gate_blocks_dirty_worktree(monkeypatch, tmp_path: Path) -> None:
+    def fake_agent_run(*args, **kwargs):
+        return {
+            "ok": True,
+            "report": {
+                "ok": True,
+                "kind": "release_readiness",
+                "status": "dirty_worktree",
+                "checks": {
+                    "tools_ok": True,
+                    "version_file_read": True,
+                    "artifact_current_available": True,
+                    "worktree_clean": False,
+                    "version_matches_current_artifact": True,
+                },
+                "mutation_performed": False,
+            },
+        }
+
+    monkeypatch.setattr("promptbranch_mcp.agent_run", fake_agent_run)
+
+    payload = agent_release_readiness(repo_path=tmp_path, require_ready=True)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert "worktree_dirty" in payload["gate"]["blockers"]
+    assert payload["gate"]["require_ready"] is True
 
 def test_agent_run_repo_inspection_builds_structured_report(monkeypatch, tmp_path: Path) -> None:
     def fake_mcp(tool, arguments=None, **kwargs):

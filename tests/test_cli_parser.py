@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.263" in out
+    assert "0.0.264" in out
     assert "promptbranch" in out
 
 
@@ -589,6 +589,17 @@ def test_parser_accepts_agent_run_host_smoke_and_mcp_call() -> None:
     assert call_args.agent_command == "mcp-call"
     assert call_args.tool == "filesystem.read"
 
+
+
+
+def test_parser_accepts_agent_release_readiness_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["agent", "release-readiness", "--path", ".", "--require-ready", "--json"])
+    assert args.command == "agent"
+    assert args.agent_command == "release-readiness"
+    assert args.path == "."
+    assert args.require_ready is True
+    assert args.json is True
 
 def test_parser_accepts_skill_commands() -> None:
     parser = make_parser()
