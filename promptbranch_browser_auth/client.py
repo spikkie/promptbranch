@@ -8961,16 +8961,21 @@ class ChatGPTBrowserClient:
         last_empty_state = False
         while asyncio.get_running_loop().time() < deadline:
             source_cards = await self._snapshot_project_source_cards(page)
-            matched_card = self._match_source_card(source_cards, candidates)
+            matched_card = self._match_source_card(source_cards, candidates, exact_safe=exact, anchor_safe=not exact)
             if matched_card is not None:
                 last_matched_card = matched_card
                 candidates = self._source_lookup_candidates(candidates[0], matched_card, exact_safe=exact, anchor_safe=True)
                 scoped_action_button = await self._find_project_source_action_button_for_card(page, matched_card)
                 if scoped_action_button is not None:
                     return scoped_action_button, last_matched_card, candidates
-            action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
-            if action_button is not None:
-                return action_button, last_matched_card, candidates
+                if not exact:
+                    action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
+                    if action_button is not None:
+                        return action_button, last_matched_card, candidates
+            elif not exact:
+                action_button = await self._find_project_source_action_button(page, candidates, exact=exact)
+                if action_button is not None:
+                    return action_button, last_matched_card, candidates
 
             last_empty_state = await self._project_sources_empty_state_visible(page)
             self._log(
