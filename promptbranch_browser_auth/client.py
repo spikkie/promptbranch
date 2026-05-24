@@ -17,6 +17,7 @@ from .config import ChatGPTBrowserConfig
 from .exceptions import (
     AuthenticationError,
     BotChallengeError,
+    BrowserContextUnavailableError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
     UnsupportedOperationError,
@@ -1124,6 +1125,51 @@ class ChatGPTBrowserClient:
             self._log('driver', 'cleared profile singleton lock artifacts', artifacts=removed, profile_dir=self.config.profile_dir)
         return removed
 
+
+    @staticmethod
+    def _browser_context_launch_recoverable(exc: Exception) -> bool:
+        message = str(exc)
+        error_type = type(exc).__name__
+        recoverable_markers = (
+            "Target page, context or browser has been closed",
+            "Opening in existing browser session",
+            "ProcessSingleton",
+            "SingletonLock",
+            "SingletonSocket",
+            "user data dir",
+            "user data directory",
+            "profile appears to be in use",
+            "browser has been closed",
+            "context has been closed",
+        )
+        return error_type == "TargetClosedError" or any(marker.lower() in message.lower() for marker in recoverable_markers)
+
+    async def _launch_persistent_context_with_recovery(self, chromium: Any, launch_kwargs: dict[str, Any]) -> Any:
+        try:
+            return await chromium.launch_persistent_context(**launch_kwargs)
+        except Exception as exc:
+            if not self._browser_context_launch_recoverable(exc):
+                raise
+            removed = self._clear_profile_singleton_locks()
+            self._log(
+                "driver",
+                "browser persistent context launch failed with recoverable profile/session state; retrying once after cleanup",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                removed_singleton_artifacts=removed,
+                status="browser_context_launch_retry",
+            )
+            await asyncio.sleep(1.0)
+            try:
+                return await chromium.launch_persistent_context(**launch_kwargs)
+            except Exception as retry_exc:
+                if self._browser_context_launch_recoverable(retry_exc):
+                    raise BrowserContextUnavailableError(
+                        "browser_context_unavailable: failed to launch persistent browser context after cleanup/retry; "
+                        f"original={type(exc).__name__}: {exc}; retry={type(retry_exc).__name__}: {retry_exc}"
+                    ) from retry_exc
+                raise
+
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
         respect_history_rate_limit_cooldown = bool(kwargs.pop('respect_history_rate_limit_cooldown', True))
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
@@ -1177,7 +1223,7 @@ class ChatGPTBrowserClient:
                     "height": self.config.viewport_height,
                 }
 
-            context = await p.chromium.launch_persistent_context(**launch_kwargs)
+            context = await self._launch_persistent_context_with_recovery(p.chromium, launch_kwargs)
             context.set_default_timeout(self.config.navigation_timeout_ms)
             page = context.pages[0] if context.pages else await context.new_page()
             self._attach_context_debug(context, page, operation_name)

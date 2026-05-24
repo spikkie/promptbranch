@@ -311,3 +311,113 @@ def test_response_completion_ready_does_not_use_missing_composer_without_fallbac
         observed_running_state=True,
         observed_idle_after_running=True,
     ) is False
+
+
+def test_run_with_context_retries_recoverable_browser_context_launch_once(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyTracing:
+        async def start(self, **kwargs) -> None:
+            return None
+
+    class DummyPage:
+        pass
+
+    class DummyContext:
+        def __init__(self) -> None:
+            self.pages = [DummyPage()]
+            self.tracing = DummyTracing()
+
+        def set_default_timeout(self, _timeout: int) -> None:
+            return None
+
+        def on(self, _event: str, _handler) -> None:
+            return None
+
+    class DummyChromium:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def launch_persistent_context(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError('Target page, context or browser has been closed. Opening in existing browser session.')
+            return DummyContext()
+
+    chromium = DummyChromium()
+
+    class DummyPlaywright:
+        def __init__(self) -> None:
+            self.chromium = chromium
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def fake_operation(**kwargs):
+        return {'ok': True}
+
+    async def fake_finalize_context(*args, **kwargs) -> None:
+        return None
+
+    async def fake_start_driver():
+        return DummyPlaywright()
+
+    monkeypatch.setattr(client, '_start_driver', fake_start_driver)
+    monkeypatch.setattr(client, '_finalize_context', fake_finalize_context)
+    monkeypatch.setattr(client, '_clear_profile_singleton_locks', lambda: ['SingletonLock'])
+
+    import asyncio
+
+    result = asyncio.run(client._run_with_context('launch-retry-operation', fake_operation))
+
+    assert result['ok'] is True
+    assert chromium.calls == 2
+
+
+def test_run_with_context_classifies_unrecoverable_browser_context_launch(tmp_path: Path, monkeypatch) -> None:
+    from promptbranch_browser_auth.exceptions import BrowserContextUnavailableError
+
+    client = _make_client(tmp_path)
+
+    class DummyChromium:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def launch_persistent_context(self, **kwargs):
+            self.calls += 1
+            raise RuntimeError('Target page, context or browser has been closed. Opening in existing browser session.')
+
+    chromium = DummyChromium()
+
+    class DummyPlaywright:
+        def __init__(self) -> None:
+            self.chromium = chromium
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def fake_operation(**kwargs):
+        return {'ok': True}
+
+    async def fake_start_driver():
+        return DummyPlaywright()
+
+    monkeypatch.setattr(client, '_start_driver', fake_start_driver)
+    monkeypatch.setattr(client, '_clear_profile_singleton_locks', lambda: ['SingletonLock'])
+
+    import asyncio
+
+    try:
+        asyncio.run(client._run_with_context('launch-failure-operation', fake_operation))
+    except BrowserContextUnavailableError as exc:
+        assert 'browser_context_unavailable' in str(exc)
+    else:
+        raise AssertionError('expected BrowserContextUnavailableError')
+
+    assert chromium.calls == 2
