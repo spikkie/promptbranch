@@ -10082,6 +10082,324 @@ def _artifact_mvp_remediation_plan(
 
 
 
+def _candidate_profile_dir_for_repo(args: argparse.Namespace, repo_root: Path) -> Path:
+    explicit = getattr(args, "profile_dir", None)
+    if explicit:
+        return resolve_profile_dir(explicit)
+    return resolve_profile_dir(None, cwd=str(repo_root))
+
+
+def _latest_post_release_validation_summary(
+    *,
+    repo_root: Path,
+    profile_root: Path,
+    requested_version: str | None = None,
+) -> dict[str, Any]:
+    """Return the newest local post-release validation/finalizer summary.
+
+    The lifecycle-status command is a local cockpit, so it must not require a
+    service/browser session just to answer "where are we?". It therefore reads
+    the structured summaries already produced under .pb_profile/release_logs.
+    """
+
+    release_log_roots: list[Path] = []
+    for candidate in [profile_root / "release_logs", repo_root / ".pb_profile" / "release_logs"]:
+        resolved = candidate.expanduser().resolve()
+        if resolved not in release_log_roots:
+            release_log_roots.append(resolved)
+
+    requested = _candidate_version_normalized(requested_version)
+    candidates: list[Path] = []
+    for root in release_log_roots:
+        if not root.is_dir():
+            continue
+        if requested:
+            candidates.extend(sorted((root / requested).glob(f"post_release_validation.{requested}.summary.json")))
+        candidates.extend(sorted(root.glob("*/post_release_validation.*.summary.json")))
+
+    unique: dict[str, Path] = {}
+    for path in candidates:
+        unique[str(path)] = path
+    candidate_paths = list(unique.values())
+    if requested:
+        candidate_paths = [p for p in candidate_paths if p.name == f"post_release_validation.{requested}.summary.json"] or candidate_paths
+
+    if not candidate_paths:
+        return {
+            "attempted": False,
+            "ok": None,
+            "status": "not_found",
+            "summary_path": None,
+            "version": requested,
+            "release_log_roots": [str(path) for path in release_log_roots],
+        }
+
+    def sort_key(path: Path) -> tuple[float, str]:
+        try:
+            return (path.stat().st_mtime, str(path))
+        except OSError:
+            return (0.0, str(path))
+
+    selected = max(candidate_paths, key=sort_key)
+    try:
+        raw = json.loads(selected.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "attempted": True,
+            "ok": False,
+            "status": "invalid_json",
+            "summary_path": str(selected),
+            "version": requested,
+            "error": str(exc),
+            "release_log_roots": [str(path) for path in release_log_roots],
+        }
+
+    classification = raw.get("validation_classification") if isinstance(raw.get("validation_classification"), dict) else {}
+    return {
+        "attempted": True,
+        "ok": raw.get("ok"),
+        "status": "found",
+        "summary_path": str(selected),
+        "version": raw.get("version") or requested,
+        "target_version": raw.get("target_version"),
+        "failure_count": raw.get("failure_count"),
+        "summary_ok": raw.get("ok"),
+        "primary_failure_category": raw.get("primary_failure_category"),
+        "blocking_failure_categories": raw.get("blocking_failure_categories") or [],
+        "validation_classification": classification,
+        "classification_status": classification.get("status"),
+        "primary_category": classification.get("primary_category"),
+        "blocking_categories": classification.get("blocking_categories") or [],
+        "release_log_roots": [str(path) for path in release_log_roots],
+    }
+
+
+async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -> int:
+    """Read-only local-first lifecycle state cockpit."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    registry = _artifact_registry_from_args(args)
+    profile_root = _candidate_profile_dir_for_repo(args, repo_root)
+    runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
+    expected = _release_doctor_expected_versions(
+        requested_version=str(getattr(args, "version", "") or "").strip() or runtime_version,
+        target_version=str(getattr(args, "target_version", "") or "").strip() or None,
+        runtime_version=runtime_version,
+    )
+    version_file = _release_doctor_version_from_file(repo_root)
+    installed_distribution = _release_doctor_installed_distribution()
+    git_status = _release_doctor_git_status(repo_root)
+    artifact_current = _artifact_current_payload(backend, registry)
+    artifact_inspection = _release_doctor_artifact_summary(
+        str(getattr(args, "artifact", "") or "").strip() or None,
+        repo_root=repo_root,
+    )
+
+    health_url = str(getattr(args, "health_url", "") or "").strip()
+    if not health_url:
+        base_url = str(getattr(args, "service_base_url", "") or "http://127.0.0.1:8000").rstrip("/")
+        health_url = f"{base_url}/healthz"
+    if getattr(args, "include_service_health", False):
+        service_health = _release_doctor_http_json(health_url, timeout_seconds=float(getattr(args, "health_timeout", 3.0) or 3.0))
+    else:
+        service_health = {"attempted": False, "ok": None, "status": "skipped", "url": health_url, "version": None, "normalized_version": None, "skip_reason": "default_local_first"}
+
+    if getattr(args, "include_project_sources", False):
+        try:
+            result = await asyncio.wait_for(
+                backend.list_project_sources(keep_open=getattr(args, "keep_open", False)),
+                timeout=float(getattr(args, "source_timeout", 60.0) or 60.0),
+            )
+            sources, source_payload = _project_source_list_payload(result)
+            version_summary = _release_doctor_source_versions(sources)
+            project_sources = {
+                "attempted": True,
+                "ok": bool(source_payload.get("ok", True)),
+                "status": source_payload.get("status") or "verified",
+                "count": version_summary["count"],
+                "detected_version_count": version_summary["detected_version_count"],
+                "detected_versions": version_summary["detected_versions"],
+                "source_payload_keys": sorted(source_payload.keys()),
+            }
+        except Exception as exc:
+            project_sources = {
+                "attempted": True,
+                "ok": False,
+                "status": "source_list_failed",
+                "error": str(exc),
+                "sources": [],
+                "count": 0,
+                "detected_versions": [],
+                "detected_version_count": 0,
+            }
+    else:
+        project_sources = {"attempted": False, "ok": None, "status": "skipped", "sources": [], "count": 0, "detected_versions": [], "detected_version_count": 0, "skip_reason": "default_local_first"}
+
+    candidate_precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
+    try:
+        next_payload, candidate_count, inventory = _candidate_run_next_payload(
+            backend,
+            registry=registry,
+            profile_root=profile_root,
+            repo_root=repo_root,
+            artifact_arg=None,
+            version_arg=None,
+        )
+    except Exception as exc:
+        next_payload = {"ok": False, "status": "candidate_next_failed", "error": str(exc)}
+        candidate_count = 0
+        inventory = {"status": "candidate_inventory_failed", "error": str(exc)}
+
+    finalizer_summary = _latest_post_release_validation_summary(
+        repo_root=repo_root,
+        profile_root=profile_root,
+        requested_version=expected.get("requested_version_normalized") or runtime_version,
+    )
+
+    consistency = _release_doctor_consistency(
+        expected=expected,
+        version_file=version_file,
+        installed_distribution=installed_distribution,
+        service_health=service_health,
+        artifact_current=artifact_current,
+        git_status=git_status,
+        project_sources=project_sources,
+    )
+    artifact_consistency = _release_doctor_artifact_consistency(
+        artifact=artifact_inspection,
+        expected=expected,
+        version_file=version_file,
+        artifact_current=artifact_current,
+        project_sources=project_sources,
+    )
+    combined_warnings = list(consistency.get("warnings") or []) + list(artifact_consistency.get("warnings") or [])
+    combined_blockers = list(consistency.get("blockers") or []) + list(artifact_consistency.get("blockers") or [])
+    combined_warning_codes = [item.get("code") for item in combined_warnings if item.get("code")]
+    combined_blocker_codes = [item.get("code") for item in combined_blockers if item.get("code")]
+    lifecycle_phase = _release_doctor_lifecycle_phase(
+        consistency=consistency,
+        artifact_consistency=artifact_consistency,
+        artifact=artifact_inspection,
+        expected=expected,
+        artifact_current=artifact_current,
+        project_sources=project_sources,
+    )
+
+    next_action: dict[str, Any]
+    if combined_blocker_codes:
+        next_action = {
+            "kind": "resolve_blockers",
+            "command": "pb release lifecycle-status --json",
+            "risk": "operator_decision",
+            "reason": "blocking lifecycle-status checks are present",
+        }
+    elif candidate_count:
+        next_action = {
+            "kind": "inspect_candidate_next",
+            "command": "pb artifact candidate-next --json",
+            "risk": "read",
+            "reason": "candidate inventory is non-empty",
+        }
+    elif finalizer_summary.get("ok") is True and finalizer_summary.get("failure_count") == 0:
+        target = finalizer_summary.get("target_version") or expected.get("target_version_normalized")
+        next_action = {
+            "kind": "continue_normal_development",
+            "command": f"build next release from accepted baseline toward {target}" if target else None,
+            "risk": "operator_decision",
+            "reason": "latest post-release validation summary is green",
+        }
+    else:
+        next_action = {
+            "kind": "run_finalizer_or_protocol_candidate",
+            "command": "scripts/finalize-artifact-intake-mvp.sh --version {version} --target-version {target_version}".format(
+                version=expected.get("requested_version_normalized") or runtime_version,
+                target_version=expected.get("target_version_normalized") or "<next-version>",
+            ),
+            "risk": "operator_decision",
+            "reason": "no green finalizer summary and no active candidate inventory were found",
+        }
+
+    severity = "blocked" if combined_blocker_codes else "warning" if combined_warning_codes else "ok"
+    payload = {
+        "ok": not combined_blocker_codes,
+        "action": "release_lifecycle_status",
+        "status": "verified" if not combined_blocker_codes else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "local_first": True,
+        "mutating_actions_executed": False,
+        "download_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "repo_path": str(repo_root),
+        "profile_dir": str(profile_root),
+        "expected": expected,
+        "runtime": {
+            "cli_version": CLI_VERSION,
+            "runtime_code_version": runtime_version,
+        },
+        "version_file": version_file,
+        "installed_distribution": installed_distribution,
+        "service_health": service_health,
+        "artifact_current": artifact_current,
+        "artifact_inspection": artifact_inspection,
+        "project_sources": project_sources,
+        "candidate_intake_precondition": candidate_precondition,
+        "candidate_next": next_payload,
+        "candidate_inventory_summary": {
+            "candidate_count": candidate_count,
+            "status": inventory.get("status") if isinstance(inventory, dict) else None,
+            "candidate_registry_path": inventory.get("candidate_registry_path") if isinstance(inventory, dict) else None,
+            "status_counts": inventory.get("status_counts") if isinstance(inventory, dict) else None,
+            "lifecycle_counts": inventory.get("lifecycle_counts") if isinstance(inventory, dict) else None,
+        },
+        "latest_post_release_validation": finalizer_summary,
+        "lifecycle_phase": lifecycle_phase.get("phase"),
+        "lifecycle_phase_detail": lifecycle_phase,
+        "git": git_status,
+        "consistency": consistency,
+        "artifact_consistency": artifact_consistency,
+        "warning_codes": combined_warning_codes,
+        "blocker_codes": combined_blocker_codes,
+        "next_safe_action": next_action,
+        "next_safe_actions": [next_action],
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+        "operator_instruction": "Read-only local-first lifecycle status. Optional service and Project Source probes run only with explicit include flags.",
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"runtime={runtime_version}")
+        print(f"lifecycle_phase={payload.get('lifecycle_phase')}")
+        print(f"latest_post_release_validation={finalizer_summary.get('status')}")
+        action = payload.get("next_safe_action") if isinstance(payload.get("next_safe_action"), dict) else {}
+        print(f"next_safe_action={action.get('kind') or 'none'}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
     """Read-only release lifecycle reconciliation doctor."""
 
@@ -10274,6 +10592,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "lifecycle-status":
+        return await cmd_release_lifecycle_status(backend, args)
     if args.release_command == "doctor":
         return await cmd_release_doctor(backend, args)
     if args.release_command == "config":
@@ -13317,6 +13637,19 @@ def make_parser() -> argparse.ArgumentParser:
     release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
     release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
     release_git_sync.add_argument("--json", action="store_true")
+
+    release_lifecycle_status = release_subparsers.add_parser("lifecycle-status", help="Read-only local-first lifecycle status cockpit.")
+    release_lifecycle_status.add_argument("--version", help="Expected current runtime/release version. Defaults to the running Promptbranch version.")
+    release_lifecycle_status.add_argument("--target-version", help="Optional next target version for operator context.")
+    release_lifecycle_status.add_argument("--artifact", help="Optional candidate ZIP to inspect read-only.")
+    release_lifecycle_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_lifecycle_status.add_argument("--health-url", help="Service health URL for optional --include-service-health.")
+    release_lifecycle_status.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds when service health is included. Defaults to 3.")
+    release_lifecycle_status.add_argument("--source-timeout", type=float, default=60.0, help="Project Source listing timeout in seconds when Project Sources are included. Defaults to 60.")
+    release_lifecycle_status.add_argument("--include-service-health", action="store_true", help="Include optional service /healthz probe. Skipped by default for stable local-first status.")
+    release_lifecycle_status.add_argument("--include-project-sources", action="store_true", help="Include optional Project Sources listing. Skipped by default for stable local-first status.")
+    release_lifecycle_status.add_argument("--keep-open", action="store_true")
+    release_lifecycle_status.add_argument("--json", action="store_true")
 
     release_doctor = release_subparsers.add_parser("doctor", help="Read-only release lifecycle reconciliation doctor.")
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")

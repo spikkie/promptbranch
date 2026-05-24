@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.266" in out
+    assert "0.0.267" in out
     assert "promptbranch" in out
 
 
@@ -418,6 +418,28 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_mvp_status.version == "v0.0.247"
     assert artifact_mvp_status.repo_path == "/tmp/repo"
     assert artifact_mvp_status.json is True
+
+
+
+def test_parser_accepts_release_lifecycle_status_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "lifecycle-status",
+        "--version", "v0.0.267",
+        "--target-version", "v0.0.268",
+        "--repo-path", "/tmp/repo",
+        "--include-service-health",
+        "--include-project-sources",
+        "--json",
+    ])
+    assert args.command == "release"
+    assert args.release_command == "lifecycle-status"
+    assert args.version == "v0.0.267"
+    assert args.target_version == "v0.0.268"
+    assert args.repo_path == "/tmp/repo"
+    assert args.include_service_health is True
+    assert args.include_project_sources is True
+    assert args.json is True
 
     artifact_candidate_next = parser.parse_args([
         "artifact", "candidate-next",
