@@ -1280,11 +1280,76 @@ def value(item, default="unknown"):
 def codes(items):
     return ",".join(str(item) for item in items or []) or "none"
 
+
+def read_jsonish(candidate_path):
+    if not candidate_path:
+        return {}
+    try:
+        text = Path(str(candidate_path)).read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return {}
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                payload = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                return {}
+        else:
+            return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def first_present(*items, default="unknown"):
+    for item in items:
+        if item not in (None, ""):
+            return item
+    return default
+
+
 lifecycle = summary.get("lifecycle_status_snapshot") if isinstance(summary.get("lifecycle_status_snapshot"), dict) else {}
+raw_lifecycle = read_jsonish(summary.get("lifecycle_status_snapshot_path"))
 consistency = summary.get("lifecycle_status_snapshot_consistency") if isinstance(summary.get("lifecycle_status_snapshot_consistency"), dict) else {}
 classification = summary.get("validation_classification") if isinstance(summary.get("validation_classification"), dict) else {}
 steps = summary.get("steps") if isinstance(summary.get("steps"), dict) else {}
 action = lifecycle.get("next_safe_action") if isinstance(lifecycle.get("next_safe_action"), dict) else {}
+if not action:
+    action = raw_lifecycle.get("next_safe_action") if isinstance(raw_lifecycle.get("next_safe_action"), dict) else {}
+
+runtime_version = first_present(
+    get(raw_lifecycle, "runtime", "runtime_code_version", default=None),
+    get(lifecycle, "runtime", "runtime_code_version", default=None),
+    lifecycle.get("runtime_version"),
+)
+version_file_version = first_present(
+    get(raw_lifecycle, "version_file", "normalized_version", default=None),
+    get(lifecycle, "version_file", "normalized_version", default=None),
+    lifecycle.get("version_file_version"),
+)
+artifact_current_version = first_present(
+    get(raw_lifecycle, "artifact_current", "baseline_roles", "adopted_artifact_version", default=None),
+    get(raw_lifecycle, "artifact_current", "state", "artifact_version", default=None),
+    get(raw_lifecycle, "artifact_current", "registry_current", "version", default=None),
+    get(lifecycle, "artifact_current", "baseline_roles", "adopted_artifact_version", default=None),
+    lifecycle.get("artifact_current_version"),
+)
+source_current_version = first_present(
+    get(raw_lifecycle, "artifact_current", "baseline_roles", "adopted_source_version", default=None),
+    get(raw_lifecycle, "artifact_current", "state", "source_version", default=None),
+    get(lifecycle, "artifact_current", "baseline_roles", "adopted_source_version", default=None),
+    lifecycle.get("source_current_version"),
+)
+candidate_count = first_present(
+    get(raw_lifecycle, "candidate_inventory_summary", "candidate_count", default=None),
+    get(lifecycle, "candidate_inventory_summary", "candidate_count", default=None),
+    lifecycle.get("candidate_count"),
+    default="0",
+)
 
 print("== Release lifecycle human summary ==")
 print(f"version:              {value(summary.get('version'))}")
@@ -1292,16 +1357,16 @@ print(f"target_version:       {value(summary.get('target_version'))}")
 print(f"validation_status:    {value(classification.get('status'))}")
 print(f"primary_category:     {value(classification.get('primary_category'), default='none')}")
 print(f"failure_count:        {value(summary.get('failure_count'))}")
-print(f"lifecycle_phase:      {value(lifecycle.get('lifecycle_phase'))}")
-print(f"lifecycle_severity:   {value(lifecycle.get('severity'))}")
+print(f"lifecycle_phase:      {value(first_present(raw_lifecycle.get('lifecycle_phase'), lifecycle.get('lifecycle_phase'), default=None))}")
+print(f"lifecycle_severity:   {value(first_present(raw_lifecycle.get('severity'), lifecycle.get('severity'), default=None))}")
 print(f"lifecycle_consistency:{value(consistency.get('status'))}")
-print(f"runtime_version:      {value(get(lifecycle, 'runtime', 'runtime_code_version'))}")
-print(f"version_file:         {value(get(lifecycle, 'version_file', 'normalized_version'))}")
-print(f"artifact_current:     {value(get(lifecycle, 'artifact_current', 'baseline_roles', 'adopted_artifact_version'))}")
-print(f"source_current:       {value(get(lifecycle, 'artifact_current', 'baseline_roles', 'adopted_source_version'))}")
-print(f"candidate_count:      {value(get(lifecycle, 'candidate_inventory_summary', 'candidate_count'), default='0')}")
-print(f"warning_codes:        {codes(lifecycle.get('warning_codes'))}")
-print(f"blocker_codes:        {codes(lifecycle.get('blocker_codes'))}")
+print(f"runtime_version:      {value(runtime_version)}")
+print(f"version_file:         {value(version_file_version)}")
+print(f"artifact_current:     {value(artifact_current_version)}")
+print(f"source_current:       {value(source_current_version)}")
+print(f"candidate_count:      {value(candidate_count, default='0')}")
+print(f"warning_codes:        {codes(first_present(raw_lifecycle.get('warning_codes'), lifecycle.get('warning_codes'), default=[]))}")
+print(f"blocker_codes:        {codes(first_present(raw_lifecycle.get('blocker_codes'), lifecycle.get('blocker_codes'), default=[]))}")
 print(f"next_safe_action:     {value(action.get('kind'), default='none')}")
 if action.get("command"):
     print(f"next_command:         {action.get('command')}")
