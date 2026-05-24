@@ -744,13 +744,15 @@ from pathlib import Path
     candidate_run_phase,
     candidate_run_log,
 ) = sys.argv[1:]
-def _load_candidate_run_summary(path: str) -> dict:
-    payload: dict = {}
+def _read_text(path: Path) -> str:
     try:
-        text = Path(path).read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return {}
-    text = text.strip()
+        return ""
+
+
+def _load_jsonish(path: str | Path) -> dict:
+    text = _read_text(Path(path)).strip()
     if not text:
         return {}
     try:
@@ -763,7 +765,14 @@ def _load_candidate_run_summary(path: str) -> dict:
                 payload = json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 payload = {}
-    if not isinstance(payload, dict):
+        else:
+            payload = {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_candidate_run_summary(path: str) -> dict:
+    payload = _load_jsonish(path)
+    if not payload:
         return {}
     completion = payload.get("mvp_completion") if isinstance(payload.get("mvp_completion"), dict) else {}
     return {
@@ -772,6 +781,7 @@ def _load_candidate_run_summary(path: str) -> dict:
         "mvp_complete": payload.get("mvp_complete"),
         "mvp_completion_status": completion.get("status"),
         "mvp_completion_ok": completion.get("ok"),
+        "mvp_completion_proof_source": completion.get("proof_source"),
         "recommended_next_kind": (payload.get("recommended_next_command") or {}).get("kind") if isinstance(payload.get("recommended_next_command"), dict) else None,
         "mutating_actions_executed": payload.get("mutating_actions_executed"),
         "execute_until_blocked": payload.get("execute_until_blocked"),
@@ -784,7 +794,124 @@ def _load_candidate_run_summary(path: str) -> dict:
         "adoption_performed": payload.get("adoption_performed"),
     }
 
+
+def _classify_step_failure(step: str, rc: int, phase: str | None = None, details: dict | None = None, log_name: str | None = None) -> dict:
+    details = details or {}
+    log_path = Path(release_log_dir) / log_name if log_name else None
+    log_text = _read_text(log_path) if log_path else ""
+    lower_log = log_text.lower()
+    category = "none"
+    reason = "step succeeded"
+    severity = "none"
+    blocking = int(rc) != 0
+
+    if int(rc) == 0:
+        return {
+            "step": step,
+            "rc": int(rc),
+            "phase": phase,
+            "blocking": False,
+            "severity": severity,
+            "category": category,
+            "reason": reason,
+        }
+
+    if step in {"test_full", "test_report"}:
+        category = "product_validation_failure"
+        reason = "project test or test-report gate failed"
+    elif step == "zip_hygiene":
+        category = "artifact_hygiene_failure"
+        reason = "release ZIP hygiene or structural verification failed"
+    elif step in {"artifact_current", "artifact_current_semantic", "artifact_adopt", "artifact_current_after_adopt_semantic"}:
+        category = "artifact_state_failure"
+        reason = "artifact registry/current baseline state did not match the expected release state"
+        if step == "artifact_current_semantic" and int(rc) != 0 and str(require_adopted_baseline) != "1":
+            category = "artifact_state_diagnostic"
+            reason = "pre-adoption artifact current mismatch is diagnostic unless --require-adopted-baseline is set"
+            blocking = False
+    elif step == "protocol_smoke":
+        if any(token in lower_log for token in ("readtimeout", "timeout", "connection refused", "temporarily unavailable", "rate limit", "429", "401 error", "invalid bearer token")):
+            category = "service_network_failure"
+            reason = "protocol smoke failed in the browser/service/network/client layer"
+        elif any(token in lower_log for token in ("reply_schema", "request_id", "correlation", "protocol")):
+            category = "protocol_contract_failure"
+            reason = "protocol smoke failed reply-envelope or request/response validation"
+        else:
+            category = "service_or_protocol_failure"
+            reason = "protocol smoke failed before artifact validation could proceed"
+    elif step == "artifact_intake_dry_run":
+        if any(token in lower_log for token in ("answer_selection_failed", "reply_schema_missing", "artifact_candidate_missing", "no_artifact")):
+            category = "operator_precondition_failure"
+            reason = "artifact intake had no selected release-candidate answer or no usable candidate"
+        else:
+            category = "artifact_intake_failure"
+            reason = "artifact intake failed before candidate-run could inspect or execute"
+    elif step == "artifact_candidate_run_plan":
+        status = details.get("mvp_completion_status") or details.get("status")
+        stopped = details.get("stopped_reason")
+        proof = details.get("mvp_completion_proof_source")
+        if status == "candidate_mvp_no_artifact_candidate" or stopped == "no_artifact_candidate":
+            category = "operator_precondition_failure"
+            reason = "strict real-candidate validation was requested but no real artifact candidate was selected"
+        elif status == "candidate_mvp_complete" and proof == "adopted_current":
+            category = "none"
+            reason = "already-adopted current baseline satisfies candidate MVP proof"
+            blocking = False
+        else:
+            category = "artifact_candidate_lifecycle_failure"
+            reason = "candidate lifecycle proof did not reach the required completion state"
+    elif int(rc) != 0:
+        category = "unknown_validation_failure"
+        reason = "step failed without a more specific classifier"
+
+    if int(rc) != 0 and category != "artifact_state_diagnostic":
+        severity = "blocking"
+    elif category == "artifact_state_diagnostic":
+        severity = "diagnostic"
+    elif category != "none":
+        severity = "informational"
+
+    return {
+        "step": step,
+        "rc": int(rc),
+        "phase": phase,
+        "blocking": bool(blocking),
+        "severity": severity,
+        "category": category,
+        "reason": reason,
+    }
+
+
+def _failure_classification(candidate_details: dict) -> dict:
+    step_inputs = [
+        ("artifact_current", int(rc_current), None, {}, f"pb_artifact_current.{version}.json"),
+        ("artifact_current_semantic", int(rc_current_semantic), None, {}, f"pb_artifact_current.{version}.semantic.json"),
+        ("protocol_smoke", int(rc_protocol), protocol_phase, {}, f"pb_ask_protocol_smoke.{version}.json"),
+        ("artifact_intake_dry_run", int(rc_intake), intake_phase, {}, f"pb_artifact_intake_dry_run.{version}.json"),
+        ("artifact_candidate_run_plan", int(rc_candidate_run), candidate_run_phase, candidate_details, f"pb_artifact_candidate_run.{version}.json"),
+        ("test_full", int(rc_test_full), None, {}, f"pb_test.full.{version}.log"),
+        ("test_report", int(rc_test_report), None, {}, f"pb_test.full.{version}.report.json"),
+        ("zip_hygiene", int(rc_zip_hygiene), None, {}, f"zip_hygiene.{version}.json"),
+        ("artifact_adopt", int(rc_adopt), None, {}, f"pb_artifact_adopt.{version}.json"),
+        ("artifact_current_after_adopt_semantic", int(rc_adopt_semantic), None, {}, f"pb_artifact_current_after_adopt.{version}.semantic.json"),
+    ]
+    classifications = [_classify_step_failure(*item) for item in step_inputs]
+    blocking = [item for item in classifications if item["blocking"]]
+    diagnostic = [item for item in classifications if item["severity"] == "diagnostic"]
+    categories = sorted({item["category"] for item in blocking if item["category"] != "none"})
+    return {
+        "status": "passed" if not blocking else "failed",
+        "blocking_failure_count": len(blocking),
+        "blocking_categories": categories,
+        "primary_category": categories[0] if len(categories) == 1 else ("multiple" if categories else "none"),
+        "blocking_failures": blocking,
+        "diagnostics": diagnostic,
+        "all_steps": classifications,
+    }
+
+
 candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
+validation_classification = _failure_classification(candidate_run_summary)
 
 summary = {
     "ok": int(failures) == 0,
@@ -802,6 +929,9 @@ summary = {
     "require_real_candidate_mvp": bool(int(require_real_candidate_mvp)),
     "candidate_mvp_max_steps": int(candidate_mvp_max_steps),
     "candidate_run_step_timeout_seconds": float(candidate_run_step_timeout_seconds),
+    "validation_classification": validation_classification,
+    "primary_failure_category": validation_classification.get("primary_category"),
+    "blocking_failure_categories": validation_classification.get("blocking_categories", []),
     "steps": {
         "artifact_current": {"rc": int(rc_current)},
         "artifact_current_semantic": {"rc": int(rc_current_semantic)},
