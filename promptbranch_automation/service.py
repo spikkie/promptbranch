@@ -159,6 +159,63 @@ class ChatGPTAutomationService:
                 return dict(remembered)
         return None
 
+    @staticmethod
+    def _clean_file_source_display_name(value: Optional[str]) -> Optional[str]:
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not text:
+            return None
+        markers = (
+            " File contents may not be accessible",
+            " Document",
+        )
+        for marker in markers:
+            if text.endswith(marker):
+                text = text[: -len(marker)].strip()
+        if not text:
+            return None
+        try:
+            return Path(text).name or text
+        except Exception:
+            return text
+
+    def _remembered_file_source_exact_name(
+        self,
+        remembered_source: Optional[dict[str, Any]],
+        *,
+        file_path: Optional[str],
+        display_name: Optional[str],
+    ) -> Optional[str]:
+        # The local file path/display name is the safest exact selector because it
+        # comes from the operator's current upload request, not from stale UI card
+        # text. Do not strip suffixes such as " Document" from these request-side
+        # values because they may be part of a legitimate filename.
+        for request_value in (Path(file_path).name if file_path else None, display_name):
+            text = re.sub(r"\s+", " ", str(request_value or "")).strip()
+            if not text:
+                continue
+            try:
+                return Path(text).name or text
+            except Exception:
+                return text
+
+        candidates: list[Optional[str]] = []
+        if isinstance(remembered_source, dict):
+            candidates.extend([
+                remembered_source.get("source_match_requested"),
+                remembered_source.get("file_basename"),
+                remembered_source.get("display_name"),
+                remembered_source.get("source_name"),
+                remembered_source.get("source_match"),
+            ])
+            raw_candidates = remembered_source.get("source_match_candidates")
+            if isinstance(raw_candidates, list):
+                candidates.extend(str(value) for value in raw_candidates if value)
+        for candidate in candidates:
+            clean = self._clean_file_source_display_name(candidate)
+            if clean:
+                return clean
+        return None
+
     def _remember_verified_project_source(
         self,
         result: dict[str, Any],
@@ -172,11 +229,14 @@ class ChatGPTAutomationService:
             return
         if not isinstance(result, dict) or not result.get("ok") or not result.get("persistence_verified"):
             return
-        source_name = (
-            result.get("source_match")
-            or result.get("source_match_requested")
-            or display_name
-            or (Path(file_path).name if file_path else None)
+        source_name = self._remembered_file_source_exact_name(
+            {
+                "source_match": result.get("source_match"),
+                "source_match_requested": result.get("source_match_requested"),
+                "source_match_candidates": result.get("source_match_candidates"),
+            },
+            file_path=file_path,
+            display_name=display_name,
         )
         if not source_name:
             return
@@ -569,16 +629,20 @@ class ChatGPTAutomationService:
                     display_name=display_name,
                 )
                 if remembered_source:
-                    source_name = str(remembered_source.get("source_name") or "").strip()
+                    source_name = self._remembered_file_source_exact_name(
+                        remembered_source,
+                        file_path=file_path,
+                        display_name=display_name,
+                    )
                     if source_name:
                         logger.info(
-                            "Removing remembered verified ChatGPT project file source before overwrite: %s",
+                            "Removing remembered verified ChatGPT project file source before overwrite using exact source name: %s",
                             source_name,
                         )
                         try:
                             remembered_remove_result = await bot.remove_project_source(
                                 source_name=source_name,
-                                exact=False,
+                                exact=True,
                                 keep_open=False,
                             )
                         except ResponseTimeoutError as exc:

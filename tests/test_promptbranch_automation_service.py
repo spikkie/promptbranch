@@ -244,8 +244,8 @@ def test_service_remembers_verified_file_source_for_next_overwrite(monkeypatch, 
     assert first["persistence_verified"] is True
     assert len(add_calls) == 2
     assert len(remove_calls) == 1
-    assert remove_calls[0]["source_name"] == "itest-file.txt Document"
-    assert remove_calls[0]["exact"] is False
+    assert remove_calls[0]["source_name"] == "itest-file.txt"
+    assert remove_calls[0]["exact"] is True
     assert second["already_exists"] is True
     assert second["overwritten"] is True
     assert second["removed_existing"] is True

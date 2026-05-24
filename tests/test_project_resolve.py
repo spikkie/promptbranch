@@ -654,10 +654,12 @@ def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(
             }
         ]
 
-    async def fake_find_project_source_action_button(_page, source_names, *, exact: bool):
-        captured_candidates.append(list(source_names))
-        assert exact is True
+    async def fake_find_project_source_action_button_for_card(_page, matched_card):
+        captured_candidates.append(client._source_lookup_candidates("fixture-source-a.zip", matched_card, exact_safe=True, anchor_safe=True))
         return sentinel_button
+
+    async def fake_find_project_source_action_button(_page, source_names, *, exact: bool):
+        raise AssertionError("exact source removal must not use the broad action-button fallback")
 
     async def fake_project_sources_empty_state_visible(*_args, **_kwargs):
         return False
@@ -666,6 +668,7 @@ def test_wait_for_project_source_action_button_exact_uses_exact_safe_candidates(
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
 
     client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    client._find_project_source_action_button_for_card = fake_find_project_source_action_button_for_card  # type: ignore[method-assign]
     client._find_project_source_action_button = fake_find_project_source_action_button  # type: ignore[method-assign]
     client._project_sources_empty_state_visible = fake_project_sources_empty_state_visible  # type: ignore[method-assign]
     client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
