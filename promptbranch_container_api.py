@@ -17,6 +17,7 @@ from promptbranch_version import PACKAGE_VERSION as SERVICE_VERSION
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
+    BrowserContextUnavailableError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
     UnsupportedOperationError,
@@ -322,6 +323,8 @@ def _raise_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, ResponseTimeoutError):
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    if isinstance(exc, BrowserContextUnavailableError):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     logger.exception("Unhandled ChatGPT Docker service error", exc_info=exc)
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

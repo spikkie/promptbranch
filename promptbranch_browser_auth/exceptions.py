@@ -17,3 +17,7 @@ class BotChallengeError(AuthenticationError):
 class UnsupportedOperationError(RuntimeError):
     """Raised when the current ChatGPT UI does not expose the requested action."""
 
+
+
+class BrowserContextUnavailableError(RuntimeError):
+    """Raised when the browser persistent context cannot be launched or recovered."""
