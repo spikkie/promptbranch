@@ -806,3 +806,42 @@ pb task message answer <id>
 
 Then add `pb doctor`, `pb test smoke`, and read-only MCP/Ollama orchestration.
 
+---
+
+# Status update — v0.0.265 documentation reconciliation
+
+This section records the current MVP state after accepted baseline `chatgpt_claudecode_workflow_v0.0.264.1.zip`. It updates older planning language without changing the runtime behavior in this documentation-only release.
+
+## Current operating-model status
+
+The operating model now includes both:
+
+```text
+1. Ask/Reply + Artifact Intake for release-candidate handling.
+2. Promptbranch-native read-only MCP/agent/skills for local inspection and readiness.
+```
+
+The practical stack is:
+
+```text
+Promptbranch CLI / local host = operator control plane
+ChatGPT Project              = workspace
+ChatGPT chat/conversation    = task/session
+Project sources              = repo snapshots, specs, logs, release ZIPs
+Generated ZIP artifacts      = release outputs
+MCP servers                  = deterministic local capabilities
+Agent                        = Promptbranch orchestration and policy gate
+Skills                       = workflow procedures
+LLM/Ollama                   = optional proposal/summarization, not execution authority
+```
+
+Implemented read-only skills now include:
+
+```text
+repo-inspection
+release-readiness
+```
+
+`pb agent release-readiness --require-ready --json` is a read-only gate. It can report blockers or warnings, but it must not mutate source, artifact, Project Sources, Git state, or release baseline.
+
+The next operating-model priority is lifecycle consolidation and failure classification, not autonomous write-capable agent behavior.

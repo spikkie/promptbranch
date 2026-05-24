@@ -236,3 +236,44 @@ Promptbranch host
 ```
 
 This is the right foundation before any write-capable or release-generating agent behavior.
+
+---
+
+# Status update — v0.0.265 documentation reconciliation
+
+This section records the current MVP state after accepted baseline `chatgpt_claudecode_workflow_v0.0.264.1.zip`. It updates older planning language without changing the runtime behavior in this documentation-only release.
+
+## Current MCP/agent/skills status
+
+Phase 1 and Phase 2 are no longer purely future work. The current line has:
+
+```text
+- Promptbranch-native MCP stdio host/client path
+- deterministic read-only agent run path
+- built-in repo-inspection skill
+- built-in release-readiness skill
+- skill list/show/validate commands
+- release-readiness gate command
+```
+
+The current policy remains strict:
+
+```text
+LLM proposes or summarizes.
+Agent orchestrates and applies policy.
+Skills describe procedures and allowed tools.
+MCP executes deterministic tools.
+Write-capable tools remain blocked by default.
+```
+
+Do not move Kubernetes, source sync, artifact release, or Project Source overwrite into autonomous agent execution until deterministic write gates, before/after snapshots, collateral-change detection, and transactional verification exist.
+
+## Immediate read-only next steps
+
+```bash
+pb agent release-readiness --require-ready --json
+pb agent run --skill release-readiness "check release readiness" --path . --json
+pb skill validate .promptbranch/skills/repo-inspection --json
+```
+
+These commands are safe as preflight inputs because they are read-only and policy-gated.

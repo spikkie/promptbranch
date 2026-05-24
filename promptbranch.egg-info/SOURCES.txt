@@ -1,3 +1,6 @@
+promptbranch_native_release_lifecycle_todo.md
+docs/release-v0.0.265.md
+docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md
 .promptbranch-release.yml
 README.md
 docs/release-v0.0.244.md

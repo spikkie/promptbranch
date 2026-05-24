@@ -1418,3 +1418,73 @@ structured ask
   -> next structured ask from accepted baseline
 ```
 
+---
+
+# Status update — v0.0.265 documentation reconciliation
+
+This section records the current MVP state after accepted baseline `chatgpt_claudecode_workflow_v0.0.264.1.zip`. It updates older planning language without changing the runtime behavior in this documentation-only release.
+
+## Implemented/proven Ask/Reply + Artifact Intake MVP
+
+The original MVP-F0..F7 path is now treated as implemented and proven, not merely planned. The proven path is:
+
+```text
+pb ask structured request
+  -> ChatGPT protocol reply envelope
+  -> explicit task message/answer selection when needed
+  -> candidate artifact extraction
+  -> manual local-file handoff for ChatGPT sandbox artifacts
+  -> ZIP verification and hygiene checks
+  -> candidate migration
+  -> candidate-run test/adopt
+  -> adopted current baseline proof
+  -> strict final Artifact Intake MVP validation
+```
+
+The preferred intake command for automation-sensitive turns is now explicit about transcript identity:
+
+```bash
+pb artifact intake \
+  --from-last-answer \
+  --message-id <user-message-id-or-index> \
+  --answer-id <assistant-answer-id-or-prefix> \
+  --local-file ~/Downloads/chatgpt_claudecode_workflow_vX.Y.Z.zip \
+  --verify \
+  --migrate \
+  --json
+```
+
+`--latest` remains useful for simple smoke checks, but it is unsafe after diagnostic chatter or multiple assistant answers. Release automation should prefer explicit message/answer selectors.
+
+## New remaining MVP slices
+
+### MVP-F8 — Artifact transport hardening
+
+Goal: classify ChatGPT artifact transport precisely.
+
+Required outcomes:
+
+```text
+manual_download_required
+browser_context_required
+direct_url_available
+download_url_expired
+```
+
+Manual `--local-file` import remains the safe baseline until browser-assisted artifact download is deterministic enough.
+
+### MVP-F9 — Protocol transcript identity and replay UX
+
+Goal: make request/message/answer identity first-class in all protocol and artifact-intake outputs.
+
+Required outcomes:
+
+```text
+selected_request_id
+selected_message_id
+selected_answer_id
+selected_protocol_reply
+promoted_protocol_run_record_path
+```
+
+Automation must be able to replay or re-parse a specific protocol answer without relying on the latest assistant message.
