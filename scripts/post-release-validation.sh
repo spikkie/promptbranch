@@ -302,6 +302,7 @@ rc_zip_hygiene=0
 rc_adopt=0
 rc_adopt_semantic=0
 rc_lifecycle_status=0
+rc_lifecycle_status_consistency=0
 adopt_performed=0
 adopt_semantic_performed=0
 lifecycle_status_performed=0
@@ -693,6 +694,209 @@ else
   echo "release lifecycle-status snapshot skipped because prior validation failures exist"
 fi
 
+lifecycle_status_consistency_log="${release_log_dir}/pb_release_lifecycle_status.${version}.consistency.json"
+echo
+echo "===== release lifecycle-status snapshot consistency ====="
+set +e
+python3 -   "${lifecycle_status_log}"   "${lifecycle_status_consistency_log}"   "${version}"   "${target_version}"   "${adopt_performed}"   "${adopt_semantic_performed}"   "${rc_adopt_semantic}" <<'PYLCONSISTENCY'
+import json
+import sys
+from pathlib import Path
+
+snapshot_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+expected_version = sys.argv[3]
+target_version = sys.argv[4]
+adopt_performed = bool(int(sys.argv[5]))
+adopt_semantic_performed = bool(int(sys.argv[6]))
+rc_adopt_semantic = int(sys.argv[7])
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return {}
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                payload = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                return {}
+        else:
+            return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _get(payload: dict, *path: str):
+    current = payload
+    for item in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(item)
+    return current
+
+
+def _norm(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text if text.startswith("v") else f"v{text}"
+
+
+def _check(name: str, expected, actual, *, required: bool = False, severity_when_missing: str = "diagnostic"):
+    expected_n = _norm(expected)
+    actual_n = _norm(actual)
+    item = {
+        "name": name,
+        "expected": expected_n,
+        "actual": actual_n,
+        "present": actual_n is not None,
+        "ok": actual_n == expected_n if actual_n is not None and expected_n is not None else not required,
+        "required": required,
+    }
+    if actual_n is None:
+        item["severity"] = "blocking" if required and severity_when_missing == "blocking" else severity_when_missing
+        item["reason"] = "snapshot field missing"
+    elif expected_n is not None and actual_n != expected_n:
+        item["severity"] = "blocking"
+        item["reason"] = "snapshot version differs from finalizer version"
+    else:
+        item["severity"] = "none"
+        item["reason"] = "matched"
+    return item
+
+payload = _read_json(snapshot_path)
+checks = []
+blockers = []
+diagnostics = []
+warning_codes = []
+blocker_codes = []
+
+if not payload:
+    blockers.append({
+        "code": "lifecycle_status_snapshot_missing_or_invalid",
+        "severity": "blocking",
+        "reason": "lifecycle-status snapshot JSON could not be read",
+        "snapshot_path": str(snapshot_path),
+    })
+else:
+    if payload.get("action") not in {"release_lifecycle_status", None}:
+        blockers.append({
+            "code": "lifecycle_status_snapshot_wrong_action",
+            "severity": "blocking",
+            "reason": "snapshot action is not release_lifecycle_status",
+            "actual": payload.get("action"),
+        })
+    if payload.get("ok") is False:
+        blockers.append({
+            "code": "lifecycle_status_snapshot_not_ok",
+            "severity": "blocking",
+            "reason": "lifecycle-status snapshot reported ok=false",
+            "status": payload.get("status"),
+        })
+
+    raw_blocker_codes = list(payload.get("blocker_codes") or [])
+    raw_warning_codes = list(payload.get("warning_codes") or [])
+    consistency = payload.get("consistency") if isinstance(payload.get("consistency"), dict) else {}
+    raw_blocker_codes.extend(consistency.get("blocker_codes") or [])
+    raw_warning_codes.extend(consistency.get("warning_codes") or [])
+    for code in sorted({str(code) for code in raw_blocker_codes if str(code).strip()}):
+        blockers.append({
+            "code": f"lifecycle_status_reported_blocker:{code}",
+            "severity": "blocking",
+            "reason": "lifecycle-status snapshot reported a blocking consistency code",
+        })
+    for code in sorted({str(code) for code in raw_warning_codes if str(code).strip()}):
+        diagnostics.append({
+            "code": f"lifecycle_status_reported_warning:{code}",
+            "severity": "diagnostic",
+            "reason": "lifecycle-status snapshot reported a warning consistency code",
+        })
+
+    checks.append(_check("expected.requested_version_normalized", expected_version, _get(payload, "expected", "requested_version_normalized"), required=False))
+    checks.append(_check("runtime.runtime_code_version", expected_version, _get(payload, "runtime", "runtime_code_version"), required=False))
+    checks.append(_check("version_file.normalized_version", expected_version, _get(payload, "version_file", "normalized_version"), required=False))
+    checks.append(_check("installed_distribution.normalized_version", expected_version, _get(payload, "installed_distribution", "normalized_version"), required=False))
+
+    if target_version:
+        checks.append(_check("expected.target_version_normalized", target_version, _get(payload, "expected", "target_version_normalized"), required=False))
+
+    # After the finalizer has adopted and semantically verified the artifact current
+    # baseline, a stale lifecycle-status snapshot is a blocking release-state defect.
+    require_adopted_snapshot = adopt_performed and adopt_semantic_performed and rc_adopt_semantic == 0
+    if require_adopted_snapshot:
+        checks.append(_check("artifact_current.state.artifact_version", expected_version, _get(payload, "artifact_current", "state", "artifact_version"), required=False))
+        checks.append(_check("artifact_current.state.source_version", expected_version, _get(payload, "artifact_current", "state", "source_version"), required=False))
+        checks.append(_check("artifact_current.registry_current.version", expected_version, _get(payload, "artifact_current", "registry_current", "version"), required=False))
+        checks.append(_check("artifact_current.baseline_roles.adopted_artifact_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"), required=False))
+        checks.append(_check("artifact_current.baseline_roles.adopted_source_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"), required=False))
+        checks.append(_check("artifact_current.baseline_roles.registry_current_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "registry_current_version"), required=False))
+        phase = payload.get("lifecycle_phase")
+        if phase not in {"adopted_current", "lifecycle_ready"}:
+            blockers.append({
+                "code": "lifecycle_status_phase_not_adopted_after_verified_adopt",
+                "severity": "blocking",
+                "reason": "adoption was verified, but lifecycle-status did not report an adopted/current phase",
+                "actual": phase,
+                "expected_any": ["adopted_current", "lifecycle_ready"],
+            })
+
+for check in checks:
+    if check.get("severity") == "blocking":
+        blockers.append({
+            "code": f"lifecycle_status_snapshot_mismatch:{check['name']}",
+            "severity": "blocking",
+            "reason": check.get("reason"),
+            "expected": check.get("expected"),
+            "actual": check.get("actual"),
+        })
+    elif check.get("severity") == "diagnostic":
+        diagnostics.append({
+            "code": f"lifecycle_status_snapshot_missing:{check['name']}",
+            "severity": "diagnostic",
+            "reason": check.get("reason"),
+            "expected": check.get("expected"),
+            "actual": check.get("actual"),
+        })
+
+blocker_codes = [item["code"] for item in blockers]
+warning_codes = [item["code"] for item in diagnostics]
+result = {
+    "ok": not blockers,
+    "action": "release_lifecycle_status_consistency",
+    "status": "passed" if not blockers else "failed",
+    "severity": "blocking" if blockers else ("diagnostic" if diagnostics else "ok"),
+    "expected_version": _norm(expected_version),
+    "target_version": _norm(target_version),
+    "snapshot_path": str(snapshot_path),
+    "adopt_performed": adopt_performed,
+    "adopt_semantic_performed": adopt_semantic_performed,
+    "adopt_semantic_rc": rc_adopt_semantic,
+    "checks": checks,
+    "diagnostics": diagnostics,
+    "blocking_failures": blockers,
+    "warning_codes": warning_codes,
+    "blocker_codes": blocker_codes,
+}
+out_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(result, indent=2, sort_keys=True))
+raise SystemExit(0 if not blockers else 1)
+PYLCONSISTENCY
+rc_lifecycle_status_consistency=$?
+set -u
+if [[ "${rc_lifecycle_status_consistency}" -ne 0 ]]; then
+  failures=$((failures + 1))
+fi
+
 python3 - \
   "${summary_json}" \
   "${version}" \
@@ -711,6 +915,7 @@ python3 - \
   "${rc_adopt}" \
   "${rc_adopt_semantic}" \
   "${rc_lifecycle_status}" \
+  "${rc_lifecycle_status_consistency}" \
   "${adopt_if_accepted}" \
   "${require_adopted_baseline}" \
   "${require_candidate_mvp_complete}" \
@@ -747,6 +952,7 @@ from pathlib import Path
     rc_adopt,
     rc_adopt_semantic,
     rc_lifecycle_status,
+    rc_lifecycle_status_consistency,
     adopt_if_accepted,
     require_adopted_baseline,
     require_candidate_mvp_complete,
@@ -841,6 +1047,32 @@ def _load_lifecycle_status_summary(path: str | Path) -> dict:
     }
 
 
+def _load_lifecycle_status_consistency(path: str | Path) -> dict:
+    path = Path(path)
+    payload = _load_jsonish(path)
+    if not payload:
+        return {
+            "attempted": False,
+            "ok": None,
+            "status": "not_found_or_invalid",
+            "consistency_path": str(path),
+        }
+    return {
+        "attempted": True,
+        "ok": payload.get("ok"),
+        "status": payload.get("status"),
+        "severity": payload.get("severity"),
+        "expected_version": payload.get("expected_version"),
+        "target_version": payload.get("target_version"),
+        "snapshot_path": payload.get("snapshot_path"),
+        "consistency_path": str(path),
+        "warning_codes": payload.get("warning_codes") or [],
+        "blocker_codes": payload.get("blocker_codes") or [],
+        "diagnostics": payload.get("diagnostics") or [],
+        "blocking_failures": payload.get("blocking_failures") or [],
+    }
+
+
 def _classify_step_failure(step: str, rc: int, phase: str | None = None, details: dict | None = None, log_name: str | None = None) -> dict:
     details = details or {}
     log_path = Path(release_log_dir) / log_name if log_name else None
@@ -909,6 +1141,9 @@ def _classify_step_failure(step: str, rc: int, phase: str | None = None, details
     elif step == "release_lifecycle_status":
         category = "lifecycle_status_failure"
         reason = "read-only lifecycle-status snapshot failed or reported blocking lifecycle consistency checks"
+    elif step == "release_lifecycle_status_consistency":
+        category = "lifecycle_status_consistency_failure"
+        reason = "lifecycle-status snapshot was stale or inconsistent with the finalizer release state"
     elif int(rc) != 0:
         category = "unknown_validation_failure"
         reason = "step failed without a more specific classifier"
@@ -944,6 +1179,7 @@ def _failure_classification(candidate_details: dict) -> dict:
         ("artifact_adopt", int(rc_adopt), None, {}, f"pb_artifact_adopt.{version}.json"),
         ("artifact_current_after_adopt_semantic", int(rc_adopt_semantic), None, {}, f"pb_artifact_current_after_adopt.{version}.semantic.json"),
         ("release_lifecycle_status", int(rc_lifecycle_status), None, lifecycle_status_summary, f"pb_release_lifecycle_status.{version}.json"),
+        ("release_lifecycle_status_consistency", int(rc_lifecycle_status_consistency), None, lifecycle_status_consistency, f"pb_release_lifecycle_status.{version}.consistency.json"),
     ]
     classifications = [_classify_step_failure(*item) for item in step_inputs]
     blocking = [item for item in classifications if item["blocking"]]
@@ -962,6 +1198,7 @@ def _failure_classification(candidate_details: dict) -> dict:
 
 candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
 lifecycle_status_summary = _load_lifecycle_status_summary(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.json")
+lifecycle_status_consistency = _load_lifecycle_status_consistency(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.consistency.json")
 validation_classification = _failure_classification(candidate_run_summary)
 
 summary = {
@@ -982,6 +1219,8 @@ summary = {
     "candidate_run_step_timeout_seconds": float(candidate_run_step_timeout_seconds),
     "lifecycle_status_snapshot": lifecycle_status_summary,
     "lifecycle_status_snapshot_path": lifecycle_status_summary.get("snapshot_path"),
+    "lifecycle_status_snapshot_consistency": lifecycle_status_consistency,
+    "lifecycle_status_snapshot_consistency_path": lifecycle_status_consistency.get("consistency_path"),
     "validation_classification": validation_classification,
     "primary_failure_category": validation_classification.get("primary_category"),
     "blocking_failure_categories": validation_classification.get("blocking_categories", []),
@@ -1003,6 +1242,7 @@ summary = {
         "artifact_adopt": {"rc": int(rc_adopt), "enabled": bool(int(adopt_if_accepted)), "performed": bool(int(adopt_performed))},
         "artifact_current_after_adopt_semantic": {"rc": int(rc_adopt_semantic), "enabled": bool(int(adopt_if_accepted)), "performed": bool(int(adopt_semantic_performed))},
         "release_lifecycle_status": {"rc": int(rc_lifecycle_status), "performed": bool(int(lifecycle_status_performed)), **lifecycle_status_summary},
+        "release_lifecycle_status_consistency": {"rc": int(rc_lifecycle_status_consistency), **lifecycle_status_consistency},
     },
 }
 Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")

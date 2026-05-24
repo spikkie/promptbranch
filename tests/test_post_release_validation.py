@@ -16,6 +16,7 @@ def _write_fake_promptbranch(
     fail_protocol_until_adopted: bool = False,
     candidate_mvp_complete: bool = False,
     candidate_no_artifact_precondition: bool = False,
+    lifecycle_status_version: str | None = None,
 ) -> Path:
     exe = bin_dir / "promptbranch"
     adopted_version = adopted_version or initial_artifact_version
@@ -28,6 +29,7 @@ def _write_fake_promptbranch(
         f"fail_protocol_until_adopted = {fail_protocol_until_adopted!r}\n"
         f"candidate_mvp_complete = {candidate_mvp_complete!r}\n"
         f"candidate_no_artifact_precondition = {candidate_no_artifact_precondition!r}\n"
+        f"lifecycle_status_version = {lifecycle_status_version!r}\n"
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
         "calls_file = Path(__file__).with_name('calls.jsonl')\n"
         "def record(args):\n"
@@ -47,6 +49,11 @@ def _write_fake_promptbranch(
         "            'source_ref': f'chatgpt_claudecode_workflow_{version}.zip',\n"
         "        },\n"
         "        'registry_current': {'version': version, 'filename': f'chatgpt_claudecode_workflow_{version}.zip'},\n"
+        "        'baseline_roles': {\n"
+        "            'adopted_artifact_version': version,\n"
+        "            'adopted_source_version': version,\n"
+        "            'registry_current_version': version,\n"
+        "        },\n"
         "    }\n"
         "args = sys.argv[1:]\n"
         "record(args)\n"
@@ -111,9 +118,30 @@ def _write_fake_promptbranch(
         "    raise SystemExit(0)\n"
         "if args[:2] == ['release', 'lifecycle-status']:\n"
         "    version = args[args.index('--version') + 1] if '--version' in args else adopted\n"
+        "    target = args[args.index('--target-version') + 1] if '--target-version' in args else None\n"
         "    current = current_version()\n"
+        "    status_version = lifecycle_status_version or version\n"
         "    warnings = [] if current == version else ['runtime_source_baseline_mismatch']\n"
-        "    print(json.dumps({'ok': True, 'action': 'release_lifecycle_status', 'status': 'passed', 'severity': 'warning' if warnings else 'ok', 'lifecycle_phase': 'adopted_current' if current == version else 'runtime_only', 'operator_verdict': 'continue_normal_development', 'warning_codes': warnings, 'blocker_codes': [], 'next_safe_action': {'kind': 'continue_normal_development'}}))\n"
+        "    current_payload_value = current_payload()\n"
+        "    if lifecycle_status_version:\n"
+        "        current_payload_value['runtime'] = {'version': status_version, 'package_version': status_version.removeprefix('v')}\n"
+        "    print(json.dumps({\n"
+        "        'ok': True,\n"
+        "        'action': 'release_lifecycle_status',\n"
+        "        'status': 'passed',\n"
+        "        'severity': 'warning' if warnings else 'ok',\n"
+        "        'expected': {'requested_version_normalized': version, 'target_version_normalized': target},\n"
+        "        'runtime': {'runtime_code_version': status_version},\n"
+        "        'version_file': {'normalized_version': status_version},\n"
+        "        'installed_distribution': {'normalized_version': status_version},\n"
+        "        'artifact_current': current_payload_value,\n"
+        "        'lifecycle_phase': 'adopted_current' if current == version else 'runtime_only',\n"
+        "        'operator_verdict': 'continue_normal_development',\n"
+        "        'warning_codes': warnings,\n"
+        "        'blocker_codes': [],\n"
+        "        'consistency': {'warning_codes': warnings, 'blocker_codes': []},\n"
+        "        'next_safe_action': {'kind': 'continue_normal_development'},\n"
+        "    }))\n"
         "    raise SystemExit(0)\n"
         "print(json.dumps({'ok': False, 'error': 'unexpected_args', 'argv': args}))\n"
         "raise SystemExit(2)\n",
@@ -134,6 +162,7 @@ def _run_validation(
     skip_tests: bool = True,
     candidate_mvp_complete: bool = False,
     candidate_no_artifact_precondition: bool = False,
+    lifecycle_status_version: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -148,6 +177,7 @@ def _run_validation(
         fail_protocol_until_adopted=fail_protocol_until_adopted,
         candidate_mvp_complete=candidate_mvp_complete,
         candidate_no_artifact_precondition=candidate_no_artifact_precondition,
+        lifecycle_status_version=lifecycle_status_version,
     )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
@@ -168,7 +198,7 @@ def _run_validation(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        timeout=20,
+        timeout=60,
         check=False,
     )
 
@@ -448,6 +478,53 @@ def test_post_release_validation_classifies_strict_no_artifact_as_operator_preco
     ]
     assert summary["primary_failure_category"] == "operator_precondition_failure"
     assert summary["blocking_failure_categories"] == ["operator_precondition_failure"]
+
+
+def test_post_release_validation_records_lifecycle_status_consistency(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.267",
+        "v0.0.268",
+        "--adopt-if-accepted",
+        "--skip-candidate-run",
+        adopted_version="v0.0.268",
+    )
+
+    assert result.returncode == 0, result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.268")
+    consistency = summary["lifecycle_status_snapshot_consistency"]
+    assert consistency["ok"] is True
+    assert consistency["status"] == "passed"
+    assert consistency["severity"] == "ok"
+    assert summary["steps"]["release_lifecycle_status_consistency"]["rc"] == 0
+    assert summary["lifecycle_status_snapshot_consistency_path"].endswith(
+        "pb_release_lifecycle_status.v0.0.268.consistency.json"
+    )
+
+
+def test_post_release_validation_blocks_stale_lifecycle_status_snapshot_after_adopt(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.267",
+        "v0.0.268",
+        "--adopt-if-accepted",
+        "--skip-candidate-run",
+        adopted_version="v0.0.268",
+        lifecycle_status_version="v0.0.267",
+    )
+
+    assert result.returncode == 1, result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.268")
+    classification = summary["validation_classification"]
+    assert classification["status"] == "failed"
+    assert classification["primary_category"] == "lifecycle_status_consistency_failure"
+    assert summary["steps"]["release_lifecycle_status_consistency"]["rc"] == 1
+    consistency = summary["lifecycle_status_snapshot_consistency"]
+    assert consistency["ok"] is False
+    assert any(
+        item["code"] == "lifecycle_status_snapshot_mismatch:runtime.runtime_code_version"
+        for item in consistency["blocking_failures"]
+    )
 
 
 def test_post_release_validation_classifies_unadopted_baseline_as_diagnostic(tmp_path: Path) -> None:
