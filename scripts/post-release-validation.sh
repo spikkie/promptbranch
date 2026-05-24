@@ -303,6 +303,7 @@ rc_adopt=0
 rc_adopt_semantic=0
 rc_lifecycle_status=0
 rc_lifecycle_status_consistency=0
+rc_human_summary_guard=0
 adopt_performed=0
 adopt_semantic_performed=0
 lifecycle_status_performed=0
@@ -897,6 +898,171 @@ if [[ "${rc_lifecycle_status_consistency}" -ne 0 ]]; then
   failures=$((failures + 1))
 fi
 
+human_summary_guard_log="${release_log_dir}/pb_release_lifecycle_status.${version}.human_summary_guard.json"
+echo
+echo "===== release lifecycle human-summary regression guard ====="
+set +e
+python3 - \
+  "${lifecycle_status_log}" \
+  "${human_summary_guard_log}" <<'PYHUMANGUARD'
+import json
+import sys
+from pathlib import Path
+
+snapshot_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return {}
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                payload = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                return {}
+        else:
+            return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _get(obj: dict, *keys):
+    cur = obj
+    for key in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
+
+def _present(value) -> bool:
+    return value not in (None, "")
+
+
+def _first_present(*items, default=None):
+    for item in items:
+        if _present(item):
+            return item
+    return default
+
+
+payload = _read_json(snapshot_path)
+fields = []
+blockers = []
+diagnostics = []
+
+if not payload:
+    diagnostics.append({
+        "code": "human_summary_guard_snapshot_missing_or_invalid",
+        "severity": "diagnostic",
+        "reason": "lifecycle-status snapshot JSON could not be read; human summary was not checked",
+        "snapshot_path": str(snapshot_path),
+    })
+else:
+    raw_expectations = {
+        "runtime_version": _get(payload, "runtime", "runtime_code_version"),
+        "version_file": _get(payload, "version_file", "normalized_version"),
+        "artifact_current": _first_present(
+            _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"),
+            _get(payload, "artifact_current", "state", "artifact_version"),
+            _get(payload, "artifact_current", "registry_current", "version"),
+        ),
+        "source_current": _first_present(
+            _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"),
+            _get(payload, "artifact_current", "state", "source_version"),
+        ),
+        "candidate_count": _get(payload, "candidate_inventory_summary", "candidate_count"),
+    }
+
+    # This intentionally mirrors the human-summary extraction contract but is kept
+    # in a separate guard path. If future formatter edits stop surfacing values
+    # that are available in the raw lifecycle snapshot, this guard fails the release.
+    display_values = {
+        "runtime_version": _first_present(_get(payload, "runtime", "runtime_code_version"), payload.get("runtime_version")),
+        "version_file": _first_present(_get(payload, "version_file", "normalized_version"), payload.get("version_file_version")),
+        "artifact_current": _first_present(
+            _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"),
+            _get(payload, "artifact_current", "state", "artifact_version"),
+            _get(payload, "artifact_current", "registry_current", "version"),
+            payload.get("artifact_current_version"),
+        ),
+        "source_current": _first_present(
+            _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"),
+            _get(payload, "artifact_current", "state", "source_version"),
+            payload.get("source_current_version"),
+        ),
+        "candidate_count": _first_present(
+            _get(payload, "candidate_inventory_summary", "candidate_count"),
+            payload.get("candidate_count"),
+            default="0",
+        ),
+    }
+
+    for name, raw_value in raw_expectations.items():
+        raw_available = _present(raw_value)
+        display_value = display_values.get(name)
+        display_available = _present(display_value)
+        item = {
+            "name": name,
+            "raw_available": raw_available,
+            "raw_value": raw_value,
+            "display_value": display_value,
+            "ok": (not raw_available) or display_available,
+        }
+        if raw_available and not display_available:
+            item["severity"] = "blocking"
+            item["reason"] = "raw lifecycle-status snapshot contains this field, but human-summary extraction would render it as unknown"
+            blockers.append({
+                "code": f"human_summary_field_unknown:{name}",
+                "severity": "blocking",
+                "reason": item["reason"],
+                "raw_value": raw_value,
+                "display_value": display_value,
+            })
+        elif not raw_available:
+            item["severity"] = "diagnostic"
+            item["reason"] = "raw lifecycle-status snapshot did not contain this optional display field"
+            diagnostics.append({
+                "code": f"human_summary_field_absent_in_snapshot:{name}",
+                "severity": "diagnostic",
+                "reason": item["reason"],
+            })
+        else:
+            item["severity"] = "none"
+            item["reason"] = "display value available"
+        fields.append(item)
+
+result = {
+    "ok": not blockers,
+    "action": "release_lifecycle_human_summary_guard",
+    "status": "passed" if not blockers else "failed",
+    "severity": "blocking" if blockers else ("diagnostic" if diagnostics else "ok"),
+    "snapshot_path": str(snapshot_path),
+    "fields": fields,
+    "diagnostics": diagnostics,
+    "blocking_failures": blockers,
+    "warning_codes": [item["code"] for item in diagnostics],
+    "blocker_codes": [item["code"] for item in blockers],
+}
+out_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(result, indent=2, sort_keys=True))
+raise SystemExit(0 if not blockers else 1)
+PYHUMANGUARD
+rc_human_summary_guard=$?
+set -u
+if [[ "${rc_human_summary_guard}" -ne 0 ]]; then
+  failures=$((failures + 1))
+fi
+
 python3 - \
   "${summary_json}" \
   "${version}" \
@@ -916,6 +1082,7 @@ python3 - \
   "${rc_adopt_semantic}" \
   "${rc_lifecycle_status}" \
   "${rc_lifecycle_status_consistency}" \
+  "${rc_human_summary_guard}" \
   "${adopt_if_accepted}" \
   "${require_adopted_baseline}" \
   "${require_candidate_mvp_complete}" \
@@ -953,6 +1120,7 @@ from pathlib import Path
     rc_adopt_semantic,
     rc_lifecycle_status,
     rc_lifecycle_status_consistency,
+    rc_human_summary_guard,
     adopt_if_accepted,
     require_adopted_baseline,
     require_candidate_mvp_complete,
@@ -1073,6 +1241,31 @@ def _load_lifecycle_status_consistency(path: str | Path) -> dict:
     }
 
 
+def _load_human_summary_guard(path: str | Path) -> dict:
+    path = Path(path)
+    payload = _load_jsonish(path)
+    if not payload:
+        return {
+            "attempted": False,
+            "ok": None,
+            "status": "not_found_or_invalid",
+            "guard_path": str(path),
+        }
+    return {
+        "attempted": True,
+        "ok": payload.get("ok"),
+        "status": payload.get("status"),
+        "severity": payload.get("severity"),
+        "snapshot_path": payload.get("snapshot_path"),
+        "guard_path": str(path),
+        "fields": payload.get("fields") or [],
+        "warning_codes": payload.get("warning_codes") or [],
+        "blocker_codes": payload.get("blocker_codes") or [],
+        "diagnostics": payload.get("diagnostics") or [],
+        "blocking_failures": payload.get("blocking_failures") or [],
+    }
+
+
 def _classify_step_failure(step: str, rc: int, phase: str | None = None, details: dict | None = None, log_name: str | None = None) -> dict:
     details = details or {}
     log_path = Path(release_log_dir) / log_name if log_name else None
@@ -1144,6 +1337,9 @@ def _classify_step_failure(step: str, rc: int, phase: str | None = None, details
     elif step == "release_lifecycle_status_consistency":
         category = "lifecycle_status_consistency_failure"
         reason = "lifecycle-status snapshot was stale or inconsistent with the finalizer release state"
+    elif step == "release_lifecycle_human_summary_guard":
+        category = "human_summary_regression_failure"
+        reason = "human lifecycle summary would hide fields that are present in the raw lifecycle-status snapshot"
     elif int(rc) != 0:
         category = "unknown_validation_failure"
         reason = "step failed without a more specific classifier"
@@ -1180,6 +1376,7 @@ def _failure_classification(candidate_details: dict) -> dict:
         ("artifact_current_after_adopt_semantic", int(rc_adopt_semantic), None, {}, f"pb_artifact_current_after_adopt.{version}.semantic.json"),
         ("release_lifecycle_status", int(rc_lifecycle_status), None, lifecycle_status_summary, f"pb_release_lifecycle_status.{version}.json"),
         ("release_lifecycle_status_consistency", int(rc_lifecycle_status_consistency), None, lifecycle_status_consistency, f"pb_release_lifecycle_status.{version}.consistency.json"),
+        ("release_lifecycle_human_summary_guard", int(rc_human_summary_guard), None, human_summary_guard, f"pb_release_lifecycle_status.{version}.human_summary_guard.json"),
     ]
     classifications = [_classify_step_failure(*item) for item in step_inputs]
     blocking = [item for item in classifications if item["blocking"]]
@@ -1199,6 +1396,7 @@ def _failure_classification(candidate_details: dict) -> dict:
 candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
 lifecycle_status_summary = _load_lifecycle_status_summary(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.json")
 lifecycle_status_consistency = _load_lifecycle_status_consistency(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.consistency.json")
+human_summary_guard = _load_human_summary_guard(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.human_summary_guard.json")
 validation_classification = _failure_classification(candidate_run_summary)
 
 summary = {
@@ -1221,6 +1419,8 @@ summary = {
     "lifecycle_status_snapshot_path": lifecycle_status_summary.get("snapshot_path"),
     "lifecycle_status_snapshot_consistency": lifecycle_status_consistency,
     "lifecycle_status_snapshot_consistency_path": lifecycle_status_consistency.get("consistency_path"),
+    "lifecycle_human_summary_guard": human_summary_guard,
+    "lifecycle_human_summary_guard_path": human_summary_guard.get("guard_path"),
     "validation_classification": validation_classification,
     "primary_failure_category": validation_classification.get("primary_category"),
     "blocking_failure_categories": validation_classification.get("blocking_categories", []),
@@ -1243,6 +1443,7 @@ summary = {
         "artifact_current_after_adopt_semantic": {"rc": int(rc_adopt_semantic), "enabled": bool(int(adopt_if_accepted)), "performed": bool(int(adopt_semantic_performed))},
         "release_lifecycle_status": {"rc": int(rc_lifecycle_status), "performed": bool(int(lifecycle_status_performed)), **lifecycle_status_summary},
         "release_lifecycle_status_consistency": {"rc": int(rc_lifecycle_status_consistency), **lifecycle_status_consistency},
+        "release_lifecycle_human_summary_guard": {"rc": int(rc_human_summary_guard), **human_summary_guard},
     },
 }
 Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1315,6 +1516,7 @@ def first_present(*items, default="unknown"):
 lifecycle = summary.get("lifecycle_status_snapshot") if isinstance(summary.get("lifecycle_status_snapshot"), dict) else {}
 raw_lifecycle = read_jsonish(summary.get("lifecycle_status_snapshot_path"))
 consistency = summary.get("lifecycle_status_snapshot_consistency") if isinstance(summary.get("lifecycle_status_snapshot_consistency"), dict) else {}
+human_guard = summary.get("lifecycle_human_summary_guard") if isinstance(summary.get("lifecycle_human_summary_guard"), dict) else {}
 classification = summary.get("validation_classification") if isinstance(summary.get("validation_classification"), dict) else {}
 steps = summary.get("steps") if isinstance(summary.get("steps"), dict) else {}
 action = lifecycle.get("next_safe_action") if isinstance(lifecycle.get("next_safe_action"), dict) else {}
@@ -1360,6 +1562,7 @@ print(f"failure_count:        {value(summary.get('failure_count'))}")
 print(f"lifecycle_phase:      {value(first_present(raw_lifecycle.get('lifecycle_phase'), lifecycle.get('lifecycle_phase'), default=None))}")
 print(f"lifecycle_severity:   {value(first_present(raw_lifecycle.get('severity'), lifecycle.get('severity'), default=None))}")
 print(f"lifecycle_consistency:{value(consistency.get('status'))}")
+print(f"human_summary_guard: {value(human_guard.get('status'), default='not_run')}")
 print(f"runtime_version:      {value(runtime_version)}")
 print(f"version_file:         {value(version_file_version)}")
 print(f"artifact_current:     {value(artifact_current_version)}")
