@@ -407,3 +407,67 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     ask_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask")
     candidate_run_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "candidate-run"])
     assert adopt_index < ask_index < candidate_run_index
+
+
+def test_post_release_validation_classifies_strict_no_artifact_as_operator_precondition(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.266",
+        "v0.0.266",
+        "--complete-candidate-mvp",
+        "--require-real-candidate-mvp",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+        candidate_mvp_complete=False,
+        candidate_no_artifact_precondition=True,
+    )
+
+    assert result.returncode == 1
+    summary = _summary(tmp_path / "repo", "v0.0.266")
+    classification = summary["validation_classification"]
+    assert classification["status"] == "failed"
+    assert classification["primary_category"] == "operator_precondition_failure"
+    assert classification["blocking_categories"] == ["operator_precondition_failure"]
+    assert classification["blocking_failures"] == [
+        {
+            "blocking": True,
+            "category": "operator_precondition_failure",
+            "phase": "pre_adoption",
+            "rc": 1,
+            "reason": "strict real-candidate validation was requested but no real artifact candidate was selected",
+            "severity": "blocking",
+            "step": "artifact_candidate_run_plan",
+        }
+    ]
+    assert summary["primary_failure_category"] == "operator_precondition_failure"
+    assert summary["blocking_failure_categories"] == ["operator_precondition_failure"]
+
+
+def test_post_release_validation_classifies_unadopted_baseline_as_diagnostic(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        artifact_version="v0.0.265",
+        requested_version="v0.0.266",
+        skip_protocol=True,
+        skip_artifact_intake=True,
+        skip_tests=True,
+    )
+
+    assert result.returncode == 0, result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.266")
+    classification = summary["validation_classification"]
+    assert classification["status"] == "passed"
+    assert classification["blocking_failure_count"] == 0
+    assert classification["primary_category"] == "none"
+    assert classification["diagnostics"] == [
+        {
+            "blocking": False,
+            "category": "artifact_state_diagnostic",
+            "phase": None,
+            "rc": 1,
+            "reason": "pre-adoption artifact current mismatch is diagnostic unless --require-adopted-baseline is set",
+            "severity": "diagnostic",
+            "step": "artifact_current_semantic",
+        }
+    ]
