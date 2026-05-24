@@ -502,6 +502,27 @@ def test_post_release_validation_records_lifecycle_status_consistency(tmp_path: 
     )
 
 
+
+
+def test_post_release_validation_prints_human_lifecycle_summary(tmp_path: Path) -> None:
+    result = _run_validation(
+        tmp_path,
+        "v0.0.269.1",
+        "v0.0.270",
+        "--adopt-if-accepted",
+        "--skip-candidate-run",
+        adopted_version="v0.0.270",
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert "== Release lifecycle human summary ==" in result.stdout
+    assert "version:              v0.0.270" in result.stdout
+    assert "validation_status:    passed" in result.stdout
+    assert "lifecycle_consistency:passed" in result.stdout
+    assert "next_safe_action:" in result.stdout
+    summary = _summary(tmp_path / "repo", "v0.0.270")
+    assert summary["version"] == "v0.0.270"
+
 def test_post_release_validation_blocks_stale_lifecycle_status_snapshot_after_adopt(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,

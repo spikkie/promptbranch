@@ -1249,6 +1249,68 @@ Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encod
 print(json.dumps(summary, indent=2, sort_keys=True))
 PY
 
+python3 - "${summary_json}" <<'PYHUMAN'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    summary = json.loads(path.read_text(encoding="utf-8"))
+except Exception as exc:
+    print("== Release lifecycle human summary ==")
+    print(f"status: unavailable ({exc})")
+    raise SystemExit(0)
+
+def get(obj, *keys, default="unknown"):
+    cur = obj
+    for key in keys:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(key)
+    return default if cur in (None, "") else cur
+
+def value(item, default="unknown"):
+    if item in (None, ""):
+        return default
+    if isinstance(item, bool):
+        return "yes" if item else "no"
+    return str(item)
+
+def codes(items):
+    return ",".join(str(item) for item in items or []) or "none"
+
+lifecycle = summary.get("lifecycle_status_snapshot") if isinstance(summary.get("lifecycle_status_snapshot"), dict) else {}
+consistency = summary.get("lifecycle_status_snapshot_consistency") if isinstance(summary.get("lifecycle_status_snapshot_consistency"), dict) else {}
+classification = summary.get("validation_classification") if isinstance(summary.get("validation_classification"), dict) else {}
+steps = summary.get("steps") if isinstance(summary.get("steps"), dict) else {}
+action = lifecycle.get("next_safe_action") if isinstance(lifecycle.get("next_safe_action"), dict) else {}
+
+print("== Release lifecycle human summary ==")
+print(f"version:              {value(summary.get('version'))}")
+print(f"target_version:       {value(summary.get('target_version'))}")
+print(f"validation_status:    {value(classification.get('status'))}")
+print(f"primary_category:     {value(classification.get('primary_category'), default='none')}")
+print(f"failure_count:        {value(summary.get('failure_count'))}")
+print(f"lifecycle_phase:      {value(lifecycle.get('lifecycle_phase'))}")
+print(f"lifecycle_severity:   {value(lifecycle.get('severity'))}")
+print(f"lifecycle_consistency:{value(consistency.get('status'))}")
+print(f"runtime_version:      {value(get(lifecycle, 'runtime', 'runtime_code_version'))}")
+print(f"version_file:         {value(get(lifecycle, 'version_file', 'normalized_version'))}")
+print(f"artifact_current:     {value(get(lifecycle, 'artifact_current', 'baseline_roles', 'adopted_artifact_version'))}")
+print(f"source_current:       {value(get(lifecycle, 'artifact_current', 'baseline_roles', 'adopted_source_version'))}")
+print(f"candidate_count:      {value(get(lifecycle, 'candidate_inventory_summary', 'candidate_count'), default='0')}")
+print(f"warning_codes:        {codes(lifecycle.get('warning_codes'))}")
+print(f"blocker_codes:        {codes(lifecycle.get('blocker_codes'))}")
+print(f"next_safe_action:     {value(action.get('kind'), default='none')}")
+if action.get("command"):
+    print(f"next_command:         {action.get('command')}")
+print(f"summary_path:         {value(summary.get('summary_path'))}")
+print(f"lifecycle_snapshot:   {value(summary.get('lifecycle_status_snapshot_path'), default='not_written')}")
+print(f"consistency_snapshot: {value(summary.get('lifecycle_status_snapshot_consistency_path'), default='not_written')}")
+print(f"adopt_performed:      {value(get(steps, 'artifact_adopt', 'performed'))}")
+PYHUMAN
+
 if [[ "${failures}" -ne 0 ]]; then
   echo "post-release validation failed: ${failures} failing step(s)" >&2
   exit 1

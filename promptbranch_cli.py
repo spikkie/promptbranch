@@ -10174,6 +10174,83 @@ def _latest_post_release_validation_summary(
     }
 
 
+
+def _release_lifecycle_status_text(payload: dict[str, Any]) -> str:
+    """Render a concise human-facing lifecycle status summary.
+
+    The JSON payload remains the machine contract. This text renderer is an
+    operator convenience only and must not introduce extra probes or mutations.
+    """
+
+    def get_path(obj: Any, *path: str, default: Any = None) -> Any:
+        cur = obj
+        for part in path:
+            if not isinstance(cur, dict):
+                return default
+            cur = cur.get(part)
+        return default if cur is None else cur
+
+    def value(text: Any, default: str = "unknown") -> str:
+        if text is None or text == "":
+            return default
+        if isinstance(text, bool):
+            return "yes" if text else "no"
+        return str(text)
+
+    def codes(items: Any) -> str:
+        if not items:
+            return "none"
+        return ",".join(str(item) for item in items)
+
+    action = payload.get("next_safe_action") if isinstance(payload.get("next_safe_action"), dict) else {}
+    latest = payload.get("latest_post_release_validation") if isinstance(payload.get("latest_post_release_validation"), dict) else {}
+    artifact_current = payload.get("artifact_current") if isinstance(payload.get("artifact_current"), dict) else {}
+    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    candidate = payload.get("candidate_inventory_summary") if isinstance(payload.get("candidate_inventory_summary"), dict) else {}
+    service = payload.get("service_health") if isinstance(payload.get("service_health"), dict) else {}
+    sources = payload.get("project_sources") if isinstance(payload.get("project_sources"), dict) else {}
+    git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+
+    lines = [
+        "Release lifecycle status",
+        "========================",
+        f"status:              {value(payload.get('status'))}",
+        f"severity:            {value(payload.get('severity'))}",
+        f"phase:               {value(payload.get('lifecycle_phase'))}",
+        f"read_only:           {value(payload.get('read_only'))}",
+        "",
+        "Versions",
+        f"  runtime:           {value(get_path(payload, 'runtime', 'runtime_code_version'))}",
+        f"  VERSION file:      {value(get_path(payload, 'version_file', 'normalized_version'))}",
+        f"  installed dist:    {value(get_path(payload, 'installed_distribution', 'normalized_version'))}",
+        f"  adopted artifact:  {value(baseline_roles.get('adopted_artifact_version'))}",
+        f"  adopted source:    {value(baseline_roles.get('adopted_source_version'))}",
+        f"  registry current:  {value(baseline_roles.get('registry_current_version'))}",
+        "",
+        "Finalizer",
+        f"  status:            {value(latest.get('status'))}",
+        f"  ok:                {value(latest.get('ok'))}",
+        f"  failure_count:     {value(latest.get('failure_count'))}",
+        f"  summary_path:      {value(latest.get('summary_path'), default='not_found')}",
+        "",
+        "Candidates and probes",
+        f"  candidate_count:   {value(candidate.get('candidate_count'), default='0')}",
+        f"  service_health:    {value(service.get('status'))}",
+        f"  project_sources:   {value(sources.get('status'))}",
+        f"  git_clean:         {value(not bool(git.get('dirty')) if git.get('dirty') is not None else None)}",
+        "",
+        "Consistency",
+        f"  warnings:          {codes(payload.get('warning_codes'))}",
+        f"  blockers:          {codes(payload.get('blocker_codes'))}",
+        "",
+        "Next safe action",
+        f"  kind:              {value(action.get('kind'), default='none')}",
+        f"  command:           {value(action.get('command'), default='none')}",
+        f"  reason:            {value(action.get('reason'), default='none')}",
+    ]
+    return "\n".join(lines)
+
+
 async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -> int:
     """Read-only local-first lifecycle state cockpit."""
 
@@ -10388,15 +10465,7 @@ async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print(f"status={payload.get('status')}")
-        print(f"severity={payload.get('severity')}")
-        print(f"runtime={runtime_version}")
-        print(f"lifecycle_phase={payload.get('lifecycle_phase')}")
-        print(f"latest_post_release_validation={finalizer_summary.get('status')}")
-        action = payload.get("next_safe_action") if isinstance(payload.get("next_safe_action"), dict) else {}
-        print(f"next_safe_action={action.get('kind') or 'none'}")
-        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
-        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        print(_release_lifecycle_status_text(payload))
     return 0 if payload.get("ok") else 1
 
 
