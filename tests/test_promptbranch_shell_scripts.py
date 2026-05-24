@@ -900,6 +900,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
         "if [[ \"$1 $2\" == \"artifact candidate-run\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_candidate_run\", \"status\": \"candidate_next_inspection_required\", \"mode\": \"plan_only\", \"mutating_actions_executed\": false}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"release lifecycle-status\" ]]; then echo '{\"ok\": true, \"action\": \"release_lifecycle_status\", \"status\": \"passed\", \"severity\": \"ok\", \"lifecycle_phase\": \"adopted_current\", \"operator_verdict\": \"continue_normal_development\", \"warning_codes\": [], \"blocker_codes\": [], \"next_safe_action\": {\"kind\": \"continue_normal_development\"}}'; exit 0; fi\n"
         "echo unexpected promptbranch args >&2\n"
         "exit 2\n",
         encoding="utf-8",
@@ -931,6 +932,11 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert (log_dir / f"pb_artifact_candidate_run.{version}.json").is_file()
     assert (log_dir / f"pb_test.full.{version}.report.json").is_file()
     assert (log_dir / f"zip_hygiene.{version}.json").is_file()
+    assert (log_dir / f"pb_release_lifecycle_status.{version}.json").is_file()
+    assert summary["steps"]["release_lifecycle_status"]["rc"] == 0
+    assert summary["steps"]["release_lifecycle_status"]["performed"] is True
+    assert summary["lifecycle_status_snapshot"]["lifecycle_phase"] == "adopted_current"
+    assert summary["lifecycle_status_snapshot_path"].endswith(f"pb_release_lifecycle_status.{version}.json")
 
     call_text = calls.read_text(encoding="utf-8")
     assert "promptbranch artifact current --json" in call_text
@@ -939,6 +945,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert "promptbranch artifact candidate-run --json" in call_text
     assert "promptbranch test full --json" in call_text
     assert "promptbranch test report" in call_text
+    assert f"promptbranch release lifecycle-status --version {version} --target-version {target}" in call_text
     assert "artifact adopt" not in call_text
     assert "src sync" not in call_text
 

@@ -301,8 +301,10 @@ rc_test_report=0
 rc_zip_hygiene=0
 rc_adopt=0
 rc_adopt_semantic=0
+rc_lifecycle_status=0
 adopt_performed=0
 adopt_semantic_performed=0
+lifecycle_status_performed=0
 protocol_phase="not_run"
 intake_phase="not_run"
 candidate_run_phase="not_run"
@@ -679,6 +681,18 @@ else
   echo "adopt_if_accepted=${adopt_if_accepted} failures_before_adopt=${failures}"
 fi
 
+lifecycle_status_log="${release_log_dir}/pb_release_lifecycle_status.${version}.json"
+echo
+echo "===== release lifecycle-status snapshot ====="
+if [[ "${failures}" -eq 0 ]]; then
+  lifecycle_status_performed=1
+  run_step "release lifecycle-status snapshot" "${lifecycle_status_log}"     "${pb_cmd}" release lifecycle-status --version "${version}" --target-version "${target_version}" --repo-path "$(pwd)" --json || { rc_lifecycle_status=$?; failures=$((failures + 1)); }
+else
+  printf '{"ok": true, "status": "skipped_due_to_prior_validation_failure", "version": "%s", "target_version": "%s"}
+' "${version}" "${target_version}" > "${lifecycle_status_log}"
+  echo "release lifecycle-status snapshot skipped because prior validation failures exist"
+fi
+
 python3 - \
   "${summary_json}" \
   "${version}" \
@@ -696,6 +710,7 @@ python3 - \
   "${rc_zip_hygiene}" \
   "${rc_adopt}" \
   "${rc_adopt_semantic}" \
+  "${rc_lifecycle_status}" \
   "${adopt_if_accepted}" \
   "${require_adopted_baseline}" \
   "${require_candidate_mvp_complete}" \
@@ -705,6 +720,7 @@ python3 - \
   "${candidate_run_step_timeout_seconds}" \
   "${adopt_performed}" \
   "${adopt_semantic_performed}" \
+  "${lifecycle_status_performed}" \
   "${protocol_phase}" \
   "${intake_phase}" \
   "${candidate_run_phase}" \
@@ -730,6 +746,7 @@ from pathlib import Path
     rc_zip_hygiene,
     rc_adopt,
     rc_adopt_semantic,
+    rc_lifecycle_status,
     adopt_if_accepted,
     require_adopted_baseline,
     require_candidate_mvp_complete,
@@ -739,6 +756,7 @@ from pathlib import Path
     candidate_run_step_timeout_seconds,
     adopt_performed,
     adopt_semantic_performed,
+    lifecycle_status_performed,
     protocol_phase,
     intake_phase,
     candidate_run_phase,
@@ -792,6 +810,34 @@ def _load_candidate_run_summary(path: str) -> dict:
         "migration_performed": payload.get("migration_performed"),
         "candidate_test_performed": payload.get("candidate_test_performed"),
         "adoption_performed": payload.get("adoption_performed"),
+    }
+
+
+def _load_lifecycle_status_summary(path: str | Path) -> dict:
+    path = Path(path)
+    payload = _load_jsonish(path)
+    if not payload:
+        return {
+            "attempted": False,
+            "performed": bool(int(lifecycle_status_performed)),
+            "ok": None,
+            "status": "not_found_or_invalid",
+            "snapshot_path": str(path),
+        }
+    next_action = payload.get("next_safe_action") if isinstance(payload.get("next_safe_action"), dict) else {}
+    return {
+        "attempted": True,
+        "performed": bool(int(lifecycle_status_performed)),
+        "ok": payload.get("ok"),
+        "status": payload.get("status"),
+        "severity": payload.get("severity"),
+        "lifecycle_phase": payload.get("lifecycle_phase"),
+        "operator_verdict": payload.get("operator_verdict"),
+        "warning_codes": payload.get("warning_codes") or [],
+        "blocker_codes": payload.get("blocker_codes") or [],
+        "next_safe_action": next_action,
+        "next_safe_action_kind": next_action.get("kind"),
+        "snapshot_path": str(path),
     }
 
 
@@ -860,6 +906,9 @@ def _classify_step_failure(step: str, rc: int, phase: str | None = None, details
         else:
             category = "artifact_candidate_lifecycle_failure"
             reason = "candidate lifecycle proof did not reach the required completion state"
+    elif step == "release_lifecycle_status":
+        category = "lifecycle_status_failure"
+        reason = "read-only lifecycle-status snapshot failed or reported blocking lifecycle consistency checks"
     elif int(rc) != 0:
         category = "unknown_validation_failure"
         reason = "step failed without a more specific classifier"
@@ -894,6 +943,7 @@ def _failure_classification(candidate_details: dict) -> dict:
         ("zip_hygiene", int(rc_zip_hygiene), None, {}, f"zip_hygiene.{version}.json"),
         ("artifact_adopt", int(rc_adopt), None, {}, f"pb_artifact_adopt.{version}.json"),
         ("artifact_current_after_adopt_semantic", int(rc_adopt_semantic), None, {}, f"pb_artifact_current_after_adopt.{version}.semantic.json"),
+        ("release_lifecycle_status", int(rc_lifecycle_status), None, lifecycle_status_summary, f"pb_release_lifecycle_status.{version}.json"),
     ]
     classifications = [_classify_step_failure(*item) for item in step_inputs]
     blocking = [item for item in classifications if item["blocking"]]
@@ -911,6 +961,7 @@ def _failure_classification(candidate_details: dict) -> dict:
 
 
 candidate_run_summary = _load_candidate_run_summary(candidate_run_log)
+lifecycle_status_summary = _load_lifecycle_status_summary(Path(release_log_dir) / f"pb_release_lifecycle_status.{version}.json")
 validation_classification = _failure_classification(candidate_run_summary)
 
 summary = {
@@ -929,6 +980,8 @@ summary = {
     "require_real_candidate_mvp": bool(int(require_real_candidate_mvp)),
     "candidate_mvp_max_steps": int(candidate_mvp_max_steps),
     "candidate_run_step_timeout_seconds": float(candidate_run_step_timeout_seconds),
+    "lifecycle_status_snapshot": lifecycle_status_summary,
+    "lifecycle_status_snapshot_path": lifecycle_status_summary.get("snapshot_path"),
     "validation_classification": validation_classification,
     "primary_failure_category": validation_classification.get("primary_category"),
     "blocking_failure_categories": validation_classification.get("blocking_categories", []),
@@ -949,6 +1002,7 @@ summary = {
         "zip_hygiene": {"rc": int(rc_zip_hygiene)},
         "artifact_adopt": {"rc": int(rc_adopt), "enabled": bool(int(adopt_if_accepted)), "performed": bool(int(adopt_performed))},
         "artifact_current_after_adopt_semantic": {"rc": int(rc_adopt_semantic), "enabled": bool(int(adopt_if_accepted)), "performed": bool(int(adopt_semantic_performed))},
+        "release_lifecycle_status": {"rc": int(rc_lifecycle_status), "performed": bool(int(lifecycle_status_performed)), **lifecycle_status_summary},
     },
 }
 Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")

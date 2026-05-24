@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.267" in out
+    assert "0.0.268" in out
     assert "promptbranch" in out
 
 
@@ -425,7 +425,7 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
         "release", "lifecycle-status",
-        "--version", "v0.0.267",
+        "--version", "v0.0.268",
         "--target-version", "v0.0.268",
         "--repo-path", "/tmp/repo",
         "--include-service-health",
@@ -434,7 +434,7 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
     ])
     assert args.command == "release"
     assert args.release_command == "lifecycle-status"
-    assert args.version == "v0.0.267"
+    assert args.version == "v0.0.268"
     assert args.target_version == "v0.0.268"
     assert args.repo_path == "/tmp/repo"
     assert args.include_service_health is True

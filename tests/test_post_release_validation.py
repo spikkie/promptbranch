@@ -109,6 +109,12 @@ def _write_fake_promptbranch(
         "if len(args) == 4 and args[:2] == ['test', 'report'] and args[3] == '--json':\n"
         "    print(json.dumps({'ok': True, 'action': 'test_report', 'status': 'verified'}))\n"
         "    raise SystemExit(0)\n"
+        "if args[:2] == ['release', 'lifecycle-status']:\n"
+        "    version = args[args.index('--version') + 1] if '--version' in args else adopted\n"
+        "    current = current_version()\n"
+        "    warnings = [] if current == version else ['runtime_source_baseline_mismatch']\n"
+        "    print(json.dumps({'ok': True, 'action': 'release_lifecycle_status', 'status': 'passed', 'severity': 'warning' if warnings else 'ok', 'lifecycle_phase': 'adopted_current' if current == version else 'runtime_only', 'operator_verdict': 'continue_normal_development', 'warning_codes': warnings, 'blocker_codes': [], 'next_safe_action': {'kind': 'continue_normal_development'}}))\n"
+        "    raise SystemExit(0)\n"
         "print(json.dumps({'ok': False, 'error': 'unexpected_args', 'argv': args}))\n"
         "raise SystemExit(2)\n",
         encoding="utf-8",
