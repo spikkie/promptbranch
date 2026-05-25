@@ -101,3 +101,5 @@ docs/release-v0.0.274.md
 docs/release-v0.0.275.md
 docs/release-v0.0.276.md
 docs/repair-v0.0.276.1.md
+docs/howto/15-finalize-artifact-intake-mvp.md
+docs/repair-v0.0.276.2.md
