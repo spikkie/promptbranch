@@ -1537,6 +1537,38 @@ prechecks:
 5. Report version, adopted artifact/source baseline, dirty state, baseline consistency signals, and release risk.
 6. Never create, install, migrate, adopt, commit, push, or mutate project sources.
 """,
+    "promptbranch-final-mvp": """---
+name: promptbranch-final-mvp
+description: Inspect the Promptbranch final MVP contract and current read-only state so external tools can decide the next safe operator step.
+risk: read
+allowed_tools:
+  - filesystem.read
+  - git.status
+  - git.diff.summary
+  - artifact.registry.current
+prechecks:
+  - repo_path_exists
+  - tool_read_only
+---
+
+## Purpose
+
+Expose the final Promptbranch MVP control-plane contract as a reusable, read-only skill for other tools.
+
+## Procedure
+
+1. Read VERSION.
+2. Read docs/mvp-definition-of-done.md.
+3. Read docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md when present.
+4. Read the current artifact registry entry.
+5. Run git.status and git.diff.summary.
+6. Report final MVP boundary visibility, accepted baseline visibility, working-tree state, and safe next operator actions.
+7. Never download, migrate, adopt, source-sync, run release-control scripts, commit, push, or mutate project state.
+
+## Contract for tool consumers
+
+Treat this skill output as inspection and planning input only. A green report means the final MVP contract is visible and the local state is internally inspectable; it is not final adoption proof and it does not authorize write-capable automation.
+""",
 }
 
 SKILL_SEARCH_DIR_NAMES: tuple[str, ...] = (".promptbranch/skills", "skills")
@@ -1759,6 +1791,25 @@ def _plan_tool_calls_for_skill(skill_name: str, request: str, *, repo_path: str 
         calls.append({"name": "git.diff.summary", "arguments": {}})
         return calls, notes
 
+    if normalized_name == "promptbranch-final-mvp":
+        calls = []
+        if (root / "VERSION").is_file():
+            calls.append({"name": "filesystem.read", "arguments": {"path": "VERSION", "max_bytes": 2000}})
+        else:
+            notes.append("VERSION file not present; final MVP skill cannot confirm runtime version from file")
+        for doc_path in (
+            "docs/mvp-definition-of-done.md",
+            "docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md",
+        ):
+            if (root / doc_path).is_file():
+                calls.append({"name": "filesystem.read", "arguments": {"path": doc_path, "max_bytes": 60000}})
+            else:
+                notes.append(f"{doc_path} not present; skipped read")
+        calls.append({"name": "artifact.registry.current", "arguments": {}})
+        calls.append({"name": "git.status", "arguments": {}})
+        calls.append({"name": "git.diff.summary", "arguments": {}})
+        return calls, notes
+
     notes.append("unknown_skill_plan_defaulted_to_read_only_request_classifier")
     return [dict(item) for item in _read_only_tool_specs_for_request(request)], notes
 
@@ -1926,6 +1977,28 @@ def _build_repo_inspection_report(results: list[dict[str, Any]], *, ok: bool) ->
     }
 
 
+def _doc_visibility_payload(
+    results: list[dict[str, Any]],
+    relative_path: str,
+    *,
+    required_markers: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    payload = _first_tool_payload(results, "filesystem.read", relative_path=relative_path)
+    text = str(payload.get("text") or "") if isinstance(payload, dict) else ""
+    read_ok = bool(payload and payload.get("ok"))
+    markers = {marker: (marker in text) for marker in required_markers}
+    missing_markers = [marker for marker, present in markers.items() if not present]
+    return {
+        "path": relative_path,
+        "read_ok": read_ok,
+        "bytes_returned": payload.get("bytes_returned") if isinstance(payload, dict) else None,
+        "truncated": bool(payload.get("truncated")) if isinstance(payload, dict) else False,
+        "required_markers": markers,
+        "missing_markers": missing_markers,
+        "visible": bool(read_ok and not missing_markers),
+    }
+
+
 def _build_release_readiness_report(results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any]:
     version_payload = _first_tool_payload(results, "filesystem.read", relative_path="VERSION")
     registry_payload = _first_tool_payload(results, "artifact.registry.current") or {}
@@ -1978,12 +2051,128 @@ def _build_release_readiness_report(results: list[dict[str, Any]], *, ok: bool) 
     }
 
 
+def _build_promptbranch_final_mvp_report(results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any]:
+    version_payload = _first_tool_payload(results, "filesystem.read", relative_path="VERSION")
+    registry_payload = _first_tool_payload(results, "artifact.registry.current") or {}
+    git_payload = _first_tool_payload(results, "git.status") or {}
+    diff_payload = _first_tool_payload(results, "git.diff.summary") or {}
+    mvp_dod = _doc_visibility_payload(
+        results,
+        "docs/mvp-definition-of-done.md",
+        required_markers=(
+            "## Required operator workflow",
+            "## Required invariants",
+            "## Required failure behavior",
+            "## Required evidence artifacts",
+            "## Final MVP verdict rule",
+            "pb artifact intake",
+            "scripts/finalize-artifact-intake-mvp.sh",
+            "pb ask \"Continue next slice\"",
+            "twice in a row",
+            "no manual ZIP repair",
+        ),
+    )
+    current_state = _doc_visibility_payload(
+        results,
+        "docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md",
+        required_markers=(
+            "Ask/Reply + Artifact Intake",
+            "Local Promptbranch-native MCP/agent/skills",
+            "Native release lifecycle",
+            "read-only",
+        ),
+    )
+    version = _version_from_tool_payload(version_payload)
+    current = registry_payload.get("current") if isinstance(registry_payload.get("current"), dict) else {}
+    current_version = current.get("version") or current.get("artifact_version")
+    git = git_payload.get("git") if isinstance(git_payload.get("git"), dict) else {}
+    dirty = bool(git.get("dirty"))
+    checks = {
+        "tools_ok": bool(ok),
+        "version_file_read": bool(version_payload and version_payload.get("ok")),
+        "artifact_current_available": bool(current),
+        "worktree_clean": not dirty,
+        "mvp_dod_visible": bool(mvp_dod.get("visible")),
+        "mvp_current_state_visible": bool(current_state.get("visible")),
+        "version_matches_current_artifact": bool(version and current_version and str(version) == str(current_version)),
+    }
+    if not ok:
+        status = "inspection_failed"
+    elif dirty:
+        status = "dirty_worktree"
+    elif not checks["mvp_dod_visible"]:
+        status = "mvp_dod_not_visible"
+    elif not checks["mvp_current_state_visible"]:
+        status = "mvp_current_state_not_visible"
+    elif not current:
+        status = "artifact_current_missing"
+    elif version and current_version and str(version) != str(current_version):
+        status = "working_tree_version_differs_from_adopted_baseline"
+    else:
+        status = "final_mvp_skill_ready_read_only"
+    blockers = []
+    if not checks["tools_ok"]:
+        blockers.append("inspection_tool_failed")
+    if not checks["version_file_read"]:
+        blockers.append("version_file_not_read")
+    if not checks["mvp_dod_visible"]:
+        blockers.append("mvp_definition_of_done_not_visible")
+    if not checks["mvp_current_state_visible"]:
+        blockers.append("mvp_current_state_not_visible")
+    if not checks["artifact_current_available"]:
+        blockers.append("artifact_current_missing")
+    if not checks["worktree_clean"]:
+        blockers.append("worktree_dirty")
+    warnings = []
+    if not checks["version_matches_current_artifact"]:
+        warnings.append("version_current_artifact_mismatch_or_unknown")
+    return {
+        "ok": bool(ok),
+        "kind": "promptbranch_final_mvp",
+        "status": status,
+        "purpose": "read-only skill report for external tools that need the final Promptbranch MVP contract and current safe operator context",
+        "version_file": {"version": version, "read_ok": bool(version_payload and version_payload.get("ok"))},
+        "artifact_current": {
+            "available": bool(current),
+            "filename": current.get("filename"),
+            "kind": current.get("kind"),
+            "version": current_version,
+            "source_ref": current.get("source_ref"),
+        },
+        "git": {
+            "is_repo": bool(git.get("is_repo")),
+            "branch": git.get("branch"),
+            "short_sha": git.get("short_sha"),
+            "dirty": dirty,
+            "status_lines": git.get("status_lines") if isinstance(git.get("status_lines"), list) else [],
+        },
+        "diff_stat": diff_payload.get("diff_stat") if isinstance(diff_payload, dict) else "",
+        "documents": {
+            "mvp_definition_of_done": mvp_dod,
+            "mvp_current_state_plan": current_state,
+        },
+        "checks": checks,
+        "blockers": blockers,
+        "warnings": warnings,
+        "safe_next_actions": [
+            {"kind": "inspect_mvp_status", "command": "pb artifact mvp-status --json", "mutates_state": False},
+            {"kind": "inspect_mvp_dod", "command": "pb artifact mvp-dod --json", "mutates_state": False},
+            {"kind": "inspect_release_readiness", "command": "pb agent release-readiness --json", "mutates_state": False},
+        ],
+        "risk": "read",
+        "mutation_performed": False,
+        "write_authority_granted": False,
+    }
+
+
 def _build_agent_report(skill: str | None, results: list[dict[str, Any]], *, ok: bool) -> dict[str, Any] | None:
     normalized_skill = str(skill or "").strip()
     if normalized_skill == "repo-inspection":
         return _build_repo_inspection_report(results, ok=ok)
     if normalized_skill == "release-readiness":
         return _build_release_readiness_report(results, ok=ok)
+    if normalized_skill == "promptbranch-final-mvp":
+        return _build_promptbranch_final_mvp_report(results, ok=ok)
     return None
 
 

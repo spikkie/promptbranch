@@ -129,6 +129,7 @@ Implemented/available:
 
 - Built-in `repo-inspection` skill.
 - Built-in `release-readiness` skill.
+- Built-in `promptbranch-final-mvp` skill for read-only final MVP contract and state inspection by external tools.
 - `pb skill list/show/validate`.
 - `pb agent run --skill repo-inspection ...`.
 - `pb agent run --skill release-readiness ...`.
@@ -319,6 +320,7 @@ Scope:
 - Freeze JSON schemas for:
   - repo-inspection report
   - release-readiness report
+  - promptbranch-final-mvp report
   - skill validation result
   - agent run result
 - Keep all skill/agent behavior read-only.
