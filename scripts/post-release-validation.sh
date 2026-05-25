@@ -65,7 +65,10 @@ Options:
       --require-real-candidate-mvp
                               Add --require-real-candidate to candidate-run. The no_artifact
                               protocol-smoke precondition is then a hard failure, not a
-                              normalized terminal state.
+                              normalized terminal state. When combined with
+                              --complete-candidate-mvp, the candidate-run evidence must also
+                              prove download_performed=true; an already-adopted baseline proof
+                              is not sufficient.
       --candidate-mvp-max-steps N
                               Maximum candidate-run lifecycle steps for --complete-candidate-mvp.
                               Default: ${candidate_mvp_max_steps}.
@@ -161,6 +164,12 @@ run_step_with_stdin() {
 candidate_run_no_artifact_precondition() {
   local payload_path="$1"
   python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('status') == 'candidate_run_cycle_precondition_failed', completion.get('status') == 'candidate_mvp_no_artifact_candidate', payload.get('stopped_reason') == 'no_artifact_candidate', payload.get('mutating_actions_executed') is False, payload.get('download_performed') is False, payload.get('verification_performed') is False, payload.get('migration_performed') is False, payload.get('adoption_performed') is False]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+}
+
+
+candidate_run_download_proof() {
+  local payload_path="$1"
+  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('mvp_complete') is True, completion.get('status') == 'candidate_mvp_complete', payload.get('download_performed') is True]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -468,7 +477,17 @@ run_artifact_candidate_run_step() {
         failures=$((failures + 1))
       fi
     else
-      rc_candidate_run=0
+      if [[ "${complete_candidate_mvp}" -eq 1 && "${require_real_candidate_mvp}" -eq 1 ]]; then
+        if candidate_run_download_proof "${candidate_run_log}"; then
+          rc_candidate_run=0
+        else
+          echo "artifact candidate-run strict real-candidate proof failed: download_performed=true is required; adopted_current proof is insufficient"
+          rc_candidate_run=1
+          failures=$((failures + 1))
+        fi
+      else
+        rc_candidate_run=0
+      fi
     fi
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${candidate_run_log}"
@@ -684,6 +703,7 @@ else
 fi
 
 lifecycle_status_log="${release_log_dir}/pb_release_lifecycle_status.${version}.json"
+prior_failures_before_lifecycle_status="${failures}"
 echo
 echo "===== release lifecycle-status snapshot ====="
 if [[ "${failures}" -eq 0 ]]; then
@@ -698,8 +718,13 @@ fi
 lifecycle_status_consistency_log="${release_log_dir}/pb_release_lifecycle_status.${version}.consistency.json"
 echo
 echo "===== release lifecycle-status snapshot consistency ====="
-set +e
-python3 -   "${lifecycle_status_log}"   "${lifecycle_status_consistency_log}"   "${version}"   "${target_version}"   "${adopt_performed}"   "${adopt_semantic_performed}"   "${rc_adopt_semantic}" <<'PYLCONSISTENCY'
+if [[ "${prior_failures_before_lifecycle_status}" -ne 0 ]]; then
+  printf '{"ok": true, "status": "skipped_due_to_prior_validation_failure", "severity": "skipped", "snapshot_path": "%s", "warning_codes": [], "blocker_codes": [], "diagnostics": [], "blocking_failures": []}
+' "${lifecycle_status_log}" > "${lifecycle_status_consistency_log}"
+  echo "release lifecycle-status consistency skipped because prior validation failures exist"
+else
+  set +e
+  python3 -     "${lifecycle_status_log}"     "${lifecycle_status_consistency_log}"     "${version}"     "${target_version}"     "${adopt_performed}"     "${adopt_semantic_performed}"     "${rc_adopt_semantic}" <<'PYLCONSISTENCY'
 import json
 import sys
 from pathlib import Path
@@ -892,19 +917,25 @@ out_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encodin
 print(json.dumps(result, indent=2, sort_keys=True))
 raise SystemExit(0 if not blockers else 1)
 PYLCONSISTENCY
-rc_lifecycle_status_consistency=$?
-set -u
-if [[ "${rc_lifecycle_status_consistency}" -ne 0 ]]; then
-  failures=$((failures + 1))
+  rc_lifecycle_status_consistency=$?
+  set -u
+  if [[ "${rc_lifecycle_status_consistency}" -ne 0 ]]; then
+    failures=$((failures + 1))
+  fi
 fi
 
 human_summary_guard_log="${release_log_dir}/pb_release_lifecycle_status.${version}.human_summary_guard.json"
 echo
 echo "===== release lifecycle human-summary regression guard ====="
-set +e
-python3 - \
-  "${lifecycle_status_log}" \
-  "${human_summary_guard_log}" <<'PYHUMANGUARD'
+if [[ "${prior_failures_before_lifecycle_status}" -ne 0 ]]; then
+  printf '{"ok": true, "status": "skipped_due_to_prior_validation_failure", "severity": "skipped", "snapshot_path": "%s", "fields": [], "warning_codes": [], "blocker_codes": [], "diagnostics": [], "blocking_failures": []}
+' "${lifecycle_status_log}" > "${human_summary_guard_log}"
+  echo "release lifecycle human-summary guard skipped because prior validation failures exist"
+else
+  set +e
+  python3 - \
+    "${lifecycle_status_log}" \
+    "${human_summary_guard_log}" <<'PYHUMANGUARD'
 import json
 import sys
 from pathlib import Path
@@ -1057,10 +1088,11 @@ out_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encodin
 print(json.dumps(result, indent=2, sort_keys=True))
 raise SystemExit(0 if not blockers else 1)
 PYHUMANGUARD
-rc_human_summary_guard=$?
-set -u
-if [[ "${rc_human_summary_guard}" -ne 0 ]]; then
-  failures=$((failures + 1))
+  rc_human_summary_guard=$?
+  set -u
+  if [[ "${rc_human_summary_guard}" -ne 0 ]]; then
+    failures=$((failures + 1))
+  fi
 fi
 
 python3 - \
@@ -1324,6 +1356,9 @@ def _classify_step_failure(step: str, rc: int, phase: str | None = None, details
         if status == "candidate_mvp_no_artifact_candidate" or stopped == "no_artifact_candidate":
             category = "operator_precondition_failure"
             reason = "strict real-candidate validation was requested but no real artifact candidate was selected"
+        elif str(require_real_candidate_mvp) == "1" and str(complete_candidate_mvp) == "1" and details.get("download_performed") is not True:
+            category = "artifact_download_proof_failure"
+            reason = "strict real-candidate MVP validation requires download_performed=true; adopted_current proof is insufficient"
         elif status == "candidate_mvp_complete" and proof == "adopted_current":
             category = "none"
             reason = "already-adopted current baseline satisfies candidate MVP proof"
@@ -1450,6 +1485,15 @@ Path(out).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encod
 print(json.dumps(summary, indent=2, sort_keys=True))
 PY
 
+if [[ "${failures}" -ne 0 ]]; then
+  echo "== Release lifecycle human summary =="
+  echo "version:              ${version}"
+  echo "target_version:       ${target_version}"
+  echo "validation_status:    failed"
+  echo "primary_category:     see ${summary_json}"
+  echo "failure_count:        ${failures}"
+  echo "summary_path:         ${summary_json}"
+else
 python3 - "${summary_json}" <<'PYHUMAN'
 import json
 import sys
@@ -1578,6 +1622,7 @@ print(f"lifecycle_snapshot:   {value(summary.get('lifecycle_status_snapshot_path
 print(f"consistency_snapshot: {value(summary.get('lifecycle_status_snapshot_consistency_path'), default='not_written')}")
 print(f"adopt_performed:      {value(get(steps, 'artifact_adopt', 'performed'))}")
 PYHUMAN
+fi
 
 if [[ "${failures}" -ne 0 ]]; then
   echo "post-release validation failed: ${failures} failing step(s)" >&2

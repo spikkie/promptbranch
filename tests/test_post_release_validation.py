@@ -445,6 +445,78 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     assert adopt_index < ask_index < candidate_run_index
 
 
+def test_post_release_validation_strict_real_candidate_requires_download_proof_after_adopt(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    bin_dir = tmp_path / "bin"
+    repo.mkdir()
+    bin_dir.mkdir()
+    requested_version = "v0.0.276.3"
+    (repo / "VERSION").write_text(requested_version + "\n", encoding="utf-8")
+    (repo / f"chatgpt_claudecode_workflow_{requested_version}.zip").write_text(
+        "fake zip for adopt command selection\n", encoding="utf-8"
+    )
+    _write_fake_promptbranch(
+        bin_dir,
+        "v0.0.276.2",
+        adopted_version=requested_version,
+        fail_protocol_until_adopted=False,
+        candidate_mvp_complete=False,
+    )
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["POST_RELEASE_VALIDATION_DISABLE_SESSION_TEE"] = "1"
+    stdout_path = tmp_path / "post_release_validation.stdout.log"
+    with stdout_path.open("w", encoding="utf-8") as stdout:
+        result = subprocess.run(
+            [
+                str(SCRIPT),
+                "--version",
+                requested_version,
+                "--skip-protocol-smoke",
+                "--skip-artifact-intake",
+                "--skip-tests",
+                "--skip-zip-hygiene",
+                "--adopt-if-accepted",
+                "--complete-candidate-mvp",
+                "--require-real-candidate-mvp",
+            ],
+            cwd=repo,
+            env=env,
+            text=True,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            timeout=60,
+            check=False,
+        )
+
+    assert result.returncode == 1, stdout_path.read_text(encoding="utf-8")
+    summary = _summary(repo, requested_version)
+    step = summary["steps"]["artifact_candidate_run_plan"]
+    classification = summary["validation_classification"]
+    assert summary["ok"] is False
+    assert summary["complete_candidate_mvp"] is True
+    assert summary["require_real_candidate_mvp"] is True
+    assert step["phase"] == "post_adoption"
+    assert step["rc"] == 1
+    assert step["mvp_complete"] is True
+    assert step["mvp_completion_status"] == "candidate_mvp_complete"
+    assert step["mvp_completion_proof_source"] == "adopted_current"
+    assert step["download_performed"] is False
+    assert classification["status"] == "failed"
+    assert classification["blocking_categories"] == ["artifact_download_proof_failure"]
+    assert classification["blocking_failures"] == [
+        {
+            "blocking": True,
+            "category": "artifact_download_proof_failure",
+            "phase": "post_adoption",
+            "rc": 1,
+            "reason": "strict real-candidate MVP validation requires download_performed=true; adopted_current proof is insufficient",
+            "severity": "blocking",
+            "step": "artifact_candidate_run_plan",
+        }
+    ]
+
+
 def test_post_release_validation_classifies_strict_no_artifact_as_operator_precondition(tmp_path: Path) -> None:
     result = _run_validation(
         tmp_path,

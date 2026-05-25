@@ -63,6 +63,8 @@ scripts/finalize-artifact-intake-mvp.sh \
   --require-real-candidate-mvp
 ```
 
+From `v0.0.276.4`, this strict form also requires explicit artifact download proof. If `pb artifact candidate-run` reports `mvp_complete=true` only because the candidate is already the adopted current baseline, but `download_performed=false`, the finalizer fails with `artifact_download_proof_failure`.
+
 Bounded execution controls:
 
 ```bash
@@ -453,6 +455,14 @@ validation_classification.failures
 ```
 
 A healthy finalization run should have no blocking failures and should show adoption/current-baseline alignment after adoption.
+
+For strict real-candidate validation, also check:
+
+```text
+steps.artifact_candidate_run_plan.download_performed == true
+```
+
+If it is `false`, the run did not prove the ZIP download path even when the baseline is already adopted.
 
 ## Failure triage
 
