@@ -508,31 +508,31 @@ def test_post_release_validation_prints_human_lifecycle_summary(tmp_path: Path) 
     result = _run_validation(
         tmp_path,
         "v0.0.270",
-        "v0.0.273",
+        "v0.0.274",
         "--adopt-if-accepted",
         "--skip-candidate-run",
-        adopted_version="v0.0.273",
+        adopted_version="v0.0.274",
     )
 
     assert result.returncode == 0, result.stdout
     assert "== Release lifecycle human summary ==" in result.stdout
-    assert "version:              v0.0.273" in result.stdout
+    assert "version:              v0.0.274" in result.stdout
     assert "validation_status:    passed" in result.stdout
     assert "lifecycle_consistency:passed" in result.stdout
     assert "human_summary_guard: passed" in result.stdout
-    assert "runtime_version:      v0.0.273" in result.stdout
-    assert "version_file:         v0.0.273" in result.stdout
-    assert "artifact_current:     v0.0.273" in result.stdout
-    assert "source_current:       v0.0.273" in result.stdout
+    assert "runtime_version:      v0.0.274" in result.stdout
+    assert "version_file:         v0.0.274" in result.stdout
+    assert "artifact_current:     v0.0.274" in result.stdout
+    assert "source_current:       v0.0.274" in result.stdout
     assert "candidate_count:      0" in result.stdout
     assert "next_safe_action:" in result.stdout
-    summary = _summary(tmp_path / "repo", "v0.0.273")
-    assert summary["version"] == "v0.0.273"
+    summary = _summary(tmp_path / "repo", "v0.0.274")
+    assert summary["version"] == "v0.0.274"
     guard = summary["lifecycle_human_summary_guard"]
     assert guard["status"] == "passed"
     assert summary["steps"]["release_lifecycle_human_summary_guard"]["rc"] == 0
     assert summary["lifecycle_human_summary_guard_path"].endswith(
-        "pb_release_lifecycle_status.v0.0.273.human_summary_guard.json"
+        "pb_release_lifecycle_status.v0.0.274.human_summary_guard.json"
     )
 
 def test_post_release_validation_blocks_stale_lifecycle_status_snapshot_after_adopt(tmp_path: Path) -> None:

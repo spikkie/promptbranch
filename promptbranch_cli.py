@@ -5520,7 +5520,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "mvp-dod", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
@@ -11281,6 +11281,117 @@ async def cmd_artifact_candidate_status(backend: Any, args: argparse.Namespace) 
 
 
 
+
+
+MVP_DOD_DOC_RELATIVE_PATH = "docs/mvp-definition-of-done.md"
+MVP_DOD_REQUIRED_SECTIONS = [
+    "# Promptbranch MVP Definition of Done",
+    "## MVP boundary",
+    "## Required operator workflow",
+    "## Required invariants",
+    "## Required failure behavior",
+    "## Required evidence artifacts",
+    "## Out of scope for MVP",
+    "## Final MVP verdict rule",
+]
+MVP_DOD_REQUIRED_WORKFLOW_MARKERS = [
+    "pb ws use",
+    "pb task use",
+    "pb ask",
+    "--protocol",
+    "pb task answer parse",
+    "pb artifact intake",
+    "--download",
+    "--verify",
+    "--migrate",
+    "scripts/finalize-artifact-intake-mvp.sh",
+    "--require-real-candidate-mvp",
+    "pb artifact current",
+    "--from-current-baseline",
+]
+
+
+def _mvp_dod_visibility_report(repo_root: Path) -> dict[str, Any]:
+    """Return a read-only visibility/check report for the canonical MVP DoD doc."""
+
+    repo_root = Path(repo_root).expanduser().resolve()
+    doc_path = repo_root / MVP_DOD_DOC_RELATIVE_PATH
+    text = ""
+    read_error = None
+    if doc_path.exists() and doc_path.is_file():
+        try:
+            text = doc_path.read_text(encoding="utf-8")
+        except Exception as exc:  # pragma: no cover - defensive against unreadable files
+            read_error = str(exc)
+
+    sections = {section: (section in text) for section in MVP_DOD_REQUIRED_SECTIONS}
+    workflow_markers = {marker: (marker in text) for marker in MVP_DOD_REQUIRED_WORKFLOW_MARKERS}
+    final_verdict_present = "twice in a row" in text and "no manual ZIP repair" in text
+    missing_sections = [section for section, present in sections.items() if not present]
+    missing_workflow_markers = [marker for marker, present in workflow_markers.items() if not present]
+    ok = bool(doc_path.exists() and doc_path.is_file() and not read_error and not missing_sections and not missing_workflow_markers and final_verdict_present)
+    status = "mvp_dod_visible" if ok else "mvp_dod_incomplete"
+    if not doc_path.exists():
+        status = "mvp_dod_missing"
+    elif read_error:
+        status = "mvp_dod_unreadable"
+
+    return {
+        "ok": ok,
+        "status": status,
+        "path": MVP_DOD_DOC_RELATIVE_PATH,
+        "absolute_path": str(doc_path),
+        "exists": doc_path.exists(),
+        "readable": bool(text) and read_error is None,
+        "read_error": read_error,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "sections": sections,
+        "missing_sections": missing_sections,
+        "workflow_markers": workflow_markers,
+        "missing_workflow_markers": missing_workflow_markers,
+        "final_verdict_rule_present": final_verdict_present,
+        "summary": (
+            "Canonical MVP Definition of Done is present and contains the required visibility sections."
+            if ok else
+            "Canonical MVP Definition of Done is missing, unreadable, or lacks required visibility markers."
+        ),
+    }
+
+
+async def cmd_artifact_mvp_dod(backend: Any, args: argparse.Namespace) -> int:
+    """Check the canonical MVP Definition of Done document without mutating anything."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    report = _mvp_dod_visibility_report(repo_root)
+    payload = {
+        "ok": bool(report.get("ok")),
+        "action": "artifact_mvp_dod",
+        "status": report.get("status"),
+        "repo_path": str(repo_root),
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "mvp_definition_of_done": report,
+        "operator_instruction": (
+            "Read-only MVP DoD visibility check. This command reports whether the canonical DoD document is present; "
+            "it does not enforce the full MVP gate or mutate artifact/source state."
+        ),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("MVP Definition of Done")
+        print("======================")
+        print(f"status:             {payload.get('status')}")
+        print(f"ok:                 {str(payload.get('ok')).lower()}")
+        print(f"path:               {report.get('path')}")
+        print(f"exists:             {str(report.get('exists')).lower()}")
+        print(f"missing_sections:   {len(report.get('missing_sections') or [])}")
+        print(f"missing_workflow:   {len(report.get('missing_workflow_markers') or [])}")
+        print(f"final_verdict_rule: {str(report.get('final_verdict_rule_present')).lower()}")
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int:
     """Report the Artifact Intake MVP cockpit state without mutating anything."""
 
@@ -11323,6 +11434,7 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         precondition=precondition,
         repo_root=repo_root,
     )
+    mvp_dod_report = _mvp_dod_visibility_report(repo_root)
 
     finalizer_command = None
     if current_payload.get("artifact_version"):
@@ -11371,12 +11483,14 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "candidate_next": next_payload,
         "mvp_completion": completion,
         "inventory_summary": inventory_summary,
+        "mvp_definition_of_done": mvp_dod_report,
         "commands": {
             "inspect_current": "pb artifact current --json",
             "inspect_candidates": "pb artifact candidate-status --all --json",
             "inspect_next": "pb artifact candidate-next --json",
             "execute_until_blocked": "pb artifact candidate-run --execute-until-blocked --require-complete --json",
             "finalize_mvp": finalizer_command,
+            "inspect_mvp_dod": "pb artifact mvp-dod --json",
         },
         "operator_instruction": (
             "Read-only Artifact Intake MVP cockpit. Use candidate_next.recommended_next_command "
@@ -11392,6 +11506,8 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         print(f"severity={payload.get('severity')}")
         print(f"mvp_complete={str(payload.get('mvp_complete')).lower()}")
         print(f"candidate_count={payload.get('candidate_count')}")
+        dod = payload.get("mvp_definition_of_done") if isinstance(payload.get("mvp_definition_of_done"), dict) else {}
+        print(f"mvp_dod_status={dod.get('status') or 'unknown'}")
         plan = payload.get("remediation_plan") if isinstance(payload.get("remediation_plan"), dict) else {}
         if plan:
             print(f"remediation_kind={plan.get('kind')}")
@@ -12835,6 +12951,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_candidate_status(backend, args)
     if args.artifact_command == "mvp-status":
         return await cmd_artifact_mvp_status(backend, args)
+    if args.artifact_command == "mvp-dod":
+        return await cmd_artifact_mvp_dod(backend, args)
     if args.artifact_command == "candidate-next":
         return await cmd_artifact_candidate_next(backend, args)
     if args.artifact_command == "candidate-run":
@@ -13812,6 +13930,10 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_mvp_status.add_argument("--version", help="Optional candidate version scope such as v0.0.245.5.")
     artifact_mvp_status.add_argument("--repo-path", default=".", help="Repository root containing migrated candidate ZIPs. Defaults to current directory.")
     artifact_mvp_status.add_argument("--json", action="store_true")
+
+    artifact_mvp_dod = artifact_subparsers.add_parser("mvp-dod", help="Read-only visibility check for docs/mvp-definition-of-done.md.")
+    artifact_mvp_dod.add_argument("--repo-path", default=".", help="Repository root containing docs/mvp-definition-of-done.md. Defaults to current directory.")
+    artifact_mvp_dod.add_argument("--json", action="store_true")
 
     artifact_candidate_next = artifact_subparsers.add_parser("candidate-next", help="Report the single next operator action for the artifact candidate MVP loop without mutating state.")
     artifact_candidate_next.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional; when omitted the command selects the highest-priority candidate action from inventory.")
