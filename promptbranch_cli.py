@@ -10924,6 +10924,12 @@ def _candidate_status_recommended_command(*, candidate_version: str | None, life
             "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
             "reason": "no migrated candidate is selected yet",
         }
+    if lifecycle.get("candidate_accepted"):
+        return {
+            "kind": "candidate_already_accepted",
+            "command": "pb artifact current --json",
+            "reason": "candidate already appears accepted; inspect current baseline before continuing",
+        }
     version_flag = f" --version {candidate_version}" if candidate_version else ""
     if lifecycle.get("candidate_zip_exists") is False or not lifecycle.get("candidate_verified"):
         return {
@@ -10937,16 +10943,10 @@ def _candidate_status_recommended_command(*, candidate_version: str | None, life
             "command": f"pb artifact candidate-test{version_flag} --json",
             "reason": "candidate is migrated and verified but has no passing candidate-test record",
         }
-    if not lifecycle.get("candidate_accepted"):
-        return {
-            "kind": "accept_candidate",
-            "command": f"pb artifact accept-candidate{version_flag} --adopt-if-green --json",
-            "reason": "candidate is migrated, verified, and tested but not yet accepted",
-        }
     return {
-        "kind": "candidate_already_accepted",
-        "command": "pb artifact current --json",
-        "reason": "candidate already appears accepted; inspect current baseline before continuing",
+        "kind": "accept_candidate",
+        "command": f"pb artifact accept-candidate{version_flag} --adopt-if-green --json",
+        "reason": "candidate is migrated, verified, and tested but not yet accepted",
     }
 
 
