@@ -63,6 +63,8 @@ pb ask "Continue next slice" \
 
 The same workflow must pass for at least two consecutive normal releases from clean accepted baselines.
 
+Manual validation details for the finalizer are documented in `docs/howto/15-finalize-artifact-intake-mvp.md`. That manual is the operator reference for preflight checks, wrapper-contract tests, delegated post-release phases, evidence files, and failure triage.
+
 ## Required invariants
 
 The MVP is done only when all of these invariants hold.
