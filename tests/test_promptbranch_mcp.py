@@ -87,7 +87,7 @@ def test_mcp_jsonrpc_initialize_and_tools_list() -> None:
     init = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init is not None
     assert init["result"]["capabilities"]["tools"]["listChanged"] is False
-    assert init["result"]["serverInfo"]["version"] == "0.0.274"
+    assert init["result"]["serverInfo"]["version"] == "0.0.275"
 
     listed = handle_mcp_jsonrpc_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     assert listed is not None
@@ -653,6 +653,135 @@ def test_skill_list_includes_builtin_release_readiness() -> None:
     assert "release-readiness" in skills
     assert skills["release-readiness"]["risk"] == "read"
     assert "artifact.registry.current" in skills["release-readiness"]["allowed_tools"]
+
+
+def test_skill_list_includes_builtin_promptbranch_final_mvp() -> None:
+    payload = skill_list()
+    skills = {item["name"]: item for item in payload["skills"]}
+
+    assert payload["ok"] is True
+    assert "promptbranch-final-mvp" in skills
+    assert skills["promptbranch-final-mvp"]["risk"] == "read"
+    assert "filesystem.read" in skills["promptbranch-final-mvp"]["allowed_tools"]
+    assert "artifact.registry.current" in skills["promptbranch-final-mvp"]["allowed_tools"]
+
+
+def test_promptbranch_final_mvp_skill_validate_is_read_only() -> None:
+    payload = skill_validate("promptbranch-final-mvp")
+
+    assert payload["ok"] is True
+    assert payload["skill"]["name"] == "promptbranch-final-mvp"
+    assert payload["skill"]["risk"] == "read"
+    assert set(payload["skill"]["allowed_tools"]) == {
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current",
+    }
+
+
+def test_agent_run_promptbranch_final_mvp_builds_structured_report(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, dict]] = []
+    mvp_dod_text = """# Promptbranch MVP Definition of Done
+## Required operator workflow
+pb artifact intake
+scripts/finalize-artifact-intake-mvp.sh
+pb ask \"Continue next slice\"
+## Required invariants
+## Required failure behavior
+## Required evidence artifacts
+## Final MVP verdict rule
+twice in a row
+no manual ZIP repair
+"""
+    current_state_text = """# Promptbranch MVP — Current State and Step-by-Step Plan
+Ask/Reply + Artifact Intake
+Local Promptbranch-native MCP/agent/skills
+Native release lifecycle
+read-only
+"""
+
+    def fake_mcp(tool, arguments=None, **kwargs):
+        calls.append((tool, arguments or {}))
+        if tool == "filesystem.read":
+            path = (arguments or {}).get("path")
+            text_by_path = {
+                "VERSION": "v9.9.9\n",
+                "docs/mvp-definition-of-done.md": mvp_dod_text,
+                "docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md": current_state_text,
+            }
+            structured = {
+                "ok": True,
+                "tool": "filesystem.read",
+                "relative_path": path,
+                "text": text_by_path[path],
+                "bytes_returned": len(text_by_path[path].encode("utf-8")),
+                "truncated": False,
+            }
+        elif tool == "artifact.registry.current":
+            structured = {
+                "ok": True,
+                "tool": "artifact.registry.current",
+                "current": {
+                    "filename": "chatgpt_claudecode_workflow_v9.9.9.zip",
+                    "version": "v9.9.9",
+                    "kind": "adopted_release",
+                    "source_ref": "chatgpt_claudecode_workflow_v9.9.9.zip",
+                },
+            }
+        elif tool == "git.status":
+            structured = {
+                "ok": True,
+                "tool": "git.status",
+                "git": {
+                    "is_repo": True,
+                    "branch": "main",
+                    "short_sha": "abc1234",
+                    "dirty": False,
+                    "status_lines": ["## main"],
+                },
+            }
+        elif tool == "git.diff.summary":
+            structured = {"ok": True, "tool": "git.diff.summary", "diff_stat": ""}
+        else:  # pragma: no cover - defensive
+            raise AssertionError(tool)
+        return {
+            "ok": True,
+            "action": "mcp_tool_call_via_stdio",
+            "status": "verified",
+            "tool": tool,
+            "arguments": arguments or {},
+            "tool_response": {"result": {"structuredContent": structured}},
+        }
+
+    monkeypatch.setattr("promptbranch_mcp.mcp_tool_call_via_stdio", fake_mcp)
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "mvp-definition-of-done.md").write_text(mvp_dod_text, encoding="utf-8")
+    (docs / "promptbranch_mvp_current_state_and_plan_2026-05-24.md").write_text(current_state_text, encoding="utf-8")
+
+    payload = agent_run("inspect final MVP", repo_path=tmp_path, skill="promptbranch-final-mvp")
+
+    assert payload["ok"] is True
+    assert payload["planner"] == "skill:promptbranch-final-mvp"
+    assert [item[0] for item in calls] == [
+        "filesystem.read",
+        "filesystem.read",
+        "filesystem.read",
+        "artifact.registry.current",
+        "git.status",
+        "git.diff.summary",
+    ]
+    report = payload["report"]
+    assert report["kind"] == "promptbranch_final_mvp"
+    assert report["status"] == "final_mvp_skill_ready_read_only"
+    assert report["documents"]["mvp_definition_of_done"]["visible"] is True
+    assert report["documents"]["mvp_current_state_plan"]["visible"] is True
+    assert report["checks"]["version_matches_current_artifact"] is True
+    assert report["mutation_performed"] is False
+    assert report["write_authority_granted"] is False
+    assert all(item["mutates_state"] is False for item in report["safe_next_actions"])
 
 
 def test_agent_run_release_readiness_builds_structured_report(monkeypatch, tmp_path: Path) -> None:
