@@ -43,6 +43,7 @@ Options forwarded to post-release-validation.sh:
       --skip-tests
       --skip-zip-hygiene
       --require-real-candidate-mvp
+          Require candidate-run to prove a real downloaded candidate when finalizing.
   -h, --help
 
 Environment:
