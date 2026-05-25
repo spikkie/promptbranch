@@ -11201,11 +11201,17 @@ def _artifact_candidate_lifecycle_status_all(
         )
         status = "candidate_inventory_has_adoption_ready"
     else:
-        recommended = next(
-            (item.get("recommended_next_command") for item in reports if isinstance(item.get("recommended_next_command"), dict)),
-            {"kind": "inspect_candidate", "command": "pb artifact candidate-status --all --json", "reason": "inspect candidate lifecycle inventory"},
-        )
-        status = "candidate_inventory_reported"
+        actionable_reports = _candidate_next_actionable_candidates(reports)
+        if actionable_reports:
+            selected_actionable = min(actionable_reports, key=_candidate_next_priority)
+            recommended = selected_actionable.get("recommended_next_command") if isinstance(selected_actionable.get("recommended_next_command"), dict) else {"kind": "inspect_candidate", "command": "pb artifact candidate-status --all --json", "reason": "inspect candidate lifecycle inventory"}
+            status = "candidate_inventory_reported"
+        else:
+            recommended = _candidate_next_no_actionable_recommendation(
+                historical_count=_candidate_next_historical_candidate_count(reports),
+                candidate_count=len(reports),
+            )
+            status = "candidate_inventory_history_only"
 
     return {
         "ok": True,
@@ -11520,12 +11526,51 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
     return 0
 
 
+def _candidate_next_recommendation_kind(item: dict[str, Any]) -> str:
+    recommendation = item.get("recommended_next_command") if isinstance(item.get("recommended_next_command"), dict) else {}
+    return str(recommendation.get("kind") or "")
+
+
+def _candidate_next_is_actionable(item: dict[str, Any]) -> bool:
+    """Return whether a lifecycle row may drive an unscoped candidate-next action.
+
+    Historical accepted candidates remain useful inventory evidence, but they must
+    not be selected as the next actionable step. Selecting them can incorrectly
+    recommend re-download/remigration for an old already-accepted release whose
+    ZIP was later pruned from the repo root.
+    """
+
+    lifecycle = item.get("lifecycle") if isinstance(item.get("lifecycle"), dict) else {}
+    kind = _candidate_next_recommendation_kind(item)
+    status = str(item.get("status") or "")
+    if lifecycle.get("candidate_accepted") or kind == "candidate_already_accepted" or status == "candidate_already_accepted":
+        return False
+    return kind in {"accept_candidate", "test_candidate", "repair_or_remigrate_candidate", "intake_candidate"}
+
+
+def _candidate_next_actionable_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in candidates if _candidate_next_is_actionable(item)]
+
+
+def _candidate_next_historical_candidate_count(candidates: list[dict[str, Any]]) -> int:
+    return sum(1 for item in candidates if not _candidate_next_is_actionable(item))
+
+
+def _candidate_next_no_actionable_recommendation(*, historical_count: int, candidate_count: int) -> dict[str, Any]:
+    return {
+        "kind": "no_actionable_candidate",
+        "command": None,
+        "reason": "registered candidates are historical, accepted, or otherwise not actionable; run a new release-candidate protocol ask before artifact intake",
+        "candidate_count": candidate_count,
+        "historical_or_non_actionable_candidate_count": historical_count,
+    }
+
+
 def _candidate_next_priority(item: dict[str, Any]) -> tuple[int, int]:
     """Sort candidate lifecycle reports by the next action that advances the MVP loop."""
 
     lifecycle = item.get("lifecycle") if isinstance(item.get("lifecycle"), dict) else {}
-    recommendation = item.get("recommended_next_command") if isinstance(item.get("recommended_next_command"), dict) else {}
-    kind = str(recommendation.get("kind") or "")
+    kind = _candidate_next_recommendation_kind(item)
     if lifecycle.get("adoption_eligible") or kind == "accept_candidate":
         return (0, int(item.get("index") or 0))
     if (lifecycle.get("candidate_verified") and not lifecycle.get("candidate_test_passed")) or kind == "test_candidate":
@@ -11548,6 +11593,7 @@ def _candidate_next_status_from_kind(kind: str) -> str:
         "candidate_already_accepted": "candidate_next_already_accepted",
         "inspect_candidate": "candidate_next_inspection_required",
         "no_artifact_candidate": "candidate_next_no_artifact_candidate",
+        "no_actionable_candidate": "candidate_next_no_actionable_candidate",
     }
     return mapping.get(kind or "", "candidate_next_reported")
 
@@ -11674,8 +11720,10 @@ def _current_adopted_candidate_fallback(
         or registry_version != requested_version
     ):
         return None
-    if requested_version and runtime_version and runtime_version != requested_version:
-        return None
+    # Runtime code may intentionally be newer than the adopted Project Source
+    # baseline during validation/repair flows. Scoped adopted-current fallback is
+    # based on state + artifact registry agreement, not the installed package
+    # version.
 
     registry_kind = str(registry_current.get("kind") or "")
     if registry_kind and registry_kind != "adopted_release":
@@ -11792,7 +11840,9 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
             repo_root=repo_root,
         )
         candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
-        selected = min(candidates, key=_candidate_next_priority) if candidates else None
+        actionable_candidates = _candidate_next_actionable_candidates(candidates)
+        historical_count = _candidate_next_historical_candidate_count(candidates)
+        selected = min(actionable_candidates, key=_candidate_next_priority) if actionable_candidates else None
         if selected is None:
             precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
             lifecycle = {
@@ -11804,7 +11854,13 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
                 "candidate_accepted": False,
                 "adoption_eligible": False,
             }
-            if precondition.get("blocks_intake"):
+            if candidates:
+                recommendation = _candidate_next_no_actionable_recommendation(
+                    historical_count=historical_count,
+                    candidate_count=len(candidates),
+                )
+                instruction = "Registered candidates exist only as historical/non-actionable records. Do not run artifact intake for them; start from the current adopted baseline and create a new release-candidate protocol ask when needed."
+            elif precondition.get("blocks_intake"):
                 recommendation = _no_artifact_candidate_recommendation(precondition)
                 instruction = "No registered candidates exist and the latest validated protocol reply declared no_artifact. Candidate intake is not applicable until a release-candidate protocol ask produces an artifact."
             else:
@@ -11813,7 +11869,9 @@ async def cmd_artifact_candidate_next(backend: Any, args: argparse.Namespace) ->
             payload = {
                 **base,
                 "status": _candidate_next_status_from_kind(str(recommendation.get("kind") or "")),
-                "candidate_count": 0,
+                "candidate_count": inventory.get("candidate_count") if candidates else 0,
+                "actionable_candidate_count": len(actionable_candidates),
+                "historical_or_non_actionable_candidate_count": historical_count,
                 "inventory": inventory,
                 "selected_candidate": None,
                 "recommended_next_command": recommendation,
@@ -11899,7 +11957,9 @@ def _candidate_run_next_payload(
         repo_root=repo_root,
     )
     candidates = [item for item in inventory.get("candidates", []) if isinstance(item, dict)]
-    selected = min(candidates, key=_candidate_next_priority) if candidates else None
+    actionable_candidates = _candidate_next_actionable_candidates(candidates)
+    historical_count = _candidate_next_historical_candidate_count(candidates)
+    selected = min(actionable_candidates, key=_candidate_next_priority) if actionable_candidates else None
     candidate_count = int(inventory.get("candidate_count") or 0)
     if selected is None:
         precondition = _latest_protocol_artifact_candidate_precondition(profile_root)
@@ -11912,7 +11972,12 @@ def _candidate_run_next_payload(
             "candidate_accepted": False,
             "adoption_eligible": False,
         }
-        if precondition.get("blocks_intake"):
+        if candidates:
+            recommendation = _candidate_next_no_actionable_recommendation(
+                historical_count=historical_count,
+                candidate_count=candidate_count,
+            )
+        elif precondition.get("blocks_intake"):
             recommendation = _no_artifact_candidate_recommendation(precondition)
         else:
             recommendation = _candidate_status_recommended_command(candidate_version=None, lifecycle=lifecycle)
@@ -11921,6 +11986,8 @@ def _candidate_run_next_payload(
             "recommended_next_command": recommendation,
             "selected_candidate": None,
             "candidate_intake_precondition": precondition,
+            "actionable_candidate_count": len(actionable_candidates),
+            "historical_or_non_actionable_candidate_count": historical_count,
         }
     else:
         recommendation = selected.get("recommended_next_command") if isinstance(selected.get("recommended_next_command"), dict) else {}
