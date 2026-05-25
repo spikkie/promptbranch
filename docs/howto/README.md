@@ -19,6 +19,7 @@ These manuals break the project into focused tasks instead of one long README.
 13. [Sync source snapshots and manage artifacts](13-source-sync-and-artifacts.md)
 14. [Use the read-only MCP local agent surface](14-use-mcp-local-agent.md)
 15. [Finalize the Artifact Intake MVP manually](15-finalize-artifact-intake-mvp.md)
+16. [Run manual Promptbranch command use cases](16-manual-pb-command-use-cases.md)
 
 ## Reading order
 
