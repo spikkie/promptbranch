@@ -847,11 +847,11 @@ scripts/finalize-artifact-intake-mvp.sh \
 
 ### 9.3 Run finalizer with strict real-candidate requirement
 
-From `v0.0.276.5`, this strict form asks ChatGPT for an artifact-producing release candidate by running `pb ask-release` for `--target-version`, then runs artifact intake with `--download --verify` before candidate-run proof is accepted.
+From `v0.0.276.6`, this strict form asks ChatGPT for an artifact-producing release candidate by running `pb ask-release` for `--target-version` before full tests/adoption, then runs artifact intake with `--download --verify` before candidate-run proof is accepted.
 
 ```bash
 scripts/finalize-artifact-intake-mvp.sh \
-  --version v0.0.276.5 \
+  --version v0.0.276.6 \
   --target-version v0.0.277 \
   --pb-cmd promptbranch \
   --require-real-candidate-mvp \
@@ -863,8 +863,8 @@ scripts/finalize-artifact-intake-mvp.sh \
 Inspect strict download proof:
 
 ```bash
-python3 -m json.tool .pb_profile/release_logs/v0.0.276.5/pb_ask_protocol_smoke.v0.0.276.5.json
-python3 -m json.tool .pb_profile/release_logs/v0.0.276.5/pb_artifact_intake_dry_run.v0.0.276.5.json
+python3 -m json.tool .pb_profile/release_logs/v0.0.276.6/pb_ask_protocol_smoke.v0.0.276.6.json
+python3 -m json.tool .pb_profile/release_logs/v0.0.276.6/pb_artifact_intake_dry_run.v0.0.276.6.json
 ```
 
 Required fields in the intake evidence:
