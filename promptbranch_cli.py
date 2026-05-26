@@ -3073,6 +3073,24 @@ async def _download_selected_artifact_candidate_via_browser(
                     "intake_stage": "download_requested",
                 }
     if not target_path.is_file():
+        browser_target = Path(str(browser_result.get("target_path") or "")).expanduser() if isinstance(browser_result, dict) else None
+        if browser_target and browser_target.is_file():
+            try:
+                inbox_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(browser_target, target_path)
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    **result,
+                    "ok": False,
+                    "status": "artifact_browser_download_import_failed",
+                    "download_performed": False,
+                    "download_error": str(exc),
+                    "download_url": url,
+                    "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result, "cli_import_attempted": True, "browser_target_copy_attempted": True},
+                    "artifact_inbox_dir": str(inbox_dir),
+                    "intake_stage": "download_requested",
+                }
+    if not target_path.is_file():
         return {
             **result,
             "ok": False,
