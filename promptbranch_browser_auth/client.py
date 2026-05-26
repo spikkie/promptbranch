@@ -2423,21 +2423,54 @@ class ChatGPTBrowserClient:
         await page.wait_for_load_state('domcontentloaded')
         timeout_ms = max(1000, int(float(timeout_seconds or 120.0) * 1000))
 
-        # Prefer the rendered markdown link by visible filename.  The href may be
-        # a ChatGPT sandbox URL that only works inside this browser session.
-        locator = page.get_by_role('link', name=re.compile(re.escape(safe_filename)))
+        # Prefer rendered download controls by visible filename.  ChatGPT may
+        # render a generated file as an entity-style <button> rather than as an
+        # <a href="sandbox:..."> anchor.  The visible filename is the durable
+        # operator-facing selector; the DOM element type is not stable.
+        filename_re = re.compile(re.escape(safe_filename))
+        try:
+            await page.get_by_text(filename_re).first.wait_for(timeout=min(timeout_ms, 15000))
+        except Exception:
+            # Continue to collect diagnostics below; the page may still expose a
+            # late-rendered control after scrolling.
+            pass
+        try:
+            await page.mouse.wheel(0, 2000)
+            await page.wait_for_timeout(250)
+            await page.mouse.wheel(0, -2000)
+            await page.wait_for_timeout(250)
+        except Exception:
+            pass
+
+        locator = page.get_by_role('link', name=filename_re)
         count = await locator.count()
+        control_kind = 'link'
         # Avoid CSS-escaping hrefs here; the visible filename is the stable
-        # operator-facing selector and works for rendered markdown links.
+        # selector and works for rendered markdown links.
         if count < 1:
-            # Fallback: any anchor whose text contains the filename, even if the
-            # accessible name is different.
             locator = page.locator('a').filter(has_text=safe_filename)
             count = await locator.count()
+            control_kind = 'anchor_text'
+        if count < 1:
+            locator = page.get_by_role('button', name=filename_re)
+            count = await locator.count()
+            control_kind = 'button'
+        if count < 1:
+            locator = page.locator('button').filter(has_text=safe_filename)
+            count = await locator.count()
+            control_kind = 'button_text'
+        if count < 1:
+            locator = page.locator('[role="button"], [data-testid], span, p').filter(has_text=safe_filename)
+            count = await locator.count()
+            control_kind = 'filename_text_control'
         if count < 1:
             anchors = await page.locator('a').evaluate_all(
                 "els => els.slice(0, 40).map(a => ({text: (a.innerText || a.textContent || '').trim(), href: a.href || a.getAttribute('href')}))"
             )
+            buttons = await page.locator('button, [role="button"]').evaluate_all(
+                "els => els.slice(0, 40).map(b => ({text: (b.innerText || b.textContent || b.getAttribute('aria-label') || '').trim(), aria_label: b.getAttribute('aria-label'), testid: b.getAttribute('data-testid')}))"
+            )
+            filename_text_count = await page.get_by_text(filename_re).count()
             return {
                 'ok': False,
                 'action': 'artifact_download',
@@ -2448,7 +2481,9 @@ class ChatGPTBrowserClient:
                 'artifact_url': artifact_url,
                 'target_path': str(target),
                 'link_count': 0,
+                'filename_text_count': filename_text_count,
                 'anchors_sample': anchors,
+                'buttons_sample': buttons,
             }
 
         link = locator.first
@@ -2474,6 +2509,7 @@ class ChatGPTBrowserClient:
                 'filename': safe_filename,
                 'artifact_url': artifact_url,
                 'link_href': href,
+                'control_kind': control_kind,
                 'target_path': str(target),
                 'download_error': str(exc),
             }
@@ -2494,6 +2530,7 @@ class ChatGPTBrowserClient:
             'filename': safe_filename,
             'artifact_url': artifact_url,
             'link_href': href,
+            'control_kind': control_kind,
             'suggested_filename': suggested,
             'target_path': str(target),
             'size_bytes': size,
