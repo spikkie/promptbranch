@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -2477,6 +2478,13 @@ class ChatGPTBrowserClient:
                 'download_error': str(exc),
             }
         size = target.stat().st_size if target.exists() else 0
+        content_b64 = None
+        if target.exists() and size > 0:
+            # The automation service often runs in a container with a different
+            # filesystem namespace than the CLI.  Return the downloaded bytes so
+            # the CLI can import them into its local artifact inbox even when the
+            # browser had to save to a container-writable staging path.
+            content_b64 = base64.b64encode(target.read_bytes()).decode('ascii')
         result = {
             'ok': bool(target.exists() and size > 0),
             'action': 'artifact_download',
@@ -2491,6 +2499,8 @@ class ChatGPTBrowserClient:
             'size_bytes': size,
             'overwrote_existing': overwritten,
             'download_performed': bool(target.exists() and size > 0),
+            'content_base64': content_b64,
+            'content_transport': 'base64_json' if content_b64 else None,
         }
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Artifact download completed. Press Enter to close the browser...')

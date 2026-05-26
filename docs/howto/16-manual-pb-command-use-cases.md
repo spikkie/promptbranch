@@ -1309,3 +1309,26 @@ pb artifact intake \
   --verify \
   --json | tee intake.manual_import_verify.v0.0.277.json
 ```
+
+### Browser-assisted artifact download staging repair — v0.0.276.9
+
+From `v0.0.276.9`, service-backed browser downloads do not ask the Dockerized ChatGPT service to write directly into the host repo path. The service saves the browser download to a container-writable staging path and returns the bytes to the CLI, which imports the ZIP into `.pb_profile/artifact_inbox/`.
+
+This avoids failures like:
+
+```text
+PermissionError: [Errno 13] Permission denied: '/home/spikkie'
+```
+
+The operator command remains unchanged:
+
+```bash
+pb artifact intake \
+  --from-last-answer \
+  --expect-artifact chatgpt_claudecode_workflow_v0.0.277.zip \
+  --expect-version v0.0.277 \
+  --expect-repo chatgpt_claudecode_workflow \
+  --download \
+  --verify \
+  --json
+```
