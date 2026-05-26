@@ -468,10 +468,10 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
 
 
 def test_post_release_validation_strict_real_candidate_download_verify_runs_before_full_tests_and_adoption(tmp_path: Path) -> None:
-    requested_version = "v0.0.276.11"
+    requested_version = "v0.0.276.12"
     result = _run_validation(
         tmp_path,
-        "v0.0.276.11",
+        "v0.0.276.12",
         requested_version,
         "--adopt-if-accepted",
         "--complete-candidate-mvp",

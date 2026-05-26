@@ -41,6 +41,17 @@ pb ask "Build next release from current baseline" \
 
 pb task answer parse --latest --json
 
+# Transport smoke proof for ChatGPT UI attachment downloads.
+# This proves rendered attachment/button -> browser download -> artifact_inbox.
+pb artifact intake \
+  --from-last-answer \
+  --download \
+  --verify-smoke-zip \
+  --expect-entry hello.txt \
+  --expect-content "durable ChatGPT UI attachment smoke test" \
+  --json
+
+# Real release candidate intake remains strict and still requires VERSION semantics.
 pb artifact intake \
   --from-last-answer \
   --download \
@@ -64,6 +75,8 @@ pb ask "Continue next slice" \
 The same workflow must pass for at least two consecutive normal releases from clean accepted baselines.
 
 For strict final Artifact Intake MVP validation from `v0.0.276.6`, `scripts/finalize-artifact-intake-mvp.sh --require-real-candidate-mvp` must run an artifact-producing `pb ask-release` for the target version and must prove `pb artifact intake --download --verify` with `download_performed=true` and `verification_performed=true`. A no-artifact protocol smoke is not sufficient for strict real-candidate proof.
+
+From `v0.0.276.11`, the ChatGPT UI attachment transport proof is an explicit separate gate: `pb artifact intake --download --verify-smoke-zip --expect-entry hello.txt --expect-content "durable ChatGPT UI attachment smoke test" --json`. This gate proves that Promptbranch can locate the rendered ChatGPT artifact control, click/download it through browser context, import it into `.pb_profile/artifact_inbox/`, and verify expected smoke ZIP contents. It does not satisfy release verification, migration, adoption, or baseline continuity by itself.
 
 Manual validation details for the finalizer are documented in `docs/howto/15-finalize-artifact-intake-mvp.md`. That manual is the operator reference for preflight checks, wrapper-contract tests, delegated post-release phases, evidence files, and failure triage.
 
@@ -97,6 +110,7 @@ The MVP is done only when all of these invariants hold.
 - Candidate artifacts are extracted from the reply envelope first, with link/text fallback only when deterministic selection is possible.
 - Artifact download requires an explicit operator flag.
 - Downloaded artifacts are stored in the artifact inbox/quarantine before migration.
+- ChatGPT UI attachment transport has a separate smoke gate using `--verify-smoke-zip`; it must never be treated as release verification.
 - A migrated artifact is a candidate release, not an accepted baseline.
 
 ### ZIP verification
@@ -159,6 +173,7 @@ Each completed MVP release cycle must leave enough evidence for diagnosis:
 - parsed reply JSON
 - candidate intake record
 - ZIP verification record
+- smoke ZIP verification record when validating ChatGPT UI attachment transport
 - candidate registry/current state
 - post-release validation summary JSON
 - lifecycle-status snapshot JSON
@@ -194,3 +209,5 @@ That command should consolidate install, source add, project hooks, adoption, po
 The MVP is done when the complete structured ask-to-adopt-to-next-ask loop works twice in a row from accepted baselines, with no manual ZIP repair, no stale baseline selection, no unverified mutation, and no unexplained operator intervention.
 
 From `v0.0.276.7`, strict real-candidate proof must also reject JSON-only artifact declarations. A reply-envelope artifact whose only URL is `sandbox:/mnt/data/...` does not prove a durable ChatGPT attachment or local-downloadable candidate unless Promptbranch has direct URL support or explicit host-detected attachment proof.
+
+From `v0.0.276.10`, browser-assisted download through a rendered ChatGPT artifact button is accepted as explicit host-detected attachment proof. From `v0.0.276.11`, the smoke ZIP verifier records that proof without weakening strict release ZIP verification.
