@@ -82,6 +82,7 @@ DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS = 120.0
 DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS = 12.0
 DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
 DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS = 90.0
+DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1200.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
@@ -5433,19 +5434,42 @@ def _is_protocol_parse_ask(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "command", None) == "ask" and getattr(args, "protocol", False) and getattr(args, "parse_reply", False))
 
 
+def _browser_response_timeout_seconds() -> float:
+    """Return the browser-service assistant-response wait budget in seconds.
+
+    The Docker service can legitimately keep the HTTP request open while the
+    ChatGPT UI is still showing the assistant as running.  A lower client read
+    timeout causes a premature `ReadTimeout`, even though the answer may finish
+    correctly later in the UI.  Keep this default aligned with
+    docker-compose.chatgpt-service.yml and allow operators to override it with
+    the same environment variable used by the browser service.
+    """
+
+    raw_value = os.getenv("CHATGPT_RESPONSE_TIMEOUT_MS")
+    if raw_value is None or not str(raw_value).strip():
+        return DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS
+    try:
+        return max(1.0, float(raw_value) / 1000.0)
+    except (TypeError, ValueError):
+        return DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS
+
+
 def _protocol_service_timeout_floor(args: argparse.Namespace) -> float:
     """Minimum HTTP read timeout for a protocol ask transaction.
 
     The browser service has to submit the ask, wait for the assistant response
     or service-side timeout, and return submit evidence. The client read
-    timeout must therefore be larger than the protocol response wait budget,
-    not equal to or smaller than it.
+    timeout must therefore be larger than both the protocol response budget and
+    the browser service response wait budget.  Otherwise `pb ask --protocol` /
+    `pb ask-release` can fail with `service_read_timeout` while ChatGPT is still
+    generating a valid answer in the UI.
     """
 
     protocol_timeout = max(1.0, float(getattr(args, "protocol_timeout_seconds", DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS) or DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS))
     fresh_turn_timeout = max(0.0, float(getattr(args, "protocol_fresh_turn_timeout_seconds", DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS) or 0.0))
+    browser_response_timeout = _browser_response_timeout_seconds()
     buffer_seconds = max(30.0, float(DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS))
-    return protocol_timeout + fresh_turn_timeout + buffer_seconds
+    return max(protocol_timeout, browser_response_timeout) + fresh_turn_timeout + buffer_seconds
 
 
 def _apply_protocol_timeout(args: argparse.Namespace) -> None:
