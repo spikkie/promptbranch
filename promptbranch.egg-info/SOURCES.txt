@@ -111,3 +111,5 @@ tests/test_promptbranch_test_suite.py
 tests/test_response_completion.py
 docs/repair-v0.0.276.8.md
 docs/repair-v0.0.276.9.md
+
+docs/release-v0.0.276.11.md

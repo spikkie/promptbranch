@@ -3511,6 +3511,208 @@ def _verify_intake_artifact_candidate(
 
 
 
+def _verify_intake_smoke_zip_candidate(
+    result: dict[str, Any],
+    *,
+    profile_dir: str | Path,
+    conversation_id: Any,
+    answer_id: Any,
+    expected_entries: list[str] | None = None,
+    expected_content: str | None = None,
+) -> dict[str, Any]:
+    """Verify a downloaded ChatGPT UI attachment smoke ZIP.
+
+    This mode is intentionally separate from release verification. It proves the
+    artifact transport path (ChatGPT rendered attachment/button -> browser
+    download -> local artifact_inbox import) without requiring release ZIP
+    semantics such as VERSION at ZIP root. It never migrates, adopts, or mutates
+    Project Sources.
+    """
+
+    candidate = result.get("selected_candidate") if isinstance(result.get("selected_candidate"), dict) else None
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found", "downloaded", "manual_imported"} or candidate is None:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_candidate_not_selected",
+            "smoke_verification_performed": False,
+            "verification_performed": False,
+            "verification_error": "a single valid candidate must be selected before smoke ZIP verification",
+            "intake_stage": result.get("intake_stage") or "candidate_extraction",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    if not filename:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_wrong_filename",
+            "smoke_verification_performed": False,
+            "verification_performed": False,
+            "verification_error": "selected candidate filename must be a basename ending in .zip",
+            "intake_stage": result.get("intake_stage") or "candidate_extraction",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    inbox_dir = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=result.get("reply_request_id"),
+    )
+    download = result.get("download") if isinstance(result.get("download"), dict) else {}
+    candidate_path = Path(str(download.get("path") or inbox_dir / filename)).expanduser().resolve()
+    if not candidate_path.is_file():
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_inbox_candidate_missing",
+            "smoke_verification_performed": False,
+            "verification_performed": False,
+            "verification_error": "candidate ZIP is not present in artifact_inbox; run with --download first or provide a persisted intake artifact",
+            "artifact_inbox_dir": str(inbox_dir),
+            "expected_artifact_path": str(candidate_path),
+            "intake_stage": "smoke_verification_requested",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    normalized_expected_entries = [str(item).strip().lstrip("/") for item in (expected_entries or []) if str(item).strip()]
+    smoke_errors: list[str] = []
+    zip_entries: list[str] = []
+    content_checks: dict[str, Any] = {}
+    testzip_result: str | None = None
+    unsafe_entries: list[str] = []
+
+    try:
+        with zipfile.ZipFile(candidate_path) as zf:
+            testzip_result = zf.testzip()
+            zip_entries = [info.filename for info in zf.infolist()]
+            for entry in zip_entries:
+                if entry.startswith("/") or ".." in Path(entry).parts:
+                    unsafe_entries.append(entry)
+            if testzip_result:
+                smoke_errors.append("smoke_zip_bad_entry")
+            if unsafe_entries:
+                smoke_errors.append("smoke_zip_unsafe_entries")
+            for expected_entry in normalized_expected_entries:
+                if expected_entry not in zip_entries:
+                    smoke_errors.append("smoke_zip_expected_entry_missing")
+                    content_checks[expected_entry] = {"ok": False, "status": "missing"}
+                    continue
+                if expected_content is not None:
+                    try:
+                        data = zf.read(expected_entry)
+                        actual_text = data.decode("utf-8")
+                    except (KeyError, UnicodeDecodeError) as exc:
+                        smoke_errors.append("smoke_zip_expected_content_unreadable")
+                        content_checks[expected_entry] = {"ok": False, "status": "unreadable", "error": str(exc)}
+                        continue
+                    content_ok = actual_text == expected_content
+                    if not content_ok:
+                        smoke_errors.append("smoke_zip_expected_content_mismatch")
+                    content_checks[expected_entry] = {
+                        "ok": content_ok,
+                        "status": "matched" if content_ok else "mismatch",
+                        "expected_size": len(expected_content.encode("utf-8")),
+                        "actual_size": len(data),
+                    }
+    except zipfile.BadZipFile as exc:
+        smoke_errors.append("smoke_zip_invalid")
+        content_checks["error"] = str(exc)
+    except OSError as exc:
+        smoke_errors.append("smoke_zip_read_failed")
+        content_checks["error"] = str(exc)
+
+    # When no explicit entry expectation is supplied, the smoke verifier still
+    # proves that the downloaded file is a readable ZIP with safe entries.
+    ok = not smoke_errors
+    status = "smoke_zip_verified" if ok else smoke_errors[0]
+    intake_stage = "smoke_verified" if ok else "smoke_verification_failed"
+    smoke_verification = {
+        "schema": "promptbranch.artifact.intake.smoke_zip_verification",
+        "schema_version": "1.0",
+        "ok": ok,
+        "status": status,
+        "path": str(candidate_path),
+        "entries": zip_entries,
+        "entry_count": len(zip_entries),
+        "expected_entries": normalized_expected_entries,
+        "expected_content_provided": expected_content is not None,
+        "content_checks": content_checks,
+        "testzip": testzip_result,
+        "unsafe_entries": unsafe_entries,
+        "errors": smoke_errors,
+    }
+
+    verification_record = {
+        "schema": "promptbranch.artifact.intake.verification",
+        "schema_version": "1.0",
+        "status": status,
+        "ok": ok,
+        "candidate": candidate,
+        "download": _artifact_file_metadata(candidate_path),
+        "smoke_verification": smoke_verification,
+        "verification_errors": smoke_errors,
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "verified_at": utc_now(),
+        "verification_performed": True,
+        "smoke_verification_performed": True,
+        "release_verification_performed": False,
+        "migration_performed": False,
+        "accepted": False,
+        "adoption_performed": False,
+    }
+    intake_record_path = inbox_dir / "intake.json"
+    persisted_record = dict(verification_record)
+    try:
+        if intake_record_path.is_file():
+            existing = json.loads(intake_record_path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                persisted_record = {**existing, **verification_record}
+        intake_record_path.parent.mkdir(parents=True, exist_ok=True)
+        intake_record_path.write_text(json.dumps(persisted_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_smoke_verification_metadata_failed",
+            "smoke_verification_performed": True,
+            "verification_performed": True,
+            "smoke_verification": smoke_verification,
+            "verification_error": str(exc),
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": intake_stage,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+
+    return {
+        **result,
+        "ok": ok,
+        "status": status,
+        "intake_stage": intake_stage,
+        "artifact_inbox_dir": str(inbox_dir),
+        "intake_record_path": str(intake_record_path),
+        "download": _artifact_file_metadata(candidate_path),
+        "smoke_verification": smoke_verification,
+        "verification_errors": smoke_errors,
+        "verification_performed": True,
+        "smoke_verification_performed": True,
+        "release_verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "operator_instruction": "Smoke ZIP was verified inside .pb_profile/artifact_inbox only. This proves attachment/download mechanics; it is not release verification and cannot be migrated/adopted as a release artifact.",
+    }
+
+
+
 def _artifact_intake_no_state_mutation_flags(result: dict[str, Any]) -> dict[str, Any]:
     """Make the artifact-intake no-state-mutation boundary explicit.
 
@@ -3840,7 +4042,27 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
             keep_open=bool(getattr(args, "keep_open", False)),
         )
-    if getattr(args, "verify", False):
+    if getattr(args, "verify", False) and getattr(args, "verify_smoke_zip", False):
+        result = {
+            **result,
+            "ok": False,
+            "status": "artifact_intake_verify_mode_conflict",
+            "intake_stage": result.get("intake_stage") or "verification_requested",
+            "verification_performed": False,
+            "verification_error": "use either --verify for strict release artifacts or --verify-smoke-zip for attachment smoke ZIPs, not both",
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+    elif getattr(args, "verify_smoke_zip", False):
+        result = _verify_intake_smoke_zip_candidate(
+            result,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=conversation_id_for_artifact,
+            answer_id=answer_id_for_artifact,
+            expected_entries=list(getattr(args, "expect_entry", []) or []),
+            expected_content=getattr(args, "expect_content", None),
+        )
+    elif getattr(args, "verify", False):
         result = _verify_intake_artifact_candidate(
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
@@ -14514,8 +14736,11 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake.add_argument("--download", action="store_true", help="Explicitly download the selected candidate into .pb_profile/artifact_inbox/. No verification, migration, or adoption is performed.")
     artifact_intake.add_argument("--local-file", "--manual-import-file", dest="local_file", help="Manual artifact handoff path: copy an already downloaded ZIP into .pb_profile/artifact_inbox/ for verification/migration. Use this for sandbox:/ artifacts that require browser/session download.")
     artifact_intake.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for --download. Defaults to 120.")
-    artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP inside .pb_profile/artifact_inbox/.")
-    artifact_intake.add_argument("--migrate", action="store_true", help="Copy a successfully verified candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as a candidate. Does not adopt.")
+    artifact_intake.add_argument("--verify", action="store_true", help="Verify the selected candidate ZIP as a strict release artifact inside .pb_profile/artifact_inbox/.")
+    artifact_intake.add_argument("--verify-smoke-zip", action="store_true", help="Verify a downloaded ChatGPT UI attachment smoke ZIP without requiring release VERSION semantics. Does not permit migration/adoption.")
+    artifact_intake.add_argument("--expect-entry", action="append", default=[], help="Expected ZIP entry for --verify-smoke-zip. May be supplied multiple times.")
+    artifact_intake.add_argument("--expect-content", help="Expected UTF-8 content for each --expect-entry in --verify-smoke-zip.")
+    artifact_intake.add_argument("--migrate", action="store_true", help="Copy a successfully verified release candidate ZIP from .pb_profile/artifact_inbox/ to the repo root and register it as a candidate. Does not adopt.")
     artifact_intake.add_argument("--repo-path", default=".", help="Repo root for verified candidate migration. Defaults to current directory.")
     artifact_intake.add_argument("--json", action="store_true", help="Emit artifact intake candidate extraction/download/verification/migration result as JSON.")
     artifact_intake.add_argument("--keep-open", action="store_true")
