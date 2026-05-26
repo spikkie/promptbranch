@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.276.15" in out
+    assert "0.0.276.16" in out
     assert "promptbranch" in out
 
 
@@ -477,6 +477,8 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
         "--max-steps", "3",
         "--require-complete",
         "--require-real-candidate",
+        "--profile", "full",
+        "--accept-if-green",
         "--step-timeout", "123",
         "--json",
     ])
@@ -490,6 +492,8 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
     assert artifact_candidate_run.max_steps == 3
     assert artifact_candidate_run.require_complete is True
     assert artifact_candidate_run.require_real_candidate is True
+    assert artifact_candidate_run.profile == "full"
+    assert artifact_candidate_run.accept_if_green is True
     assert artifact_candidate_run.step_timeout == 123.0
     assert artifact_candidate_run.json is True
 
