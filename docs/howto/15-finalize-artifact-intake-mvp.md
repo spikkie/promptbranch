@@ -63,7 +63,7 @@ scripts/finalize-artifact-intake-mvp.sh \
   --require-real-candidate-mvp
 ```
 
-From `v0.0.276.5`, this strict form performs an artifact-producing `pb ask-release` for `--target-version`, then runs `pb artifact intake --from-last-answer --download --verify` for the expected target ZIP. The finalizer fails unless explicit download and verification proof exists. An already-adopted baseline proof from `pb artifact candidate-run` is acceptable only when it is paired with the explicit artifact-intake download/verify proof.
+From `v0.0.276.6`, this strict form performs an artifact-producing `pb ask-release` for `--target-version` before full tests/adoption, using the release under validation as the explicit request baseline. It then runs `pb artifact intake --from-last-answer --download --verify` for the expected target ZIP before full tests/adoption. The finalizer fails unless explicit download and verification proof exists. An already-adopted baseline proof from `pb artifact candidate-run` is acceptable only when it is paired with the explicit artifact-intake download/verify proof.
 
 Bounded execution controls:
 
@@ -196,8 +196,8 @@ pb artifact adopt chatgpt_claudecode_workflow_<version>.zip \
 ```
 
 8. Re-runs `pb artifact current --json` and verifies artifact/source/runtime version alignment.
-9. Runs a post-adoption protocol step. Default mode uses a `no_artifact` protocol smoke with `--from-current-baseline`; strict real-candidate mode uses `pb ask-release` to request the target ZIP artifact.
-10. Runs artifact intake from the latest answer. Default mode uses dry-run only; strict real-candidate mode uses `--download --verify` for the expected target ZIP.
+9. In default mode, runs a post-adoption `no_artifact` protocol smoke with `--from-current-baseline`. In strict real-candidate mode, runs `pb ask-release` before full tests/adoption to request the target ZIP artifact, using `--version` as the explicit baseline.
+10. Runs artifact intake from the latest answer. Default mode uses dry-run only; strict real-candidate mode uses `--download --verify` for the expected target ZIP before full tests/adoption.
 11. Runs final candidate-run completion validation:
 
 ```bash

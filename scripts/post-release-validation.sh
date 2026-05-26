@@ -74,7 +74,9 @@ Options:
                               is not sufficient. The protocol step switches from a
                               no_artifact smoke to an artifact-producing pb ask-release,
                               and artifact intake runs --download --verify for the
-                              expected target artifact.
+                              expected target artifact. With --adopt-if-accepted,
+                              this strict download/verify proof runs before full
+                              tests and before adopting --version.
       --candidate-mvp-max-steps N
                               Maximum candidate-run lifecycle steps for --complete-candidate-mvp.
                               Default: ${candidate_mvp_max_steps}.
@@ -283,6 +285,7 @@ else
 fi
 pb_cmd="$(select_pb_cmd)" || exit 2
 target_release_type="$(release_type_for_version "${target_version}")"
+version_artifact="${project_name}_${version}.zip"
 target_artifact="${project_name}_${target_version}.zip"
 
 if [[ "${complete_candidate_mvp}" -eq 1 && "${skip_candidate_run}" -eq 1 ]]; then
@@ -324,6 +327,7 @@ echo "== promptbranch post-release validation =="
 echo "repo_root:        $(pwd)"
 echo "version:          ${version}"
 echo "target_version:   ${target_version}"
+echo "version_artifact: ${version_artifact}"
 echo "target_artifact:  ${target_artifact}"
 echo "target_release_type: ${target_release_type}"
 echo "release_logs:     ${release_log_dir}"
@@ -448,6 +452,8 @@ run_protocol_smoke_step() {
         "${pb_cmd}" ask-release \
           --target-version "${target_version}" \
           --release-type "${target_release_type}" \
+          --baseline-artifact "${version_artifact}" \
+          --baseline-version "${version}" \
           --expect-artifact "${target_artifact}" \
           --expect-version "${target_version}" \
           --expect-repo "${project_name}" \
@@ -575,6 +581,13 @@ if [[ "${adopt_if_accepted}" -eq 0 ]]; then
   run_protocol_smoke_step "pre_adoption"
   run_artifact_intake_step "pre_adoption"
   run_artifact_candidate_run_step "pre_adoption"
+elif [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
+  echo
+  echo "===== strict real-candidate artifact download proof before tests/adoption ====="
+  echo "--require-real-candidate-mvp runs artifact-producing ask-release and artifact intake download/verify before full tests and adoption."
+  run_protocol_smoke_step "pre_adoption"
+  run_artifact_intake_step "pre_adoption"
+  echo '{"ok": true, "status": "deferred_until_after_adoption", "reason": "strict_real_candidate_pre_adoption_download_verify_proof_collected_candidate_run_waits_for_current_release_adoption"}' > "${candidate_run_log}"
 else
   echo
   echo "===== protocol smoke deferred ====="
@@ -755,9 +768,16 @@ PYSEMANTIC2
     fi
   fi
   if [[ "${failures}" -eq 0 ]]; then
-    run_protocol_smoke_step "post_adoption"
-    run_artifact_intake_step "post_adoption"
-    run_artifact_candidate_run_step "post_adoption"
+    if [[ "${require_real_candidate_mvp}" -eq 1 && "${protocol_phase}" == "pre_adoption" && "${intake_phase}" == "pre_adoption" ]]; then
+      echo
+      echo "===== strict real-candidate protocol/intake proof already collected pre-adoption ====="
+      echo "Reusing pre-adoption ask-release + artifact intake download/verify evidence; running candidate-run after adoption only."
+      run_artifact_candidate_run_step "post_adoption"
+    else
+      run_protocol_smoke_step "post_adoption"
+      run_artifact_intake_step "post_adoption"
+      run_artifact_candidate_run_step "post_adoption"
+    fi
   else
     echo
     echo "===== post-adoption protocol smoke skipped ====="

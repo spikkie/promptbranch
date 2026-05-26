@@ -3710,6 +3710,21 @@ def _protocol_request_from_current_baseline(
     current_source = state.get("source_ref") or current_artifact
     source_version = state.get("source_version") or current_version
     repo_name = _repo_name_from_artifact_name(str(current_artifact or registry_current.get("filename") or ""))
+    baseline_artifact_override = str(getattr(args, "baseline_artifact", None) or "").strip()
+    baseline_version_override = _normalize_version_token(getattr(args, "baseline_version", None))
+    baseline_override_applied = False
+    if baseline_artifact_override:
+        current_artifact = Path(baseline_artifact_override).name
+        current_source = current_artifact
+        inferred_version = _normalize_version_token(_artifact_version_from_filename(current_artifact))
+        current_version = baseline_version_override or inferred_version or current_version
+        source_version = current_version
+        repo_name = _repo_name_from_artifact_name(str(current_artifact)) or repo_name
+        baseline_override_applied = True
+    elif baseline_version_override:
+        current_version = baseline_version_override
+        source_version = baseline_version_override
+        baseline_override_applied = True
     request_id = getattr(args, "request_id", None) or f"req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
     artifact = {
         "repo": repo_name,
@@ -3717,9 +3732,14 @@ def _protocol_request_from_current_baseline(
         "current_version": current_version,
         "source_ref": current_source,
         "source_version": source_version,
-        "registry_current": registry_current.get("filename"),
-        "registry_current_version": registry_current.get("version"),
+        "registry_current": current_artifact if baseline_override_applied else registry_current.get("filename"),
+        "registry_current_version": current_version if baseline_override_applied else registry_current.get("version"),
     }
+    if baseline_override_applied:
+        artifact["baseline_override"] = True
+        artifact["baseline_override_reason"] = "explicit_protocol_request_baseline"
+        artifact["observed_registry_current"] = registry_current.get("filename")
+        artifact["observed_registry_current_version"] = registry_current.get("version")
     envelope = build_ask_request_envelope(
         prompt=prompt,
         request_id=request_id,
@@ -5553,7 +5573,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "completion": [],
         "version": [],
         "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
-        "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
+        "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--baseline-artifact", "--baseline-version", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
     }
@@ -14456,6 +14476,8 @@ def make_parser() -> argparse.ArgumentParser:
     ask_release.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
     ask_release.add_argument("--target-version", help="Target output version to include in the release-candidate request envelope.")
     ask_release.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope.")
+    ask_release.add_argument("--baseline-artifact", help="Explicit input baseline artifact for the protocol request envelope. Defaults to pb artifact current.")
+    ask_release.add_argument("--baseline-version", help="Explicit input baseline version for the protocol request envelope. Defaults to pb artifact current or --baseline-artifact inference.")
     ask_release.add_argument("--expect-artifact", help="Exact expected ZIP artifact filename. Defaults to <repo>_<target-version>.zip.")
     ask_release.add_argument("--expect-version", help="Expected artifact version. Defaults to --target-version.")
     ask_release.add_argument("--expect-repo", help="Expected repo/artifact prefix. Defaults to the repo inferred from current baseline.")

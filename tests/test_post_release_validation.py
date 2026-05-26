@@ -17,6 +17,7 @@ def _write_fake_promptbranch(
     candidate_mvp_complete: bool = False,
     candidate_no_artifact_precondition: bool = False,
     lifecycle_status_version: str | None = None,
+    fail_test_full: bool = False,
 ) -> Path:
     exe = bin_dir / "promptbranch"
     adopted_version = adopted_version or initial_artifact_version
@@ -30,6 +31,7 @@ def _write_fake_promptbranch(
         f"candidate_mvp_complete = {candidate_mvp_complete!r}\n"
         f"candidate_no_artifact_precondition = {candidate_no_artifact_precondition!r}\n"
         f"lifecycle_status_version = {lifecycle_status_version!r}\n"
+        f"fail_test_full = {fail_test_full!r}\n"
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
         "calls_file = Path(__file__).with_name('calls.jsonl')\n"
         "def record(args):\n"
@@ -125,6 +127,9 @@ def _write_fake_promptbranch(
         "    print(json.dumps(payload))\n"
         "    raise SystemExit(0)\n"
         "if args == ['test', 'full', '--json']:\n"
+        "    if fail_test_full:\n"
+        "        print(json.dumps({'ok': False, 'action': 'test_suite', 'status': 'failed_for_test'}))\n"
+        "        raise SystemExit(1)\n"
         "    print(json.dumps({'ok': True, 'action': 'test_suite'}))\n"
         "    raise SystemExit(0)\n"
         "if len(args) == 4 and args[:2] == ['test', 'report'] and args[3] == '--json':\n"
@@ -177,6 +182,7 @@ def _run_validation(
     candidate_mvp_complete: bool = False,
     candidate_no_artifact_precondition: bool = False,
     lifecycle_status_version: str | None = None,
+    fail_test_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -192,6 +198,7 @@ def _run_validation(
         candidate_mvp_complete=candidate_mvp_complete,
         candidate_no_artifact_precondition=candidate_no_artifact_precondition,
         lifecycle_status_version=lifecycle_status_version,
+        fail_test_full=fail_test_full,
     )
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
@@ -459,6 +466,45 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     assert adopt_index < ask_index < candidate_run_index
 
 
+
+def test_post_release_validation_strict_real_candidate_download_verify_runs_before_full_tests_and_adoption(tmp_path: Path) -> None:
+    requested_version = "v0.0.276.6"
+    result = _run_validation(
+        tmp_path,
+        "v0.0.276.6",
+        requested_version,
+        "--adopt-if-accepted",
+        "--complete-candidate-mvp",
+        "--require-real-candidate-mvp",
+        adopted_version=requested_version,
+        skip_protocol=False,
+        skip_artifact_intake=False,
+        skip_tests=False,
+        fail_test_full=True,
+    )
+
+    assert result.returncode == 1
+    repo = tmp_path / "repo"
+    summary = _summary(repo, requested_version)
+    assert summary["steps"]["protocol_smoke"] == {"phase": "pre_adoption", "rc": 0}
+    assert summary["steps"]["artifact_intake_dry_run"] == {"phase": "pre_adoption", "rc": 0}
+    assert summary["steps"]["test_full"]["rc"] == 1
+    assert summary["steps"]["artifact_adopt"] == {"enabled": True, "performed": False, "rc": 0}
+
+    calls_path = tmp_path / "bin" / "calls.jsonl"
+    calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
+    ask_release_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask-release")
+    intake_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "intake"] and "--download" in call and "--verify" in call)
+    test_full_index = next(i for i, call in enumerate(calls) if call == ["test", "full", "--json"])
+    assert ask_release_index < intake_index < test_full_index
+    assert not any(call[:2] == ["artifact", "adopt"] for call in calls)
+    ask_release_call = calls[ask_release_index]
+    assert "--baseline-artifact" in ask_release_call
+    assert ask_release_call[ask_release_call.index("--baseline-artifact") + 1] == f"chatgpt_claudecode_workflow_{requested_version}.zip"
+    assert "--baseline-version" in ask_release_call
+    assert ask_release_call[ask_release_call.index("--baseline-version") + 1] == requested_version
+
+
 def test_post_release_validation_strict_real_candidate_requires_download_proof_after_adopt(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     bin_dir = tmp_path / "bin"
@@ -534,6 +580,8 @@ def test_post_release_validation_strict_real_candidate_requires_download_proof_a
 def test_post_release_validation_strict_real_candidate_uses_ask_release_and_download_verify_path() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert '"${pb_cmd}" ask-release' in text
+    assert '--baseline-artifact "${version_artifact}"' in text
+    assert '--baseline-version "${version}"' in text
     assert '--expect-artifact "${target_artifact}"' in text
     assert '--expect-version "${target_version}"' in text
     assert '--expect-repo "${project_name}"' in text

@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.276.5" in out
+    assert "0.0.276.6" in out
     assert "promptbranch" in out
 
 
@@ -841,6 +841,8 @@ def test_parser_accepts_ask_release_strict_candidate_request() -> None:
         "ask-release",
         "Implement the next candidate-producing slice.",
         "--target-version", "v0.0.257",
+        "--baseline-artifact", "chatgpt_claudecode_workflow_v0.0.256.zip",
+        "--baseline-version", "v0.0.256",
         "--expect-artifact", "chatgpt_claudecode_workflow_v0.0.257.zip",
         "--expect-repo", "chatgpt_claudecode_workflow",
         "--expect-version", "v0.0.257",
@@ -850,6 +852,8 @@ def test_parser_accepts_ask_release_strict_candidate_request() -> None:
 
     assert args.command == "ask-release"
     assert args.target_version == "v0.0.257"
+    assert args.baseline_artifact == "chatgpt_claudecode_workflow_v0.0.256.zip"
+    assert args.baseline_version == "v0.0.256"
     assert args.expect_artifact == "chatgpt_claudecode_workflow_v0.0.257.zip"
     assert args.expect_repo == "chatgpt_claudecode_workflow"
     assert args.expect_version == "v0.0.257"
