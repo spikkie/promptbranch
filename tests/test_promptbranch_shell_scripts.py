@@ -950,23 +950,33 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert "src sync" not in call_text
 
 
-def test_finalize_artifact_intake_mvp_wraps_post_release_validation(tmp_path: Path):
+def test_finalize_artifact_intake_mvp_delegates_to_candidate_run(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    fake = tmp_path / "post-release-validation.sh"
-    calls = tmp_path / "post_release_calls.json"
-    fake.write_text(
+    fake_pb = tmp_path / "pb"
+    calls = tmp_path / "candidate_run_calls.json"
+    fake_pb.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - <<'PY' \"$@\"\n"
+        f"python3 - <<'PY' {str(calls)!r} \"$@\"\n"
         "import json, sys\n"
-        f"from pathlib import Path\nPath({str(calls)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]))\n"
+        "print(json.dumps({\n"
+        "  'ok': True,\n"
+        "  'action': 'artifact_candidate_run',\n"
+        "  'status': 'candidate_run_cycle_acceptance_ready',\n"
+        "  'mvp_complete': True,\n"
+        "  'download_performed': True,\n"
+        "  'verification_performed': True,\n"
+        "  'migration_performed': True,\n"
+        "  'candidate_test_performed': True,\n"
+        "  'adoption_performed': False\n"
+        "}))\n"
         "PY\n",
         encoding="utf-8",
     )
-    fake.chmod(0o755)
+    fake_pb.chmod(0o755)
     script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
-    env = os.environ.copy()
-    env["POST_RELEASE_VALIDATION_SCRIPT"] = str(fake)
 
     result = subprocess.run(
         [
@@ -979,9 +989,11 @@ def test_finalize_artifact_intake_mvp_wraps_post_release_validation(tmp_path: Pa
             "6",
             "--candidate-run-step-timeout",
             "42",
+            "--require-real-candidate-mvp",
+            "--pb-cmd",
+            str(fake_pb),
         ],
         cwd=repo,
-        env=env,
         text=True,
         capture_output=True,
         check=True,
@@ -991,18 +1003,70 @@ def test_finalize_artifact_intake_mvp_wraps_post_release_validation(tmp_path: Pa
     assert "final Artifact Intake MVP validation passed" in result.stdout
     args = json.loads(calls.read_text(encoding="utf-8"))
     assert args == [
-        "--version",
-        "v9.9.9",
-        "--target-version",
-        "v9.9.10",
-        "--candidate-mvp-max-steps",
+        "artifact",
+        "candidate-run",
+        "--execute-until-blocked",
+        "--max-steps",
         "6",
-        "--candidate-run-step-timeout",
+        "--step-timeout",
         "42",
-        "--adopt-if-accepted",
-        "--complete-candidate-mvp",
+        "--require-complete",
+        "--profile",
+        "smoke",
+        "--json",
+        "--require-real-candidate",
     ]
+    summary = json.loads((repo / ".pb_profile" / "release_logs" / "v9.9.9" / "finalize_artifact_intake_mvp.v9.9.9.summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["checks"]["download_performed"] is True
+    assert summary["checks"]["verification_performed"] is True
+    assert summary["checks"]["migration_performed"] is True
+    assert summary["checks"]["candidate_test_passed"] is True
 
+
+def test_finalize_artifact_intake_mvp_rejects_unrequested_adoption(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    fake_pb = tmp_path / "pb"
+    fake_pb.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'PY'\n"
+        "import json\n"
+        "print(json.dumps({\n"
+        "  'ok': True,\n"
+        "  'status': 'candidate_run_cycle_completed',\n"
+        "  'mvp_complete': True,\n"
+        "  'download_performed': True,\n"
+        "  'verification_performed': True,\n"
+        "  'migration_performed': True,\n"
+        "  'candidate_test_performed': True,\n"
+        "  'adoption_performed': True\n"
+        "}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_pb.chmod(0o755)
+    script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version",
+            "v9.9.9",
+            "--target-version",
+            "v9.9.10",
+            "--require-real-candidate-mvp",
+            "--pb-cmd",
+            str(fake_pb),
+        ],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    summary = json.loads((repo / ".pb_profile" / "release_logs" / "v9.9.9" / "finalize_artifact_intake_mvp.v9.9.9.summary.json").read_text(encoding="utf-8"))
+    assert "adoption_not_performed_without_explicit_flag" in summary["failures"]
 
 def test_finalize_artifact_intake_mvp_rejects_conflicting_flags(tmp_path: Path):
     script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
