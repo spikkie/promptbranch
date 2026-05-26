@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import asyncio
 import hashlib
@@ -3014,12 +3015,18 @@ async def _download_selected_artifact_candidate_via_browser(
             "manual_import_command": _artifact_manual_import_command(filename),
             "intake_stage": "download_requested",
         }
+    # When the backend is the Dockerized ChatGPT service, the local repo path
+    # is usually not writable from inside the container. Ask the service to save
+    # into a container-writable staging path and return the bytes, then import
+    # them into the CLI-owned artifact inbox below.
+    service_staging_path = f"/tmp/promptbranch-artifact-downloads/{conversation_id or 'unknown'}/{answer_id or 'unknown'}/{result.get('reply_request_id') or 'unknown'}/{filename}"
+    browser_target_path = service_staging_path if backend.__class__.__name__ == "ServiceBackend" else str(target_path)
     try:
         browser_result = await backend.download_chat_artifact(
             conversation_url=conversation_url,
             artifact_url=url,
             filename=filename,
-            target_path=str(target_path),
+            target_path=browser_target_path,
             timeout_seconds=timeout_seconds,
             keep_open=keep_open,
         )
@@ -3048,14 +3055,32 @@ async def _download_selected_artifact_candidate_via_browser(
             "intake_stage": "download_requested",
         }
     if not target_path.is_file():
+        content_b64 = browser_result.get("content_base64") if isinstance(browser_result, dict) else None
+        if content_b64:
+            try:
+                inbox_dir.mkdir(parents=True, exist_ok=True)
+                target_path.write_bytes(base64.b64decode(content_b64.encode("ascii")))
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    **result,
+                    "ok": False,
+                    "status": "artifact_browser_download_import_failed",
+                    "download_performed": False,
+                    "download_error": str(exc),
+                    "download_url": url,
+                    "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result, "cli_import_attempted": True},
+                    "artifact_inbox_dir": str(inbox_dir),
+                    "intake_stage": "download_requested",
+                }
+    if not target_path.is_file():
         return {
             **result,
             "ok": False,
             "status": "artifact_browser_download_missing_file",
             "download_performed": False,
-            "download_error": "browser reported success but target artifact was not written",
+            "download_error": "browser reported success but no local artifact was imported",
             "download_url": url,
-            "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result},
+            "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result, "cli_import_attempted": True},
             "artifact_inbox_dir": str(inbox_dir),
             "intake_stage": "download_requested",
         }
@@ -3101,7 +3126,7 @@ async def _download_selected_artifact_candidate_via_browser(
         "manual_import_performed": False,
         "download": metadata,
         "download_url": url,
-        "download_transport": {**transport, "status": "artifact_browser_downloaded", "browser_result": browser_result},
+        "download_transport": {**transport, "status": "artifact_browser_downloaded", "browser_result": browser_result, "service_staging_path": browser_target_path},
         "download_overwrote_existing": overwritten,
         "artifact_inbox_dir": str(inbox_dir),
         "intake_record_path": str(inbox_dir / "intake.json"),
