@@ -21,7 +21,6 @@ import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
-from datetime import datetime, timezone
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -2525,7 +2524,7 @@ def _candidate_test_command_for_profile(
 
     normalized_profile = (profile or "smoke").strip().lower()
     if normalized_profile == "smoke":
-        return [sys.executable, _promptbranch_command_path(), "test", "smoke", "--json", "--path", str(repo_root), "--substep-timeout-seconds", "120"]
+        return [sys.executable, _promptbranch_command_path(), "test", "smoke", "--json"]
     if normalized_profile != "full":
         raise ValueError(f"unsupported candidate-test profile: {profile}")
 
@@ -6510,211 +6509,6 @@ def _render_completion(shell_name: str, command_name: str) -> str:
 def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
     return ConversationStateStore(args.profile_dir)
 
-
-
-
-def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
-    """Return bounded local smoke substeps.
-
-    `pb test smoke` is the MVP-loop smoke gate.  It must be cheap,
-    deterministic, and observable.  Browser-heavy validation remains available
-    through `pb test browser` and `pb test full`.
-    """
-
-    promptbranch_cmd = _promptbranch_command_path()
-    return [
-        {
-            "name": "version",
-            "kind": "promptbranch_cli",
-            "command": [sys.executable, promptbranch_cmd, "version"],
-            "description": "Verify the installed Promptbranch CLI starts and reports a version.",
-        },
-        {
-            "name": "doctor_readonly",
-            "kind": "promptbranch_cli",
-            "command": [sys.executable, promptbranch_cmd, "doctor", "--json"],
-            "description": "Verify local Promptbranch state can be inspected without mutation.",
-        },
-        {
-            "name": "skill_list_readonly",
-            "kind": "promptbranch_cli",
-            "command": [sys.executable, promptbranch_cmd, "skill", "list", "--json"],
-            "description": "Verify the local skill registry can be inspected without mutation.",
-        },
-        {
-            "name": "artifact_current_readonly",
-            "kind": "promptbranch_cli",
-            "command": [sys.executable, promptbranch_cmd, "artifact", "current", "--json"],
-            "description": "Verify artifact current-state inspection remains read-only and JSON-producing.",
-        },
-    ]
-
-
-def _run_bounded_smoke_subprocess(
-    spec: dict[str, Any],
-    *,
-    repo_path: Path,
-    timeout_seconds: float,
-    log_dir: Path,
-) -> dict[str, Any]:
-    started_at = utc_now()
-    name = str(spec.get("name") or "unknown")
-    command = [str(item) for item in spec.get("command") or []]
-    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    stdout_log = log_dir / f"{safe_name}.stdout.log"
-    stderr_log = log_dir / f"{safe_name}.stderr.log"
-    timeout = max(1.0, float(timeout_seconds))
-    stdout_handle = open(stdout_log, "w", encoding="utf-8", errors="replace")
-    stderr_handle = open(stderr_log, "w", encoding="utf-8", errors="replace")
-    proc: subprocess.Popen[str] | None = None
-    try:
-        proc = subprocess.Popen(
-            command,
-            cwd=str(repo_path),
-            stdout=stdout_handle,
-            stderr=stderr_handle,
-            text=True,
-            start_new_session=True,
-        )
-        try:
-            returncode = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out_at = utc_now()
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except Exception:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-            try:
-                proc.wait(timeout=5)
-                killed_with = "SIGTERM"
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except Exception:
-                    try:
-                        proc.kill()
-                    except Exception:
-                        pass
-                proc.wait(timeout=5)
-                killed_with = "SIGKILL"
-            return {
-                "name": name,
-                "ok": False,
-                "status": "smoke_substep_timeout",
-                "kind": spec.get("kind"),
-                "description": spec.get("description"),
-                "command": command,
-                "pid": proc.pid,
-                "process_group_pid": proc.pid,
-                "started_at": started_at,
-                "finished_at": utc_now(),
-                "timed_out_at": timed_out_at,
-                "timeout_seconds": timeout,
-                "killed_with": killed_with,
-                "stdout_log_path": str(stdout_log),
-                "stderr_log_path": str(stderr_log),
-                "stdout_tail": _tail_text_file(stdout_log),
-                "stderr_tail": _tail_text_file(stderr_log),
-            }
-        return {
-            "name": name,
-            "ok": returncode == 0,
-            "status": "passed" if returncode == 0 else "failed",
-            "kind": spec.get("kind"),
-            "description": spec.get("description"),
-            "command": command,
-            "pid": proc.pid,
-            "process_group_pid": proc.pid,
-            "returncode": returncode,
-            "started_at": started_at,
-            "finished_at": utc_now(),
-            "timeout_seconds": timeout,
-            "stdout_log_path": str(stdout_log),
-            "stderr_log_path": str(stderr_log),
-            "stdout_tail": _tail_text_file(stdout_log),
-            "stderr_tail": _tail_text_file(stderr_log),
-        }
-    except Exception as exc:
-        return {
-            "name": name,
-            "ok": False,
-            "status": "smoke_substep_runner_failed",
-            "kind": spec.get("kind"),
-            "description": spec.get("description"),
-            "command": command,
-            "started_at": started_at,
-            "finished_at": utc_now(),
-            "timeout_seconds": timeout,
-            "stdout_log_path": str(stdout_log),
-            "stderr_log_path": str(stderr_log),
-            "stdout_tail": _tail_text_file(stdout_log),
-            "stderr_tail": _tail_text_file(stderr_log),
-            "error": str(exc),
-        }
-    finally:
-        try:
-            stdout_handle.close()
-        except Exception:
-            pass
-        try:
-            stderr_handle.close()
-        except Exception:
-            pass
-
-
-async def cmd_test_smoke(args: argparse.Namespace) -> int:
-    repo_path = Path(getattr(args, "path", ".") or ".").expanduser().resolve()
-    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
-    run_id = str(getattr(args, "run_id", "") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"))
-    log_dir = profile_root / "test_smoke_logs" / run_id
-    timeout_seconds = float(getattr(args, "substep_timeout_seconds", 60.0) or 60.0)
-    steps: list[dict[str, Any]] = []
-    started_at = utc_now()
-    for spec in _promptbranch_smoke_step_specs(repo_path):
-        result = _run_bounded_smoke_subprocess(
-            spec,
-            repo_path=repo_path,
-            timeout_seconds=timeout_seconds,
-            log_dir=log_dir,
-        )
-        steps.append(result)
-        if not bool(result.get("ok")):
-            break
-    ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
-    failed_step = next((step for step in steps if not bool(step.get("ok"))), None)
-    payload = {
-        "ok": ok,
-        "action": "test_smoke",
-        "profile": "smoke",
-        "status": "passed" if ok else (failed_step.get("status") if failed_step else "smoke_no_steps_run"),
-        "repo_path": str(repo_path),
-        "version": (repo_path / "VERSION").read_text(encoding="utf-8").strip() if (repo_path / "VERSION").is_file() else None,
-        "started_at": started_at,
-        "finished_at": utc_now(),
-        "substep_timeout_seconds": timeout_seconds,
-        "log_dir": str(log_dir),
-        "step_count": len(steps),
-        "planned_steps": [
-            {"name": spec.get("name"), "kind": spec.get("kind"), "command": spec.get("command"), "description": spec.get("description")}
-            for spec in _promptbranch_smoke_step_specs(repo_path)
-        ],
-        "steps": steps,
-        "failed_step": failed_step,
-        "operator_instruction": "Smoke profile is bounded and local. Use `pb test browser` or `pb test full` for live browser/adoption-grade coverage.",
-    }
-    if getattr(args, "json_out", None):
-        Path(args.json_out).expanduser().resolve().write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print(f"status={payload.get('status')}")
-        for step in steps:
-            print(f"{step.get('name')}: {step.get('status')}")
-    return 0 if ok else 1
 
 async def cmd_test_suite(args: argparse.Namespace) -> int:
     _apply_test_suite_defaults(args)
@@ -14289,7 +14083,7 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_test_import_smoke(args)
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
-        return await cmd_test_smoke(args)
+        return await cmd_test_suite(args)
     if args.test_command in {"browser", "agent", "full"}:
         _apply_test_suite_defaults(args)
         args.profile = args.test_command
@@ -15135,7 +14929,6 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Optionally require exactly one matching Project Source before local candidate adoption; no upload is performed.")
     artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Deprecated for v0.0.226; accept-candidate consumes an existing candidate-test result and rejects this flag.")
-    artifact_accept_candidate.add_argument("--profile", choices=["smoke", "full"], default="full", help="Deprecated compatibility option; accept-candidate consumes an existing candidate-test result and does not run this profile.")
     artifact_accept_candidate.add_argument("--adopt-if-green", action="store_true", help="Adopt locally only if an existing candidate-test record is green and candidate ZIP verification passes.")
     artifact_accept_candidate.add_argument("--test-timeout", type=float, default=3600.0, help="Deprecated compatibility option; accept-candidate does not run tests in this release.")
     artifact_accept_candidate.add_argument("--release-log-keep", type=int, default=12, help="Deprecated compatibility option; accept-candidate does not create release-control logs in this release.")
@@ -15341,9 +15134,7 @@ def make_parser() -> argparse.ArgumentParser:
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)
     test_smoke = test_subparsers.add_parser("smoke", help="Run the standard Promptbranch smoke suite.")
-    test_smoke.add_argument("--json", action="store_true", help="Emit the bounded smoke substep summary as JSON.")
-    test_smoke.add_argument("--substep-timeout-seconds", type=float, default=60.0, help="Maximum runtime for each smoke substep before JSON timeout output is emitted.")
-    test_smoke.add_argument("--path", default=".", help="Repo path for local smoke checks. Defaults to current directory.")
+    test_smoke.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
     test_smoke.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")
     test_smoke.add_argument("--keep-project", action="store_true", help="Do not delete the test project at the end.")
     test_smoke.add_argument("--step-delay-seconds", type=float, default=8.0, help="Delay inserted before each step after the first to reduce ChatGPT rate-limit pressure.")
@@ -15672,7 +15463,7 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_suite(args)
     if args.command == "test" and getattr(args, "test_command", None) == "smoke":
         _apply_test_suite_defaults(args)
-        return await cmd_test_smoke(args)
+        return await cmd_test_suite(args)
     if args.command == "test" and getattr(args, "test_command", None) == "report":
         return await cmd_test_report(args)
     if args.command == "test" and getattr(args, "test_command", None) == "status":
