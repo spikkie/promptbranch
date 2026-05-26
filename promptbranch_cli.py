@@ -268,6 +268,31 @@ class DirectBackend:
         finally:
             self._service.settings.project_url = original_project_url
 
+    async def download_chat_artifact(
+        self,
+        *,
+        conversation_url: str,
+        artifact_url: str | None,
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = project_home_url_from_url(conversation_url) or self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.download_chat_artifact(
+                conversation_url=conversation_url,
+                artifact_url=artifact_url,
+                filename=filename,
+                target_path=target_path,
+                timeout_seconds=timeout_seconds,
+                keep_open=keep_open,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
+
     async def create_project(
         self,
         name: str,
@@ -511,6 +536,27 @@ class ServiceBackend:
             project_url=project_home_url_from_url(conversation_url) or self._effective_project_home_url(),
         )
 
+
+    async def download_chat_artifact(
+        self,
+        *,
+        conversation_url: str,
+        artifact_url: str | None,
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.download_chat_artifact,
+            conversation_url,
+            artifact_url=artifact_url,
+            filename=filename,
+            target_path=target_path,
+            timeout_seconds=timeout_seconds,
+            keep_open=keep_open,
+            project_url=project_home_url_from_url(conversation_url) or self._effective_project_home_url(),
+        )
 
     async def create_project(
         self,
@@ -1698,6 +1744,7 @@ async def cmd_task_answer_parse(backend: Any, args: argparse.Namespace) -> int:
 
     parsed = parse_promptbranch_reply(str(answer.get("text") or ""))
     selected = _protocol_answer_metadata(message, answer)
+    parsed = _with_protocol_selection_on_artifact_candidates(parsed, selected=selected)
     promotion = _promote_task_answer_protocol_run(args, payload=payload, message=message, answer=answer, parsed=parsed)
     result = {
         **parsed,
@@ -1872,6 +1919,17 @@ def _normalize_protocol_run_reply_for_intake(run: dict[str, Any]) -> dict[str, A
     # Preserve the already-validated run identity even if parse revalidation fails.
     parsed.setdefault("request_id", run.get("request_id"))
     parsed.setdefault("correlation_id", run.get("correlation_id"))
+    selected = run.get("selected_answer") if isinstance(run.get("selected_answer"), dict) else None
+    if selected is None:
+        answer = run.get("answer") if isinstance(run.get("answer"), dict) else {}
+        message = run.get("message") if isinstance(run.get("message"), dict) else {}
+        selected = _protocol_answer_metadata(message, answer)
+    parsed = _with_protocol_selection_on_artifact_candidates(
+        parsed,
+        selected=selected,
+        request_id=run.get("request_id"),
+        correlation_id=run.get("correlation_id"),
+    )
     parsed["protocol_run_status"] = run.get("status")
     parsed["protocol_run_reply_validation_ok"] = run.get("reply_validation_ok")
     parsed["protocol_run_artifact_candidate_count"] = len(artifacts)
@@ -2088,6 +2146,88 @@ def _artifact_download_transport(url: str | None) -> dict[str, Any]:
         "reason": reason,
     }
 
+
+
+
+def _release_candidate_download_proof(candidate: dict[str, Any] | None) -> dict[str, Any]:
+    """Classify whether a release-candidate artifact has host-verifiable download proof.
+
+    LLM-provided ``download.available=true`` is only a claim.  For strict
+    ``ask-release`` validation, a JSON-only ``sandbox:/mnt/data/...`` reference
+    must not count as real artifact materialization because the local runtime
+    cannot fetch it and the ChatGPT UI may render it as plain JSON text rather
+    than a file attachment.
+    """
+
+    if not isinstance(candidate, dict):
+        return {
+            "ok": False,
+            "status": "artifact_candidate_missing",
+            "failure": "artifact_candidate_missing",
+            "claim_available": False,
+            "direct_download_supported": False,
+            "attachment_proven": False,
+            "json_only_declared": False,
+        }
+    download = candidate.get("download") if isinstance(candidate.get("download"), dict) else {}
+    url = _selected_candidate_download_url(candidate)
+    transport = _artifact_download_transport(url)
+    claim_available = bool(download.get("available") or download.get("url") or download.get("link_text") or download.get("markdown_link"))
+    attachment_proven = bool(
+        download.get("attachment_id")
+        or download.get("file_id")
+        or download.get("ui_attachment") is True
+        or download.get("attachment_detected") is True
+        or download.get("attachment_proven") is True
+    )
+    if transport.get("direct_download_supported"):
+        return {
+            "ok": True,
+            "status": "direct_download_url",
+            "failure": None,
+            "claim_available": claim_available,
+            "url": url,
+            "transport": transport,
+            "direct_download_supported": True,
+            "attachment_proven": attachment_proven,
+            "json_only_declared": False,
+        }
+    if attachment_proven:
+        return {
+            "ok": True,
+            "status": "chatgpt_attachment_proven",
+            "failure": None,
+            "claim_available": claim_available,
+            "url": url,
+            "transport": transport,
+            "direct_download_supported": False,
+            "attachment_proven": True,
+            "json_only_declared": False,
+        }
+    if url and transport.get("scheme") == "sandbox":
+        return {
+            "ok": False,
+            "status": "artifact_declared_but_not_attached",
+            "failure": "artifact_declared_but_not_attached",
+            "claim_available": claim_available,
+            "url": url,
+            "transport": transport,
+            "direct_download_supported": False,
+            "attachment_proven": False,
+            "json_only_declared": True,
+            "operator_instruction": "The protocol reply declared a sandbox artifact URL, but no real direct-download URL or verified ChatGPT attachment was detected. Treat this as manual-import-required, not as a created downloadable candidate.",
+        }
+    return {
+        "ok": False,
+        "status": "artifact_download_proof_missing",
+        "failure": "artifact_download_proof_missing",
+        "claim_available": claim_available,
+        "url": url,
+        "transport": transport,
+        "direct_download_supported": False,
+        "attachment_proven": False,
+        "json_only_declared": bool(claim_available),
+    }
 
 def _artifact_manual_import_command(filename: str) -> str:
     safe_filename = Path(filename).name or "artifact.zip"
@@ -2801,6 +2941,177 @@ def _manual_import_selected_artifact_candidate(
         "operator_instruction": "Artifact was manually imported into .pb_profile/artifact_inbox. Run/continue with --verify --migrate to validate and register it as a candidate_release.",
     }
 
+async def _download_selected_artifact_candidate_via_browser(
+    backend: Any,
+    result: dict[str, Any],
+    *,
+    profile_dir: str | Path,
+    conversation_id: Any,
+    answer_id: Any,
+    timeout_seconds: float,
+    keep_open: bool = False,
+) -> dict[str, Any]:
+    if result.get("status") not in {"candidate_selected", "artifact_candidates_found"} or not isinstance(result.get("selected_candidate"), dict):
+        return _download_selected_artifact_candidate(
+            result,
+            profile_dir=profile_dir,
+            conversation_id=conversation_id,
+            answer_id=answer_id,
+            timeout_seconds=timeout_seconds,
+        )
+    candidate = dict(result["selected_candidate"])
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    url = _selected_candidate_download_url(candidate)
+    transport = _artifact_download_transport(url)
+    if not filename or transport.get("scheme") != "sandbox":
+        return _download_selected_artifact_candidate(
+            result,
+            profile_dir=profile_dir,
+            conversation_id=conversation_id,
+            answer_id=answer_id,
+            timeout_seconds=timeout_seconds,
+        )
+    conversation_url = str(result.get("conversation_url") or "").strip()
+    if not conversation_url:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_browser_download_conversation_missing",
+            "download_performed": False,
+            "download_error": "browser-assisted sandbox download requires selected conversation_url",
+            "download_url": url,
+            "download_transport": transport,
+            "requires_browser_context": True,
+            "manual_import_supported": True,
+            "intake_stage": "download_requested",
+        }
+    inbox_dir = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=result.get("reply_request_id"),
+    )
+    target_path = inbox_dir / filename
+    overwritten = target_path.exists()
+    if not hasattr(backend, "download_chat_artifact"):
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_browser_download_unsupported_backend",
+            "download_performed": False,
+            "download_error": "backend does not support browser-assisted artifact download",
+            "download_url": url,
+            "download_transport": transport,
+            "requires_browser_context": True,
+            "manual_import_supported": True,
+            "browser_download_handoff": {
+                "required": True,
+                "reason": "backend does not support browser-assisted artifact download",
+                "artifact_ref": url,
+                "filename": filename,
+                "manual_import_command": _artifact_manual_import_command(filename),
+            },
+            "manual_import_command": _artifact_manual_import_command(filename),
+            "intake_stage": "download_requested",
+        }
+    try:
+        browser_result = await backend.download_chat_artifact(
+            conversation_url=conversation_url,
+            artifact_url=url,
+            filename=filename,
+            target_path=str(target_path),
+            timeout_seconds=timeout_seconds,
+            keep_open=keep_open,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_browser_download_failed",
+            "download_performed": False,
+            "download_error": str(exc),
+            "download_url": url,
+            "download_transport": {**transport, "browser_attempted": True},
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "download_requested",
+        }
+    if not isinstance(browser_result, dict) or not browser_result.get("ok"):
+        return {
+            **result,
+            "ok": False,
+            "status": (browser_result or {}).get("status") if isinstance(browser_result, dict) else "artifact_browser_download_failed",
+            "download_performed": False,
+            "download_error": (browser_result or {}).get("download_error") if isinstance(browser_result, dict) else "browser-assisted download returned invalid result",
+            "download_url": url,
+            "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result},
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "download_requested",
+        }
+    if not target_path.is_file():
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_browser_download_missing_file",
+            "download_performed": False,
+            "download_error": "browser reported success but target artifact was not written",
+            "download_url": url,
+            "download_transport": {**transport, "browser_attempted": True, "browser_result": browser_result},
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "download_requested",
+        }
+    metadata = _artifact_file_metadata(target_path)
+    intake_record = {
+        "schema": "promptbranch.artifact.intake.download",
+        "schema_version": "1.0",
+        "status": "downloaded",
+        "candidate": candidate,
+        "download": metadata,
+        "download_url": url,
+        "download_transport": {**transport, "status": "artifact_browser_downloaded", "browser_result": browser_result},
+        "reply_request_id": result.get("reply_request_id"),
+        "reply_correlation_id": result.get("reply_correlation_id"),
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "created_at": utc_now(),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    try:
+        (inbox_dir / "intake.json").write_text(json.dumps(intake_record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {
+            **result,
+            "ok": False,
+            "status": "artifact_download_metadata_failed",
+            "download_performed": True,
+            "download": metadata,
+            "download_error": str(exc),
+            "download_url": url,
+            "artifact_inbox_dir": str(inbox_dir),
+            "intake_stage": "downloaded",
+        }
+    return {
+        **result,
+        "ok": True,
+        "status": "downloaded",
+        "intake_stage": "downloaded",
+        "download_performed": True,
+        "browser_download_performed": True,
+        "manual_import_performed": False,
+        "download": metadata,
+        "download_url": url,
+        "download_transport": {**transport, "status": "artifact_browser_downloaded", "browser_result": browser_result},
+        "download_overwrote_existing": overwritten,
+        "artifact_inbox_dir": str(inbox_dir),
+        "intake_record_path": str(inbox_dir / "intake.json"),
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "operator_instruction": "Artifact was downloaded through the browser/session context into .pb_profile/artifact_inbox. ZIP verification, migration, and adoption were not performed.",
+    }
+
+
 def _download_selected_artifact_candidate(
     result: dict[str, Any],
     *,
@@ -3477,12 +3788,14 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             local_file=local_file,
         )
     elif getattr(args, "download", False):
-        result = _download_selected_artifact_candidate(
+        result = await _download_selected_artifact_candidate_via_browser(
+            backend,
             result,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
             conversation_id=conversation_id_for_artifact,
             answer_id=answer_id_for_artifact,
             timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+            keep_open=bool(getattr(args, "keep_open", False)),
         )
     if getattr(args, "verify", False):
         result = _verify_intake_artifact_candidate(
@@ -5033,7 +5346,9 @@ async def _parse_protocol_reply_after_ask(
         }
 
     selected_answer_text = str(answer.get("text") or "")
+    selected = _protocol_answer_metadata(message, answer)
     parsed = parse_promptbranch_reply(selected_answer_text)
+    parsed = _with_protocol_selection_on_artifact_candidates(parsed, selected=selected)
     validation_ok, validation_errors = _validate_protocol_reply_against_request(parsed, envelope)
     status = "reply_validated" if validation_ok else "reply_validation_failed"
     normalized_ask_response = _normalize_protocol_ask_response_for_selected_reply(
@@ -5058,8 +5373,8 @@ async def _parse_protocol_reply_after_ask(
         "title": payload.get("title"),
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
-        "selected_answer": _protocol_answer_metadata(message, answer),
-        "answer_selection": {**selection, "selected": _protocol_answer_metadata(message, answer)},
+        "selected_answer": selected,
+        "answer_selection": {**selection, "selected": selected},
         "pre_ask_marker": pre_ask_marker,
         "post_ask_marker": post_ask_marker,
         "fresh_turn_evidence": fresh_turn_evidence,
@@ -5110,6 +5425,49 @@ def _normalize_protocol_ask_response_for_selected_reply(
         normalized["selected_answer_index"] = selected_answer.get("index")
         normalized["selected_answer_turn_index"] = selected_answer.get("turn_index")
     return normalized
+
+
+
+def _with_protocol_selection_on_artifact_candidates(parsed: dict[str, Any], *, selected: dict[str, Any] | None, request_id: Any = None, correlation_id: Any = None) -> dict[str, Any]:
+    """Attach deterministic request/message/answer identity to parsed candidates."""
+
+    if not isinstance(parsed, dict):
+        return parsed
+    enriched = copy.deepcopy(parsed)
+    selected = selected if isinstance(selected, dict) else {}
+    request_id_value = request_id or enriched.get("request_id")
+    correlation_id_value = correlation_id or enriched.get("correlation_id")
+    if not enriched.get("answer_id") and selected.get("answer_id"):
+        enriched["answer_id"] = selected.get("answer_id")
+    candidates = enriched.get("artifact_candidates") if isinstance(enriched.get("artifact_candidates"), list) else []
+    next_candidates: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            next_candidates.append(candidate)
+            continue
+        item = copy.deepcopy(candidate)
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        source = dict(source)
+        if not source.get("request_id"):
+            source["request_id"] = request_id_value
+        if not source.get("correlation_id"):
+            source["correlation_id"] = correlation_id_value
+        if not source.get("message_id"):
+            source["message_id"] = selected.get("message_id")
+        if not source.get("message_index"):
+            source["message_index"] = selected.get("message_index")
+        if not source.get("message_turn_index"):
+            source["message_turn_index"] = selected.get("message_turn_index")
+        if not source.get("answer_id"):
+            source["answer_id"] = selected.get("answer_id")
+        if not source.get("answer_index"):
+            source["answer_index"] = selected.get("answer_index")
+        if not source.get("answer_turn_index"):
+            source["answer_turn_index"] = selected.get("answer_turn_index")
+        item["source"] = source
+        next_candidates.append(item)
+    enriched["artifact_candidates"] = next_candidates
+    return enriched
 
 def _repo_name_from_artifact_name(filename: str) -> str | None:
     name = Path(filename).name
@@ -5224,7 +5582,10 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
         "filename_matches": False,
         "version_matches": False,
         "role_matches": False,
+        "download_claimed": False,
         "download_available": False,
+        "download_proof": False,
+        "download_proof_status": "artifact_candidate_missing",
         "status_release_candidate": False,
     }
     reply = validated.get("reply") if isinstance(validated.get("reply"), dict) else {}
@@ -5232,18 +5593,31 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
     checks["artifact_count"] = len(artifacts)
     checks["exact_artifact_count"] = len(artifacts) == 1
     checks["status_release_candidate"] = reply.get("status") == "completed" and reply.get("result_type") == "release_candidate"
+    download_proof: dict[str, Any] = _release_candidate_download_proof(None)
     if len(artifacts) == 1 and isinstance(artifacts[0], dict):
         candidate = artifacts[0]
-        download = candidate.get("download") if isinstance(candidate.get("download"), dict) else {}
         checks["filename_matches"] = Path(str(candidate.get("filename") or candidate.get("name") or "")).name == expected.get("expected_artifact")
         checks["version_matches"] = _normalize_version_token(candidate.get("version")) == expected.get("expected_version")
         checks["role_matches"] = candidate.get("role") == expected.get("expected_role")
-        checks["download_available"] = bool(download.get("available") or download.get("url") or download.get("link_text"))
-    failures = [name for name, ok in checks.items() if name in {"reply_validated", "exact_artifact_count", "filename_matches", "version_matches", "role_matches", "download_available", "status_release_candidate"} and not ok]
+        download_proof = _release_candidate_download_proof(candidate)
+        checks["download_claimed"] = bool(download_proof.get("claim_available"))
+        checks["download_available"] = bool(download_proof.get("ok"))
+        checks["download_proof"] = bool(download_proof.get("ok"))
+        checks["download_proof_status"] = download_proof.get("status")
+        checks["download_direct_supported"] = bool(download_proof.get("direct_download_supported"))
+        checks["download_attachment_proven"] = bool(download_proof.get("attachment_proven"))
+        checks["download_json_only_declared"] = bool(download_proof.get("json_only_declared"))
+        checks["download_url"] = download_proof.get("url")
+    required = {"reply_validated", "exact_artifact_count", "filename_matches", "version_matches", "role_matches", "download_proof", "status_release_candidate"}
+    failures = [name for name, ok in checks.items() if name in required and not ok]
+    if "download_proof" in failures and download_proof.get("failure"):
+        failures.append(str(download_proof.get("failure")))
+    failures = list(dict.fromkeys(failures))
     validated["ask_release_validation"] = {
         "ok": not failures,
         "failures": failures,
         "checks": checks,
+        "download_proof": download_proof,
         "operator_instruction": "Run `pb artifact candidate-run --execute-until-blocked --require-complete --require-real-candidate --json` only after ask-release validation is green.",
     }
     validated["expected_artifact"] = expected.get("expected_artifact")
@@ -5251,16 +5625,23 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
     validated["candidate_producing_protocol_flow"] = True
     if failures:
         validated["ok"] = False
-        validated["status"] = "release_candidate_validation_failed"
+        if download_proof.get("status") == "artifact_declared_but_not_attached":
+            validated["status"] = "artifact_declared_but_not_attached"
+            validated["artifact_materialization_proven"] = False
+            validated["manual_import_required"] = True
+            validated["operator_instruction"] = "The protocol reply declared a ZIP in JSON only. No real direct-download URL or verified ChatGPT attachment was proven; create/download the ZIP through the UI or rerun after a real attachment is available."
+        else:
+            validated["status"] = "release_candidate_validation_failed"
         validated["reply_validation_ok"] = False
         errors = list(validated.get("reply_validation_errors") or [])
         errors.extend(f"ask_release:{failure}" for failure in failures)
         validated["reply_validation_errors"] = errors
-        validated["error"] = "release-candidate protocol reply did not contain exactly one expected downloadable ZIP candidate"
+        validated["error"] = "release-candidate protocol reply did not contain exactly one expected materialized downloadable ZIP candidate"
     else:
         validated["status"] = "reply_validated"
         validated["reply_validation_ok"] = True
-        validated["operator_instruction"] = "Validated exactly one expected release-candidate ZIP in the protocol reply. Next run strict candidate-run with --require-real-candidate."
+        validated["artifact_materialization_proven"] = True
+        validated["operator_instruction"] = "Validated exactly one expected release-candidate ZIP with host-verifiable download proof. Next run strict candidate-run with --require-real-candidate."
     return validated
 
 

@@ -904,6 +904,38 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+
+    async def download_chat_artifact(
+        self,
+        *,
+        conversation_url: str,
+        artifact_url: str | None,
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        self._log(
+            "artifact-download",
+            "starting download_chat_artifact",
+            project_url=self.config.project_url,
+            conversation_url=conversation_url,
+            artifact_url=artifact_url,
+            filename=filename,
+            target_path=target_path,
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="artifact_download",
+            operation=self._download_chat_artifact_operation,
+            conversation_url=conversation_url,
+            artifact_url=artifact_url,
+            filename=filename,
+            target_path=target_path,
+            timeout_seconds=timeout_seconds,
+            keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
+        )
     async def get_chat(
         self,
         *,
@@ -2363,6 +2395,105 @@ class ChatGPTBrowserClient:
         self._log("project-source-list", "project source enumeration completed", **result)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Project source list completed. Press Enter to close the browser... ")
+        return result
+
+    async def _download_chat_artifact_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        conversation_url: str,
+        artifact_url: str | None,
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        conversation_id = self._conversation_id_from_url(conversation_url)
+        if not conversation_id:
+            raise RuntimeError('conversation_url must point to a project conversation')
+        safe_filename = Path(str(filename or '')).name
+        if not safe_filename or safe_filename in {'.', '..'}:
+            raise RuntimeError('filename must be a safe basename')
+        target = Path(target_path).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        await self._goto(page, conversation_url, label='artifact-download-chat')
+        await page.wait_for_load_state('domcontentloaded')
+        timeout_ms = max(1000, int(float(timeout_seconds or 120.0) * 1000))
+
+        # Prefer the rendered markdown link by visible filename.  The href may be
+        # a ChatGPT sandbox URL that only works inside this browser session.
+        locator = page.get_by_role('link', name=re.compile(re.escape(safe_filename)))
+        count = await locator.count()
+        # Avoid CSS-escaping hrefs here; the visible filename is the stable
+        # operator-facing selector and works for rendered markdown links.
+        if count < 1:
+            # Fallback: any anchor whose text contains the filename, even if the
+            # accessible name is different.
+            locator = page.locator('a').filter(has_text=safe_filename)
+            count = await locator.count()
+        if count < 1:
+            anchors = await page.locator('a').evaluate_all(
+                "els => els.slice(0, 40).map(a => ({text: (a.innerText || a.textContent || '').trim(), href: a.href || a.getAttribute('href')}))"
+            )
+            return {
+                'ok': False,
+                'action': 'artifact_download',
+                'status': 'artifact_link_not_found',
+                'conversation_url': conversation_url,
+                'conversation_id': conversation_id,
+                'filename': safe_filename,
+                'artifact_url': artifact_url,
+                'target_path': str(target),
+                'link_count': 0,
+                'anchors_sample': anchors,
+            }
+
+        link = locator.first
+        href = None
+        try:
+            href = await link.get_attribute('href')
+        except Exception:
+            href = None
+        overwritten = target.exists()
+        try:
+            async with page.expect_download(timeout=timeout_ms) as download_info:
+                await link.click()
+            download = await download_info.value
+            suggested = download.suggested_filename
+            await download.save_as(str(target))
+        except Exception as exc:
+            return {
+                'ok': False,
+                'action': 'artifact_download',
+                'status': 'artifact_browser_download_failed',
+                'conversation_url': conversation_url,
+                'conversation_id': conversation_id,
+                'filename': safe_filename,
+                'artifact_url': artifact_url,
+                'link_href': href,
+                'target_path': str(target),
+                'download_error': str(exc),
+            }
+        size = target.stat().st_size if target.exists() else 0
+        result = {
+            'ok': bool(target.exists() and size > 0),
+            'action': 'artifact_download',
+            'status': 'artifact_browser_downloaded' if target.exists() and size > 0 else 'artifact_browser_download_empty',
+            'conversation_url': conversation_url,
+            'conversation_id': conversation_id,
+            'filename': safe_filename,
+            'artifact_url': artifact_url,
+            'link_href': href,
+            'suggested_filename': suggested,
+            'target_path': str(target),
+            'size_bytes': size,
+            'overwrote_existing': overwritten,
+            'download_performed': bool(target.exists() and size > 0),
+        }
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Artifact download completed. Press Enter to close the browser...')
         return result
 
     async def _get_chat_operation(

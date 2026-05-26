@@ -192,3 +192,5 @@ That command should consolidate install, source add, project hooks, adoption, po
 ## Final MVP verdict rule
 
 The MVP is done when the complete structured ask-to-adopt-to-next-ask loop works twice in a row from accepted baselines, with no manual ZIP repair, no stale baseline selection, no unverified mutation, and no unexplained operator intervention.
+
+From `v0.0.276.7`, strict real-candidate proof must also reject JSON-only artifact declarations. A reply-envelope artifact whose only URL is `sandbox:/mnt/data/...` does not prove a durable ChatGPT attachment or local-downloadable candidate unless Promptbranch has direct URL support or explicit host-detected attachment proof.
