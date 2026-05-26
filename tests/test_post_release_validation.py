@@ -33,7 +33,8 @@ def _write_fake_promptbranch(
         "state_file = Path(__file__).with_name('adopted_state.txt')\n"
         "calls_file = Path(__file__).with_name('calls.jsonl')\n"
         "def record(args):\n"
-        "    calls_file.write_text(calls_file.read_text() + json.dumps(args) + '\\n' if calls_file.exists() else json.dumps(args) + '\\n')\n"
+        "    with calls_file.open('a', encoding='utf-8') as fh:\n"
+        "        fh.write(json.dumps(args) + '\\n')\n"
         "def current_version():\n"
         "    return state_file.read_text().strip() if state_file.exists() else initial\n"
         "def current_payload():\n"
@@ -70,8 +71,21 @@ def _write_fake_promptbranch(
         "        raise SystemExit(7)\n"
         "    print(json.dumps({'ok': True, 'action': 'ask_protocol_run', 'status': 'reply_validated', 'reply_validation_ok': True, 'baseline': {'input_version': current_version()}}))\n"
         "    raise SystemExit(0)\n"
+        "if args and args[0] == 'ask-release':\n"
+        "    if fail_protocol_until_adopted and current_version() != adopted:\n"
+        "        print(json.dumps({'ok': False, 'action': 'ask_release_protocol_run', 'error': 'wrong_baseline', 'current_version': current_version(), 'expected': adopted}))\n"
+        "        raise SystemExit(7)\n"
+        "    expected_artifact = args[args.index('--expect-artifact') + 1] if '--expect-artifact' in args else None\n"
+        "    expected_version = args[args.index('--expect-version') + 1] if '--expect-version' in args else None\n"
+        "    print(json.dumps({'ok': True, 'action': 'ask_release_protocol_run', 'status': 'reply_validated', 'reply_validation_ok': True, 'artifact_candidate_count': 1, 'artifacts': [{'filename': expected_artifact, 'version': expected_version, 'kind': 'zip'}], 'baseline': {'input_version': current_version()}}))\n"
+        "    raise SystemExit(0)\n"
         "if args == ['artifact', 'intake', '--from-last-answer', '--dry-run', '--json']:\n"
         "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact'}))\n"
+        "    raise SystemExit(0)\n"
+        "if args[:4] == ['artifact', 'intake', '--from-last-answer', '--expect-artifact'] and '--download' in args and '--verify' in args:\n"
+        "    expected_artifact = args[args.index('--expect-artifact') + 1]\n"
+        "    expected_version = args[args.index('--expect-version') + 1] if '--expect-version' in args else None\n"
+        "    print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'download_verified', 'selected_candidate': {'filename': expected_artifact, 'version': expected_version}, 'download_performed': True, 'verification_performed': True, 'migration_performed': False, 'adoption_performed': False, 'artifact_inbox_dir': '.pb_profile/artifact_inbox/fake'}))\n"
         "    raise SystemExit(0)\n"
         "if args[:2] == ['artifact', 'candidate-run']:\n"
         "    require_complete = '--require-complete' in args\n"
@@ -510,11 +524,25 @@ def test_post_release_validation_strict_real_candidate_requires_download_proof_a
             "category": "artifact_download_proof_failure",
             "phase": "post_adoption",
             "rc": 1,
-            "reason": "strict real-candidate MVP validation requires download_performed=true; adopted_current proof is insufficient",
+            "reason": "strict real-candidate MVP validation requires explicit download proof from candidate-run or artifact intake",
             "severity": "blocking",
             "step": "artifact_candidate_run_plan",
         }
     ]
+
+
+def test_post_release_validation_strict_real_candidate_uses_ask_release_and_download_verify_path() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert '"${pb_cmd}" ask-release' in text
+    assert '--expect-artifact "${target_artifact}"' in text
+    assert '--expect-version "${target_version}"' in text
+    assert '--expect-repo "${project_name}"' in text
+    assert 'artifact intake download/verify' in text
+    assert '--download' in text
+    assert '--verify' in text
+    assert 'artifact_intake_download_verify_proof "${intake_log}"' in text
+    assert 'candidate_run_download_proof "${candidate_run_log}" "${intake_log}"' in text
+
 
 
 def test_post_release_validation_classifies_strict_no_artifact_as_operator_precondition(tmp_path: Path) -> None:

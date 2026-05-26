@@ -30,7 +30,7 @@ The key invariant is that no new mutation path is created here. Mutation remains
 - The ZIP may not be visible as a ChatGPT Project Source, so `pb artifact adopt --from-project-source` can fail.
 - `pb artifact current --json` may still point to the previous accepted baseline before adoption. That mismatch is diagnostic unless strict adopted-baseline validation is requested.
 - The protocol smoke may fail because of ChatGPT browser/service/network state, bearer-token state, rate limits, or a malformed reply envelope.
-- The post-adoption protocol smoke intentionally returns `no_artifact`; without `--require-real-candidate-mvp`, a clean no-artifact terminal precondition is accepted as a non-mutating terminal state.
+- The post-adoption protocol smoke intentionally returns `no_artifact` in the default mode; without `--require-real-candidate-mvp`, a clean no-artifact terminal precondition is accepted as a non-mutating terminal state. With `--require-real-candidate-mvp`, the protocol step switches to `pb ask-release` and expects a ZIP candidate for `--target-version`.
 - `pb test full --json` can be long-running and environment-dependent.
 - ZIP hygiene fails if generated logs, nested ZIPs, `.pb_profile/`, caches, wrapper folders, or Python bytecode are packaged.
 
@@ -63,7 +63,7 @@ scripts/finalize-artifact-intake-mvp.sh \
   --require-real-candidate-mvp
 ```
 
-From `v0.0.276.4`, this strict form also requires explicit artifact download proof. If `pb artifact candidate-run` reports `mvp_complete=true` only because the candidate is already the adopted current baseline, but `download_performed=false`, the finalizer fails with `artifact_download_proof_failure`.
+From `v0.0.276.5`, this strict form performs an artifact-producing `pb ask-release` for `--target-version`, then runs `pb artifact intake --from-last-answer --download --verify` for the expected target ZIP. The finalizer fails unless explicit download and verification proof exists. An already-adopted baseline proof from `pb artifact candidate-run` is acceptable only when it is paired with the explicit artifact-intake download/verify proof.
 
 Bounded execution controls:
 
@@ -196,8 +196,8 @@ pb artifact adopt chatgpt_claudecode_workflow_<version>.zip \
 ```
 
 8. Re-runs `pb artifact current --json` and verifies artifact/source/runtime version alignment.
-9. Runs a post-adoption protocol smoke ask using `--from-current-baseline`.
-10. Runs artifact intake dry-run from the latest answer.
+9. Runs a post-adoption protocol step. Default mode uses a `no_artifact` protocol smoke with `--from-current-baseline`; strict real-candidate mode uses `pb ask-release` to request the target ZIP artifact.
+10. Runs artifact intake from the latest answer. Default mode uses dry-run only; strict real-candidate mode uses `--download --verify` for the expected target ZIP.
 11. Runs final candidate-run completion validation:
 
 ```bash
@@ -419,8 +419,8 @@ zip_hygiene.<version>.json
 pb_artifact_adopt.<version>.json
 pb_artifact_current_after_adopt.<version>.json
 pb_artifact_current_after_adopt.<version>.semantic.json
-pb_ask_protocol_smoke.<version>.json
-pb_artifact_intake_dry_run.<version>.json
+pb_ask_protocol_smoke.<version>.json        # no_artifact smoke or ask-release result in strict mode
+pb_artifact_intake_dry_run.<version>.json  # dry-run or download/verify result in strict mode
 pb_artifact_candidate_run.<version>.json
 pb_release_lifecycle_status.<version>.json
 ```
@@ -456,13 +456,20 @@ validation_classification.failures
 
 A healthy finalization run should have no blocking failures and should show adoption/current-baseline alignment after adoption.
 
-For strict real-candidate validation, also check:
+For strict real-candidate validation, also inspect the artifact-intake evidence file:
 
-```text
-steps.artifact_candidate_run_plan.download_performed == true
+```bash
+python3 -m json.tool .pb_profile/release_logs/<version>/pb_artifact_intake_dry_run.<version>.json
 ```
 
-If it is `false`, the run did not prove the ZIP download path even when the baseline is already adopted.
+Required fields:
+
+```text
+download_performed == true
+verification_performed == true
+```
+
+`steps.artifact_candidate_run_plan.download_performed` may still be `false` when candidate-run proves only the already-adopted current baseline. That is acceptable only when the separate artifact-intake download/verify evidence is green.
 
 ## Failure triage
 
@@ -488,7 +495,7 @@ The assistant reply did not satisfy the ask/reply envelope contract. Inspect `pb
 
 ### `operator_precondition_failure`
 
-Usually means no real selected artifact candidate existed, or `--require-real-candidate-mvp` made a no-artifact terminal state a hard failure.
+Usually means no real selected artifact candidate existed, or `--require-real-candidate-mvp` made a no-artifact terminal state a hard failure. In strict mode, inspect `pb_ask_protocol_smoke.<version>.json` for the `ask-release` result and `pb_artifact_intake_dry_run.<version>.json` for `download_performed=true` and `verification_performed=true`.
 
 ### `artifact_candidate_lifecycle_failure`
 

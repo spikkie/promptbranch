@@ -63,6 +63,8 @@ pb ask "Continue next slice" \
 
 The same workflow must pass for at least two consecutive normal releases from clean accepted baselines.
 
+For strict final Artifact Intake MVP validation from `v0.0.276.5`, `scripts/finalize-artifact-intake-mvp.sh --require-real-candidate-mvp` must run an artifact-producing `pb ask-release` for the target version and must prove `pb artifact intake --download --verify` with `download_performed=true` and `verification_performed=true`. A no-artifact protocol smoke is not sufficient for strict real-candidate proof.
+
 Manual validation details for the finalizer are documented in `docs/howto/15-finalize-artifact-intake-mvp.md`. That manual is the operator reference for preflight checks, wrapper-contract tests, delegated post-release phases, evidence files, and failure triage.
 
 ## Required invariants
