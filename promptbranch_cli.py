@@ -13107,16 +13107,31 @@ def _candidate_run_next_payload(
     return next_payload, candidate_count, inventory
 
 
-def _candidate_run_safe_command(kind: str, *, candidate_version: str | None, repo_root: Path) -> list[str] | None:
-    """Build the one allowlisted command that may advance the MVP lifecycle."""
+def _candidate_run_safe_command(
+    kind: str,
+    *,
+    candidate_version: str | None,
+    repo_root: Path,
+    test_profile: str = "smoke",
+    accept_if_green: bool = False,
+) -> list[str] | None:
+    """Build the allowlisted command that may advance the MVP lifecycle.
 
+    Candidate-run is intentionally guarded: download/verify/migrate and
+    candidate-test may be automated, but adoption is only allowed when the
+    operator explicitly passes --accept-if-green to candidate-run.
+    """
+
+    profile = str(test_profile or "smoke").strip() or "smoke"
+    if profile not in {"smoke", "full"}:
+        return None
     script = Path(__file__).resolve()
     base = [sys.executable, str(script), "artifact"]
     if kind in {"intake_candidate", "repair_or_remigrate_candidate"}:
         return base + ["intake", "--from-last-answer", "--download", "--verify", "--migrate", "--json"]
     if kind == "test_candidate" and candidate_version:
-        return base + ["candidate-test", "--version", candidate_version, "--repo-path", str(repo_root), "--json"]
-    if kind == "accept_candidate" and candidate_version:
+        return base + ["candidate-test", "--version", candidate_version, "--repo-path", str(repo_root), "--profile", profile, "--json"]
+    if kind == "accept_candidate" and candidate_version and accept_if_green:
         return base + ["accept-candidate", "--version", candidate_version, "--repo-path", str(repo_root), "--adopt-if-green", "--json"]
     if kind == "candidate_already_accepted":
         return base + ["current", "--json"]
@@ -13332,6 +13347,8 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     max_steps = max(1, int(getattr(args, "max_steps", 4) or 4))
     require_complete = bool(getattr(args, "require_complete", False))
     require_real_candidate = bool(getattr(args, "require_real_candidate", False))
+    test_profile = str(getattr(args, "profile", "smoke") or "smoke")
+    accept_if_green = bool(getattr(args, "accept_if_green", False))
 
     completion_report = _candidate_run_mvp_completion_report(
         backend,
@@ -13353,6 +13370,8 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
         "max_steps": max_steps,
         "require_complete": require_complete,
         "require_real_candidate": require_real_candidate,
+        "test_profile": test_profile,
+        "accept_if_green": accept_if_green,
         "mvp_completion": completion_report,
         "download_performed": False,
         "verification_performed": False,
@@ -13381,7 +13400,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     candidate_version = None
     if isinstance(selected_candidate, dict):
         candidate_version = _candidate_version_normalized(selected_candidate.get("artifact_version") or selected_candidate.get("version"))
-    command = _candidate_run_safe_command(kind, candidate_version=candidate_version, repo_root=repo_root)
+    command = _candidate_run_safe_command(kind, candidate_version=candidate_version, repo_root=repo_root, test_profile=test_profile, accept_if_green=accept_if_green)
 
     selected_protocol_reply = selected_candidate.get("selected_protocol_reply") if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("selected_protocol_reply"), dict) else None
     payload: dict[str, Any] = {
@@ -13459,7 +13478,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
             loop_candidate_version = None
             if isinstance(loop_selected_candidate, dict):
                 loop_candidate_version = _candidate_version_normalized(loop_selected_candidate.get("artifact_version") or loop_selected_candidate.get("version"))
-            loop_command = _candidate_run_safe_command(loop_kind, candidate_version=loop_candidate_version, repo_root=repo_root)
+            loop_command = _candidate_run_safe_command(loop_kind, candidate_version=loop_candidate_version, repo_root=repo_root, test_profile=test_profile, accept_if_green=accept_if_green)
             loop_selected_protocol_reply = loop_selected_candidate.get("selected_protocol_reply") if isinstance(loop_selected_candidate, dict) and isinstance(loop_selected_candidate.get("selected_protocol_reply"), dict) else None
             step_plan = {
                 "step_index": step_index,
@@ -13485,10 +13504,20 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
                 cycle_ok = True
                 break
             if loop_command is None:
-                cycle_steps.append({**step_plan, "status": "candidate_run_cycle_blocked", "executed": False})
-                stopped_reason = "no_artifact_candidate" if loop_kind == "no_artifact_candidate" else "no_allowlisted_step"
-                cycle_status = "candidate_run_cycle_precondition_failed" if loop_kind == "no_artifact_candidate" else "candidate_run_cycle_blocked"
-                cycle_ok = loop_kind in {"", "candidate_not_found"}
+                blocked_status = "candidate_run_cycle_blocked"
+                blocked_reason = "no_allowlisted_step"
+                if loop_kind == "no_artifact_candidate":
+                    blocked_reason = "no_artifact_candidate"
+                    cycle_status = "candidate_run_cycle_precondition_failed"
+                elif loop_kind == "accept_candidate" and not accept_if_green:
+                    blocked_reason = "accept_if_green_required"
+                    blocked_status = "candidate_run_cycle_acceptance_requires_explicit_flag"
+                    cycle_status = "candidate_run_cycle_acceptance_ready"
+                else:
+                    cycle_status = "candidate_run_cycle_blocked"
+                cycle_steps.append({**step_plan, "status": blocked_status, "executed": False})
+                stopped_reason = blocked_reason
+                cycle_ok = loop_kind in {"", "candidate_not_found"} or blocked_reason == "accept_if_green_required"
                 break
             result = _run_candidate_lifecycle_command(loop_command, repo_root=repo_root, timeout_seconds=timeout_seconds)
             parsed = result.get("parsed_json") if isinstance(result.get("parsed_json"), dict) else {}
@@ -13544,7 +13573,7 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
             "mvp_complete": bool(final_completion_report.get("ok")),
             "mutating_actions_executed": any(bool(step.get("executed")) for step in cycle_steps),
             **aggregate,
-            "operator_instruction": "Executed allowlisted artifact-candidate MVP lifecycle steps until completion, failure, block, or max-step limit. Inspect cycle_steps before running again.",
+            "operator_instruction": "Executed guarded artifact-candidate lifecycle steps until completion, failure, block, acceptance-ready, or max-step limit. Adoption requires explicit --accept-if-green.",
         })
         code = 0 if cycle_ok else 1
     elif execute:
@@ -15126,6 +15155,8 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_run.add_argument("--max-steps", type=int, default=4, help="Maximum number of lifecycle steps for --execute-until-blocked. Defaults to 4.")
     artifact_candidate_run.add_argument("--require-complete", action="store_true", help="Return nonzero unless the artifact-candidate MVP lifecycle completion proof is satisfied after planning or execution.")
     artifact_candidate_run.add_argument("--require-real-candidate", action="store_true", help="Fail closed when the latest validated protocol reply is no_artifact; require a real ZIP candidate before candidate-run can pass.")
+    artifact_candidate_run.add_argument("--profile", choices=["smoke", "full"], default="smoke", help="Candidate-test profile used by guarded candidate-run. Default smoke; full is explicit adoption-grade validation.")
+    artifact_candidate_run.add_argument("--accept-if-green", action="store_true", help="Allow candidate-run to execute accept-candidate after download, verification, migration, and candidate-test pass. Without this flag candidate-run stops at acceptance-ready.")
     artifact_candidate_run.add_argument("--step-timeout", type=float, default=3600.0, help="Timeout in seconds for each executed lifecycle step. Defaults to 3600.")
     artifact_candidate_run.add_argument("--json", action="store_true")
 
