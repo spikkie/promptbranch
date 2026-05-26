@@ -3103,6 +3103,7 @@ class ChatGPTBrowserClient:
         duplicate_detected = False
         overwritten_existing = False
         overwrite_remove_result: Optional[dict[str, Any]] = None
+        capacity_prune_result: Optional[dict[str, Any]] = None
 
         if normalized_kind == "file":
             source_match_candidates = self._build_source_match_candidates(
@@ -3194,6 +3195,129 @@ class ChatGPTBrowserClient:
                     duplicate_detected = False
                     duplicate_notice = None
                     overwritten_existing = True
+
+            if not duplicate_detected and len(before_sources) >= 25:
+                prune_candidate = self._select_project_source_capacity_prune_candidate(
+                    requested_filename=canonical_display_name or file_path,
+                    source_cards=before_sources,
+                    source_limit=25,
+                )
+                if prune_candidate is not None:
+                    prune_source_name = prune_candidate.get("source_name") or prune_candidate.get("filename")
+                    self._log(
+                        "project-source-add",
+                        "project source limit reached; pruning lowest same-family release source before upload",
+                        project_url=project_home_url,
+                        current_source_count=len(before_sources),
+                        source_limit=25,
+                        requested_source=canonical_display_name,
+                        prune_source_name=prune_source_name,
+                        prune_source_version=prune_candidate.get("normalized_version"),
+                        prune_source_filename=prune_candidate.get("filename"),
+                    )
+                    try:
+                        capacity_prune_result = await self._remove_project_source_operation(
+                            context=context,
+                            page=page,
+                            source_name=str(prune_source_name),
+                            exact=True,
+                            keep_open=False,
+                        )
+                    except ResponseTimeoutError as exc:
+                        self._log(
+                            "project-source-add",
+                            "exact capacity prune remove failed; retrying with title-anchored source lookup",
+                            project_url=project_home_url,
+                            source_name=prune_source_name,
+                            error=str(exc),
+                        )
+                        await self._open_project_sources_tab(page)
+                        try:
+                            capacity_prune_result = await self._remove_project_source_operation(
+                                context=context,
+                                page=page,
+                                source_name=str(prune_source_name),
+                                exact=False,
+                                keep_open=False,
+                            )
+                        except ResponseTimeoutError as retry_exc:
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "source_limit_prune_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": False,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "capacity_prune_source_name": prune_source_name,
+                                "capacity_prune_source_filename": prune_candidate.get("filename"),
+                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                                "capacity_prune_remove_error": str(retry_exc),
+                                "capacity_prune_remove_initial_error": str(exc),
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "source_limit": 25,
+                                "current_url": await self._safe_page_url(page),
+                            }
+                    if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
+                        current_sources = await self._snapshot_project_source_cards(page)
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_limit_prune_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "already_exists": False,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "capacity_prune_source_name": prune_source_name,
+                            "capacity_prune_source_filename": prune_candidate.get("filename"),
+                            "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                            "capacity_prune_remove_result": capacity_prune_result,
+                            "operator_review_required": True,
+                            "current_source_count": len(current_sources),
+                            "source_limit": 25,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    await self._open_project_sources_tab(page)
+                    before_sources = await self._snapshot_project_source_cards(page)
+                elif self._parse_release_source_filename(canonical_display_name or file_path) is not None:
+                    self._log(
+                        "project-source-add",
+                        "project source limit reached but no same-family release source was available for pruning",
+                        project_url=project_home_url,
+                        current_source_count=len(before_sources),
+                        source_limit=25,
+                        requested_source=canonical_display_name,
+                    )
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_limit_no_matching_release_prune_candidate",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                        "source_match_candidates": source_match_candidates,
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "operator_review_required": True,
+                        "current_source_count": len(before_sources),
+                        "source_limit": 25,
+                        "current_url": await self._safe_page_url(page),
+                    }
 
         save_request_watch = None
         if normalized_kind in {"text", "file"} and not duplicate_detected:
@@ -3304,11 +3428,17 @@ class ChatGPTBrowserClient:
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
-            "removed_existing": bool(overwrite_remove_result and overwrite_remove_result.get("removed_via_ui")),
+            "removed_existing": bool(
+                (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+            ),
+            "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }
         if overwrite_remove_result is not None:
             result["overwrite_remove_result"] = overwrite_remove_result
+        if capacity_prune_result is not None:
+            result["capacity_prune_result"] = capacity_prune_result
         if duplicate_notice:
             result["duplicate_notice"] = duplicate_notice
         log_message = "project source already exists" if duplicate_detected else ("project source overwritten" if overwritten_existing else "project source added")
@@ -6799,6 +6929,93 @@ class ChatGPTBrowserClient:
         if normalized_file_path:
             return Path(normalized_file_path).name
         return None
+
+    def _parse_release_source_filename(self, value: Optional[str]) -> Optional[dict[str, Any]]:
+        """Return release-family metadata for versioned ZIP source names.
+
+        ChatGPT's rendered source cards may include extra metadata, for example
+        "chatgpt_claudecode_workflow_v0.0.276.18.zip Document".  The selector
+        must therefore parse a versioned ZIP filename from a larger rendered
+        string instead of requiring the card text to be the bare filename.
+        """
+        normalized = self._normalize_source_match_text(value)
+        if not normalized:
+            return None
+        pattern = re.compile(
+            r"(?P<filename>[A-Za-z0-9][A-Za-z0-9_.-]*?"
+            r"(?P<version>v?\d+(?:\.\d+){2,3})"
+            r"[A-Za-z0-9_.-]*?\.zip)",
+            re.IGNORECASE,
+        )
+        match = pattern.search(normalized)
+        if match is None:
+            return None
+        filename = Path(match.group("filename")).name
+        version = match.group("version")
+        version_match = re.search(re.escape(version), filename, flags=re.IGNORECASE)
+        if version_match is None:
+            return None
+        numeric_parts = tuple(int(part) for part in version.lower().lstrip("v").split("."))
+        comparable_version = numeric_parts + (0,) * max(0, 4 - len(numeric_parts))
+        prefix = filename[: version_match.start()]
+        suffix = filename[version_match.end() :]
+        if not prefix or suffix.lower() != ".zip":
+            # Keep the automatic capacity prune narrowly scoped to canonical
+            # release ZIPs.  Files such as report_v1.2.3.final.zip are not safe
+            # to delete automatically because the suffix changes the family
+            # semantics.
+            return None
+        return {
+            "filename": filename,
+            "version": version,
+            "normalized_version": version if version.startswith("v") else f"v{version}",
+            "version_tuple": comparable_version,
+            "family_key": (prefix.lower(), suffix.lower()),
+            "prefix": prefix,
+            "suffix": suffix,
+        }
+
+    def _parse_release_source_card(self, card: Optional[dict[str, str]]) -> Optional[dict[str, Any]]:
+        if not isinstance(card, dict):
+            return None
+        for candidate in self._source_card_identity_candidates(card):
+            parsed = self._parse_release_source_filename(candidate)
+            if parsed is not None:
+                parsed = dict(parsed)
+                parsed["card"] = card
+                return parsed
+        return None
+
+    def _select_project_source_capacity_prune_candidate(
+        self,
+        *,
+        requested_filename: Optional[str],
+        source_cards: list[dict[str, str]],
+        source_limit: int = 25,
+    ) -> Optional[dict[str, Any]]:
+        requested = self._parse_release_source_filename(requested_filename)
+        if requested is None or len(source_cards) < source_limit:
+            return None
+
+        candidates: list[dict[str, Any]] = []
+        for card in source_cards:
+            parsed = self._parse_release_source_card(card)
+            if parsed is None:
+                continue
+            if parsed.get("family_key") != requested.get("family_key"):
+                continue
+            parsed = dict(parsed)
+            parsed["source_name"] = (
+                self._normalize_source_match_text(card.get("title"))
+                or self._preferred_source_card_identity(card)
+                or parsed.get("filename")
+            )
+            candidates.append(parsed)
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (item.get("version_tuple") or (), str(item.get("filename") or "")))
+        return candidates[0]
 
     async def _find_project_source_duplicate_notice(
         self,

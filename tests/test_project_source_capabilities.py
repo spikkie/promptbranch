@@ -1497,3 +1497,202 @@ def test_detect_and_log_google_device_prompt_logs_operator_instruction(browser_c
         and fields.get("instruction") == "Choose number 37 on your phone."
         for stage, message, fields in events
     )
+
+
+def test_select_project_source_capacity_prune_candidate_chooses_lowest_same_family_release(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {
+            "title": "chatgpt_claudecode_workflow_v0.0.276.18.zip",
+            "identity": "chatgpt_claudecode_workflow_v0.0.276.18.zip Document",
+            "text": "chatgpt_claudecode_workflow_v0.0.276.18.zip\nDocument",
+            "subtitle": "Document",
+        },
+        {
+            "title": "chatgpt_claudecode_workflow_v0.0.275.zip",
+            "identity": "chatgpt_claudecode_workflow_v0.0.275.zip Document",
+            "text": "chatgpt_claudecode_workflow_v0.0.275.zip\nDocument",
+            "subtitle": "Document",
+        },
+        {
+            "title": "ib_forex_trading.0.235.1.zip",
+            "identity": "ib_forex_trading.0.235.1.zip Document",
+            "text": "ib_forex_trading.0.235.1.zip\nDocument",
+            "subtitle": "Document",
+        },
+    ]
+    while len(sources) < 25:
+        index = len(sources)
+        sources.append(
+            {
+                "title": f"unrelated-{index}.txt",
+                "identity": f"unrelated-{index}.txt Document",
+                "text": f"unrelated-{index}.txt\nDocument",
+                "subtitle": "Document",
+            }
+        )
+
+    candidate = browser_client._select_project_source_capacity_prune_candidate(
+        requested_filename="chatgpt_claudecode_workflow_v0.0.277.zip",
+        source_cards=sources,
+    )
+
+    assert candidate is not None
+    assert candidate["filename"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
+    assert candidate["normalized_version"] == "v0.0.275"
+    assert candidate["source_name"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
+
+
+def test_select_project_source_capacity_prune_candidate_requires_source_limit(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {
+            "title": "chatgpt_claudecode_workflow_v0.0.275.zip",
+            "identity": "chatgpt_claudecode_workflow_v0.0.275.zip Document",
+            "text": "chatgpt_claudecode_workflow_v0.0.275.zip\nDocument",
+            "subtitle": "Document",
+        }
+    ]
+
+    assert (
+        browser_client._select_project_source_capacity_prune_candidate(
+            requested_filename="chatgpt_claudecode_workflow_v0.0.277.zip",
+            source_cards=sources,
+        )
+        is None
+    )
+
+
+def test_add_project_source_operation_prunes_lowest_same_family_release_at_source_limit(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    release_zip = tmp_path / "chatgpt_claudecode_workflow_v0.0.277.zip"
+    release_zip.write_text("fake zip fixture", encoding="utf-8")
+    old_source = {
+        "title": "chatgpt_claudecode_workflow_v0.0.275.zip",
+        "identity": "chatgpt_claudecode_workflow_v0.0.275.zip Document",
+        "text": "chatgpt_claudecode_workflow_v0.0.275.zip\nDocument",
+        "subtitle": "Document",
+    }
+    before_sources = [
+        old_source,
+        {
+            "title": "chatgpt_claudecode_workflow_v0.0.276.18.zip",
+            "identity": "chatgpt_claudecode_workflow_v0.0.276.18.zip Document",
+            "text": "chatgpt_claudecode_workflow_v0.0.276.18.zip\nDocument",
+            "subtitle": "Document",
+        },
+    ]
+    while len(before_sources) < 25:
+        index = len(before_sources)
+        before_sources.append(
+            {
+                "title": f"other-source-{index}.txt",
+                "identity": f"other-source-{index}.txt Document",
+                "text": f"other-source-{index}.txt\nDocument",
+                "subtitle": "Document",
+            }
+        )
+    after_prune_sources = [source for source in before_sources if source is not old_source]
+    snapshot_calls = {"count": 0}
+    call_order: list[str] = []
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        snapshot_calls["count"] += 1
+        if snapshot_calls["count"] == 1:
+            return list(before_sources)
+        return list(after_prune_sources)
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_remove(*_args, **kwargs):
+        call_order.append(f"remove:{kwargs['source_name']}")
+        assert kwargs["source_name"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
+        assert kwargs["exact"] is True
+        return {"ok": True, "removed_via_ui": True, "source_name": kwargs["source_name"]}
+
+    async def fake_add_file(*_args, **_kwargs) -> None:
+        call_order.append("add_file")
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        call_order.append("presence")
+        return {
+            "title": release_zip.name,
+            "identity": f"{release_zip.name} Document",
+            "text": f"{release_zip.name}\nDocument",
+            "subtitle": "Document",
+        }
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        call_order.append("settle")
+        return {"dialog_visible": False, "add_button_visible": True}
+
+    async def fake_wait_for_save_quiet(*_args, **_kwargs):
+        call_order.append("save_quiet")
+        return {"quiet_now": True}
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        call_order.append("verify")
+        return {
+            "title": release_zip.name,
+            "identity": f"{release_zip.name} Document",
+            "text": f"{release_zip.name}\nDocument",
+            "subtitle": "Document",
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(release_zip),
+            display_name=None,
+            keep_open=False,
+        )
+    )
+
+    assert call_order == [
+        "remove:chatgpt_claudecode_workflow_v0.0.275.zip",
+        "add_file",
+        "presence",
+        "settle",
+        "save_quiet",
+        "verify",
+    ]
+    assert result["ok"] is True
+    assert result["capacity_pruned"] is True
+    assert result["removed_existing"] is True
+    assert result["capacity_prune_result"]["source_name"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
