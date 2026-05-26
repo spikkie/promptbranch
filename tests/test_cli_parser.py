@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.276.13" in out
+    assert "0.0.276.14" in out
     assert "promptbranch" in out
 
 
@@ -362,6 +362,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
         "--version", "v0.0.209",
         "--repo-path", "/tmp/repo",
         "--preflight-only",
+        "--profile", "full",
         "--test-timeout", "123",
         "--release-log-keep", "7",
         "--json",
@@ -372,6 +373,7 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
     assert artifact_candidate_test.version == "v0.0.209"
     assert artifact_candidate_test.repo_path == "/tmp/repo"
     assert artifact_candidate_test.preflight_only is True
+    assert artifact_candidate_test.profile == "full"
     assert artifact_candidate_test.test_timeout == 123.0
     assert artifact_candidate_test.release_log_keep == 7
     assert artifact_candidate_test.json is True
@@ -498,6 +500,7 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
         "--from-project-source",
         "--run-release-control",
         "--adopt-if-green",
+        "--profile", "full",
         "--test-timeout", "123",
         "--release-log-keep", "7",
         "--json",
