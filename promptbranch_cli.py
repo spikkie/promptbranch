@@ -11,6 +11,7 @@ import json
 import io
 import os
 import shutil
+import signal
 import re
 import shlex
 import subprocess
@@ -2517,41 +2518,142 @@ def _release_control_test_command_for_candidate(
     return command
 
 
-def _run_release_control_candidate_test(command: list[str], *, repo_root: Path, timeout_seconds: float) -> dict[str, Any]:
-    started_at = utc_now()
+def _candidate_test_logs_dir(profile_dir: str | Path) -> Path:
+    return Path(profile_dir).expanduser().resolve() / "artifact_candidate_test_logs"
+
+
+def _tail_text_file(path: Path, limit: int = 4000) -> str:
     try:
-        completed = subprocess.run(
+        data = path.read_text(errors="replace")
+    except Exception:
+        return ""
+    return data[-max(0, int(limit)) :]
+
+
+def _run_release_control_candidate_test(
+    command: list[str],
+    *,
+    repo_root: Path,
+    timeout_seconds: float,
+    stdout_log_path: Path | None = None,
+    stderr_log_path: Path | None = None,
+) -> dict[str, Any]:
+    """Run candidate tests with an internal timeout and durable log files.
+
+    This intentionally avoids subprocess.run(..., timeout=...) because an outer
+    shell timeout can kill the parent before any JSON is emitted and because
+    captured output is invisible while the child is running.  The child is placed
+    in a new process group so timeout cleanup can terminate the whole delegated
+    tree, including pytest children.
+    """
+
+    started_at = utc_now()
+    timeout = max(1.0, float(timeout_seconds))
+    stdout_log_path = stdout_log_path.resolve() if stdout_log_path else None
+    stderr_log_path = stderr_log_path.resolve() if stderr_log_path else None
+    if stdout_log_path:
+        stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+    if stderr_log_path:
+        stderr_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    stdout_handle = open(stdout_log_path, "w", encoding="utf-8", errors="replace") if stdout_log_path else subprocess.DEVNULL
+    stderr_handle = open(stderr_log_path, "w", encoding="utf-8", errors="replace") if stderr_log_path else subprocess.DEVNULL
+    proc: subprocess.Popen[str] | None = None
+    try:
+        proc = subprocess.Popen(
             command,
             cwd=str(repo_root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
             text=True,
-            timeout=max(1.0, float(timeout_seconds)),
-            check=False,
+            start_new_session=True,
         )
-    except subprocess.TimeoutExpired as exc:
+        try:
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out_at = utc_now()
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+            try:
+                proc.wait(timeout=10)
+                killed_with = "SIGTERM"
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                proc.wait(timeout=10)
+                killed_with = "SIGKILL"
+            return {
+                "ok": False,
+                "status": "candidate_test_timeout",
+                "command": command,
+                "repo_path": str(repo_root),
+                "pid": proc.pid,
+                "process_group_pid": proc.pid,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timed_out_at": timed_out_at,
+                "timeout_seconds": timeout,
+                "killed_with": killed_with,
+                "stdout_log_path": str(stdout_log_path) if stdout_log_path else None,
+                "stderr_log_path": str(stderr_log_path) if stderr_log_path else None,
+                "stdout_tail": _tail_text_file(stdout_log_path) if stdout_log_path else "",
+                "stderr_tail": _tail_text_file(stderr_log_path) if stderr_log_path else "",
+                "adoption_performed": False,
+            }
         return {
-            "ok": False,
-            "status": "candidate_test_timeout",
+            "ok": returncode == 0,
+            "status": "candidate_test_passed" if returncode == 0 else "candidate_test_failed",
             "command": command,
+            "repo_path": str(repo_root),
+            "pid": proc.pid,
+            "process_group_pid": proc.pid,
+            "returncode": returncode,
             "started_at": started_at,
-            "timeout_seconds": timeout_seconds,
-            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
-            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
+            "finished_at": utc_now(),
+            "timeout_seconds": timeout,
+            "stdout_log_path": str(stdout_log_path) if stdout_log_path else None,
+            "stderr_log_path": str(stderr_log_path) if stderr_log_path else None,
+            "stdout_tail": _tail_text_file(stdout_log_path) if stdout_log_path else "",
+            "stderr_tail": _tail_text_file(stderr_log_path) if stderr_log_path else "",
             "adoption_performed": False,
         }
-    return {
-        "ok": completed.returncode == 0,
-        "status": "candidate_test_passed" if completed.returncode == 0 else "candidate_test_failed",
-        "command": command,
-        "returncode": completed.returncode,
-        "started_at": started_at,
-        "finished_at": utc_now(),
-        "timeout_seconds": timeout_seconds,
-        "stdout_tail": (completed.stdout or "")[-4000:],
-        "stderr_tail": (completed.stderr or "")[-4000:],
-        "adoption_performed": False,
-    }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "candidate_test_runner_failed",
+            "command": command,
+            "repo_path": str(repo_root),
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "timeout_seconds": timeout,
+            "stdout_log_path": str(stdout_log_path) if stdout_log_path else None,
+            "stderr_log_path": str(stderr_log_path) if stderr_log_path else None,
+            "stdout_tail": _tail_text_file(stdout_log_path) if stdout_log_path else "",
+            "stderr_tail": _tail_text_file(stderr_log_path) if stderr_log_path else "",
+            "error": str(exc),
+            "adoption_performed": False,
+        }
+    finally:
+        if stdout_handle not in (None, subprocess.DEVNULL):
+            try:
+                stdout_handle.close()
+            except Exception:
+                pass
+        if stderr_handle not in (None, subprocess.DEVNULL):
+            try:
+                stderr_handle.close()
+            except Exception:
+                pass
 
 
 def _artifact_candidate_test_records_dir(profile_dir: str | Path) -> Path:
@@ -11474,6 +11576,17 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
     if not os.access(release_control_script, os.X_OK):
         return emit({**payload, "ok": False, "status": "release_control_not_executable", "zip": zip_check, "error": f"release-control script is not executable: {release_control_script}"}, 1)
 
+    command = _release_control_test_command_for_candidate(
+        repo_root,
+        version=candidate_version,
+        release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
+        skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
+        prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
+    )
+    allowed_script = str((repo_root / "chatgpt_claudecode_workflow_release_control.sh").resolve())
+    if not command or str(Path(command[0]).resolve()) != allowed_script:
+        return emit({**payload, "ok": False, "status": "candidate_test_delegate_command_rejected", "delegated_command": command, "error": "candidate-test may only delegate to the repo-local chatgpt_claudecode_workflow_release_control.sh script"}, 1)
+
     preflight = {
         **payload,
         "ok": True,
@@ -11492,20 +11605,26 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
             "adoption_performed": False,
         },
         "verification_performed": True,
+        "delegated_command": command,
+        "test_timeout_seconds": float(getattr(args, "test_timeout", 540.0) or 540.0),
         "operator_instruction": "Candidate test preflight verified. Running release-control tests only; adoption and Project Source mutation are disabled.",
     }
 
     if getattr(args, "preflight_only", False):
         return emit(preflight, 0)
 
-    command = _release_control_test_command_for_candidate(
-        repo_root,
-        version=candidate_version,
-        release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
-        skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
-        prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
+    timeout_seconds = float(getattr(args, "test_timeout", 540.0) or 540.0)
+    log_dir = _candidate_test_logs_dir(profile_root) / candidate_version
+    timestamp = utc_now().replace(":", "").replace("-", "")
+    stdout_log_path = log_dir / f"candidate_test.{timestamp}.stdout.log"
+    stderr_log_path = log_dir / f"candidate_test.{timestamp}.stderr.log"
+    test_result = _run_release_control_candidate_test(
+        command,
+        repo_root=repo_root,
+        timeout_seconds=timeout_seconds,
+        stdout_log_path=stdout_log_path,
+        stderr_log_path=stderr_log_path,
     )
-    test_result = _run_release_control_candidate_test(command, repo_root=repo_root, timeout_seconds=float(getattr(args, "test_timeout", 3600.0) or 3600.0))
     record_path, updated_candidate = _record_artifact_candidate_test(profile_root, candidate=candidate, test_result=test_result)
     result = {
         **preflight,
@@ -14705,7 +14824,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_test.add_argument("--version", help="Candidate version such as v0.0.226. Used to select the candidate registry entry.")
     artifact_candidate_test.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
     artifact_candidate_test.add_argument("--preflight-only", action="store_true", help="Verify candidate registry, ZIP presence, SHA, VERSION, and release-control availability without running tests.")
-    artifact_candidate_test.add_argument("--test-timeout", type=float, default=3600.0, help="Timeout in seconds for release-control tests-only execution. Defaults to 3600.")
+    artifact_candidate_test.add_argument("--test-timeout", type=float, default=540.0, help="Timeout in seconds for release-control tests-only execution. Defaults to 540 so candidate-test fails closed before common outer shell timeouts.")
     artifact_candidate_test.add_argument("--release-log-keep", type=int, default=12, help="Release log directories to keep when pruning. Defaults to 12.")
     artifact_candidate_test.add_argument("--skip-docker-logs", action="store_true", default=True, help="Skip docker log capture in release-control. Default: true.")
     artifact_candidate_test.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Do not pass --prune-release-logs to release-control.")
