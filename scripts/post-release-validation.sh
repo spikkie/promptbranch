@@ -37,9 +37,12 @@ Runs the standard post-release validation sequence:
   1. promptbranch artifact current --json
   2. semantic artifact/source baseline check against --version (diagnostic by default)
   3. protocol smoke ask targeting the next version
-     - default mode: before local test/report gates
+     - default mode: no_artifact envelope smoke
+     - --require-real-candidate-mvp mode: artifact-producing ask-release for --target-version
      - --adopt-if-accepted mode: after successful adoption, so --from-current-baseline uses --version
-  4. artifact intake dry-run from the last validated protocol reply
+  4. artifact intake from the last validated protocol reply
+     - default mode: dry-run only
+     - --require-real-candidate-mvp mode: --download --verify proof for the target artifact
   5. artifact candidate-run plan-only smoke for the MVP lifecycle command
      - optionally with --require-complete for artifact-candidate MVP completion proof
   6. promptbranch test full/report
@@ -68,7 +71,10 @@ Options:
                               normalized terminal state. When combined with
                               --complete-candidate-mvp, the candidate-run evidence must also
                               prove download_performed=true; an already-adopted baseline proof
-                              is not sufficient.
+                              is not sufficient. The protocol step switches from a
+                              no_artifact smoke to an artifact-producing pb ask-release,
+                              and artifact intake runs --download --verify for the
+                              expected target artifact.
       --candidate-mvp-max-steps N
                               Maximum candidate-run lifecycle steps for --complete-candidate-mvp.
                               Default: ${candidate_mvp_max_steps}.
@@ -109,6 +115,16 @@ next_normal_version() {
   [[ -n "${major:-}" && -n "${minor:-}" && -n "${patch:-}" ]] || return 1
   patch=$((patch + 1))
   printf 'v%s.%s.%s\n' "${major}" "${minor}" "${patch}"
+}
+
+release_type_for_version() {
+  local normalized="${1#v}"
+  IFS='.' read -r major minor patch repair_extra <<<"${normalized}"
+  if [[ -n "${repair_extra:-}" ]]; then
+    printf 'repair\n'
+  else
+    printf 'normal\n'
+  fi
 }
 
 select_pb_cmd() {
@@ -167,9 +183,32 @@ candidate_run_no_artifact_precondition() {
 }
 
 
+artifact_intake_download_verify_proof() {
+  local payload_path="$1"
+  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); checks=[payload.get('ok') is True, payload.get('download_performed') is True, payload.get('verification_performed') is True]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+}
+
 candidate_run_download_proof() {
   local payload_path="$1"
-  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('mvp_complete') is True, completion.get('status') == 'candidate_mvp_complete', payload.get('download_performed') is True]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+  local intake_payload_path="${2:-}"
+  python3 -c "import json, sys; from pathlib import Path
+
+def load(path):
+    text=Path(path).read_text(encoding='utf-8').strip()
+    return json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text)
+
+payload=load(sys.argv[1])
+completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}
+intake_ok=False
+if len(sys.argv) > 2 and sys.argv[2]:
+    try:
+        intake=load(sys.argv[2])
+        intake_ok = intake.get('ok') is True and intake.get('download_performed') is True and intake.get('verification_performed') is True
+    except Exception:
+        intake_ok = False
+candidate_run_ok = payload.get('download_performed') is True
+checks=[payload.get('mvp_complete') is True, completion.get('status') == 'candidate_mvp_complete', candidate_run_ok or intake_ok]
+raise SystemExit(0 if all(checks) else 1)" "${payload_path}" "${intake_payload_path}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -243,6 +282,8 @@ else
   target_version="$(normalize_version "${target_version}")" || { echo "ERROR: invalid target version: ${target_version_arg}" >&2; exit 2; }
 fi
 pb_cmd="$(select_pb_cmd)" || exit 2
+target_release_type="$(release_type_for_version "${target_version}")"
+target_artifact="${project_name}_${target_version}.zip"
 
 if [[ "${complete_candidate_mvp}" -eq 1 && "${skip_candidate_run}" -eq 1 ]]; then
   echo "ERROR: --complete-candidate-mvp cannot be combined with --skip-candidate-run" >&2
@@ -283,6 +324,8 @@ echo "== promptbranch post-release validation =="
 echo "repo_root:        $(pwd)"
 echo "version:          ${version}"
 echo "target_version:   ${target_version}"
+echo "target_artifact:  ${target_artifact}"
+echo "target_release_type: ${target_release_type}"
 echo "release_logs:     ${release_log_dir}"
 echo "session_log:      ${session_log}"
 echo "pb_cmd:           ${pb_cmd}"
@@ -400,16 +443,32 @@ run_protocol_smoke_step() {
   local phase="$1"
   protocol_phase="${phase}"
   if [[ "${skip_protocol_smoke}" -eq 0 ]]; then
-    run_step "protocol smoke (${phase})" "${protocol_log}" \
-      "${pb_cmd}" ask "Protocol smoke only. Return a valid promptbranch.ask.reply envelope with status no_artifact. Do not create a ZIP." \
-        --protocol \
-        --from-current-baseline \
-        --target-version "${target_version}" \
-        --parse-reply \
-        --protocol-timeout-seconds "${protocol_timeout_seconds}" \
-        --protocol-fresh-turn-timeout-seconds "${fresh_turn_timeout_seconds}" \
-        --protocol-fresh-turn-poll-seconds "${fresh_turn_poll_seconds}" \
-        --json || { rc_protocol=$?; failures=$((failures + 1)); }
+    if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
+      run_step "artifact-producing ask-release (${phase})" "${protocol_log}" \
+        "${pb_cmd}" ask-release \
+          --target-version "${target_version}" \
+          --release-type "${target_release_type}" \
+          --expect-artifact "${target_artifact}" \
+          --expect-version "${target_version}" \
+          --expect-repo "${project_name}" \
+          --protocol-timeout-seconds "${protocol_timeout_seconds}" \
+          --protocol-fresh-turn-timeout-seconds "${fresh_turn_timeout_seconds}" \
+          --protocol-fresh-turn-poll-seconds "${fresh_turn_poll_seconds}" \
+          --json \
+          "Create a real Promptbranch release-candidate ZIP artifact named ${target_artifact} for ${project_name} ${target_version}. Return exactly one valid promptbranch.ask.reply envelope with that ZIP listed in artifacts[]. Do not return no_artifact." \
+        || { rc_protocol=$?; failures=$((failures + 1)); }
+    else
+      run_step "protocol smoke (${phase})" "${protocol_log}" \
+        "${pb_cmd}" ask "Protocol smoke only. Return a valid promptbranch.ask.reply envelope with status no_artifact. Do not create a ZIP." \
+          --protocol \
+          --from-current-baseline \
+          --target-version "${target_version}" \
+          --parse-reply \
+          --protocol-timeout-seconds "${protocol_timeout_seconds}" \
+          --protocol-fresh-turn-timeout-seconds "${fresh_turn_timeout_seconds}" \
+          --protocol-fresh-turn-poll-seconds "${fresh_turn_poll_seconds}" \
+          --json || { rc_protocol=$?; failures=$((failures + 1)); }
+    fi
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${protocol_log}"
   fi
@@ -421,11 +480,28 @@ run_artifact_intake_step() {
   if [[ "${skip_artifact_intake}" -eq 0 ]]; then
     if [[ "${skip_protocol_smoke}" -eq 0 && "${rc_protocol}" -ne 0 ]]; then
       printf '{"ok": true, "status": "skipped_due_to_protocol_smoke_failure", "phase": "%s"}\n' "${phase}" > "${intake_log}"
-      echo "artifact intake dry-run skipped because protocol smoke failed"
+      echo "artifact intake skipped because protocol smoke failed"
       return 0
     fi
-    run_step "artifact intake dry-run (${phase})" "${intake_log}" \
-      "${pb_cmd}" artifact intake --from-last-answer --dry-run --json || { rc_intake=$?; failures=$((failures + 1)); }
+    if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
+      run_step "artifact intake download/verify (${phase})" "${intake_log}" \
+        "${pb_cmd}" artifact intake \
+          --from-last-answer \
+          --expect-artifact "${target_artifact}" \
+          --expect-version "${target_version}" \
+          --expect-repo "${project_name}" \
+          --download \
+          --verify \
+          --json || { rc_intake=$?; failures=$((failures + 1)); }
+      if [[ "${rc_intake}" -eq 0 ]] && ! artifact_intake_download_verify_proof "${intake_log}"; then
+        echo "artifact intake strict real-candidate proof failed: download_performed=true and verification_performed=true are required"
+        rc_intake=1
+        failures=$((failures + 1))
+      fi
+    else
+      run_step "artifact intake dry-run (${phase})" "${intake_log}" \
+        "${pb_cmd}" artifact intake --from-last-answer --dry-run --json || { rc_intake=$?; failures=$((failures + 1)); }
+    fi
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${intake_log}"
   fi
@@ -478,10 +554,10 @@ run_artifact_candidate_run_step() {
       fi
     else
       if [[ "${complete_candidate_mvp}" -eq 1 && "${require_real_candidate_mvp}" -eq 1 ]]; then
-        if candidate_run_download_proof "${candidate_run_log}"; then
+        if candidate_run_download_proof "${candidate_run_log}" "${intake_log}"; then
           rc_candidate_run=0
         else
-          echo "artifact candidate-run strict real-candidate proof failed: download_performed=true is required; adopted_current proof is insufficient"
+          echo "artifact candidate-run strict real-candidate proof failed: download_performed=true is required either from candidate-run or the explicit artifact intake download/verify step"
           rc_candidate_run=1
           failures=$((failures + 1))
         fi
@@ -1358,7 +1434,7 @@ def _classify_step_failure(step: str, rc: int, phase: str | None = None, details
             reason = "strict real-candidate validation was requested but no real artifact candidate was selected"
         elif str(require_real_candidate_mvp) == "1" and str(complete_candidate_mvp) == "1" and details.get("download_performed") is not True:
             category = "artifact_download_proof_failure"
-            reason = "strict real-candidate MVP validation requires download_performed=true; adopted_current proof is insufficient"
+            reason = "strict real-candidate MVP validation requires explicit download proof from candidate-run or artifact intake"
         elif status == "candidate_mvp_complete" and proof == "adopted_current":
             category = "none"
             reason = "already-adopted current baseline satisfies candidate MVP proof"

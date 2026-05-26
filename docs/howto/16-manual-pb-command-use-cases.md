@@ -847,15 +847,31 @@ scripts/finalize-artifact-intake-mvp.sh \
 
 ### 9.3 Run finalizer with strict real-candidate requirement
 
+From `v0.0.276.5`, this strict form asks ChatGPT for an artifact-producing release candidate by running `pb ask-release` for `--target-version`, then runs artifact intake with `--download --verify` before candidate-run proof is accepted.
+
 ```bash
 scripts/finalize-artifact-intake-mvp.sh \
-  --version v0.0.276.3 \
+  --version v0.0.276.5 \
   --target-version v0.0.277 \
   --pb-cmd promptbranch \
   --require-real-candidate-mvp \
   --candidate-mvp-max-steps 4 \
   --candidate-run-step-timeout 3600 \
   --test-timeout 900
+```
+
+Inspect strict download proof:
+
+```bash
+python3 -m json.tool .pb_profile/release_logs/v0.0.276.5/pb_ask_protocol_smoke.v0.0.276.5.json
+python3 -m json.tool .pb_profile/release_logs/v0.0.276.5/pb_artifact_intake_dry_run.v0.0.276.5.json
+```
+
+Required fields in the intake evidence:
+
+```text
+download_performed: true
+verification_performed: true
 ```
 
 ### 9.4 Inspect finalizer evidence
