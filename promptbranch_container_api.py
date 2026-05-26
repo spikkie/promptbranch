@@ -139,6 +139,16 @@ class ChatGetRequest(BaseModel):
     project_url: Optional[str] = None
 
 
+class ChatArtifactDownloadRequest(BaseModel):
+    conversation_url: str = Field(..., min_length=1)
+    artifact_url: Optional[str] = None
+    filename: str = Field(..., min_length=1)
+    target_path: str = Field(..., min_length=1)
+    timeout_seconds: float = 120.0
+    keep_open: bool = False
+    project_url: Optional[str] = None
+
+
 class TestSuiteRunRequest(BaseModel):
     project_url: Optional[str] = None
     email: Optional[str] = None
@@ -495,6 +505,21 @@ async def get_chat(payload: ChatGetRequest) -> dict:
     try:
         return await _service_for(payload.project_url).get_chat(
             conversation_url=payload.conversation_url,
+            keep_open=payload.keep_open,
+        )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/chats/download-artifact", dependencies=[Depends(require_service_token)])
+async def download_chat_artifact(payload: ChatArtifactDownloadRequest) -> dict:
+    try:
+        return await _service_for(payload.project_url).download_chat_artifact(
+            conversation_url=payload.conversation_url,
+            artifact_url=payload.artifact_url,
+            filename=payload.filename,
+            target_path=payload.target_path,
+            timeout_seconds=payload.timeout_seconds,
             keep_open=payload.keep_open,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs

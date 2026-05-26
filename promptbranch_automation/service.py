@@ -478,6 +478,30 @@ class ChatGPTAutomationService:
                 ),
             )
 
+    async def download_chat_artifact(
+        self,
+        *,
+        conversation_url: str,
+        artifact_url: str | None,
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        logger.info("Downloading ChatGPT artifact through browser session")
+        async with self._lock:
+            return await self._with_retries(
+                "download_chat_artifact",
+                lambda: self._build_bot().download_chat_artifact(
+                    conversation_url=conversation_url,
+                    artifact_url=artifact_url,
+                    filename=filename,
+                    target_path=target_path,
+                    timeout_seconds=timeout_seconds,
+                    keep_open=keep_open,
+                ),
+            )
+
     async def debug_project_list(
         self,
         *,

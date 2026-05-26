@@ -246,6 +246,29 @@ class ChatGPTServiceClient:
             payload["project_url"] = project_url
         return self._json(self._client.post("/v1/chats/get", json=payload))
 
+    def download_chat_artifact(
+        self,
+        conversation_url: str,
+        *,
+        artifact_url: Optional[str],
+        filename: str,
+        target_path: str,
+        timeout_seconds: float = 120.0,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "conversation_url": conversation_url,
+            "artifact_url": artifact_url,
+            "filename": filename,
+            "target_path": target_path,
+            "timeout_seconds": timeout_seconds,
+            "keep_open": keep_open,
+        }
+        if project_url:
+            payload["project_url"] = project_url
+        return self._json(self._client.post("/v1/chats/download-artifact", json=payload))
+
     def create_project(
         self,
         name: str,

@@ -1276,3 +1276,36 @@ pb release lifecycle-status --version v0.0.276.3 --target-version v0.0.277 --rep
 ```
 
 Do not package `.pb_profile/manual_evidence/` into a release ZIP.
+
+### v0.0.276.7 strict artifact-materialization note
+
+A protocol reply may declare a ZIP artifact in JSON and set `download.available=true`, but that is not sufficient real-candidate proof. If the only artifact reference is `sandbox:/mnt/data/...` inside the JSON envelope and no real ChatGPT attachment/download link is detected by the host, strict validation must fail with `artifact_declared_but_not_attached`. Use manual import only after an actual ZIP file has been downloaded to the operator machine.
+
+
+### Browser-session download for ChatGPT attachment links
+
+From `v0.0.276.8`, when the selected candidate URL is a ChatGPT `sandbox:/mnt/data/...` attachment reference, `pb artifact intake --download` first attempts a browser/session-context download instead of immediately requiring manual import.
+
+```bash
+pb artifact intake \
+  --from-last-answer \
+  --expect-artifact chatgpt_claudecode_workflow_v0.0.277.zip \
+  --expect-version v0.0.277 \
+  --expect-repo chatgpt_claudecode_workflow \
+  --download \
+  --verify \
+  --json | tee intake.browser_download_verify.v0.0.277.json
+```
+
+If browser-assisted download fails, use the manual fallback after clicking the ChatGPT UI link yourself:
+
+```bash
+pb artifact intake \
+  --from-last-answer \
+  --expect-artifact chatgpt_claudecode_workflow_v0.0.277.zip \
+  --expect-version v0.0.277 \
+  --expect-repo chatgpt_claudecode_workflow \
+  --local-file "$HOME/Downloads/chatgpt_claudecode_workflow_v0.0.277.zip" \
+  --verify \
+  --json | tee intake.manual_import_verify.v0.0.277.json
+```

@@ -516,3 +516,7 @@ Treat the finalizer as passed only when:
 - ZIP hygiene is clean
 - no skip flags were used in the acceptance run unless the reason is explicitly documented
 - the next protocol ask can use `--from-current-baseline` without resolving to the old baseline
+
+### v0.0.276.7 strict artifact-materialization note
+
+A protocol reply may declare a ZIP artifact in JSON and set `download.available=true`, but that is not sufficient real-candidate proof. If the only artifact reference is `sandbox:/mnt/data/...` inside the JSON envelope and no real ChatGPT attachment/download link is detected by the host, strict validation must fail with `artifact_declared_but_not_attached`. Use manual import only after an actual ZIP file has been downloaded to the operator machine.
