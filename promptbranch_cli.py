@@ -2493,20 +2493,40 @@ def _run_release_control_candidate_acceptance(command: list[str], *, repo_root: 
     }
 
 
-def _release_control_test_command_for_candidate(
+def _promptbranch_command_path() -> str:
+    """Return the current Promptbranch executable for delegated local test profiles."""
+
+    argv0 = Path(sys.argv[0]).expanduser()
+    if argv0.exists():
+        return str(argv0.resolve())
+    resolved = shutil.which("pb") or shutil.which("promptbranch")
+    if resolved:
+        return str(Path(resolved).resolve())
+    return sys.argv[0]
+
+
+def _candidate_test_command_for_profile(
     repo_root: Path,
     *,
     version: str,
+    profile: str,
     release_log_keep: int,
     skip_docker_logs: bool = True,
     prune_release_logs: bool = True,
 ) -> list[str]:
-    """Build a tests-only command for a migrated candidate.
+    """Build a bounded candidate-test command for a migrated candidate.
 
-    This intentionally omits --adopt-if-green. The candidate-test gate may run
-    validation and record the result, but it must not advance artifact/source
-    current state.
+    The smoke profile is the MVP loop default and deliberately avoids the
+    historically expensive release-control/full-suite path.  The full profile
+    remains available as the explicit adoption-grade gate and intentionally
+    omits --adopt-if-green so candidate-test never advances current state.
     """
+
+    normalized_profile = (profile or "smoke").strip().lower()
+    if normalized_profile == "smoke":
+        return [sys.executable, _promptbranch_command_path(), "test", "smoke", "--json"]
+    if normalized_profile != "full":
+        raise ValueError(f"unsupported candidate-test profile: {profile}")
 
     script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
     command = [str(script), "--version", version, "--tests-only"]
@@ -2516,6 +2536,26 @@ def _release_control_test_command_for_candidate(
         command.append("--prune-release-logs")
     command.extend(["--release-log-keep", str(int(release_log_keep))])
     return command
+
+
+def _release_control_test_command_for_candidate(
+    repo_root: Path,
+    *,
+    version: str,
+    release_log_keep: int,
+    skip_docker_logs: bool = True,
+    prune_release_logs: bool = True,
+) -> list[str]:
+    """Backward-compatible full-profile command builder."""
+
+    return _candidate_test_command_for_profile(
+        repo_root,
+        version=version,
+        profile="full",
+        release_log_keep=release_log_keep,
+        skip_docker_logs=skip_docker_logs,
+        prune_release_logs=prune_release_logs,
+    )
 
 
 def _candidate_test_logs_dir(profile_dir: str | Path) -> Path:
@@ -11576,16 +11616,30 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
     if not os.access(release_control_script, os.X_OK):
         return emit({**payload, "ok": False, "status": "release_control_not_executable", "zip": zip_check, "error": f"release-control script is not executable: {release_control_script}"}, 1)
 
-    command = _release_control_test_command_for_candidate(
-        repo_root,
-        version=candidate_version,
-        release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
-        skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
-        prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
-    )
+    test_profile = str(getattr(args, "profile", "smoke") or "smoke").strip().lower()
+    try:
+        command = _candidate_test_command_for_profile(
+            repo_root,
+            version=candidate_version,
+            profile=test_profile,
+            release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
+            skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
+            prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
+        )
+    except ValueError as exc:
+        return emit({**payload, "ok": False, "status": "candidate_test_profile_invalid", "test_profile": test_profile, "error": str(exc)}, 1)
+
     allowed_script = str((repo_root / "chatgpt_claudecode_workflow_release_control.sh").resolve())
-    if not command or str(Path(command[0]).resolve()) != allowed_script:
-        return emit({**payload, "ok": False, "status": "candidate_test_delegate_command_rejected", "delegated_command": command, "error": "candidate-test may only delegate to the repo-local chatgpt_claudecode_workflow_release_control.sh script"}, 1)
+    allowed_promptbranch = str(Path(_promptbranch_command_path()).resolve()) if Path(_promptbranch_command_path()).exists() else _promptbranch_command_path()
+    command_kind = "release_control_full" if command and str(Path(command[0]).resolve()) == allowed_script else "promptbranch_smoke" if len(command) >= 4 and command[0] == sys.executable and command[2:5] == ["test", "smoke", "--json"] else "unknown"
+    if command_kind == "promptbranch_smoke":
+        try:
+            if str(Path(command[1]).resolve()) != allowed_promptbranch:
+                command_kind = "unknown"
+        except Exception:
+            command_kind = "unknown"
+    if command_kind == "unknown":
+        return emit({**payload, "ok": False, "status": "candidate_test_delegate_command_rejected", "test_profile": test_profile, "delegated_command": command, "error": "candidate-test may only delegate to pb test smoke --json or the repo-local release-control tests-only command"}, 1)
 
     preflight = {
         **payload,
@@ -11605,9 +11659,11 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
             "adoption_performed": False,
         },
         "verification_performed": True,
+        "test_profile": test_profile,
         "delegated_command": command,
+        "delegated_command_kind": command_kind,
         "test_timeout_seconds": float(getattr(args, "test_timeout", 540.0) or 540.0),
-        "operator_instruction": "Candidate test preflight verified. Running release-control tests only; adoption and Project Source mutation are disabled.",
+        "operator_instruction": "Candidate test preflight verified. Running bounded candidate-test profile; adoption and Project Source mutation are disabled.",
     }
 
     if getattr(args, "preflight_only", False):
@@ -14823,8 +14879,9 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_test.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
     artifact_candidate_test.add_argument("--version", help="Candidate version such as v0.0.226. Used to select the candidate registry entry.")
     artifact_candidate_test.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
-    artifact_candidate_test.add_argument("--preflight-only", action="store_true", help="Verify candidate registry, ZIP presence, SHA, VERSION, and release-control availability without running tests.")
-    artifact_candidate_test.add_argument("--test-timeout", type=float, default=540.0, help="Timeout in seconds for release-control tests-only execution. Defaults to 540 so candidate-test fails closed before common outer shell timeouts.")
+    artifact_candidate_test.add_argument("--preflight-only", action="store_true", help="Verify candidate registry, ZIP presence, SHA, VERSION, and delegated test command without running tests.")
+    artifact_candidate_test.add_argument("--profile", choices=["smoke", "full"], default="smoke", help="Candidate-test profile. Default smoke runs `pb test smoke --json`; full runs release-control tests-only and is the explicit adoption-grade gate.")
+    artifact_candidate_test.add_argument("--test-timeout", type=float, default=540.0, help="Timeout in seconds for delegated candidate-test execution. Defaults to 540 so candidate-test fails closed before common outer shell timeouts.")
     artifact_candidate_test.add_argument("--release-log-keep", type=int, default=12, help="Release log directories to keep when pruning. Defaults to 12.")
     artifact_candidate_test.add_argument("--skip-docker-logs", action="store_true", default=True, help="Skip docker log capture in release-control. Default: true.")
     artifact_candidate_test.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Do not pass --prune-release-logs to release-control.")
