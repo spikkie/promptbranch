@@ -11975,6 +11975,9 @@ MVP_DOD_REQUIRED_WORKFLOW_MARKERS = [
     "pb artifact intake",
     "--download",
     "--verify",
+    "--verify-smoke-zip",
+    "--expect-entry",
+    "--expect-content",
     "--migrate",
     "scripts/finalize-artifact-intake-mvp.sh",
     "--require-real-candidate-mvp",
@@ -12031,22 +12034,76 @@ def _mvp_dod_visibility_report(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _latest_smoke_zip_verification_report(profile_root: Path) -> dict[str, Any]:
+    """Return the newest persisted smoke ZIP verification evidence, read-only.
+
+    This evidence is intentionally separate from strict release verification. It
+    proves the ChatGPT UI attachment transport path before the operator relies
+    on release-candidate verification/migration.
+    """
+
+    root = Path(profile_root).expanduser().resolve()
+    inbox_root = root / "artifact_inbox"
+    records: list[dict[str, Any]] = []
+    if inbox_root.exists():
+        for path in inbox_root.rglob("intake.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            if data.get("smoke_verification_performed") is not True:
+                continue
+            smoke = data.get("smoke_verification") if isinstance(data.get("smoke_verification"), dict) else {}
+            records.append({
+                "record_path": str(path),
+                "verified_at": data.get("verified_at"),
+                "ok": data.get("ok") is True and smoke.get("ok") is True,
+                "status": data.get("status") or smoke.get("status"),
+                "filename": (data.get("candidate") or {}).get("filename") if isinstance(data.get("candidate"), dict) else None,
+                "download": data.get("download") if isinstance(data.get("download"), dict) else {},
+                "smoke_verification": smoke,
+                "reply_request_id": data.get("reply_request_id"),
+                "conversation_id": data.get("conversation_id"),
+                "answer_id": data.get("answer_id"),
+            })
+    records.sort(key=lambda item: str(item.get("verified_at") or item.get("record_path") or ""), reverse=True)
+    latest = records[0] if records else None
+    return {
+        "ok": bool(latest and latest.get("ok") is True),
+        "status": "smoke_zip_verified" if latest and latest.get("ok") is True else "smoke_zip_evidence_missing",
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "record_count": len(records),
+        "latest": latest,
+        "operator_instruction": (
+            "Latest smoke ZIP evidence proves ChatGPT UI attachment download and expected ZIP contents."
+            if latest and latest.get("ok") is True else
+            "Run pb artifact intake --from-last-answer --download --verify-smoke-zip --expect-entry hello.txt --expect-content <text> --json to create transport proof."
+        ),
+    }
+
+
 async def cmd_artifact_mvp_dod(backend: Any, args: argparse.Namespace) -> int:
     """Check the canonical MVP Definition of Done document without mutating anything."""
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     report = _mvp_dod_visibility_report(repo_root)
+    smoke_report = _latest_smoke_zip_verification_report(resolve_profile_dir(getattr(args, "profile_dir", None)))
     payload = {
         "ok": bool(report.get("ok")),
         "action": "artifact_mvp_dod",
         "status": report.get("status"),
         "repo_path": str(repo_root),
+        "profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
         "read_only": True,
         "mutating_actions_executed": False,
         "mvp_definition_of_done": report,
+        "smoke_zip_verification": smoke_report,
         "operator_instruction": (
-            "Read-only MVP DoD visibility check. This command reports whether the canonical DoD document is present; "
-            "it does not enforce the full MVP gate or mutate artifact/source state."
+            "Read-only MVP DoD visibility and smoke-evidence check. This command reports whether the canonical DoD document is present "
+            "and whether a recent ChatGPT UI attachment smoke ZIP proof exists; it does not enforce the full MVP gate or mutate artifact/source state."
         ),
     }
     if getattr(args, "json", False):
@@ -12061,6 +12118,7 @@ async def cmd_artifact_mvp_dod(backend: Any, args: argparse.Namespace) -> int:
         print(f"missing_sections:   {len(report.get('missing_sections') or [])}")
         print(f"missing_workflow:   {len(report.get('missing_workflow_markers') or [])}")
         print(f"final_verdict_rule: {str(report.get('final_verdict_rule_present')).lower()}")
+        print(f"smoke_zip_status:    {smoke_report.get('status')}")
     return 0 if payload.get("ok") else 1
 
 
@@ -12107,6 +12165,7 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         repo_root=repo_root,
     )
     mvp_dod_report = _mvp_dod_visibility_report(repo_root)
+    smoke_zip_report = _latest_smoke_zip_verification_report(profile_root)
 
     finalizer_command = None
     if current_payload.get("artifact_version"):
@@ -12156,6 +12215,7 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
         "mvp_completion": completion,
         "inventory_summary": inventory_summary,
         "mvp_definition_of_done": mvp_dod_report,
+        "smoke_zip_verification": smoke_zip_report,
         "commands": {
             "inspect_current": "pb artifact current --json",
             "inspect_candidates": "pb artifact candidate-status --all --json",
@@ -12163,6 +12223,7 @@ async def cmd_artifact_mvp_status(backend: Any, args: argparse.Namespace) -> int
             "execute_until_blocked": "pb artifact candidate-run --execute-until-blocked --require-complete --json",
             "finalize_mvp": finalizer_command,
             "inspect_mvp_dod": "pb artifact mvp-dod --json",
+            "verify_smoke_zip": "pb artifact intake --from-last-answer --download --verify-smoke-zip --expect-entry hello.txt --expect-content 'durable ChatGPT UI attachment smoke test' --json",
         },
         "operator_instruction": (
             "Read-only Artifact Intake MVP cockpit. Use candidate_next.recommended_next_command "
