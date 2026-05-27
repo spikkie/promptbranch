@@ -421,3 +421,64 @@ def test_run_with_context_classifies_unrecoverable_browser_context_launch(tmp_pa
         raise AssertionError('expected BrowserContextUnavailableError')
 
     assert chromium.calls == 2
+
+
+def test_response_completion_idle_selectors_include_use_voice() -> None:
+    from promptbranch_browser_auth.client import COMPOSER_IDLE_INDICATOR_SELECTORS
+
+    assert '#thread-bottom button[aria-label="Use Voice"]' in COMPOSER_IDLE_INDICATOR_SELECTORS
+    assert 'button[aria-label="Use Voice"]' in COMPOSER_IDLE_INDICATOR_SELECTORS
+
+
+def test_response_completion_treats_use_voice_as_idle_label(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._is_idle_composer_label('Use Voice') is True
+    assert client._is_idle_composer_label('Start Voice') is True
+    assert client._is_idle_composer_label('Start dictation') is True
+
+
+def test_response_completion_predicate_logging_explains_missing_idle(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    blockers = client._response_completion_predicate_blockers(
+        current_url='https://chatgpt.com/c/abc123',
+        content_present=True,
+        stop_visible=False,
+        thinking_visible=False,
+        composer_idle_visible=False,
+        composer_signal_known=True,
+        fallback_stable_ready=False,
+        observed_running_state=True,
+        observed_idle_after_running=False,
+        stable_polls=0,
+        stable_required=3,
+        stable_elapsed_s=0.0,
+        strong_idle_completion=False,
+    )
+
+    assert 'composer_idle_signal_missing' in blockers
+    assert 'stable_polls_below_required' in blockers
+
+
+def test_response_completion_predicate_logging_does_not_block_strong_idle(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    blockers = client._response_completion_predicate_blockers(
+        current_url='https://chatgpt.com/c/abc123',
+        content_present=True,
+        stop_visible=False,
+        thinking_visible=False,
+        composer_idle_visible=True,
+        composer_signal_known=True,
+        fallback_stable_ready=False,
+        observed_running_state=True,
+        observed_idle_after_running=True,
+        stable_polls=0,
+        stable_required=3,
+        stable_elapsed_s=0.0,
+        strong_idle_completion=True,
+    )
+
+    assert 'stable_polls_below_required' not in blockers
+    assert 'minimum_completion_delay_not_met' not in blockers
