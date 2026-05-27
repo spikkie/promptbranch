@@ -70,3 +70,33 @@ def test_service_exception_payload_preserves_http_browser_profile_busy_detail() 
     assert payload["status"] == "browser_profile_busy"
     assert payload["active_operation"] == "ask_question"
     assert payload["http_status_code"] == 423
+
+from promptbranch_cli import _source_add_busy_payload
+
+
+def test_source_add_busy_payload_is_top_level_operator_result() -> None:
+    args = argparse.Namespace(value=None, profile_wait_timeout_seconds=120.0)
+    payload = _source_add_busy_payload(
+        {
+            "ok": False,
+            "status": "browser_profile_busy",
+            "operation": "add_project_source",
+            "active_operation": "ask_question",
+            "waited_seconds": 30.0,
+            "retry_after_seconds": 30.0,
+        },
+        source_kind="file",
+        file_path="/tmp/demo.zip",
+        display_name="demo.zip",
+        overwrite_existing=True,
+        args=args,
+    )
+
+    assert payload["action"] == "source_add"
+    assert payload["status"] == "browser_profile_busy"
+    assert payload["classification"] == "expected_contention"
+    assert payload["project_source_mutated"] is False
+    assert payload["persistence_verified"] is False
+    assert payload["queue_enabled"] is False
+    assert payload["active_operation"] == "ask_question"
+    assert "--wait-for-profile" in payload["next_safe_commands"][1]

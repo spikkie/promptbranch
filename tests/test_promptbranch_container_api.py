@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.278.3"
+    assert payload["version"] == "0.0.278.4"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.278.3"
+    assert response.json()["version"] == "0.0.278.4"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -232,3 +232,40 @@ def test_container_service_does_not_clear_singleton_locks_by_default(monkeypatch
     svc = _build_service(project_url_override="https://chatgpt.com/g/g-p-demo/project")
 
     assert svc.settings.clear_singleton_locks is False
+
+
+def test_browser_status_endpoint_reports_service_status(monkeypatch) -> None:
+    class FakeService:
+        def browser_status(self):
+            return {"ok": True, "status": "available", "queue_enabled": False}
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.get("/v1/browser/status")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "available"
+    assert response.json()["queue_enabled"] is False
+
+
+def test_add_project_source_passes_profile_lock_wait_seconds(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        async def add_project_source(self, **kwargs):
+            captured.update(kwargs)
+            return {"ok": True}
+
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    with file_path.open("rb") as handle:
+        response = client.post(
+            "/v1/project-sources",
+            data={"type": "file", "profile_lock_wait_seconds": "120"},
+            files={"file": (file_path.name, handle, "application/octet-stream")},
+        )
+
+    assert response.status_code == 200
+    assert captured["profile_lock_wait_seconds"] == 120.0

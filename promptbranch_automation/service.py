@@ -97,8 +97,61 @@ class _SharedProfileAsyncLock:
     def lock_path(self) -> Path:
         return Path(self.profile_dir) / ".promptbranch-browser-profile.lock"
 
-    def operation(self, operation_name: str) -> "_SharedProfileAsyncLockLease":
-        return _SharedProfileAsyncLockLease(self, operation_name)
+    def operation(
+        self,
+        operation_name: str,
+        *,
+        wait_timeout_seconds: float | None = None,
+    ) -> "_SharedProfileAsyncLockLease":
+        return _SharedProfileAsyncLockLease(self, operation_name, wait_timeout_seconds=wait_timeout_seconds)
+
+    @classmethod
+    def status_for_profile(cls, profile_dir: str) -> dict[str, Any]:
+        resolved = str(Path(profile_dir).expanduser().resolve())
+        active = cls._active_operation_for_profile(resolved)
+        lock_path = Path(resolved) / ".promptbranch-browser-profile.lock"
+        lock_file_exists = lock_path.exists()
+        external_lock_held = False
+        lock_file_payload: dict[str, str] = {}
+        if lock_file_exists:
+            try:
+                for line in lock_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        lock_file_payload[key.strip()] = value.strip()
+            except OSError:
+                lock_file_payload = {}
+            try:
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                with lock_path.open("a+", encoding="utf-8") as handle:
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        external_lock_held = True
+                    else:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                external_lock_held = False
+        started_at = active.get("started_at")
+        elapsed = round(time.time() - float(started_at), 3) if started_at else None
+        owner_active = bool(active) or external_lock_held
+        active_operation = active.get("operation_name") or lock_file_payload.get("operation")
+        return {
+            "ok": True,
+            "action": "browser_status",
+            "status": "busy" if owner_active else "available",
+            "profile_dir": resolved,
+            "lock_path": str(lock_path),
+            "owner_active": owner_active,
+            "active_operation": active_operation,
+            "active_pid": active.get("pid") or lock_file_payload.get("pid"),
+            "active_elapsed_seconds": elapsed,
+            "lock_file_exists": lock_file_exists,
+            "external_lock_held": external_lock_held,
+            "lock_file": lock_file_payload,
+            "scheduler_model": "single_owner_profile_monitor",
+            "queue_enabled": False,
+        }
 
     async def __aenter__(self) -> "_SharedProfileAsyncLock":
         return await self._acquire("browser_operation")
@@ -106,10 +159,11 @@ class _SharedProfileAsyncLock:
     async def __aexit__(self, exc_type, exc, tb) -> None:
         await self._release()
 
-    async def _acquire(self, operation_name: str) -> "_SharedProfileAsyncLock":
+    async def _acquire(self, operation_name: str, wait_timeout_seconds: float | None = None) -> "_SharedProfileAsyncLock":
         self._operation_name = str(operation_name or "browser_operation")
+        wait_timeout = self.wait_timeout_seconds if wait_timeout_seconds is None else max(0.001, float(wait_timeout_seconds))
         started = time.monotonic()
-        acquired = await asyncio.to_thread(self._thread_lock.acquire, True, self.wait_timeout_seconds)
+        acquired = await asyncio.to_thread(self._thread_lock.acquire, True, wait_timeout)
         waited = time.monotonic() - started
         if not acquired:
             active = self._active_operation_for_profile(self.profile_dir)
@@ -119,7 +173,7 @@ class _SharedProfileAsyncLock:
                 operation_name=self._operation_name,
                 active_operation=active_operation,
                 waited_seconds=round(waited, 3),
-                retry_after_seconds=max(1.0, self.wait_timeout_seconds),
+                retry_after_seconds=max(1.0, wait_timeout),
                 profile_dir=self.profile_dir,
             )
         try:
@@ -137,7 +191,7 @@ class _SharedProfileAsyncLock:
                     operation_name=self._operation_name,
                     active_operation=active_operation,
                     waited_seconds=round(waited, 3),
-                    retry_after_seconds=max(1.0, self.wait_timeout_seconds),
+                    retry_after_seconds=max(1.0, wait_timeout),
                     profile_dir=self.profile_dir,
                 ) from exc
             self._acquired_at = time.time()
@@ -172,12 +226,13 @@ class _SharedProfileAsyncLock:
 
 
 class _SharedProfileAsyncLockLease:
-    def __init__(self, parent: _SharedProfileAsyncLock, operation_name: str):
+    def __init__(self, parent: _SharedProfileAsyncLock, operation_name: str, *, wait_timeout_seconds: float | None = None):
         self.parent = parent
         self.operation_name = operation_name
+        self.wait_timeout_seconds = wait_timeout_seconds
 
     async def __aenter__(self) -> _SharedProfileAsyncLock:
-        return await self.parent._acquire(self.operation_name)
+        return await self.parent._acquire(self.operation_name, wait_timeout_seconds=self.wait_timeout_seconds)
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.parent._release()
@@ -213,6 +268,9 @@ class ChatGPTAutomationService:
         self._lock = _SharedProfileAsyncLock(settings.profile_dir, wait_timeout_seconds=settings.profile_lock_wait_seconds)
         self._recent_project_chats: dict[str, dict[str, Any]] = {}
         self._recent_project_sources: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    def browser_status(self) -> dict[str, Any]:
+        return _SharedProfileAsyncLock.status_for_profile(self.settings.profile_dir)
 
     @staticmethod
     def _extract_project_id(url: Optional[str]) -> Optional[str]:
@@ -788,8 +846,9 @@ class ChatGPTAutomationService:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
-        async with self._lock.operation("add_project_source"):
+        async with self._lock.operation("add_project_source", wait_timeout_seconds=profile_lock_wait_seconds):
             logger.info("Adding ChatGPT project source")
             normalized_kind = str(source_kind or "").strip().lower()
             remembered_source: Optional[dict[str, Any]] = None

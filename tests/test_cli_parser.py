@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.3" in out
+    assert "0.0.278.4" in out
     assert "promptbranch" in out
 
 
@@ -892,3 +892,32 @@ def test_task_answer_parse_parser_accepts_explicit_message_selectors() -> None:
     args = make_parser().parse_args(["task", "answer", "parse", "--message-index", "7", "--answer-index", "2", "--json"])
     assert args.message_index == "7"
     assert args.answer_index == "2"
+
+
+def test_parser_accepts_browser_status_and_source_add_profile_wait() -> None:
+    parser = make_parser()
+
+    status = parser.parse_args(["browser", "status", "--json"])
+    assert status.command == "browser"
+    assert status.browser_command == "status"
+    assert status.json is True
+
+    src_add = parser.parse_args([
+        "src",
+        "add",
+        "--file",
+        "demo.zip",
+        "--wait-for-profile",
+        "--profile-wait-timeout-seconds",
+        "120",
+    ])
+    assert src_add.command == "src"
+    assert src_add.src_command == "add"
+    assert src_add.wait_for_profile is True
+    assert src_add.profile_wait_timeout_seconds == 120
+
+
+def test_global_options_after_browser_status_are_normalized() -> None:
+    normalized = _normalize_global_options(["browser", "status", "--service-timeout-seconds", "1200", "--json"])
+    assert normalized[:2] == ["--service-timeout-seconds", "1200"]
+    assert normalized[2:4] == ["browser", "status"]
