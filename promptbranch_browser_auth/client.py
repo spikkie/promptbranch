@@ -120,8 +120,10 @@ COMPOSER_SEND_READY_SELECTORS = [
     'button[aria-label="Send prompt"]',
 ]
 COMPOSER_IDLE_INDICATOR_SELECTORS = [
+    '#thread-bottom button[aria-label="Use Voice"]',
     '#thread-bottom button[aria-label="Start Voice"]',
     '#thread-bottom button[aria-label="Start dictation"]',
+    'button[aria-label="Use Voice"]',
     'button[aria-label="Start Voice"]',
     'button[aria-label="Start dictation"]',
     'button[aria-label*="voice" i]',
@@ -130,6 +132,7 @@ COMPOSER_IDLE_INDICATOR_SELECTORS = [
 SEND_READY_ARIA_HINTS = ('send prompt', 'send')
 SEND_READY_ID_HINTS = ('composer-submit-button', 'send-button')
 SEND_READY_CLASS_HINTS = ('composer-submit', 'send-button')
+COMPOSER_IDLE_ARIA_HINTS = ('use voice', 'start voice', 'voice', 'dictation', 'dictate')
 STOP_GENERATING_ARIA_HINTS = ('stop', 'stop generating', 'stop streaming')
 STOP_GENERATING_CLASS_HINTS = ('stop', 'square')
 ASSISTANT_TURN_SCOPE_SELECTORS = [
@@ -9852,6 +9855,48 @@ class ChatGPTBrowserClient:
         path = urlparse(url).path
         return '/c/' in path
 
+    def _is_idle_composer_label(self, label: Any) -> bool:
+        normalized = str(label or "").strip().lower()
+        return bool(normalized and any(hint in normalized for hint in COMPOSER_IDLE_ARIA_HINTS))
+
+    def _response_completion_predicate_blockers(
+        self,
+        *,
+        current_url: str,
+        content_present: bool,
+        stop_visible: bool,
+        thinking_visible: bool,
+        composer_idle_visible: bool,
+        composer_signal_known: bool,
+        fallback_stable_ready: bool,
+        observed_running_state: bool,
+        observed_idle_after_running: bool,
+        stable_polls: int,
+        stable_required: int,
+        stable_elapsed_s: float,
+        strong_idle_completion: bool,
+    ) -> list[str]:
+        blockers: list[str] = []
+        if not content_present:
+            blockers.append("assistant_text_missing")
+        if stop_visible:
+            blockers.append("stop_button_visible")
+        if thinking_visible:
+            blockers.append("thinking_visible")
+        if not composer_idle_visible and composer_signal_known:
+            blockers.append("composer_idle_signal_missing")
+        if not composer_signal_known and not fallback_stable_ready:
+            blockers.append("composer_signal_unknown_and_fallback_not_ready")
+        if not observed_running_state and not self._is_conversation_url(current_url):
+            blockers.append("running_state_not_observed")
+        if observed_running_state and not observed_idle_after_running and not composer_idle_visible:
+            blockers.append("idle_after_running_not_observed")
+        if not strong_idle_completion and stable_polls < stable_required:
+            blockers.append("stable_polls_below_required")
+        if stable_elapsed_s < 1.0 and not strong_idle_completion:
+            blockers.append("minimum_completion_delay_not_met")
+        return blockers
+
     def _response_completion_signal_ready(
         self,
         *,
@@ -10378,7 +10423,42 @@ class ChatGPTBrowserClient:
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
-                if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
+                idle_label_visible = self._is_idle_composer_label(submit_state.get("aria_label"))
+                strong_idle_completion = bool(
+                    completion_ready
+                    and text_length
+                    and composer_idle_visible
+                    and idle_label_visible
+                    and not submit_state.get("stop_visible")
+                    and not thinking_state.get("visible")
+                    and self._is_conversation_url(current_url)
+                )
+                stable_completion = bool(
+                    completion_ready
+                    and stable_polls >= stable_required
+                    and stable_elapsed_s >= min_completion_delay_s
+                )
+                completion_blockers = self._response_completion_predicate_blockers(
+                    current_url=current_url,
+                    content_present=bool(text_length),
+                    stop_visible=bool(submit_state.get("stop_visible")),
+                    thinking_visible=bool(thinking_state.get("visible")),
+                    composer_idle_visible=composer_idle_visible,
+                    composer_signal_known=composer_signal_known,
+                    fallback_stable_ready=fallback_stable_ready,
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
+                    stable_polls=stable_polls,
+                    stable_required=stable_required,
+                    stable_elapsed_s=stable_elapsed_s,
+                    strong_idle_completion=strong_idle_completion,
+                )
+                if stable_completion or strong_idle_completion:
+                    completion_reason = (
+                        "assistant_text_present_and_idle_voice_button_visible"
+                        if strong_idle_completion and not stable_completion
+                        else "assistant_text_stable_and_completion_predicates_ready"
+                    )
                     self._log(
                         "response",
                         "assistant response stabilized",
@@ -10387,6 +10467,12 @@ class ChatGPTBrowserClient:
                         elapsed_s=round(elapsed_s, 1),
                         text_length=len(candidate_text),
                         stable_polls=stable_polls,
+                        stable_elapsed_s=round(stable_elapsed_s, 1),
+                        completion_ready=completion_ready,
+                        completion_reason=completion_reason,
+                        completion_blockers=completion_blockers,
+                        strong_idle_completion=strong_idle_completion,
+                        idle_label_visible=idle_label_visible,
                         submit_selector=submit_state.get("selector"),
                         submit_aria_label=submit_state.get("aria_label"),
                         submit_data_testid=submit_state.get("data_testid"),
@@ -10432,6 +10518,10 @@ class ChatGPTBrowserClient:
                     running_now=running_now,
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
+                    completion_ready=locals().get("completion_ready", False),
+                    completion_blockers=locals().get("completion_blockers", []),
+                    strong_idle_completion=locals().get("strong_idle_completion", False),
+                    idle_label_visible=locals().get("idle_label_visible", False),
                 )
                 last_probe_summary = probe_summary
 
@@ -10570,7 +10660,42 @@ class ChatGPTBrowserClient:
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
                 )
-                if completion_ready and stable_polls >= stable_required and stable_elapsed_s >= min_completion_delay_s:
+                idle_label_visible = self._is_idle_composer_label(submit_state.get("aria_label"))
+                strong_idle_completion = bool(
+                    completion_ready
+                    and text_length
+                    and composer_idle_visible
+                    and idle_label_visible
+                    and not submit_state.get("stop_visible")
+                    and not thinking_state.get("visible")
+                    and self._is_conversation_url(current_url)
+                )
+                stable_completion = bool(
+                    completion_ready
+                    and stable_polls >= stable_required
+                    and stable_elapsed_s >= min_completion_delay_s
+                )
+                completion_blockers = self._response_completion_predicate_blockers(
+                    current_url=current_url,
+                    content_present=bool(text_length),
+                    stop_visible=bool(submit_state.get("stop_visible")),
+                    thinking_visible=bool(thinking_state.get("visible")),
+                    composer_idle_visible=composer_idle_visible,
+                    composer_signal_known=composer_signal_known,
+                    fallback_stable_ready=fallback_stable_ready,
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
+                    stable_polls=stable_polls,
+                    stable_required=stable_required,
+                    stable_elapsed_s=stable_elapsed_s,
+                    strong_idle_completion=strong_idle_completion,
+                )
+                if stable_completion or strong_idle_completion:
+                    completion_reason = (
+                        "parseable_json_present_and_idle_voice_button_visible"
+                        if strong_idle_completion and not stable_completion
+                        else "parseable_json_stable_and_completion_predicates_ready"
+                    )
                     self._log(
                         "response",
                         "parseable json payload stabilized",
@@ -10579,6 +10704,12 @@ class ChatGPTBrowserClient:
                         elapsed_s=round(elapsed_s, 1),
                         text_length=text_length,
                         stable_polls=stable_polls,
+                        stable_elapsed_s=round(stable_elapsed_s, 1),
+                        completion_ready=completion_ready,
+                        completion_reason=completion_reason,
+                        completion_blockers=completion_blockers,
+                        strong_idle_completion=strong_idle_completion,
+                        idle_label_visible=idle_label_visible,
                         submit_selector=submit_state.get("selector"),
                         submit_aria_label=submit_state.get("aria_label"),
                         submit_data_testid=submit_state.get("data_testid"),
@@ -10623,6 +10754,10 @@ class ChatGPTBrowserClient:
                     running_now=running_now,
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
+                    completion_ready=locals().get("completion_ready", False),
+                    completion_blockers=locals().get("completion_blockers", []),
+                    strong_idle_completion=locals().get("strong_idle_completion", False),
+                    idle_label_visible=locals().get("idle_label_visible", False),
                 )
                 last_probe_summary = probe_summary
 
