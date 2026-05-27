@@ -417,3 +417,52 @@ def test_service_indexed_task_count_reports_unique_tasks_not_observation_sum() -
     assert result["visibility_status"] == "indexed"
     assert result["indexed_task_count"] == 20
     assert result["indexed_observation_count"] == 30
+
+
+def test_profile_scoped_lock_serializes_services_sharing_profile(monkeypatch, tmp_path):
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        events.append("ask-start")
+        await asyncio.sleep(0.05)
+        events.append("ask-end")
+        return {"answer": "done", "conversation_url": "https://chatgpt.com/g/g-p-one/c/a"}
+
+    async def fake_add_project_source(self, **kwargs):
+        events.append("source-add-start")
+        await asyncio.sleep(0.01)
+        events.append("source-add-end")
+        return {"ok": True, "persistence_verified": True, "source_kind": kwargs.get("source_kind")}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+    ))
+
+    async def run_concurrently() -> None:
+        ask_task = asyncio.create_task(svc_a.ask_question_result(prompt="hello", retries=0))
+        while "ask-start" not in events:
+            await asyncio.sleep(0)
+        add_task = asyncio.create_task(svc_b.add_project_source(source_kind="text", value="notes"))
+        await asyncio.gather(ask_task, add_task)
+
+    asyncio.run(run_concurrently())
+
+    assert events == ["ask-start", "ask-end", "source-add-start", "source-add-end"]
+    assert (profile_dir / ".promptbranch-browser-profile.lock").exists()

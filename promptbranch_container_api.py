@@ -220,7 +220,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             filter_no_sandbox=_env_flag("CHATGPT_FILTER_NO_SANDBOX", False),
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
-            clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", True),
+            clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False),
         )
     )
 

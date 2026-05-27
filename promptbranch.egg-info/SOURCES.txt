@@ -34,6 +34,8 @@ docs/release-v0.0.276.17.md
 docs/release-v0.0.276.md
 docs/release-v0.0.277.md
 docs/release-v0.0.278.md
+docs/repair-v0.0.278.1.md
+docs/browser-session-manager-async-jobs-design.md
 docs/repair-v0.0.226.2.md
 docs/repair-v0.0.245.11.md
 docs/repair-v0.0.245.13.md
