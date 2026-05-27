@@ -18,6 +18,7 @@ from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
     BrowserContextUnavailableError,
+    BrowserProfileBusyError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
     UnsupportedOperationError,
@@ -221,6 +222,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
             clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False),
+            profile_lock_wait_seconds=float(os.getenv("PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS", os.getenv("CHATGPT_BROWSER_PROFILE_LOCK_WAIT_SECONDS", "30.0"))),
         )
     )
 
@@ -333,6 +335,8 @@ def _raise_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, ResponseTimeoutError):
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    if isinstance(exc, BrowserProfileBusyError):
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=exc.to_payload()) from exc
     if isinstance(exc, BrowserContextUnavailableError):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     logger.exception("Unhandled ChatGPT Docker service error", exc_info=exc)
