@@ -1837,7 +1837,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.278"
+    assert captured.out.strip() == "promptbranch 0.0.278.1"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2286,7 +2286,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.278"
+    assert payload["version"] == "0.0.278.1"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -4987,7 +4987,7 @@ def test_artifact_mvp_status_reports_no_artifact_protocol_precondition(capsys, t
     assert payload["severity"] == "warning"
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     assert payload["lifecycle_classification"]["candidate_verdict"] == "no_candidate_available"
-    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == "v0.0.278"
+    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == "v0.0.278.1"
     assert payload["candidate_next"]["status"] == "candidate_next_no_artifact_candidate"
     assert payload["candidate_next"]["recommended_next_command"]["kind"] == "no_artifact_candidate"
     assert payload["candidate_intake_precondition"]["blocks_intake"] is True
@@ -5058,7 +5058,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     classification = payload["lifecycle_classification"]
     assert classification["candidate_verdict"] == "no_candidate_available"
-    assert classification["versions"]["runtime_code_version"] == "v0.0.278"
+    assert classification["versions"]["runtime_code_version"] == "v0.0.278.1"
     assert classification["versions"]["adopted_project_source_version"] == "v0.0.238"
     assert classification["versions"]["runtime_vs_adopted_source"] == "left_newer"
     assert classification["checks"]["runtime_code_matches_adopted_source"] is False
@@ -5069,7 +5069,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert plan["kind"] == "runtime_source_baseline_mismatch"
     assert plan["safe_action"] == "inspect_and_decide_reconciliation"
     assert plan["read_only"] is True
-    assert plan["versions"]["runtime_code_version"] == "v0.0.278"
+    assert plan["versions"]["runtime_code_version"] == "v0.0.278.1"
     assert plan["versions"]["adopted_project_source_version"] == "v0.0.238"
     action_kinds = {item["kind"] for item in plan["next_safe_actions"]}
     assert "inspect_project_sources" in action_kinds
@@ -5150,7 +5150,7 @@ def test_release_lifecycle_status_consolidates_local_state_and_finalizer_summary
     assert payload["read_only"] is True
     assert payload["local_first"] is True
     assert payload["mutating_actions_executed"] is False
-    assert payload["runtime"]["runtime_code_version"] == "v0.0.278"
+    assert payload["runtime"]["runtime_code_version"] == "v0.0.278.1"
     assert payload["version_file"]["normalized_version"] == "v0.0.278"
     assert payload["artifact_current"]["baseline_roles"]["adopted_source_version"] == "v0.0.278"
     assert payload["service_health"]["status"] == "skipped"
@@ -5234,7 +5234,7 @@ def test_release_lifecycle_status_text_output_is_human_readable(capsys, tmp_path
 def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "VERSION").write_text("v0.0.278\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.0.278.1\n", encoding="utf-8")
     subprocess_run = __import__("subprocess").run
     subprocess_run(["git", "init"], cwd=repo, stdout=__import__("subprocess").DEVNULL, stderr=__import__("subprocess").DEVNULL, check=True)
     profile = tmp_path / "profile"
@@ -5265,8 +5265,8 @@ def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_pa
         }],
     }), encoding="utf-8")
     args = argparse.Namespace(
-        version="v0.0.278",
-        target_version="v0.0.278",
+        version="v0.0.278.1",
+        target_version="v0.0.278.1",
         repo_path=str(repo),
         health_url="http://127.0.0.1:9/healthz",
         health_timeout=0.2,
@@ -5287,8 +5287,8 @@ def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_pa
     assert payload["action"] == "release_doctor"
     assert payload["read_only"] is True
     assert payload["mutating_actions_executed"] is False
-    assert payload["runtime"]["runtime_code_version"] == "v0.0.278"
-    assert payload["version_file"]["normalized_version"] == "v0.0.278"
+    assert payload["runtime"]["runtime_code_version"] == "v0.0.278.1"
+    assert payload["version_file"]["normalized_version"] == "v0.0.278.1"
     assert payload["project_sources"]["attempted"] is True
     assert payload["project_sources"]["detected_versions"][0]["normalized_version"] == "v0.0.238"
     assert "runtime_source_baseline_mismatch" in payload["warning_codes"]
@@ -5307,17 +5307,17 @@ def test_release_doctor_reports_runtime_source_mismatch_read_only(capsys, tmp_pa
 def test_release_doctor_artifact_zip_hardening_reports_candidate_phase(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "VERSION").write_text("v0.0.278\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.0.278.1\n", encoding="utf-8")
     subprocess_run = __import__("subprocess").run
     subprocess_run(["git", "init"], cwd=repo, stdout=__import__("subprocess").DEVNULL, stderr=__import__("subprocess").DEVNULL, check=True)
-    artifact_path = repo / "chatgpt_claudecode_workflow_v0.0.278.zip"
-    _write_test_release_zip(artifact_path, "v0.0.278")
+    artifact_path = repo / "chatgpt_claudecode_workflow_v0.0.278.1.zip"
+    _write_test_release_zip(artifact_path, "v0.0.278.1")
     profile = tmp_path / "profile"
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": artifact_path.name, "identity": "src_248"}])
     args = argparse.Namespace(
-        version="v0.0.278",
-        target_version="v0.0.278",
+        version="v0.0.278.1",
+        target_version="v0.0.278.1",
         artifact=str(artifact_path),
         repo_path=str(repo),
         health_url=None,
@@ -5337,7 +5337,7 @@ def test_release_doctor_artifact_zip_hardening_reports_candidate_phase(capsys, t
     assert exit_code == 0
     assert payload["ok"] is True
     assert payload["artifact_inspection"]["ok"] is True
-    assert payload["artifact_inspection"]["normalized_version"] == "v0.0.278"
+    assert payload["artifact_inspection"]["normalized_version"] == "v0.0.278.1"
     assert payload["artifact_inspection"]["sha256"]
     assert payload["artifact_inspection"]["verification"]["wrapper_folder"] is None
     assert payload["artifact_consistency"]["checks"]["artifact_zip_verified"] is True

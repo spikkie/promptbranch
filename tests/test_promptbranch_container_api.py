@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.278"
+    assert payload["version"] == "0.0.278.1"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.278"
+    assert response.json()["version"] == "0.0.278.1"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -221,3 +221,14 @@ def test_ask_endpoint_preserves_partial_timeout_result(monkeypatch) -> None:
     assert payload["submit_evidence"] == {"clicked": True}
     assert payload["partial_result"] is True
     assert payload["debug_artifacts"] == ["debug_artifacts/response_wait.txt"]
+
+
+def test_container_service_does_not_clear_singleton_locks_by_default(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", raising=False)
+    monkeypatch.setenv("PROMPTBRANCH_PROFILE_DIR", str(tmp_path / ".pb_profile"))
+
+    from promptbranch_container_api import _build_service
+
+    svc = _build_service(project_url_override="https://chatgpt.com/g/g-p-demo/project")
+
+    assert svc.settings.clear_singleton_locks is False

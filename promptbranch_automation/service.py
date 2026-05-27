@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import logging
+import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +37,72 @@ def _mask_email(value: Optional[str]) -> str:
     return f"{masked_local}@{domain}"
 
 
+class _SharedProfileAsyncLock:
+    """Async-compatible, profile-scoped lock for browser profile ownership.
+
+    The service may create multiple ChatGPTAutomationService instances for
+    different project URLs. Those instances can still point at the same
+    persistent Chromium profile directory, so an instance-level asyncio.Lock is
+    insufficient. This lock serializes browser/profile operations for the same
+    resolved profile path inside the current process and also takes an advisory
+    flock so a second Promptbranch process does not race the same profile.
+    """
+
+    _locks_guard = threading.Lock()
+    _locks: dict[str, threading.Lock] = {}
+
+    def __init__(self, profile_dir: str):
+        self.profile_dir = str(Path(profile_dir).expanduser().resolve())
+        self._thread_lock = self._lock_for_profile(self.profile_dir)
+        self._lock_file = None
+
+    @classmethod
+    def _lock_for_profile(cls, profile_dir: str) -> threading.Lock:
+        with cls._locks_guard:
+            lock = cls._locks.get(profile_dir)
+            if lock is None:
+                lock = threading.Lock()
+                cls._locks[profile_dir] = lock
+            return lock
+
+    @property
+    def lock_path(self) -> Path:
+        return Path(self.profile_dir) / ".promptbranch-browser-profile.lock"
+
+    async def __aenter__(self) -> "_SharedProfileAsyncLock":
+        await asyncio.to_thread(self._thread_lock.acquire)
+        try:
+            Path(self.profile_dir).mkdir(parents=True, exist_ok=True)
+            lock_path = self.lock_path
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self._lock_file = lock_path.open("a+", encoding="utf-8")
+            await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_EX)
+            self._lock_file.seek(0)
+            self._lock_file.truncate()
+            self._lock_file.write(f"pid={os.getpid()}\n")
+            self._lock_file.write(f"profile_dir={self.profile_dir}\n")
+            self._lock_file.flush()
+            return self
+        except Exception:
+            self._release_thread_lock()
+            raise
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        try:
+            if self._lock_file is not None:
+                await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_UN)
+                self._lock_file.close()
+                self._lock_file = None
+        finally:
+            self._release_thread_lock()
+
+    def _release_thread_lock(self) -> None:
+        try:
+            self._thread_lock.release()
+        except RuntimeError:
+            pass
+
+
 @dataclass(slots=True)
 class ChatGPTAutomationSettings:
     project_url: str
@@ -60,7 +129,7 @@ class ChatGPTAutomationService:
 
     def __init__(self, settings: ChatGPTAutomationSettings):
         self.settings = settings
-        self._lock = asyncio.Lock()
+        self._lock = _SharedProfileAsyncLock(settings.profile_dir)
         self._recent_project_chats: dict[str, dict[str, Any]] = {}
         self._recent_project_sources: dict[tuple[str, str, str], dict[str, Any]] = {}
 
