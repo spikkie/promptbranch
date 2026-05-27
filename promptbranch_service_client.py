@@ -70,6 +70,9 @@ class ChatGPTServiceClient:
     def healthz(self) -> dict[str, Any]:
         return self._json(self._client.get("/healthz"))
 
+    def browser_status(self) -> dict[str, Any]:
+        return self._json(self._client.get("/v1/browser/status"))
+
     def run_test_suite(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._json(self._client.post("/v1/test-suite/run", json=payload))
 
@@ -347,6 +350,7 @@ class ChatGPTServiceClient:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         project_url: Optional[str] = None,
+        profile_lock_wait_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         normalized_display_name = Path(display_name).name if display_name else None
         data = {
@@ -362,6 +366,8 @@ class ChatGPTServiceClient:
             data["name"] = Path(file_path).name
         if project_url:
             data["project_url"] = project_url
+        if profile_lock_wait_seconds is not None:
+            data["profile_lock_wait_seconds"] = str(float(profile_lock_wait_seconds))
 
         if file_path:
             path = Path(file_path)

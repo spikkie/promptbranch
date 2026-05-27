@@ -387,6 +387,12 @@ async def healthz() -> ServiceInfo:
     )
 
 
+
+
+@protected.get("/browser/status", dependencies=[Depends(require_service_token)])
+async def browser_status(project_url: Optional[str] = None) -> dict:
+    return _service_for(project_url).browser_status()
+
 @protected.post("/login-check", dependencies=[Depends(require_service_token)])
 async def login_check(payload: LoginCheckRequest) -> dict:
     try:
@@ -600,6 +606,7 @@ async def add_project_source(
     display_name: Optional[str] = Form(default=None, alias="name"),
     keep_open: bool = Form(False),
     overwrite_existing: bool = Form(True),
+    profile_lock_wait_seconds: Optional[float] = Form(default=None),
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
@@ -618,14 +625,17 @@ async def add_project_source(
         elif source_kind in {"text", "link"} and not value:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"value is required when type={source_kind}")
 
-        return await _service_for(project_url).add_project_source(
-            source_kind=source_kind,
-            value=value,
-            file_path=(str(temp_path) if temp_path is not None else None),
-            display_name=display_name,
-            keep_open=keep_open,
-            overwrite_existing=overwrite_existing,
-        )
+        call_kwargs = {
+            "source_kind": source_kind,
+            "value": value,
+            "file_path": (str(temp_path) if temp_path is not None else None),
+            "display_name": display_name,
+            "keep_open": keep_open,
+            "overwrite_existing": overwrite_existing,
+        }
+        if profile_lock_wait_seconds is not None:
+            call_kwargs["profile_lock_wait_seconds"] = profile_lock_wait_seconds
+        return await _service_for(project_url).add_project_source(**call_kwargs)
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - exercised by live runs

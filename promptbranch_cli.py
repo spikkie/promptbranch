@@ -85,6 +85,7 @@ DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS = 12.0
 DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
 DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS = 90.0
 DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1200.0
+DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS = 600.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 COMMANDS = {
@@ -102,6 +103,7 @@ COMMANDS = {
     "test",
     "doctor",
     "debug",
+    "browser",
     "project-create",
     "project-list",
     "project-resolve",
@@ -357,6 +359,9 @@ class DirectBackend:
             self._conversation_state.forget_project(effective_project_url)
         return result
 
+    async def browser_status(self) -> dict[str, Any]:
+        return self._service.browser_status()
+
     async def add_project_source(
         self,
         *,
@@ -366,6 +371,7 @@ class DirectBackend:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
         effective_project_url = self._effective_project_home_url()
         original_project_url = self._service.settings.project_url
@@ -378,6 +384,7 @@ class DirectBackend:
                 display_name=display_name,
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
+                profile_lock_wait_seconds=profile_lock_wait_seconds,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -628,6 +635,9 @@ class ServiceBackend:
         self._conversation_state.forget_project(effective_project_url)
         return result
 
+    async def browser_status(self) -> dict[str, Any]:
+        return await self._call(self._client.browser_status)
+
     async def add_project_source(
         self,
         *,
@@ -637,6 +647,7 @@ class ServiceBackend:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
         return await self._call(
             self._client.add_project_source,
@@ -647,6 +658,7 @@ class ServiceBackend:
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
             project_url=self._effective_project_home_url(),
+            profile_lock_wait_seconds=profile_lock_wait_seconds,
         )
 
     async def remove_project_source(
@@ -4334,6 +4346,63 @@ async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int
     return 0
 
 
+def _profile_wait_timeout_from_args(args: argparse.Namespace) -> float | None:
+    if not getattr(args, "wait_for_profile", False):
+        return None
+    value = getattr(args, "profile_wait_timeout_seconds", None)
+    if value is None:
+        return DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS
+    return max(0.001, float(value))
+
+
+def _source_add_busy_payload(
+    service_payload: dict[str, Any],
+    *,
+    source_kind: str,
+    file_path: Optional[str],
+    display_name: Optional[str],
+    overwrite_existing: bool,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    payload = dict(service_payload)
+    payload.update({
+        "ok": False,
+        "action": "source_add",
+        "status": "browser_profile_busy",
+        "classification": "expected_contention",
+        "source_kind": source_kind,
+        "file_path": file_path,
+        "display_name": display_name,
+        "overwrite_existing": overwrite_existing,
+        "project_source_mutated": False,
+        "persistence_verified": False,
+        "operator_review_required": False,
+        "queue_enabled": False,
+    })
+    command_parts = ["pb", "src", "add"]
+    if source_kind != "file":
+        command_parts.extend(["--type", source_kind])
+        value = getattr(args, "value", None)
+        if value:
+            command_parts.extend(["--value", shlex.quote(str(value))])
+    elif file_path:
+        command_parts.extend(["--file", shlex.quote(str(file_path))])
+    if display_name:
+        command_parts.extend(["--name", shlex.quote(str(display_name))])
+    command_parts.append("--wait-for-profile")
+    wait_timeout = getattr(args, "profile_wait_timeout_seconds", None) or DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS
+    command_parts.extend(["--profile-wait-timeout-seconds", str(float(wait_timeout))])
+    payload.setdefault(
+        "recovery_hint",
+        "The browser profile is currently owned by another browser-backed operation. Retry after it completes or rerun with --wait-for-profile.",
+    )
+    payload["next_safe_commands"] = [
+        "pb browser status --json",
+        " ".join(command_parts),
+    ]
+    return payload
+
+
 def _project_source_add_exception_payload(
     exc: Exception,
     *,
@@ -4387,6 +4456,7 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
         display_name = Path(file_path).name
 
     overwrite_existing = not getattr(args, "no_overwrite", False)
+    profile_lock_wait_seconds = _profile_wait_timeout_from_args(args)
     try:
         result = await backend.add_project_source(
             source_kind=source_kind,
@@ -4395,17 +4465,31 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
             display_name=display_name,
             keep_open=args.keep_open,
             overwrite_existing=overwrite_existing,
+            profile_lock_wait_seconds=profile_lock_wait_seconds,
         )
     except Exception as exc:
-        result = _project_source_add_exception_payload(
-            exc,
-            source_kind=source_kind,
-            file_path=file_path,
-            display_name=display_name,
-            overwrite_existing=overwrite_existing,
-        )
+        service_payload = _service_exception_payload(exc, args)
+        if service_payload and service_payload.get("status") == "browser_profile_busy":
+            result = _source_add_busy_payload(
+                service_payload,
+                source_kind=source_kind,
+                file_path=file_path,
+                display_name=display_name,
+                overwrite_existing=overwrite_existing,
+                args=args,
+            )
+        else:
+            result = _project_source_add_exception_payload(
+                exc,
+                source_kind=source_kind,
+                file_path=file_path,
+                display_name=display_name,
+                overwrite_existing=overwrite_existing,
+            )
     print(json.dumps(result, indent=2, ensure_ascii=False))
-    return 0 if result.get("ok") else 1
+    if result.get("ok"):
+        return 0
+    return 75 if result.get("status") == "browser_profile_busy" else 1
 
 
 async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -14198,6 +14282,23 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
     raise RuntimeError(f"Unknown artifact command: {args.artifact_command}")
 
 
+async def cmd_browser(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.browser_command == "status":
+        result = await backend.browser_status()
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={result.get('status')}")
+            print(f"profile_dir={result.get('profile_dir')}")
+            if result.get("active_operation"):
+                print(f"active_operation={result.get('active_operation')}")
+            if result.get("active_elapsed_seconds") is not None:
+                print(f"active_elapsed_seconds={result.get('active_elapsed_seconds')}")
+            print(f"queue_enabled={str(result.get('queue_enabled')).lower()}")
+        return 0
+    raise RuntimeError(f"Unknown browser command: {args.browser_command}")
+
+
 async def cmd_src(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.src_command == "list":
         return await cmd_project_source_list(backend, args)
@@ -14994,6 +15095,8 @@ def make_parser() -> argparse.ArgumentParser:
     src_add.add_argument("--file", help="Local file path for file sources.")
     src_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
     src_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
+    src_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window.")
+    src_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile when --wait-for-profile is used. Defaults to {DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS}.")
     src_add.add_argument("--keep-open", action="store_true")
 
     src_remove = src_subparsers.add_parser("rm", aliases=["remove"], help="Remove a source from the current workspace.")
@@ -15013,6 +15116,11 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
     src_sync.add_argument("--keep-open", action="store_true")
+
+    browser = subparsers.add_parser("browser", help="Browser profile monitor commands.")
+    browser_subparsers = browser.add_subparsers(dest="browser_command", required=True)
+    browser_status = browser_subparsers.add_parser("status", help="Show the current shared browser profile owner/status.")
+    browser_status.add_argument("--json", action="store_true", help="Emit browser profile monitor status as JSON.")
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
@@ -15529,6 +15637,8 @@ def make_parser() -> argparse.ArgumentParser:
     source_add.add_argument("--file", help="Local file path for file sources.")
     source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
     source_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
+    source_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window.")
+    source_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile when --wait-for-profile is used. Defaults to {DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS}.")
     source_add.add_argument("--keep-open", action="store_true")
 
     source_list = subparsers.add_parser(
@@ -15705,7 +15815,7 @@ def _json_output_requested(args: argparse.Namespace) -> bool:
 
 def _command_action_name(args: argparse.Namespace) -> str:
     command = str(getattr(args, "command", "command") or "command")
-    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "test_command", "agent_command", "skill_command", "mcp_command"):
+    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "test_command", "agent_command", "skill_command", "mcp_command"):
         value = getattr(args, attr, None)
         if value:
             return f"{command}_{value}".replace("-", "_")
@@ -15852,6 +15962,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_doctor(backend, args)
     if args.command == "debug":
         return await cmd_debug(backend, args)
+    if args.command == "browser":
+        return await cmd_browser(backend, args)
     if args.command == "project-create":
         return await cmd_project_create(backend, args)
     if args.command == "project-list":

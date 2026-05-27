@@ -525,3 +525,86 @@ def test_profile_scoped_lock_reports_busy_before_client_timeout(monkeypatch, tmp
     assert payload["active_operation"] == "ask_question"
     assert payload["timeout_layer"] == "browser_profile_lock"
     assert "source-list-start" not in events
+
+
+def test_browser_status_reports_active_operation_and_profile_available(monkeypatch, tmp_path):
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        await asyncio.sleep(0.03)
+        return {"answer": "done", "conversation_url": "https://chatgpt.com/g/g-p-one/c/a"}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+    ))
+
+    async def run_status_checks():
+        task = asyncio.create_task(svc.ask_question_result(prompt="hello", retries=0))
+        while svc.browser_status().get("active_operation") != "ask_question":
+            await asyncio.sleep(0)
+        busy = svc.browser_status()
+        await task
+        available = svc.browser_status()
+        return busy, available
+
+    busy, available = asyncio.run(run_status_checks())
+    assert busy["status"] == "busy"
+    assert busy["active_operation"] == "ask_question"
+    assert busy["queue_enabled"] is False
+    assert available["status"] == "available"
+
+
+def test_profile_lock_wait_override_allows_waiting_operation(monkeypatch, tmp_path):
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        events.append("ask-start")
+        await asyncio.sleep(0.03)
+        events.append("ask-end")
+        return {"answer": "done", "conversation_url": "https://chatgpt.com/g/g-p-one/c/a"}
+
+    async def fake_add_project_source(self, **kwargs):
+        events.append("source-add-start")
+        return {"ok": True, "persistence_verified": True}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.001,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.001,
+    ))
+
+    async def run_contention():
+        ask_task = asyncio.create_task(svc_a.ask_question_result(prompt="hello", retries=0))
+        while "ask-start" not in events:
+            await asyncio.sleep(0)
+        result = await svc_b.add_project_source(source_kind="text", value="notes", profile_lock_wait_seconds=0.2)
+        await ask_task
+        return result
+
+    result = asyncio.run(run_contention())
+    assert result["ok"] is True
+    assert events == ["ask-start", "ask-end", "source-add-start"]

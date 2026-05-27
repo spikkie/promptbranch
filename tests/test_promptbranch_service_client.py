@@ -337,3 +337,38 @@ def test_ask_result_respects_configured_timeout(monkeypatch):
 
     assert payload["answer"] == "ok"
     assert captured["timeout"]["read"] == 3.0
+
+
+def test_add_project_source_sends_profile_lock_wait_seconds(tmp_path: Path) -> None:
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert 'name="profile_lock_wait_seconds"' in body
+        assert "120.0" in body
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.add_project_source(
+            source_kind="file",
+            file_path=str(file_path),
+            profile_lock_wait_seconds=120.0,
+        )
+
+    assert payload["ok"] is True
+
+
+def test_browser_status_client_calls_service_endpoint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/browser/status"
+        return httpx.Response(200, json={"ok": True, "status": "available"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.browser_status()
+
+    assert payload["status"] == "available"
