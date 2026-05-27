@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: promptbranch
-Version: 0.0.278.4
+Version: 0.0.278.5
 Summary: Stateful ChatGPT workflow CLI and reusable browser-automation service
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown

@@ -159,6 +159,71 @@ def _split_ask_response(response: Any) -> tuple[Any, Optional[str]]:
     return response, None
 
 
+def _canonical_answer_text(answer: Any) -> str:
+    """Return the complete printable answer text for service ask responses.
+
+    The browser service may return assistant content as a plain string, as
+    ``answer.text``, or as structured ``answer.paragraphs``.  Plain ``pb ask``
+    must print the canonical assistant text, not a JSON rendering of only the
+    first/partial field.
+    """
+    if isinstance(answer, str):
+        return answer
+    if isinstance(answer, dict):
+        text = answer.get("text")
+        if isinstance(text, str) and text:
+            return text
+        paragraphs = answer.get("paragraphs")
+        if isinstance(paragraphs, list):
+            parts: list[str] = []
+            for paragraph in paragraphs:
+                if isinstance(paragraph, str):
+                    value = paragraph.strip()
+                elif isinstance(paragraph, dict):
+                    value = str(paragraph.get("text") or paragraph.get("content") or "").strip()
+                else:
+                    value = str(paragraph).strip()
+                if value:
+                    parts.append(value)
+            if parts:
+                return "\n\n".join(parts)
+        content = answer.get("content")
+        if isinstance(content, str) and content:
+            return content
+    if isinstance(answer, list):
+        parts = []
+        for item in answer:
+            value = _canonical_answer_text(item).strip()
+            if value:
+                parts.append(value)
+        if parts:
+            return "\n\n".join(parts)
+    return str(answer) if answer is not None else ""
+
+
+def _answer_paragraph_count(answer: Any) -> int:
+    if isinstance(answer, dict) and isinstance(answer.get("paragraphs"), list):
+        return len([p for p in answer["paragraphs"] if str(p).strip()])
+    return 0
+
+
+def _enrich_ask_response_with_canonical_text(response: Any) -> Any:
+    if not isinstance(response, dict) or "answer" not in response:
+        return response
+    enriched = dict(response)
+    answer = enriched.get("answer")
+    answer_text = _canonical_answer_text(answer)
+    enriched["answer_text"] = answer_text
+    enriched["answer_text_length"] = len(answer_text)
+    enriched["answer_text_sha256"] = hashlib.sha256(answer_text.encode("utf-8")).hexdigest() if answer_text else ""
+    enriched["answer_paragraph_count"] = _answer_paragraph_count(answer)
+    if isinstance(answer, dict):
+        normalized_answer = dict(answer)
+        normalized_answer.setdefault("text", answer_text)
+        enriched["answer"] = normalized_answer
+    return enriched
+
+
 def _read_prompt_file(path_value: str) -> str:
     if path_value == "-":
         return sys.stdin.read()
@@ -6391,15 +6456,13 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
             )
         return _emit_protocol_result(args, result)
 
+    response = _enrich_ask_response_with_canonical_text(response)
     if args.json:
         print(json.dumps(response, indent=2, ensure_ascii=False))
         return 0
 
     answer, _ = _split_ask_response(response)
-    if isinstance(answer, (dict, list)):
-        print(json.dumps(answer, indent=2, ensure_ascii=False))
-    else:
-        print(answer)
+    print(_canonical_answer_text(answer))
     return 0
 
 
