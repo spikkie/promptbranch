@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol
 
 from dotenv import load_dotenv
+import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
@@ -56,6 +57,7 @@ from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
     ManualLoginRequiredError,
+    BrowserProfileBusyError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -15701,6 +15703,93 @@ def _json_output_requested(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "json", False))
 
 
+def _command_action_name(args: argparse.Namespace) -> str:
+    command = str(getattr(args, "command", "command") or "command")
+    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "test_command", "agent_command", "skill_command", "mcp_command"):
+        value = getattr(args, attr, None)
+        if value:
+            return f"{command}_{value}".replace("-", "_")
+    return command.replace("-", "_")
+
+
+def _http_status_detail_payload(exc: httpx.HTTPStatusError) -> dict[str, Any] | None:
+    try:
+        raw = exc.response.json()
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    detail = raw.get("detail")
+    if isinstance(detail, dict):
+        payload = dict(detail)
+        payload.setdefault("http_status_code", exc.response.status_code)
+        return payload
+    if detail is not None:
+        return {
+            "ok": False,
+            "status": "service_http_error",
+            "error": str(detail),
+            "error_type": "HTTPStatusError",
+            "http_status_code": exc.response.status_code,
+        }
+    return None
+
+
+def _service_exception_payload(exc: Exception, args: argparse.Namespace) -> dict[str, Any] | None:
+    action = _command_action_name(args)
+    if isinstance(exc, BrowserProfileBusyError):
+        payload = exc.to_payload()
+        payload.setdefault("action", action)
+        return payload
+    if isinstance(exc, httpx.HTTPStatusError):
+        payload = _http_status_detail_payload(exc)
+        if payload is None:
+            payload = {
+                "ok": False,
+                "status": "service_http_error",
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "http_status_code": getattr(exc.response, "status_code", None),
+            }
+        payload.setdefault("ok", False)
+        payload.setdefault("action", action)
+        if payload.get("status") == "browser_profile_busy":
+            payload.setdefault("timeout_layer", "browser_profile_lock")
+            payload.setdefault("operator_action", "retry_after_active_browser_operation_or_use_async_job_status")
+        return payload
+    if isinstance(exc, (httpx.ReadTimeout, httpx.TimeoutException)):
+        return {
+            "ok": False,
+            "action": action,
+            "status": "service_client_read_timeout",
+            "error": str(exc) or "service request timed out while waiting for response headers",
+            "error_type": type(exc).__name__,
+            "timeout_layer": "service_client",
+            "service_timeout_seconds": float(getattr(args, "service_timeout_seconds", DEFAULT_SERVICE_TIMEOUT_SECONDS) or DEFAULT_SERVICE_TIMEOUT_SECONDS),
+            "operator_action": "do_not_assume_failure; inspect task/source state before retrying",
+            "recovery_hint": "The browser service may still finish after the CLI timed out. Use task show/message inspection for ask operations; retry browser-backed reads after the active operation completes.",
+        }
+    return None
+
+
+def _emit_service_exception(exc: Exception, args: argparse.Namespace) -> int | None:
+    payload = _service_exception_payload(exc, args)
+    if payload is None:
+        return None
+    if _json_output_requested(args):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        status_text = payload.get("status") or "service_error"
+        print(f"{status_text}: {payload.get('error') or exc}", file=sys.stderr)
+        if payload.get("active_operation"):
+            print(f"active_operation={payload.get('active_operation')}", file=sys.stderr)
+        if payload.get("retry_after_seconds") is not None:
+            print(f"retry_after_seconds={payload.get('retry_after_seconds')}", file=sys.stderr)
+        if payload.get("recovery_hint"):
+            print(str(payload.get("recovery_hint")), file=sys.stderr)
+    return 75 if payload.get("status") == "browser_profile_busy" else 12
+
+
 
 def _try_handle_help_command(parser: argparse.ArgumentParser, argv: list[str]) -> Optional[int]:
     if not argv or argv[0] != "help":
@@ -15835,6 +15924,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     try:
         return asyncio.run(_async_main(args))
+    except (BrowserProfileBusyError, httpx.HTTPStatusError, httpx.ReadTimeout, httpx.TimeoutException) as exc:
+        handled = _emit_service_exception(exc, args)
+        if handled is not None:
+            return handled
+        raise
     except ManualLoginRequiredError as exc:
         print(f"manual login required: {exc}", file=sys.stderr)
         return 10

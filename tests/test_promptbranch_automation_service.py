@@ -466,3 +466,62 @@ def test_profile_scoped_lock_serializes_services_sharing_profile(monkeypatch, tm
 
     assert events == ["ask-start", "ask-end", "source-add-start", "source-add-end"]
     assert (profile_dir / ".promptbranch-browser-profile.lock").exists()
+
+
+def test_profile_scoped_lock_reports_busy_before_client_timeout(monkeypatch, tmp_path):
+    from promptbranch_browser_auth.exceptions import BrowserProfileBusyError
+
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        events.append("ask-start")
+        await asyncio.sleep(0.08)
+        events.append("ask-end")
+        return {"answer": "done", "conversation_url": "https://chatgpt.com/g/g-p-one/c/a"}
+
+    async def fake_list_project_sources(self, **kwargs):
+        events.append("source-list-start")
+        return {"ok": True, "sources": []}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.01,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.01,
+    ))
+
+    async def run_contention() -> BrowserProfileBusyError:
+        ask_task = asyncio.create_task(svc_a.ask_question_result(prompt="hello", retries=0))
+        while "ask-start" not in events:
+            await asyncio.sleep(0)
+        try:
+            await svc_b.list_project_sources()
+        except BrowserProfileBusyError as exc:
+            await ask_task
+            return exc
+        await ask_task
+        raise AssertionError("expected browser profile busy classification")
+
+    exc = asyncio.run(run_contention())
+    payload = exc.to_payload()
+    assert payload["status"] == "browser_profile_busy"
+    assert payload["operation"] == "list_project_sources"
+    assert payload["active_operation"] == "ask_question"
+    assert payload["timeout_layer"] == "browser_profile_lock"
+    assert "source-list-start" not in events

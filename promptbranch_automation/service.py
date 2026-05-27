@@ -15,6 +15,7 @@ from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
     ManualLoginRequiredError,
+    BrowserProfileBusyError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -46,15 +47,23 @@ class _SharedProfileAsyncLock:
     insufficient. This lock serializes browser/profile operations for the same
     resolved profile path inside the current process and also takes an advisory
     flock so a second Promptbranch process does not race the same profile.
+
+    v0.0.278.2 intentionally bounds lock waiting. A queued browser-backed
+    request should fail with browser_profile_busy before the outer HTTP client
+    reaches its read timeout.
     """
 
     _locks_guard = threading.Lock()
     _locks: dict[str, threading.Lock] = {}
+    _active_operations: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, profile_dir: str):
+    def __init__(self, profile_dir: str, *, wait_timeout_seconds: float = 30.0):
         self.profile_dir = str(Path(profile_dir).expanduser().resolve())
+        self.wait_timeout_seconds = max(0.001, float(wait_timeout_seconds))
         self._thread_lock = self._lock_for_profile(self.profile_dir)
         self._lock_file = None
+        self._operation_name = "browser_operation"
+        self._acquired_at = None
 
     @classmethod
     def _lock_for_profile(cls, profile_dir: str) -> threading.Lock:
@@ -65,35 +74,94 @@ class _SharedProfileAsyncLock:
                 cls._locks[profile_dir] = lock
             return lock
 
+    @classmethod
+    def _active_operation_for_profile(cls, profile_dir: str) -> dict[str, Any]:
+        with cls._locks_guard:
+            return dict(cls._active_operations.get(profile_dir) or {})
+
+    @classmethod
+    def _set_active_operation(cls, profile_dir: str, operation_name: str) -> None:
+        with cls._locks_guard:
+            cls._active_operations[profile_dir] = {
+                "operation_name": operation_name,
+                "pid": os.getpid(),
+                "started_at": time.time(),
+            }
+
+    @classmethod
+    def _clear_active_operation(cls, profile_dir: str) -> None:
+        with cls._locks_guard:
+            cls._active_operations.pop(profile_dir, None)
+
     @property
     def lock_path(self) -> Path:
         return Path(self.profile_dir) / ".promptbranch-browser-profile.lock"
 
+    def operation(self, operation_name: str) -> "_SharedProfileAsyncLockLease":
+        return _SharedProfileAsyncLockLease(self, operation_name)
+
     async def __aenter__(self) -> "_SharedProfileAsyncLock":
-        await asyncio.to_thread(self._thread_lock.acquire)
+        return await self._acquire("browser_operation")
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self._release()
+
+    async def _acquire(self, operation_name: str) -> "_SharedProfileAsyncLock":
+        self._operation_name = str(operation_name or "browser_operation")
+        started = time.monotonic()
+        acquired = await asyncio.to_thread(self._thread_lock.acquire, True, self.wait_timeout_seconds)
+        waited = time.monotonic() - started
+        if not acquired:
+            active = self._active_operation_for_profile(self.profile_dir)
+            active_operation = active.get("operation_name") or "unknown_browser_operation"
+            raise BrowserProfileBusyError(
+                f"browser profile is busy; waited {waited:.1f}s for {self._operation_name} while {active_operation} owns the profile",
+                operation_name=self._operation_name,
+                active_operation=active_operation,
+                waited_seconds=round(waited, 3),
+                retry_after_seconds=max(1.0, self.wait_timeout_seconds),
+                profile_dir=self.profile_dir,
+            )
         try:
             Path(self.profile_dir).mkdir(parents=True, exist_ok=True)
             lock_path = self.lock_path
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             self._lock_file = lock_path.open("a+", encoding="utf-8")
-            await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                active = self._active_operation_for_profile(self.profile_dir)
+                active_operation = active.get("operation_name") or "external_promptbranch_process"
+                raise BrowserProfileBusyError(
+                    f"browser profile is locked by another process for {active_operation}",
+                    operation_name=self._operation_name,
+                    active_operation=active_operation,
+                    waited_seconds=round(waited, 3),
+                    retry_after_seconds=max(1.0, self.wait_timeout_seconds),
+                    profile_dir=self.profile_dir,
+                ) from exc
+            self._acquired_at = time.time()
+            self._set_active_operation(self.profile_dir, self._operation_name)
             self._lock_file.seek(0)
             self._lock_file.truncate()
             self._lock_file.write(f"pid={os.getpid()}\n")
+            self._lock_file.write(f"operation={self._operation_name}\n")
             self._lock_file.write(f"profile_dir={self.profile_dir}\n")
+            self._lock_file.write(f"acquired_at={self._acquired_at}\n")
             self._lock_file.flush()
             return self
         except Exception:
             self._release_thread_lock()
             raise
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def _release(self) -> None:
         try:
             if self._lock_file is not None:
                 await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_UN)
                 self._lock_file.close()
                 self._lock_file = None
         finally:
+            self._clear_active_operation(self.profile_dir)
             self._release_thread_lock()
 
     def _release_thread_lock(self) -> None:
@@ -101,6 +169,18 @@ class _SharedProfileAsyncLock:
             self._thread_lock.release()
         except RuntimeError:
             pass
+
+
+class _SharedProfileAsyncLockLease:
+    def __init__(self, parent: _SharedProfileAsyncLock, operation_name: str):
+        self.parent = parent
+        self.operation_name = operation_name
+
+    async def __aenter__(self) -> _SharedProfileAsyncLock:
+        return await self.parent._acquire(self.operation_name)
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.parent._release()
 
 
 @dataclass(slots=True)
@@ -118,6 +198,7 @@ class ChatGPTAutomationSettings:
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
     clear_singleton_locks: bool = False
+    profile_lock_wait_seconds: float = 30.0
 
 
 class ChatGPTAutomationService:
@@ -129,7 +210,7 @@ class ChatGPTAutomationService:
 
     def __init__(self, settings: ChatGPTAutomationSettings):
         self.settings = settings
-        self._lock = _SharedProfileAsyncLock(settings.profile_dir)
+        self._lock = _SharedProfileAsyncLock(settings.profile_dir, wait_timeout_seconds=settings.profile_lock_wait_seconds)
         self._recent_project_chats: dict[str, dict[str, Any]] = {}
         self._recent_project_sources: dict[tuple[str, str, str], dict[str, Any]] = {}
 
@@ -492,7 +573,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Listing ChatGPT projects")
-        async with self._lock:
+        async with self._lock.operation("list_projects"):
             return await self._with_retries(
                 "list_projects",
                 lambda: self._build_bot().list_projects(
@@ -507,7 +588,7 @@ class ChatGPTAutomationService:
         include_history_fallback: bool = True,
     ) -> dict[str, Any]:
         logger.info("Listing ChatGPT project chats")
-        async with self._lock:
+        async with self._lock.operation("list_project_chats"):
             payload = await self._with_retries(
                 "list_project_chats",
                 lambda: self._build_bot().list_project_chats(
@@ -523,7 +604,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Listing ChatGPT project sources")
-        async with self._lock:
+        async with self._lock.operation("list_project_sources"):
             return await self._with_retries(
                 "list_project_sources",
                 lambda: self._build_bot().list_project_sources(
@@ -538,7 +619,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Fetching ChatGPT chat transcript")
-        async with self._lock:
+        async with self._lock.operation("get_chat"):
             return await self._with_retries(
                 "get_chat",
                 lambda: self._build_bot().get_chat(
@@ -558,7 +639,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Downloading ChatGPT artifact through browser session")
-        async with self._lock:
+        async with self._lock.operation("download_chat_artifact"):
             return await self._with_retries(
                 "download_chat_artifact",
                 lambda: self._build_bot().download_chat_artifact(
@@ -580,7 +661,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Debugging ChatGPT project list locally")
-        async with self._lock:
+        async with self._lock.operation("debug_project_list"):
             return await self._with_retries(
                 "debug_project_list",
                 lambda: self._build_bot().debug_project_list(
@@ -603,7 +684,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Debugging ChatGPT project task list locally")
-        async with self._lock:
+        async with self._lock.operation("debug_project_chats"):
             return await self._with_retries(
                 "debug_project_chats",
                 lambda: self._build_bot().debug_project_chats(
@@ -627,7 +708,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Creating ChatGPT project")
-        async with self._lock:
+        async with self._lock.operation("create_project"):
             return await self._with_retries(
                 "create_project",
                 lambda: self._build_bot().create_project(
@@ -646,7 +727,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Resolving ChatGPT project by name")
-        async with self._lock:
+        async with self._lock.operation("resolve_project"):
             return await self._with_retries(
                 "resolve_project",
                 lambda: self._build_bot().resolve_project(
@@ -665,7 +746,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Ensuring ChatGPT project exists")
-        async with self._lock:
+        async with self._lock.operation("ensure_project"):
             return await self._with_retries(
                 "ensure_project",
                 lambda: self._build_bot().ensure_project(
@@ -678,7 +759,7 @@ class ChatGPTAutomationService:
             )
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
-        async with self._lock:
+        async with self._lock.operation("login_check"):
             logger.info("Running ChatGPT browser login check")
             return await self._build_bot().run_login_check(keep_open=keep_open)
 
@@ -688,7 +769,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logger.info("Removing ChatGPT project")
-        async with self._lock:
+        async with self._lock.operation("remove_project"):
             result = await self._with_retries(
                 "remove_project",
                 lambda: self._build_bot().remove_project(
@@ -708,7 +789,7 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
         overwrite_existing: bool = True,
     ) -> dict[str, Any]:
-        async with self._lock:
+        async with self._lock.operation("add_project_source"):
             logger.info("Adding ChatGPT project source")
             normalized_kind = str(source_kind or "").strip().lower()
             remembered_source: Optional[dict[str, Any]] = None
@@ -825,7 +906,7 @@ class ChatGPTAutomationService:
         *,
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        async with self._lock:
+        async with self._lock.operation("discover_project_source_capabilities"):
             logger.info("Discovering ChatGPT project source capabilities")
             return await self._build_bot().discover_project_source_capabilities(
                 keep_open=keep_open,
@@ -838,7 +919,7 @@ class ChatGPTAutomationService:
         exact: bool = False,
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        async with self._lock:
+        async with self._lock.operation("remove_project_source"):
             logger.info("Removing ChatGPT project source")
             result = await self._build_bot().remove_project_source(
                 source_name=source_name,
@@ -890,7 +971,7 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         max_retries = self.settings.max_retries if retries is None else max(0, retries)
 
-        async with self._lock:
+        async with self._lock.operation("ask_question"):
             last_error: Optional[Exception] = None
             for attempt in range(1, max_retries + 2):
                 try:

@@ -2,6 +2,7 @@
 .promptbranch-release.yml
 .promptbranch/skills/promptbranch-final-mvp/SKILL.md
 README.md
+docs/browser-session-manager-async-jobs-design.md
 docs/diagrams/promptbranch-lifecycle/README.md
 docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio
 docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.png
@@ -34,8 +35,6 @@ docs/release-v0.0.276.17.md
 docs/release-v0.0.276.md
 docs/release-v0.0.277.md
 docs/release-v0.0.278.md
-docs/repair-v0.0.278.1.md
-docs/browser-session-manager-async-jobs-design.md
 docs/repair-v0.0.226.2.md
 docs/repair-v0.0.245.11.md
 docs/repair-v0.0.245.13.md
@@ -53,6 +52,8 @@ docs/repair-v0.0.276.6.md
 docs/repair-v0.0.276.7.md
 docs/repair-v0.0.276.8.md
 docs/repair-v0.0.276.9.md
+docs/repair-v0.0.278.1.md
+docs/repair-v0.0.278.2.md
 promptbranch.egg-info/PKG-INFO
 promptbranch.egg-info/SOURCES.txt
 promptbranch.egg-info/dependency_links.txt
@@ -126,4 +127,5 @@ tests/test_promptbranch_shell_model.py
 tests/test_promptbranch_shell_scripts.py
 tests/test_promptbranch_test_report.py
 tests/test_promptbranch_test_suite.py
+tests/test_promptbranch_timeout_classification.py
 tests/test_response_completion.py
