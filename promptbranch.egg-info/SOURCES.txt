@@ -2,8 +2,13 @@
 .promptbranch-release.yml
 .promptbranch/skills/promptbranch-final-mvp/SKILL.md
 README.md
+docs/diagrams/promptbranch-lifecycle/README.md
+docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio
+docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.png
+docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.svg
 docs/howto/15-finalize-artifact-intake-mvp.md
 docs/howto/16-manual-pb-command-use-cases.md
+docs/howto/17-local-release-lifecycle-with-manual-upload.md
 docs/mvp-definition-of-done.md
 docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md
 docs/release-v0.0.244.md
@@ -28,6 +33,7 @@ docs/release-v0.0.276.16.md
 docs/release-v0.0.276.17.md
 docs/release-v0.0.276.md
 docs/release-v0.0.277.md
+docs/release-v0.0.278.md
 docs/repair-v0.0.226.2.md
 docs/repair-v0.0.245.11.md
 docs/repair-v0.0.245.13.md
