@@ -1917,6 +1917,12 @@ class ChatGPTBrowserClient:
         phase_timings["submit_variant_comparison_result"] = submit_evidence.get("submit_variant_comparison_result")
         phase_timings["submit_variant_keyboard_enter_status"] = submit_evidence.get("submit_variant_keyboard_enter_status")
         phase_timings["submit_variant_keyboard_enter_confirmed"] = submit_evidence.get("submit_variant_keyboard_enter_confirmed")
+        phase_timings["submit_keyboard_enter_primary_used"] = submit_evidence.get("submit_keyboard_enter_primary_used")
+        phase_timings["submit_keyboard_enter_status"] = submit_evidence.get("submit_keyboard_enter_status")
+        phase_timings["submit_keyboard_enter_submit_confirmed"] = submit_evidence.get("submit_keyboard_enter_submit_confirmed")
+        phase_timings["submit_keyboard_enter_backend_commit_confirmed"] = submit_evidence.get("submit_keyboard_enter_backend_commit_confirmed")
+        phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
+        phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
@@ -7742,6 +7748,18 @@ class ChatGPTBrowserClient:
         value = (os.getenv("CHATGPT_SUBMIT_VARIANT_COMPARISON") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled"}
 
+    def _keyboard_enter_primary_submit_enabled(self) -> bool:
+        """Return whether keyboard Enter is the normal submit dispatch.
+
+        v0.0.278.30 promotes the .29 diagnostic finding: ChatGPT's
+        clickable send button can enter a prepare-only idle path, while a
+        trusted Enter dispatch reaches the real conversation POST path.
+        Keep an escape hatch for controlled regression tests and emergency
+        local diagnostics, but default production automation to Enter.
+        """
+        value = (os.getenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled", "button"}
+
     def _submit_variant_network_summary(self, confirmation: Any, *, variant: str, dispatch_key: str | None = None) -> dict[str, Any]:
         network = confirmation.get("submit_network_evidence") if isinstance(confirmation, dict) and isinstance(confirmation.get("submit_network_evidence"), dict) else {}
         return {
@@ -8399,6 +8417,233 @@ class ChatGPTBrowserClient:
             return evidence
 
         submit_network_observer = self._start_submit_network_observer(page, prompt=prompt)
+
+        if self._keyboard_enter_primary_submit_enabled() and prompt_present:
+            send_button_wait_seconds = 0.0
+            enter_fallback_decision_seconds = 0.0
+            evidence["enter_fallback_decision_seconds"] = enter_fallback_decision_seconds
+            evidence["submit_keyboard_enter_primary_used"] = True
+            evidence["submit_keyboard_enter_dispatch_key"] = "Enter"
+            self._log(
+                "submit",
+                "pressing Enter as primary submit dispatch",
+                prompt_present=prompt_present,
+                before_composer=before_composer,
+                send_button_wait_seconds=send_button_wait_seconds,
+            )
+            enter_started = time.monotonic()
+            try:
+                await page.keyboard.press("Enter")
+            except Exception as exc:
+                self._stop_submit_network_observer(page, submit_network_observer)
+                evidence.update({
+                    "status": "keyboard_enter_dispatch_failed",
+                    "submit_method": "keyboard_enter",
+                    "submit_keyboard_enter_primary_used": True,
+                    "submit_keyboard_enter_dispatch_failed": True,
+                    "submit_keyboard_enter_error": type(exc).__name__,
+                    "enter_fallback_press_seconds": round(time.monotonic() - enter_started, 3),
+                    "duration_seconds": round(time.monotonic() - submit_total_started, 3),
+                })
+                return evidence
+            enter_completed = time.monotonic()
+            enter_press_seconds = round(enter_completed - enter_started, 3)
+            confirmation_started = time.monotonic()
+            try:
+                confirmation = await self._wait_for_submit_confirmation(
+                    page,
+                    before_assistant_count=before_assistant_count,
+                    before_user_turn_state=before_user_turns,
+                    prompt=prompt,
+                    submit_network_observer=submit_network_observer,
+                )
+            finally:
+                self._stop_submit_network_observer(page, submit_network_observer)
+            confirmation_completed = time.monotonic()
+            confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
+            after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
+                confirmation=confirmation,
+                reason="keyboard_enter_submit_confirmed_without_deep_debug",
+            )
+            snapshot_completed = time.monotonic()
+            submit_wait_seconds = round(
+                send_button_wait_seconds
+                + enter_fallback_decision_seconds
+                + (enter_press_seconds or 0.0)
+                + confirmation_seconds
+                + after_submit_composer_snapshot_seconds,
+                3,
+            )
+            submit_dispatch_to_confirmation_seconds = round(confirmation_completed - enter_completed, 3)
+            duration_seconds = round(snapshot_completed - submit_total_started, 3)
+            submit_accounted_seconds = round(
+                composer_state_capture_seconds
+                + user_turn_state_capture_seconds
+                + assistant_turn_count_seconds
+                + send_button_wait_seconds
+                + enter_fallback_decision_seconds
+                + (enter_press_seconds or 0.0)
+                + confirmation_seconds
+                + after_submit_composer_snapshot_seconds,
+                3,
+            )
+            submit_unaccounted_seconds = round(duration_seconds - submit_accounted_seconds, 3)
+            backend_evidence = confirmation.get("backend_task_message_evidence") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else {}
+            network_evidence = confirmation.get("submit_network_evidence") if isinstance(confirmation.get("submit_network_evidence"), dict) else {}
+            keyboard_backend_commit_confirmed = bool(
+                confirmation.get("backend_task_message_found")
+                or backend_evidence.get("post_prepare_commit_found")
+            )
+            keyboard_submit_confirmed = bool(confirmation.get("confirmed"))
+            keyboard_status = (
+                confirmation.get("network_submit_request_status")
+                or network_evidence.get("status")
+                or confirmation.get("confirmation_mode")
+                or confirmation.get("status")
+            )
+            keyboard_classification = (
+                "keyboard_enter_backend_commit_confirmed"
+                if keyboard_backend_commit_confirmed
+                else "keyboard_enter_submit_confirmed"
+                if keyboard_submit_confirmed
+                else "keyboard_enter_submit_without_backend_commit"
+            )
+            evidence.update({
+                "status": "keyboard_enter_primary_used",
+                "clicked": False,
+                "enter_fallback_used": False,
+                "submit_method": "keyboard_enter",
+                "send_button_probe_seconds": round(send_button_probe_seconds, 3),
+                "send_button_click_seconds": round(send_button_click_seconds, 3),
+                "send_button_wait_seconds": send_button_wait_seconds,
+                "send_button_retry_seconds": send_button_retry_seconds,
+                "enter_fallback_press_seconds": enter_press_seconds,
+                "submit_wait_seconds": submit_wait_seconds,
+                "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
+                "after_submit_snapshot_mode": after_composer.get("snapshot_mode"),
+                "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
+                "submit_confirmation": confirmation,
+                "submit_confirmed": keyboard_submit_confirmed,
+                "submit_confirmed_by": confirmation.get("confirmed_by") or [],
+                "submit_confirmation_seconds": confirmation_seconds,
+                "submit_confirmation_mode": confirmation.get("confirmation_mode"),
+                "submit_confirmation_fast_path_used": confirmation.get("fast_path_used"),
+                "submit_confirmation_fast_path_reason": confirmation.get("fast_path_reason"),
+                "submit_confirmation_to_running_seconds": confirmation.get("to_running_seconds"),
+                "submit_confirmation_to_new_turn_seconds": confirmation.get("to_new_turn_seconds"),
+                "submit_confirmation_to_url_conversation_seconds": confirmation.get("to_url_conversation_seconds"),
+                "submit_confirmation_probe_seconds": confirmation.get("probe_seconds"),
+                "submit_confirmation_poll_attempt_count": confirmation.get("poll_attempt_count"),
+                "submit_confirmation_historical_count_used": confirmation.get("historical_count_used"),
+                "submit_confirmation_fallback_used": confirmation.get("fallback_used"),
+                "submit_causal_confirmation_required": confirmation.get("causal_confirmation_required"),
+                "submit_causal_confirmation_verified": confirmation.get("causal_confirmation_verified"),
+                "submit_causal_confirmation_reason": confirmation.get("causal_confirmation_reason"),
+                "submit_url_only_confirmation_rejected": confirmation.get("url_only_confirmation_rejected"),
+                "submit_user_turn_echo_found": confirmation.get("user_turn_echo_found"),
+                "submit_user_turn_echo_seconds": confirmation.get("user_turn_echo_seconds"),
+                "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
+                "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
+                "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
+                "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
+                "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
+                "submit_network_request_status": confirmation.get("network_submit_request_status"),
+                "submit_network_request_url": network_evidence.get("request_url"),
+                "submit_network_request_method": network_evidence.get("request_method"),
+                "submit_network_request_marker_found": network_evidence.get("request_marker_found"),
+                "submit_network_response_observed": network_evidence.get("response_observed"),
+                "submit_network_response_status": network_evidence.get("response_status"),
+                "submit_network_stream_started": network_evidence.get("stream_started"),
+                "submit_network_event_urls": network_evidence.get("event_urls"),
+                "submit_network_backend_event_count": network_evidence.get("backend_write_event_count"),
+                "submit_network_marker_event_count": network_evidence.get("marker_event_count"),
+                "submit_prepare_request_observed": network_evidence.get("prepare_request_observed"),
+                "submit_prepare_request_count": network_evidence.get("prepare_request_count"),
+                "submit_prepare_only": network_evidence.get("prepare_only"),
+                "submit_prepare_first_observed_after_click_seconds": network_evidence.get("prepare_first_observed_after_click_seconds"),
+                "submit_message_request_observed": network_evidence.get("message_request_observed"),
+                "submit_message_request_count": network_evidence.get("message_request_count"),
+                "submit_prepare_response_observed": network_evidence.get("prepare_response_observed"),
+                "submit_prepare_response_statuses": network_evidence.get("prepare_response_statuses"),
+                "submit_prepare_response_error_hint": network_evidence.get("prepare_response_error_hint"),
+                "submit_prepare_response_keys": network_evidence.get("prepare_response_keys"),
+                "submit_prepare_response_has_error": network_evidence.get("prepare_response_has_error"),
+                "submit_prepare_response_error_code": network_evidence.get("prepare_response_error_code"),
+                "submit_prepare_response_conversation_id_present": network_evidence.get("prepare_response_conversation_id_present"),
+                "submit_prepare_response_message_id_present": network_evidence.get("prepare_response_message_id_present"),
+                "submit_prepare_response_finalization_token_present": network_evidence.get("prepare_response_finalization_token_present"),
+                "submit_prepare_conduit_token_present": network_evidence.get("prepare_conduit_token_present"),
+                "submit_prepare_conduit_token_sha256_12": network_evidence.get("prepare_conduit_token_sha256_12"),
+                "submit_prepare_conduit_token_latest_sha256_12": network_evidence.get("prepare_conduit_token_latest_sha256_12"),
+                "submit_prepare_conduit_token_sha256_12_values": network_evidence.get("prepare_conduit_token_sha256_12_values"),
+                "submit_prepare_conduit_token_count": network_evidence.get("prepare_conduit_token_count"),
+                "submit_prepare_conduit_token_active_policy": network_evidence.get("prepare_conduit_token_active_policy"),
+                "submit_conduit_transport_observed": network_evidence.get("conduit_transport_observed"),
+                "submit_conduit_transport_kind": network_evidence.get("conduit_transport_kind"),
+                "submit_conduit_token_seen_in_request": network_evidence.get("conduit_token_seen_in_request"),
+                "submit_conduit_token_seen_in_response": network_evidence.get("conduit_token_seen_in_response"),
+                "submit_conduit_token_seen_in_websocket": network_evidence.get("conduit_token_seen_in_websocket"),
+                "submit_conduit_websocket_frame_count": network_evidence.get("conduit_websocket_frame_count"),
+                "submit_conduit_error_hint": network_evidence.get("conduit_error_hint"),
+                "submit_stream_status_summary": network_evidence.get("stream_status_summary"),
+                "submit_conversation_init_summary": network_evidence.get("conversation_init_summary"),
+                "submit_post_prepare_console_error_count": network_evidence.get("post_prepare_console_error_count"),
+                "submit_post_prepare_ui_error_visible": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("visible") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
+                "submit_post_prepare_ui_error_status": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("status") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
+                "submit_post_prepare_observation_seconds": network_evidence.get("post_prepare_observation_seconds"),
+                "submit_post_prepare_stream_observed": network_evidence.get("post_prepare_stream_observed"),
+                "submit_stream_started_without_user_message_commit": network_evidence.get("stream_started_without_user_message_commit"),
+                "submit_prepare_token_set_not_consumed": network_evidence.get("prepare_token_set_not_consumed"),
+                "submit_prepare_only_then_idle_without_commit": network_evidence.get("prepare_only_then_idle_without_commit"),
+                "submit_stream_status_streaming_observed": network_evidence.get("stream_status_streaming_observed"),
+                "submit_post_prepare_stream_status_streaming_observed": network_evidence.get("post_prepare_stream_status_streaming_observed"),
+                "submit_stream_status_complete_observed": network_evidence.get("stream_status_complete_observed"),
+                "submit_post_prepare_stream_status_complete_observed": network_evidence.get("post_prepare_stream_status_complete_observed"),
+                "submit_post_prepare_request_resource_types": network_evidence.get("post_prepare_request_resource_types"),
+                "submit_post_prepare_request_initiators": network_evidence.get("post_prepare_request_initiators"),
+                "submit_backend_commit_after_prepare_found": backend_evidence.get("post_prepare_commit_found"),
+                "submit_backend_commit_after_prepare_seconds": backend_evidence.get("post_prepare_commit_seconds"),
+                "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
+                "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
+                "post_prepare_ui_error_evidence": confirmation.get("post_prepare_ui_error_evidence"),
+                "submit_network_evidence": confirmation.get("submit_network_evidence"),
+                "duration_seconds": duration_seconds,
+                "submit_accounted_seconds": submit_accounted_seconds,
+                "submit_unaccounted_seconds": submit_unaccounted_seconds,
+                "submit_started_at_monotonic": round(submit_total_started, 6),
+                "submit_click_started_at_monotonic": round(enter_started, 6),
+                "submit_click_completed_at_monotonic": round(enter_completed, 6),
+                "submit_confirmation_started_at_monotonic": round(confirmation_started, 6),
+                "submit_confirmed_at_monotonic": round(confirmation_completed, 6),
+                "after_composer": after_composer,
+                "composer_cleared": (
+                    None
+                    if after_composer.get("skipped")
+                    else bool((after_composer.get("text_length") or 0) == 0)
+                ),
+                "after_submit_snapshot_skipped_reason": after_composer.get("skipped_reason"),
+                "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_keyboard_enter"),
+                "submit_keyboard_enter_primary_used": True,
+                "submit_keyboard_enter_dispatch_key": "Enter",
+                "submit_keyboard_enter_status": keyboard_status,
+                "submit_keyboard_enter_submit_confirmed": keyboard_submit_confirmed,
+                "submit_keyboard_enter_backend_commit_confirmed": keyboard_backend_commit_confirmed,
+                "submit_keyboard_enter_fresh_answer_gate_required": True,
+                "submit_keyboard_enter_classification": keyboard_classification,
+            })
+            self._log(
+                "submit",
+                "keyboard Enter primary submit completed",
+                submit_confirmed=evidence.get("submit_confirmed"),
+                submit_confirmed_by=evidence.get("submit_confirmed_by"),
+                keyboard_classification=keyboard_classification,
+                submit_confirmation_seconds=confirmation_seconds,
+                submit_dispatch_to_confirmation_seconds=submit_dispatch_to_confirmation_seconds,
+                submit_wait_seconds=submit_wait_seconds,
+                submit_accounted_seconds=submit_accounted_seconds,
+                submit_unaccounted_seconds=submit_unaccounted_seconds,
+            )
+            return evidence
 
         send_wait_started = time.monotonic()
         deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
