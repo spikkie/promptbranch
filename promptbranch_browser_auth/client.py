@@ -32,6 +32,17 @@ class _ProjectSourceAlreadyExists(RuntimeError):
         self.notice = notice
         self.source_name = source_name
 
+
+_LATEST_ASK_PROGRESS: dict[str, Any] = {}
+
+
+def clear_latest_ask_progress() -> None:
+    _LATEST_ASK_PROGRESS.clear()
+
+
+def get_latest_ask_progress() -> dict[str, Any]:
+    return dict(_LATEST_ASK_PROGRESS)
+
 LOGIN_BUTTON_SELECTOR = 'button[data-testid="login-button"]'
 LOGIN_BUTTON_SELECTORS = [
     'button[data-testid="login-button"]',
@@ -503,6 +514,22 @@ class ChatGPTBrowserClient:
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
+    def _record_ask_progress(self, **fields: Any) -> None:
+        try:
+            _LATEST_ASK_PROGRESS.update({
+                "updated_at_monotonic": time.monotonic(),
+                "profile_dir": str(self.config.profile_dir),
+                **fields,
+            })
+        except Exception:
+            pass
+
+    def _clear_ask_progress(self) -> None:
+        try:
+            clear_latest_ask_progress()
+        except Exception:
+            pass
+
     def _is_conversation_history_url(self, url: str) -> bool:
         normalized = (url or '').lower()
         return any(fragment in normalized for fragment in CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS)
@@ -780,6 +807,15 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
+        self._clear_ask_progress()
+        self._record_ask_progress(
+            action="ask",
+            status="ask_started",
+            prompt_length=len(prompt),
+            conversation_url=conversation_url,
+            expect_json=expect_json,
+            service_timeout_seconds=service_timeout_seconds,
+        )
         self._log(
             "ask",
             "starting ask_question",
@@ -1935,6 +1971,80 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_backend_commit_confirmed"] = submit_evidence.get("submit_keyboard_enter_backend_commit_confirmed")
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
+
+        post_submit_user_turn_visibility = await self._capture_submit_user_turn_echo_state(page, prompt=prompt)
+        backend_task_message_evidence = (
+            submit_evidence.get("backend_task_message_evidence")
+            if isinstance(submit_evidence.get("backend_task_message_evidence"), dict)
+            else {}
+        )
+        backend_confirmed = bool(
+            submit_evidence.get("submit_backend_task_message_found")
+            or "backend_task_message" in (submit_evidence.get("submit_confirmed_by") or [])
+        )
+        backend_user_turn_id = backend_task_message_evidence.get("matched_user_turn_id")
+        backend_user_turn_index = backend_task_message_evidence.get("matched_user_turn_index")
+        post_submit_user_turn_visible = bool(
+            post_submit_user_turn_visibility.get("visible")
+            or submit_evidence.get("submit_user_turn_echo_found")
+        )
+        submit_evidence.update({
+            "post_submit_user_turn_visibility_checked": True,
+            "post_submit_user_turn_visible": post_submit_user_turn_visible,
+            "post_submit_user_turn_visibility_status": post_submit_user_turn_visibility.get("status"),
+            "post_submit_user_turn_visibility_evidence": post_submit_user_turn_visibility,
+            "backend_confirmed_user_turn_id": backend_user_turn_id,
+            "backend_confirmed_user_turn_index": backend_user_turn_index,
+            "submit_backend_confirmed_but_user_turn_not_visible": bool(
+                submit_evidence.get("submit_confirmed")
+                and backend_confirmed
+                and not post_submit_user_turn_visible
+            ),
+            "submit_visibility_classification": (
+                "backend_confirmed_but_user_turn_not_visible"
+                if submit_evidence.get("submit_confirmed") and backend_confirmed and not post_submit_user_turn_visible
+                else "backend_confirmed_and_user_turn_visible"
+                if submit_evidence.get("submit_confirmed") and backend_confirmed and post_submit_user_turn_visible
+                else "submit_confirmed_without_backend_visibility"
+                if submit_evidence.get("submit_confirmed")
+                else "submit_not_confirmed"
+            ),
+        })
+        phase_timings["post_submit_user_turn_visibility_checked"] = submit_evidence.get("post_submit_user_turn_visibility_checked")
+        phase_timings["post_submit_user_turn_visible"] = submit_evidence.get("post_submit_user_turn_visible")
+        phase_timings["post_submit_user_turn_visibility_status"] = submit_evidence.get("post_submit_user_turn_visibility_status")
+        phase_timings["backend_confirmed_user_turn_id"] = backend_user_turn_id
+        phase_timings["backend_confirmed_user_turn_index"] = backend_user_turn_index
+        phase_timings["submit_backend_confirmed_but_user_turn_not_visible"] = submit_evidence.get("submit_backend_confirmed_but_user_turn_not_visible")
+        phase_timings["submit_visibility_classification"] = submit_evidence.get("submit_visibility_classification")
+        self._record_ask_progress(
+            action="ask",
+            status="submit_confirmed" if submit_evidence.get("submit_confirmed") else "submit_not_confirmed",
+            conversation_url=target_url if self._is_conversation_url(target_url) else await self._safe_page_url(page),
+            submit_evidence=submit_evidence,
+            ask_phase_timings=phase_timings,
+        )
+
+        if submit_evidence.get("submit_backend_confirmed_but_user_turn_not_visible"):
+            current_url = await self._safe_page_url(page)
+            phase_timings["response_wait_skipped"] = True
+            phase_timings["response_wait_skipped_reason"] = "submit_confirmed_backend_only_ui_not_hydrated"
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            result = {
+                "ok": False,
+                "action": "ask",
+                "status": "submit_confirmed_backend_only_ui_not_hydrated",
+                "error": "submit was confirmed by backend conversation detail, but the submitted user turn was not visible in the hydrated DOM",
+                "error_type": "submit_confirmed_backend_only_ui_not_hydrated",
+                "timeout_layer": "submit_visibility",
+                "conversation_url": current_url if self._is_conversation_url(current_url) else (target_url if self._is_conversation_url(target_url) else None),
+                "submit_evidence": submit_evidence,
+                "partial_result": True,
+                "ask_phase_timings": phase_timings,
+            }
+            self._record_ask_progress(**result)
+            return result
+
         if isinstance(response_context, dict):
             response_context["submit_confirmed"] = bool(submit_evidence.get("submit_confirmed")) if isinstance(submit_evidence, dict) else False
             response_context["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by") if isinstance(submit_evidence, dict) else []
@@ -14513,7 +14623,7 @@ class ChatGPTBrowserClient:
     def _ask_retrieval_mode(self) -> str:
         """Return the post-submit answer retrieval strategy.
 
-        v0.0.278.36 restores the v0.0.278.15-style DOM/latest-turn path as
+        v0.0.278.37 restores the v0.0.278.15-style DOM/latest-turn path as
         the default because live regression runs showed backend-first answer
         probing could block or choose a marker-missing backend candidate while
         the ChatGPT UI had already rendered the fresh JSON answer.
