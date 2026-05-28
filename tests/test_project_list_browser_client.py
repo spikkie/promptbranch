@@ -1654,8 +1654,40 @@ def test_wait_for_submit_confirmation_accepts_stop_button_signal(tmp_path: Path)
     assert result["status"] == "submit_confirmed"
     assert result["confirmed"] is True
     assert result["confirmed_by"] == ["stop_button"]
-    assert result["attempt_count"] == 1
+    assert result["attempt_count"] == 2
+    assert result["confirmation_mode"] == "legacy_probe"
+    assert result["fallback_used"] is True
 
+
+
+def test_wait_for_submit_confirmation_fast_path_avoids_historical_count(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("fast submit confirmation should not poll")
+
+    async def fail_legacy_state(page, *, before_assistant_count: int):
+        raise AssertionError("fast submit confirmation should not count historical assistant turns")
+
+    client._capture_submit_confirmation_state = fail_legacy_state
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(DummyPage(), before_assistant_count=145))
+
+    assert result["status"] == "submit_confirmed"
+    assert result["confirmed"] is True
+    assert result["confirmed_by"] == ["url_conversation"]
+    assert result["confirmation_mode"] == "fast_url_after_dispatch"
+    assert result["fast_path_used"] is True
+    assert result["fallback_used"] is False
+    assert result["historical_count_used"] is False
+    assert result["poll_attempt_count"] == 1
+    assert result["to_url_conversation_seconds"] is not None
+    assert result["probe_seconds"] >= 0.0
 
 def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
