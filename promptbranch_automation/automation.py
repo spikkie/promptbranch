@@ -127,6 +127,7 @@ class ChatGPTAutomation:
         rate_limit_modal_wait_timeout_ms: Optional[int] = None,
         rate_limit_modal_poll_interval_ms: Optional[int] = None,
         clear_singleton_locks: Optional[bool] = None,
+        dom_diagnostic_mode: Optional[str] = None,
     ):
         self.project_url = project_url
         self.email = email
@@ -199,6 +200,11 @@ class ChatGPTAutomation:
             if clear_singleton_locks is None
             else bool(clear_singleton_locks)
         )
+        self.dom_diagnostic_mode = (
+            os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE", "light")
+            if dom_diagnostic_mode is None
+            else str(dom_diagnostic_mode)
+        ).strip().lower()
 
     @property
     def client(self) -> ChatGPTBrowserClient:
@@ -229,6 +235,7 @@ class ChatGPTAutomation:
                 rate_limit_modal_wait_timeout_ms=self.rate_limit_modal_wait_timeout_ms,
                 rate_limit_modal_poll_interval_ms=self.rate_limit_modal_poll_interval_ms,
                 clear_singleton_locks=self.clear_singleton_locks,
+                dom_diagnostic_mode=self.dom_diagnostic_mode,
             )
         )
 

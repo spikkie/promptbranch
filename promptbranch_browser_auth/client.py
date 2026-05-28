@@ -1619,9 +1619,16 @@ class ChatGPTBrowserClient:
             phase_timings["conversation_user_turn_count"] = dom_weight.get("user_turn_count")
             phase_timings["conversation_generic_turn_count"] = dom_weight.get("generic_turn_count")
             phase_timings["conversation_code_block_count"] = dom_weight.get("code_block_count")
+            phase_timings["conversation_code_block_count_mode"] = dom_weight.get("code_block_count_mode")
             phase_timings["large_conversation_dom_detected"] = dom_weight.get("large_conversation_dom_detected")
             phase_timings["recommend_new_task_when_large"] = dom_weight.get("recommend_new_task_when_large")
             phase_timings["dom_weight_capture_seconds"] = dom_weight.get("capture_seconds")
+            phase_timings["dom_weight_capture_mode"] = dom_weight.get("capture_mode")
+            phase_timings["dom_weight_diagnostic_mode"] = dom_weight.get("diagnostic_mode")
+            phase_timings["dom_weight_capture_capped"] = dom_weight.get("capture_capped")
+            phase_timings["dom_weight_capture_skipped_reason"] = dom_weight.get("capture_skipped_reason")
+            phase_timings["historical_scan_used"] = dom_weight.get("historical_scan_used")
+            phase_timings["historical_scan_seconds"] = dom_weight.get("historical_scan_seconds")
 
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
@@ -1675,6 +1682,11 @@ class ChatGPTBrowserClient:
             timeout_result["ask_phase_timings"] = phase_timings
             return timeout_result
         phase_timings["response_wait_seconds"] = round(time.monotonic() - response_wait_started, 3)
+        if isinstance(response_context, dict):
+            phase_timings["response_extraction_mode"] = response_context.get("last_response_extraction_mode")
+            phase_timings["response_extraction_seconds"] = response_context.get("last_response_extraction_seconds")
+            phase_timings["response_historical_scan_used"] = response_context.get("last_response_historical_scan_used")
+            phase_timings["response_historical_scan_seconds"] = response_context.get("last_response_historical_scan_seconds")
 
         finalize_started = time.monotonic()
         current_url = await self._safe_page_url(page)
@@ -4707,7 +4719,14 @@ class ChatGPTBrowserClient:
             except Exception:
                 continue
             if count:
-                return locator.nth(count - 1), selector
+                try:
+                    return locator.nth(count - 1), selector
+                except AttributeError:
+                    # Some tests and older locator shims expose `.last` but not `.nth`.
+                    try:
+                        return locator.last, selector
+                    except Exception:
+                        continue
         return None, None
 
     async def _probe_thinking_state(self, page: Any) -> dict[str, Any]:
@@ -4793,24 +4812,112 @@ class ChatGPTBrowserClient:
                 best_selector = selector
         return best_count, best_selector
 
-    async def _capture_conversation_dom_weight(self, page: Any) -> dict[str, Any]:
-        """Capture cheap DOM-size diagnostics without extracting historical text."""
+    def _dom_diagnostic_mode(self) -> str:
+        mode = (getattr(self.config, "dom_diagnostic_mode", "light") or "light").strip().lower()
+        if mode not in {"light", "deep", "disabled"}:
+            return "light"
+        return mode
+
+    async def _count_simple_dom_selector(self, page: Any, selector: str) -> int | None:
+        """Count one simple selector inside the browser context.
+
+        Playwright locator counts over several fallback selectors were the expensive
+        v0.0.278.10 path in old conversations.  For the default light diagnostic
+        mode we only count stable primary selectors once and skip historical
+        code-block enumeration entirely.
+        """
+
+        try:
+            return int(await page.evaluate("selector => document.querySelectorAll(selector).length", selector) or 0)
+        except Exception:
+            try:
+                return int(await page.locator(selector).count() or 0)
+            except Exception:
+                return None
+
+    async def _capture_conversation_dom_weight(self, page: Any, *, mode: str | None = None) -> dict[str, Any]:
+        """Capture bounded DOM-size diagnostics without scanning old history by default."""
 
         started = time.monotonic()
-        assistant_count, assistant_selector = await self._count_first_working_selector(page, ASSISTANT_MESSAGE_SELECTORS)
-        user_count, user_selector = await self._count_first_working_selector(page, USER_MESSAGE_SELECTORS)
-        generic_count, generic_selector = await self._count_first_working_selector(page, GENERIC_CONVERSATION_TURN_SELECTORS)
-        json_block_count, json_block_selector = await self._count_first_working_selector(page, JSON_BLOCK_SELECTORS)
-        large_dom = bool(assistant_count >= 80 or user_count >= 80 or generic_count >= 160 or json_block_count >= 100)
+        diagnostic_mode = (mode or self._dom_diagnostic_mode()).strip().lower()
+        if diagnostic_mode == "disabled":
+            return {
+                "diagnostic_mode": "disabled",
+                "capture_mode": "disabled",
+                "capture_capped": True,
+                "capture_skipped_reason": "dom_diagnostics_disabled",
+                "assistant_turn_count": None,
+                "assistant_selector": None,
+                "user_turn_count": None,
+                "user_selector": None,
+                "generic_turn_count": None,
+                "generic_selector": None,
+                "code_block_count": None,
+                "code_block_selector": None,
+                "code_block_count_mode": "skipped",
+                "historical_scan_used": False,
+                "historical_scan_seconds": 0.0,
+                "large_conversation_dom_detected": None,
+                "recommend_new_task_when_large": None,
+                "capture_seconds": round(time.monotonic() - started, 3),
+            }
+
+        if diagnostic_mode == "deep":
+            historical_started = time.monotonic()
+            assistant_count, assistant_selector = await self._count_first_working_selector(page, ASSISTANT_MESSAGE_SELECTORS)
+            user_count, user_selector = await self._count_first_working_selector(page, USER_MESSAGE_SELECTORS)
+            generic_count, generic_selector = await self._count_first_working_selector(page, GENERIC_CONVERSATION_TURN_SELECTORS)
+            json_block_count, json_block_selector = await self._count_first_working_selector(page, JSON_BLOCK_SELECTORS)
+            historical_seconds = round(time.monotonic() - historical_started, 3)
+            large_dom = bool(assistant_count >= 80 or user_count >= 80 or generic_count >= 160 or json_block_count >= 100)
+            return {
+                "diagnostic_mode": "deep",
+                "capture_mode": "deep",
+                "capture_capped": False,
+                "capture_skipped_reason": None,
+                "assistant_turn_count": assistant_count,
+                "assistant_selector": assistant_selector,
+                "user_turn_count": user_count,
+                "user_selector": user_selector,
+                "generic_turn_count": generic_count,
+                "generic_selector": generic_selector,
+                "code_block_count": json_block_count,
+                "code_block_selector": json_block_selector,
+                "code_block_count_mode": "exact",
+                "historical_scan_used": True,
+                "historical_scan_seconds": historical_seconds,
+                "large_conversation_dom_detected": large_dom,
+                "recommend_new_task_when_large": large_dom,
+                "capture_seconds": round(time.monotonic() - started, 3),
+            }
+
+        assistant_selector = PRIMARY_ASSISTANT_MESSAGE_SELECTOR
+        user_selector = USER_MESSAGE_SELECTORS[0]
+        generic_selector = GENERIC_CONVERSATION_TURN_SELECTORS[0]
+        assistant_count = await self._count_simple_dom_selector(page, assistant_selector)
+        user_count = await self._count_simple_dom_selector(page, user_selector)
+        generic_count = await self._count_simple_dom_selector(page, generic_selector)
+        large_dom = bool(
+            (assistant_count is not None and assistant_count >= 80)
+            or (user_count is not None and user_count >= 80)
+            or (generic_count is not None and generic_count >= 160)
+        )
         return {
+            "diagnostic_mode": "light",
+            "capture_mode": "light",
+            "capture_capped": True,
+            "capture_skipped_reason": "historical_code_block_count_skipped_in_light_mode",
             "assistant_turn_count": assistant_count,
             "assistant_selector": assistant_selector,
             "user_turn_count": user_count,
             "user_selector": user_selector,
             "generic_turn_count": generic_count,
             "generic_selector": generic_selector,
-            "code_block_count": json_block_count,
-            "code_block_selector": json_block_selector,
+            "code_block_count": None,
+            "code_block_selector": None,
+            "code_block_count_mode": "skipped_light",
+            "historical_scan_used": False,
+            "historical_scan_seconds": 0.0,
             "large_conversation_dom_detected": large_dom,
             "recommend_new_task_when_large": large_dom,
             "capture_seconds": round(time.monotonic() - started, 3),
@@ -5766,17 +5873,31 @@ class ChatGPTBrowserClient:
         if count <= 0:
             return 0, ""
 
-        # v0.0.278.10: do not evaluate every historical match in a long
+        # v0.0.278.10+: do not evaluate every historical match in a long
         # conversation.  The old evaluate_all path scaled with total DOM history
         # and made old task chats much slower than fresh chats.  Prefer the last
         # few candidates only; if the latest node has the answer, this is O(1).
-        for index in range(count - 1, max(-1, count - 4), -1):
+        if hasattr(locator, "nth"):
+            for index in range(count - 1, max(-1, count - 4), -1):
+                try:
+                    candidate = await self._extract_text_from_locator(locator.nth(index), timeout_ms=500)
+                except Exception:
+                    candidate = ""
+                if candidate:
+                    return count, candidate
+
+        # Compatibility path for small test shims / browser abstractions that do
+        # not expose nth().  Keep this capped so long production histories never
+        # fall back to broad evaluate_all.
+        if count <= 3 and hasattr(locator, "evaluate_all"):
             try:
-                candidate = await self._extract_text_from_locator(locator.nth(index), timeout_ms=500)
+                texts = await locator.evaluate_all("nodes => nodes.map(node => node.innerText || node.textContent || '')")
             except Exception:
-                candidate = ""
-            if candidate:
-                return count, candidate
+                texts = []
+            for text in reversed(list(texts or [])):
+                candidate = str(text or "").strip()
+                if candidate:
+                    return count, candidate
 
         return count, ""
 
@@ -10792,6 +10913,10 @@ class ChatGPTBrowserClient:
             conversation_user_turn_count=dom_weight.get("user_turn_count"),
             conversation_generic_turn_count=dom_weight.get("generic_turn_count"),
             code_block_count=dom_weight.get("code_block_count"),
+            code_block_count_mode=dom_weight.get("code_block_count_mode"),
+            dom_weight_capture_mode=dom_weight.get("capture_mode"),
+            dom_weight_capture_capped=dom_weight.get("capture_capped"),
+            historical_scan_used=dom_weight.get("historical_scan_used"),
             large_conversation_dom_detected=dom_weight.get("large_conversation_dom_detected"),
         )
         return context
@@ -10975,11 +11100,28 @@ class ChatGPTBrowserClient:
         )
         return result
 
+    def _record_response_extraction_context(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        mode: str,
+        historical_scan_used: bool,
+        started_at: float,
+    ) -> None:
+        if response_context is None:
+            return
+        response_context["last_response_extraction_mode"] = mode
+        response_context["last_response_historical_scan_used"] = historical_scan_used
+        response_context["last_response_extraction_seconds"] = round(time.monotonic() - started_at, 3)
+
     async def _try_extract_json_payload(
         self,
         page: Any,
+        *,
+        response_context: Optional[dict[str, Any]] = None,
     ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
         probes: list[dict[str, Any]] = []
+        extraction_started = time.monotonic()
 
         assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
         if assistant_turn is not None:
@@ -11030,8 +11172,39 @@ class ChatGPTBrowserClient:
                         scoped_latest_turn=True,
                     )
                 if parsed is not None:
+                    self._record_response_extraction_context(
+                        response_context,
+                        mode="latest_turn_json",
+                        historical_scan_used=False,
+                        started_at=extraction_started,
+                    )
                     return parsed, scoped_selector, len(payload_text), probes
 
+        assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
+        parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
+        probes.extend(assistant_probes)
+        if assistant_count:
+            self._log(
+                "response",
+                "assistant text fallback probe",
+                selector=assistant_selector,
+                count=assistant_count,
+                text_length=len(assistant_text),
+                parsed=parsed is not None,
+            )
+        if parsed is not None:
+            self._record_response_extraction_context(
+                response_context,
+                mode="latest_turn_text",
+                historical_scan_used=False,
+                started_at=extraction_started,
+            )
+            return parsed, assistant_selector, len(assistant_text), probes
+
+        historical_started = time.monotonic()
         for selector in JSON_BLOCK_SELECTORS:
             locator = page.locator(selector)
             count = await locator.count()
@@ -11066,26 +11239,24 @@ class ChatGPTBrowserClient:
                     scoped_latest_turn=False,
                 )
             if parsed is not None:
+                if response_context is not None:
+                    response_context["last_response_historical_scan_seconds"] = round(time.monotonic() - historical_started, 3)
+                self._record_response_extraction_context(
+                    response_context,
+                    mode="historical_json_fallback",
+                    historical_scan_used=True,
+                    started_at=extraction_started,
+                )
                 return parsed, selector, len(payload_text), probes
 
-        assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
-            page,
-            ASSISTANT_MESSAGE_SELECTORS,
+        if response_context is not None:
+            response_context["last_response_historical_scan_seconds"] = round(time.monotonic() - historical_started, 3)
+        self._record_response_extraction_context(
+            response_context,
+            mode="not_found",
+            historical_scan_used=True,
+            started_at=extraction_started,
         )
-        parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
-        probes.extend(assistant_probes)
-        if assistant_count:
-            self._log(
-                "response",
-                "assistant text fallback probe",
-                selector=assistant_selector,
-                count=assistant_count,
-                text_length=len(assistant_text),
-                parsed=parsed is not None,
-            )
-        if parsed is not None:
-            return parsed, assistant_selector, len(assistant_text), probes
-
         return None, None, 0, probes
 
     def _assistant_response_changed(self, response_context: Optional[dict[str, Any]], *, count: int, text: str) -> bool:
@@ -11385,7 +11556,7 @@ class ChatGPTBrowserClient:
                 elapsed_s=elapsed_s,
             )
 
-            payload, selector, text_length, probes = await self._try_extract_json_payload(page)
+            payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
             probe_summary = self._summarize_probes(probes)
             submit_state = await self._probe_submit_button_state(page)
             thinking_state = await self._probe_thinking_state(page)
@@ -11569,7 +11740,7 @@ class ChatGPTBrowserClient:
             attempt=attempt,
             elapsed_s=elapsed_s,
         )
-        payload, selector, text_length, probes = await self._try_extract_json_payload(page)
+        payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
         submit_state = await self._probe_submit_button_state(page)
         if self.config.debug:
             await self._save_response_diagnostics(

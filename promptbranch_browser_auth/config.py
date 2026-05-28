@@ -35,6 +35,7 @@ class ChatGPTBrowserConfig:
     rate_limit_modal_wait_timeout_ms: int = 180_000
     rate_limit_modal_poll_interval_ms: int = 1_000
     clear_singleton_locks: bool = False
+    dom_diagnostic_mode: str = "light"
 
     def __post_init__(self) -> None:
         self.profile_dir = str(Path(self.profile_dir).expanduser().resolve())
@@ -55,6 +56,10 @@ class ChatGPTBrowserConfig:
             raise ValueError("rate_limit_modal_wait_timeout_ms must be positive")
         if self.rate_limit_modal_poll_interval_ms <= 0:
             raise ValueError("rate_limit_modal_poll_interval_ms must be positive")
+        normalized_dom_mode = (self.dom_diagnostic_mode or "light").strip().lower()
+        if normalized_dom_mode not in {"light", "deep", "disabled"}:
+            raise ValueError("dom_diagnostic_mode must be one of: light, deep, disabled")
+        self.dom_diagnostic_mode = normalized_dom_mode
 
     @property
     def is_headed(self) -> bool:
