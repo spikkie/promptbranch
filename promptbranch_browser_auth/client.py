@@ -1615,7 +1615,22 @@ class ChatGPTBrowserClient:
         mark_phase("response_context_seconds", phase_started)
 
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
-        phase_timings["submit_wait_seconds"] = submit_evidence.get("duration_seconds")
+        # v0.0.278.8 exposes the narrow submit subphases instead of using
+        # broad submit duration as the only latency signal.  The legacy
+        # submit_wait_seconds field now reflects the bounded interactive submit
+        # phase reported by _submit_prompt, not pre-submit DOM/context capture.
+        phase_timings["submit_wait_seconds"] = submit_evidence.get("submit_wait_seconds", submit_evidence.get("duration_seconds"))
+        phase_timings["submit_total_seconds"] = submit_evidence.get("duration_seconds")
+        phase_timings["composer_state_capture_seconds"] = submit_evidence.get("composer_state_capture_seconds")
+        phase_timings["user_turn_state_capture_seconds"] = submit_evidence.get("user_turn_state_capture_seconds")
+        phase_timings["assistant_turn_count_seconds"] = submit_evidence.get("assistant_turn_count_seconds")
+        phase_timings["send_button_probe_seconds"] = submit_evidence.get("send_button_probe_seconds")
+        phase_timings["send_button_wait_seconds"] = submit_evidence.get("send_button_wait_seconds")
+        phase_timings["send_button_click_seconds"] = submit_evidence.get("send_button_click_seconds")
+        phase_timings["send_button_retry_used"] = submit_evidence.get("send_button_retry_used")
+        phase_timings["send_button_retry_reason"] = submit_evidence.get("send_button_retry_reason")
+        phase_timings["send_button_retry_seconds"] = submit_evidence.get("send_button_retry_seconds")
+        phase_timings["enter_fallback_decision_seconds"] = submit_evidence.get("enter_fallback_decision_seconds")
         phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
         phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
         phase_timings["submit_confirmed"] = submit_evidence.get("submit_confirmed")
@@ -5152,16 +5167,49 @@ class ChatGPTBrowserClient:
         return evidence
 
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
-        submit_started = time.monotonic()
+        """Submit the current composer content with phase-level timing.
+
+        v0.0.278.8 keeps the v0.0.278.7 early submit-confirmation model,
+        but narrows the measured submit phase and repairs the send-button path
+        before falling back to Enter.  The previous implementation measured
+        broad pre-submit DOM scans as submit_wait_seconds and clicked only the
+        first matching button for each selector.  In long conversations that can
+        hide the real failure mode and incorrectly choose Enter fallback even
+        when a later matching send button is visible/enabled.
+        """
+
+        submit_total_started = time.monotonic()
         submit_wait_timeout_s = 5.0
         poll_interval_ms = 250
-        deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
-        attempt = 0
         probe_history: list[dict[str, Any]] = []
+        attempt = 0
+        send_button_probe_seconds = 0.0
+        send_button_click_seconds = 0.0
+        send_button_retry_seconds = 0.0
+        enter_fallback_decision_seconds = 0.0
+        enter_press_seconds: float | None = None
+
+        composer_capture_started = time.monotonic()
         before_composer = await self._capture_composer_state(page, prompt=prompt)
-        before_user_turns = await self._capture_user_turn_state(page, prompt=prompt)
+        composer_state_capture_seconds = round(time.monotonic() - composer_capture_started, 3)
+
+        # Full user-turn DOM scans are intentionally skipped before submit.
+        # Submit confirmation now uses cheap running-state/URL/assistant-count
+        # signals.  Keeping this as structured evidence preserves old response
+        # shape without allowing broad DOM scans to dominate submit timing.
+        before_user_turns = {
+            "status": "not_captured_before_submit",
+            "reason": "submit_confirmation_uses_running_url_assistant_signals",
+            "count": None,
+            "generic_turns": {"count": None},
+        }
+        user_turn_state_capture_seconds = 0.0
+
+        assistant_count_started = time.monotonic()
         before_assistant_count = await self._count_assistant_turns(page)
-        prompt_present = bool(before_composer.get("contains_prompt") or (before_composer.get("text_length") or 0) > 0)
+        assistant_turn_count_seconds = round(time.monotonic() - assistant_count_started, 3)
+
+        prompt_present = bool(before_composer.get("contains_prompt_prefix") or (before_composer.get("text_length") or 0) > 0)
         evidence: dict[str, Any] = {
             "status": "submit_not_attempted",
             "clicked": False,
@@ -5174,6 +5222,16 @@ class ChatGPTBrowserClient:
             "before_composer": before_composer,
             "before_user_turns": before_user_turns,
             "before_assistant_count": before_assistant_count,
+            "composer_state_capture_seconds": composer_state_capture_seconds,
+            "user_turn_state_capture_seconds": user_turn_state_capture_seconds,
+            "assistant_turn_count_seconds": assistant_turn_count_seconds,
+            "send_button_probe_seconds": 0.0,
+            "send_button_wait_seconds": 0.0,
+            "send_button_retry_seconds": 0.0,
+            "send_button_retry_used": False,
+            "send_button_retry_reason": None,
+            "enter_fallback_decision_seconds": None,
+            "enter_fallback_press_seconds": None,
         }
         self._log(
             "submit",
@@ -5183,92 +5241,252 @@ class ChatGPTBrowserClient:
             before_composer=before_composer,
             before_user_turns=before_user_turns,
             before_assistant_count=before_assistant_count,
+            composer_state_capture_seconds=composer_state_capture_seconds,
+            assistant_turn_count_seconds=assistant_turn_count_seconds,
         )
-        while asyncio.get_running_loop().time() < deadline:
-            attempt += 1
-            for selector in COMPOSER_SUBMIT_BUTTON_SELECTORS:
-                try:
-                    button = page.locator(selector).first
-                    count = await button.count()
-                    enabled = False
-                    visible = False
-                    if count:
+
+        async def click_enabled_submit_button(*, phase: str, attempt_number: int) -> dict[str, Any]:
+            nonlocal send_button_probe_seconds, send_button_click_seconds
+            phase_probe_started = time.monotonic()
+            best_disabled: dict[str, Any] | None = None
+            try:
+                for selector in COMPOSER_SUBMIT_BUTTON_SELECTORS:
+                    locator = page.locator(selector)
+                    first_only = False
+                    try:
+                        count = await locator.count()
+                    except Exception as exc:
+                        # Some tests and older Playwright wrappers expose only
+                        # `.first`.  Treat that as one candidate instead of
+                        # failing the whole selector; the production path still
+                        # scans up to five matches when count() is available.
+                        if hasattr(locator, "first"):
+                            count = 1
+                            first_only = True
+                        else:
+                            probe = {
+                                "phase": phase,
+                                "attempt": attempt_number,
+                                "selector": selector,
+                                "error": str(exc),
+                                "count": 0,
+                                "visible": False,
+                                "enabled": False,
+                            }
+                            if len(probe_history) < 40:
+                                probe_history.append(probe)
+                            self._log("submit", "submit selector failed", **probe)
+                            continue
+
+                    limit = 1 if first_only else min(int(count or 0), 5)
+                    if limit <= 0:
+                        probe = {
+                            "phase": phase,
+                            "attempt": attempt_number,
+                            "selector": selector,
+                            "index": None,
+                            "count": count,
+                            "visible": False,
+                            "enabled": False,
+                        }
+                        if len(probe_history) < 40:
+                            probe_history.append(probe)
+                        self._log("submit", "submit selector probe", **probe)
+                        continue
+
+                    for index in range(limit):
+                        item = locator.first if first_only else locator.nth(index)
+                        visible = False
+                        enabled = False
+                        aria_label = ""
+                        data_testid = ""
                         try:
-                            visible = await button.is_visible(timeout=1_000)
+                            visible = await item.is_visible(timeout=500)
                         except Exception:
                             visible = False
                         try:
-                            enabled = await button.is_enabled(timeout=1_500)
+                            enabled = await item.is_enabled(timeout=750)
                         except Exception:
                             enabled = False
-                    probe = {
-                        "attempt": attempt,
-                        "selector": selector,
-                        "count": count,
-                        "visible": visible,
-                        "enabled": enabled,
-                    }
-                    if len(probe_history) < 20:
-                        probe_history.append(probe)
-                    self._log(
-                        "submit",
-                        "submit selector probe",
-                        **probe,
-                    )
-                    if count and enabled:
-                        await button.click()
-                        evidence.update({
-                            "status": "clicked_submit_button",
-                            "clicked": True,
+                        try:
+                            aria_label = (await item.get_attribute("aria-label") or "").strip()
+                        except Exception:
+                            aria_label = ""
+                        try:
+                            data_testid = (await item.get_attribute("data-testid") or "").strip()
+                        except Exception:
+                            data_testid = ""
+                        probe = {
+                            "phase": phase,
+                            "attempt": attempt_number,
                             "selector": selector,
-                            "attempt": attempt,
-                            "button_visible": visible,
-                            "button_enabled": enabled,
-                            "submit_method": "button",
-                            "click_seconds": round(time.monotonic() - submit_started, 3),
-                        })
-                        self._log("submit", "clicked submit button", attempt=attempt, selector=selector, click_seconds=evidence.get("click_seconds"))
-                        after_composer = await self._capture_composer_state(page, prompt=prompt)
-                        confirmation_started = time.monotonic()
-                        confirmation = await self._wait_for_submit_confirmation(
-                            page,
-                            before_assistant_count=before_assistant_count,
-                        )
-                        confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
-                        evidence.update({
-                            "after_composer": after_composer,
-                            "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
-                            "submit_confirmation": confirmation,
-                            "submit_confirmed": bool(confirmation.get("confirmed")),
-                            "submit_confirmed_by": confirmation.get("confirmed_by") or [],
-                            "submit_confirmation_seconds": confirmation_seconds,
-                            "submit_to_turn_visible_seconds": None,
-                            "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
-                            "duration_seconds": round(time.monotonic() - submit_started, 3),
-                        })
-                        self._log(
-                            "submit",
-                            "submit confirmed without waiting for user-turn DOM",
-                            submit_method="button",
-                            submit_confirmed=evidence.get("submit_confirmed"),
-                            submit_confirmed_by=evidence.get("submit_confirmed_by"),
-                            submit_confirmation_seconds=confirmation_seconds,
-                        )
-                        return evidence
+                            "index": index,
+                            "count": count,
+                            "visible": visible,
+                            "enabled": enabled,
+                            "aria_label": aria_label,
+                            "data_testid": data_testid,
+                        }
+                        if len(probe_history) < 40:
+                            probe_history.append(probe)
+                        self._log("submit", "submit selector probe", **probe)
+                        if visible and not enabled and best_disabled is None:
+                            best_disabled = probe
+                        if visible and enabled:
+                            click_started = time.monotonic()
+                            await item.click()
+                            send_button_click_seconds += time.monotonic() - click_started
+                            return {
+                                "clicked": True,
+                                "selector": selector,
+                                "index": index,
+                                "attempt": attempt_number,
+                                "phase": phase,
+                                "button_visible": visible,
+                                "button_enabled": enabled,
+                                "aria_label": aria_label,
+                                "data_testid": data_testid,
+                            }
+                return {
+                    "clicked": False,
+                    "phase": phase,
+                    "best_disabled": best_disabled,
+                    "reason": "no_visible_enabled_submit_button",
+                }
+            finally:
+                send_button_probe_seconds += time.monotonic() - phase_probe_started
+
+        async def focus_composer_for_submit_retry() -> dict[str, Any]:
+            focus_evidence: dict[str, Any] = {"attempted": False, "focused": False, "selector": None, "error": None}
+            for selector in CHAT_INPUT_SELECTORS:
+                try:
+                    locator = page.locator(selector)
+                    count = await locator.count()
+                    if not count:
+                        continue
+                    item = locator.first
+                    visible = await item.is_visible(timeout=500)
+                    if not visible:
+                        continue
+                    focus_evidence.update({"attempted": True, "selector": selector})
+                    await item.click(timeout=1_000)
+                    focus_evidence["focused"] = True
+                    return focus_evidence
                 except Exception as exc:
-                    self._log("submit", "submit selector failed", attempt=attempt, selector=selector, error=str(exc))
+                    focus_evidence.update({"attempted": True, "selector": selector, "error": str(exc)})
                     continue
+            return focus_evidence
+
+        async def finalize_clicked_submit(click_result: dict[str, Any], *, method: str = "button") -> dict[str, Any]:
+            nonlocal send_button_probe_seconds, send_button_click_seconds
+            send_button_wait_seconds = round(time.monotonic() - send_wait_started, 3)
+            self._log(
+                "submit",
+                "clicked submit button",
+                attempt=click_result.get("attempt"),
+                selector=click_result.get("selector"),
+                index=click_result.get("index"),
+                phase=click_result.get("phase"),
+                send_button_probe_seconds=round(send_button_probe_seconds, 3),
+                send_button_click_seconds=round(send_button_click_seconds, 3),
+                send_button_wait_seconds=send_button_wait_seconds,
+            )
+            after_composer = await self._capture_composer_state(page, prompt=prompt)
+            confirmation_started = time.monotonic()
+            confirmation = await self._wait_for_submit_confirmation(
+                page,
+                before_assistant_count=before_assistant_count,
+            )
+            confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
+            submit_wait_seconds = round(send_button_wait_seconds + confirmation_seconds, 3)
+            evidence.update({
+                "status": "clicked_submit_button",
+                "clicked": True,
+                "selector": click_result.get("selector"),
+                "selector_index": click_result.get("index"),
+                "attempt": click_result.get("attempt"),
+                "button_visible": click_result.get("button_visible"),
+                "button_enabled": click_result.get("button_enabled"),
+                "submit_method": method,
+                "button_click_phase": click_result.get("phase"),
+                "send_button_probe_seconds": round(send_button_probe_seconds, 3),
+                "send_button_click_seconds": round(send_button_click_seconds, 3),
+                "send_button_wait_seconds": send_button_wait_seconds,
+                "submit_wait_seconds": submit_wait_seconds,
+                "after_composer": after_composer,
+                "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
+                "submit_confirmation": confirmation,
+                "submit_confirmed": bool(confirmation.get("confirmed")),
+                "submit_confirmed_by": confirmation.get("confirmed_by") or [],
+                "submit_confirmation_seconds": confirmation_seconds,
+                "submit_to_turn_visible_seconds": None,
+                "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
+                "duration_seconds": round(time.monotonic() - submit_total_started, 3),
+            })
+            self._log(
+                "submit",
+                "submit confirmed without waiting for user-turn DOM",
+                submit_method=method,
+                submit_confirmed=evidence.get("submit_confirmed"),
+                submit_confirmed_by=evidence.get("submit_confirmed_by"),
+                submit_confirmation_seconds=confirmation_seconds,
+                send_button_wait_seconds=send_button_wait_seconds,
+                submit_wait_seconds=submit_wait_seconds,
+            )
+            return evidence
+
+        send_wait_started = time.monotonic()
+        deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            click_result = await click_enabled_submit_button(phase="initial_probe", attempt_number=attempt)
+            if click_result.get("clicked"):
+                return await finalize_clicked_submit(click_result, method="button")
             await page.wait_for_timeout(poll_interval_ms)
 
-        unavailable_reason = "send_button_not_enabled" if prompt_present else "composer_prompt_not_detected"
+        fallback_decision_started = time.monotonic()
+        retry_result: dict[str, Any] | None = None
+        retry_focus_evidence: dict[str, Any] | None = None
+        retry_reason = "prompt_present_button_not_enabled" if prompt_present else "composer_prompt_not_detected"
+        if prompt_present:
+            retry_started = time.monotonic()
+            retry_focus_evidence = await focus_composer_for_submit_retry()
+            await page.wait_for_timeout(500)
+            refreshed_composer = await self._capture_composer_state(page, prompt=prompt)
+            retry_result = await click_enabled_submit_button(phase="post_focus_retry", attempt_number=attempt + 1)
+            send_button_retry_seconds = round(time.monotonic() - retry_started, 3)
+            evidence.update({
+                "send_button_retry_used": True,
+                "send_button_retry_reason": retry_reason,
+                "send_button_retry_seconds": send_button_retry_seconds,
+                "send_button_retry_focus": retry_focus_evidence,
+                "send_button_retry_composer": refreshed_composer,
+            })
+            if retry_result.get("clicked"):
+                evidence["button_unavailable_reason"] = None
+                enter_fallback_decision_seconds = round(time.monotonic() - fallback_decision_started, 3)
+                evidence["enter_fallback_decision_seconds"] = enter_fallback_decision_seconds
+                return await finalize_clicked_submit(retry_result, method="button_after_focus_retry")
+
+        unavailable_reason = "button_disabled_after_prompt_fill" if prompt_present else "composer_prompt_not_detected"
+        if retry_result and retry_result.get("reason"):
+            unavailable_reason = retry_result.get("reason") or unavailable_reason
         evidence["button_unavailable_reason"] = unavailable_reason
+        enter_fallback_decision_seconds = round(time.monotonic() - fallback_decision_started, 3)
+        evidence["enter_fallback_decision_seconds"] = enter_fallback_decision_seconds
         self._log(
             "submit",
-            "no enabled submit button found after bounded wait; pressing Enter as fallback",
+            "no enabled submit button found after bounded wait and readiness retry; pressing Enter as fallback",
             wait_timeout_s=submit_wait_timeout_s,
             prompt_present=prompt_present,
             button_unavailable_reason=unavailable_reason,
+            send_button_probe_seconds=round(send_button_probe_seconds, 3),
+            send_button_wait_seconds=round(time.monotonic() - send_wait_started, 3),
+            send_button_retry_seconds=send_button_retry_seconds,
+            enter_fallback_decision_seconds=enter_fallback_decision_seconds,
+            retry_focus=retry_focus_evidence,
         )
+        send_button_wait_seconds = round(time.monotonic() - send_wait_started, 3)
         enter_started = time.monotonic()
         await page.keyboard.press("Enter")
         enter_press_seconds = round(time.monotonic() - enter_started, 3)
@@ -5279,17 +5497,29 @@ class ChatGPTBrowserClient:
             before_assistant_count=before_assistant_count,
         )
         confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
+        submit_wait_seconds = round(
+            send_button_wait_seconds
+            + enter_fallback_decision_seconds
+            + (enter_press_seconds or 0.0)
+            + confirmation_seconds,
+            3,
+        )
         evidence.update({
             "status": "enter_fallback_used",
             "enter_fallback_used": True,
             "submit_method": "enter_fallback",
+            "send_button_probe_seconds": round(send_button_probe_seconds, 3),
+            "send_button_click_seconds": round(send_button_click_seconds, 3),
+            "send_button_wait_seconds": send_button_wait_seconds,
+            "send_button_retry_seconds": send_button_retry_seconds,
             "enter_fallback_press_seconds": enter_press_seconds,
+            "submit_wait_seconds": submit_wait_seconds,
             "submit_confirmation": confirmation,
             "submit_confirmed": bool(confirmation.get("confirmed")),
             "submit_confirmed_by": confirmation.get("confirmed_by") or [],
             "submit_confirmation_seconds": confirmation_seconds,
             "submit_to_turn_visible_seconds": None,
-            "duration_seconds": round(time.monotonic() - submit_started, 3),
+            "duration_seconds": round(time.monotonic() - submit_total_started, 3),
             "after_composer": after_composer,
             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
             "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
@@ -5299,8 +5529,12 @@ class ChatGPTBrowserClient:
             "enter fallback submitted and confirmed without waiting for user-turn DOM",
             submit_confirmed=evidence.get("submit_confirmed"),
             submit_confirmed_by=evidence.get("submit_confirmed_by"),
+            send_button_wait_seconds=send_button_wait_seconds,
+            send_button_retry_seconds=send_button_retry_seconds,
+            enter_fallback_decision_seconds=enter_fallback_decision_seconds,
             enter_fallback_press_seconds=enter_press_seconds,
             submit_confirmation_seconds=confirmation_seconds,
+            submit_wait_seconds=submit_wait_seconds,
         )
         return evidence
 
