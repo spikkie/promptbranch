@@ -1725,7 +1725,14 @@ class ChatGPTBrowserClient:
         fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
         mark_phase("prompt_fill_seconds", phase_started)
         phase_timings["prompt_fill_method"] = fill_evidence.get("method")
+        phase_timings["prompt_fill_requested_method"] = fill_evidence.get("requested_method")
         phase_timings["prompt_fill_fallback_used"] = bool(fill_evidence.get("fallback_used"))
+        phase_timings["prompt_fill_trusted_input_used"] = bool(fill_evidence.get("trusted_input_used"))
+        phase_timings["prompt_fill_trusted_paste_used"] = bool(fill_evidence.get("trusted_paste_used"))
+        phase_timings["prompt_fill_keyboard_insert_used"] = bool(fill_evidence.get("keyboard_insert_used"))
+        phase_timings["prompt_fill_locator_fill_used"] = bool(fill_evidence.get("locator_fill_used"))
+        phase_timings["prompt_fill_verification_passed"] = bool(fill_evidence.get("verification_passed"))
+        phase_timings["prompt_fill_react_state_probe"] = fill_evidence.get("react_state_probe")
 
         upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
         phase_started = time.monotonic()
@@ -1813,6 +1820,11 @@ class ChatGPTBrowserClient:
         phase_timings["submit_network_response_observed"] = submit_evidence.get("submit_network_response_observed")
         phase_timings["submit_network_response_status"] = submit_evidence.get("submit_network_response_status")
         phase_timings["submit_network_stream_started"] = submit_evidence.get("submit_network_stream_started")
+        phase_timings["submit_network_event_urls"] = submit_evidence.get("submit_network_event_urls")
+        phase_timings["submit_network_backend_event_count"] = submit_evidence.get("submit_network_backend_event_count")
+        phase_timings["submit_network_marker_event_count"] = submit_evidence.get("submit_network_marker_event_count")
+        phase_timings["submit_prepare_request_observed"] = submit_evidence.get("submit_prepare_request_observed")
+        phase_timings["submit_message_request_observed"] = submit_evidence.get("submit_message_request_observed")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -1847,6 +1859,11 @@ class ChatGPTBrowserClient:
         phase_timings["submit_network_response_observed"] = submit_evidence.get("submit_network_response_observed")
         phase_timings["submit_network_response_status"] = submit_evidence.get("submit_network_response_status")
         phase_timings["submit_network_stream_started"] = submit_evidence.get("submit_network_stream_started")
+        phase_timings["submit_network_event_urls"] = submit_evidence.get("submit_network_event_urls")
+        phase_timings["submit_network_backend_event_count"] = submit_evidence.get("submit_network_backend_event_count")
+        phase_timings["submit_network_marker_event_count"] = submit_evidence.get("submit_network_marker_event_count")
+        phase_timings["submit_prepare_request_observed"] = submit_evidence.get("submit_prepare_request_observed")
+        phase_timings["submit_message_request_observed"] = submit_evidence.get("submit_message_request_observed")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             phase_timings["response_wait_skipped"] = True
@@ -5619,6 +5636,8 @@ class ChatGPTBrowserClient:
             and ("/backend-api/" in path or "/conversation" in path or "/completion" in path)
         )
         mutating = method in {"POST", "PUT", "PATCH"}
+        prepare_request = backend_like and path.endswith("/backend-api/f/conversation/prepare")
+        message_request_candidate = bool(backend_like and mutating and not prepare_request)
         interesting = bool(marker_found or (backend_like and mutating))
         return {
             "url": url,
@@ -5627,12 +5646,15 @@ class ChatGPTBrowserClient:
             "path": path,
             "backend_like": backend_like,
             "mutating": mutating,
+            "prepare_request": prepare_request,
+            "message_request_candidate": message_request_candidate,
             "interesting": interesting,
             "marker_found": bool(marker_found),
             "matched_by": matched_by,
             "matched_marker": matched_marker,
             "post_data_length": len(post_data),
-            "post_data_preview": post_data[:240],
+            "post_data_preview": "<redacted>" if post_data else "",
+            "post_data_contains_marker": bool(marker_found and post_data),
             "captured_at_monotonic": round(started, 6),
         }
 
@@ -5735,13 +5757,40 @@ class ChatGPTBrowserClient:
                 "status": "submit_network_observer_missing",
                 "probe_seconds": 0.0,
             }
+        events = [event for event in (observer.get("events") or []) if isinstance(event, dict)]
+        responses = [event for event in (observer.get("responses") or []) if isinstance(event, dict)]
         matched = observer.get("matched_request") if isinstance(observer.get("matched_request"), dict) else None
         matched_response = observer.get("matched_response") if isinstance(observer.get("matched_response"), dict) else None
         found = matched is not None and bool(matched.get("marker_found"))
-        first_event = (observer.get("events") or [None])[0]
+        first_event = (events or [None])[0]
+        backend_write_events = [event for event in events if event.get("backend_like") and event.get("mutating")]
+        marker_events = [event for event in events if event.get("marker_found")]
+        prepare_events = [event for event in events if event.get("prepare_request")]
+        message_events = [event for event in events if event.get("message_request_candidate")]
+        if found:
+            status = "submit_network_request_observed"
+        elif backend_write_events:
+            status = "submit_network_marker_not_observed"
+        else:
+            status = observer.get("status") or "submit_network_request_not_observed"
+        event_summaries = [
+            {
+                "url": event.get("url"),
+                "method": event.get("method"),
+                "backend_like": event.get("backend_like"),
+                "mutating": event.get("mutating"),
+                "prepare_request": event.get("prepare_request"),
+                "message_request_candidate": event.get("message_request_candidate"),
+                "marker_found": event.get("marker_found"),
+                "matched_by": event.get("matched_by") or [],
+                "post_data_length": event.get("post_data_length"),
+                "post_data_preview": event.get("post_data_preview"),
+            }
+            for event in events[:20]
+        ]
         return {
             "visible": found,
-            "status": "submit_network_request_observed" if found else (observer.get("status") or "submit_network_request_not_observed"),
+            "status": status,
             "source": "browser_network_events",
             "enabled": bool(observer.get("enabled")),
             "markers_count": observer.get("markers_count"),
@@ -5757,8 +5806,15 @@ class ChatGPTBrowserClient:
             "response_status": matched_response.get("status") if matched_response else None,
             "response_observed_after_click_seconds": matched_response.get("observed_after_click_seconds") if matched_response else None,
             "stream_started": bool(matched_response is not None and matched_response.get("status") is not None),
-            "event_count": len(observer.get("events") or []),
-            "response_event_count": len(observer.get("responses") or []),
+            "event_count": len(events),
+            "response_event_count": len(responses),
+            "backend_write_event_count": len(backend_write_events),
+            "marker_event_count": len(marker_events),
+            "prepare_request_observed": bool(prepare_events),
+            "message_request_observed": bool(message_events),
+            "event_urls": [event.get("url") for event in events[:20]],
+            "backend_write_event_urls": [event.get("url") for event in backend_write_events[:20]],
+            "event_summaries": event_summaries,
             "first_event_url": first_event.get("url") if isinstance(first_event, dict) else None,
             "first_event_method": first_event.get("method") if isinstance(first_event, dict) else None,
             "handler_error": observer.get("handler_error"),
@@ -5798,7 +5854,10 @@ class ChatGPTBrowserClient:
                 return snapshot
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
-                snapshot["status"] = "submit_network_request_not_observed"
+                if snapshot.get("backend_write_event_count"):
+                    snapshot["status"] = "submit_network_marker_not_observed"
+                else:
+                    snapshot["status"] = "submit_network_request_not_observed"
                 snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
                 return snapshot
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
@@ -5973,7 +6032,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.22 keeps URL-only confirmation rejected, but moves the
+        v0.0.278.23 keeps URL-only confirmation rejected, but moves the
         first causality proof closer to the mutation trigger.  A browser network
         observer is armed before clicking submit; this method first requires a
         post-click ChatGPT backend request carrying the current prompt marker.
@@ -6295,44 +6354,167 @@ class ChatGPTBrowserClient:
             "reason": reason,
         }
 
-    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
-        """Fill the ChatGPT composer with bounded fallback instrumentation.
+    def _prompt_fill_mode(self) -> str:
+        value = (os.getenv("CHATGPT_PROMPT_FILL_MODE") or "trusted_paste").strip().lower()
+        if value in {"locator", "locator_fill", "fill"}:
+            return "locator_fill"
+        if value in {"insert", "insert_text", "keyboard_insert_text", "type"}:
+            return "keyboard_insert_text"
+        return "trusted_paste"
 
-        Playwright's normal fill path is preferred because it exercises the same
-        UI events as a user paste.  In long or hydrated conversations, however,
-        selector/actionability checks can consume a large hidden delay.  v0.0.278.6
-        bounds that delay and falls back to keyboard insertion while recording the
-        fill method for ask latency diagnosis.
-        """
+    def _composer_text_matches_prompt(self, state: Any, *, prompt: str) -> bool:
+        if not isinstance(state, dict):
+            return False
+        if state.get("contains_prompt_prefix") is True:
+            return True
+        preview = str(state.get("text_preview") or "")
+        if not preview:
+            return False
+        return preview in prompt or prompt[: min(120, len(prompt))] in preview
+
+    async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any) -> dict[str, Any]:
+        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None}
+        try:
+            await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-trusted-refill", timeout_ms=5_000)
+            await page.keyboard.press("Control+A")
+            evidence["control_a"] = True
+            await page.keyboard.press("Backspace")
+            evidence["backspace"] = True
+        except Exception as exc:
+            evidence["error"] = str(exc)
+            self._log("composer", "trusted composer clear failed", error=str(exc))
+        return evidence
+
+    async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
         evidence: dict[str, Any] = {
-            "method": "locator_fill",
+            "attempted": True,
+            "clipboard_write_used": False,
+            "keyboard_paste_used": False,
+            "error": None,
+        }
+        try:
+            await self._clear_composer_for_trusted_input(page, input_locator)
+            context = getattr(page, "context", None)
+            if context is not None and hasattr(context, "grant_permissions"):
+                try:
+                    await context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://chatgpt.com")
+                    evidence["clipboard_permissions_granted"] = True
+                except Exception as exc:
+                    evidence["clipboard_permissions_error"] = str(exc)
+            await page.evaluate("text => navigator.clipboard.writeText(text)", prompt)
+            evidence["clipboard_write_used"] = True
+            await page.keyboard.press("Control+V")
+            evidence["keyboard_paste_used"] = True
+            await page.wait_for_timeout(100)
+        except Exception as exc:
+            evidence["error"] = str(exc)
+        evidence["duration_seconds"] = round(time.monotonic() - started, 3)
+        return evidence
+
+    async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+        started = time.monotonic()
+        evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None}
+        try:
+            await self._clear_composer_for_trusted_input(page, input_locator)
+            await page.keyboard.insert_text(prompt)
+            evidence["insert_text_used"] = True
+            await page.wait_for_timeout(100)
+        except Exception as exc:
+            evidence["error"] = str(exc)
+        evidence["duration_seconds"] = round(time.monotonic() - started, 3)
+        return evidence
+
+    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+        """Fill the ChatGPT composer with a trusted-input-first strategy.
+
+        v0.0.278.23 stops treating locator.fill as the primary path because a
+        contenteditable/React composer can look populated while the application
+        has not fully committed the editor state used by submit.  The default
+        now uses clipboard paste, then keyboard insertion, and only then falls
+        back to locator.fill.  Every phase records whether the visible composer
+        contains the current prompt prefix before submit is attempted.
+        """
+        started = time.monotonic()
+        requested_mode = self._prompt_fill_mode()
+        evidence: dict[str, Any] = {
+            "method": requested_mode,
+            "requested_method": requested_mode,
             "fallback_used": False,
             "prompt_length": len(prompt),
+            "trusted_input_used": False,
+            "trusted_paste_used": False,
+            "keyboard_insert_used": False,
+            "locator_fill_used": False,
+            "react_state_probe": None,
+            "verification_method": "composer_state_prefix",
+            "verification_passed": False,
+            "attempts": [],
         }
-        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_timeout_ms=10_000)
+        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode)
+
+        async def verify(label: str) -> bool:
+            try:
+                state = await self._capture_composer_state(page, prompt=prompt)
+            except Exception as exc:
+                state = {"error": str(exc)}
+            matched = self._composer_text_matches_prompt(state, prompt=prompt)
+            evidence["react_state_probe"] = {
+                "label": label,
+                "matched": matched,
+                "input_selector": state.get("input_selector") if isinstance(state, dict) else None,
+                "text_length": state.get("text_length") if isinstance(state, dict) else None,
+                "contains_prompt_prefix": state.get("contains_prompt_prefix") if isinstance(state, dict) else None,
+                "error": state.get("error") if isinstance(state, dict) else None,
+            }
+            return matched
+
+        if requested_mode == "trusted_paste":
+            paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt)
+            evidence["attempts"].append({"method": "trusted_paste", **paste_evidence})
+            if paste_evidence.get("keyboard_paste_used") and await verify("trusted_paste"):
+                evidence.update({
+                    "method": "trusted_paste",
+                    "trusted_input_used": True,
+                    "trusted_paste_used": True,
+                    "verification_passed": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                })
+                self._log("composer", "prompt filled by trusted paste", **evidence)
+                return evidence
+            evidence["fallback_used"] = True
+
+        if requested_mode in {"trusted_paste", "keyboard_insert_text"}:
+            insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt)
+            evidence["attempts"].append({"method": "keyboard_insert_text", **insert_evidence})
+            if insert_evidence.get("insert_text_used") and await verify("keyboard_insert_text"):
+                evidence.update({
+                    "method": "keyboard_insert_text",
+                    "trusted_input_used": True,
+                    "keyboard_insert_used": True,
+                    "verification_passed": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                })
+                self._log("composer", "prompt filled by keyboard insert", **evidence)
+                return evidence
+            evidence["fallback_used"] = True
+
+        locator_started = time.monotonic()
+        locator_attempt: dict[str, Any] = {"method": "locator_fill", "attempted": True, "error": None}
         try:
             await input_locator.fill(prompt, timeout=10_000)
-            evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-            self._log("composer", "prompt filled", **evidence)
-            return evidence
+            locator_attempt["locator_fill_used"] = True
         except Exception as exc:
-            evidence.update({
-                "method": "keyboard_insert_text",
-                "fallback_used": True,
-                "fill_error": str(exc),
-            })
-            self._log("composer", "prompt fill timed out or failed; using keyboard fallback", error=str(exc), prompt_length=len(prompt))
-
-        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-refill", timeout_ms=5_000)
-        try:
-            await page.keyboard.press("Control+A")
-            await page.keyboard.press("Backspace")
-        except Exception as exc:
-            self._log("composer", "composer clear fallback failed before insert_text", error=str(exc))
-        await page.keyboard.insert_text(prompt)
+            locator_attempt["error"] = str(exc)
+            self._log("composer", "locator fill fallback failed", error=str(exc), prompt_length=len(prompt))
+        locator_attempt["duration_seconds"] = round(time.monotonic() - locator_started, 3)
+        evidence["attempts"].append(locator_attempt)
+        evidence["locator_fill_used"] = bool(locator_attempt.get("locator_fill_used"))
+        evidence["method"] = "locator_fill"
+        evidence["trusted_input_used"] = bool(evidence.get("trusted_input_used"))
+        evidence["verification_passed"] = await verify("locator_fill")
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-        self._log("composer", "prompt filled by keyboard fallback", **evidence)
+        self._log("composer", "prompt fill completed after fallback chain", **evidence)
         return evidence
 
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
@@ -6696,6 +6878,11 @@ class ChatGPTBrowserClient:
                 "submit_network_response_observed": (confirmation.get("submit_network_evidence") or {}).get("response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_network_response_status": (confirmation.get("submit_network_evidence") or {}).get("response_status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_network_stream_started": (confirmation.get("submit_network_evidence") or {}).get("stream_started") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_event_urls": (confirmation.get("submit_network_evidence") or {}).get("event_urls") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_backend_event_count": (confirmation.get("submit_network_evidence") or {}).get("backend_write_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_marker_event_count": (confirmation.get("submit_network_evidence") or {}).get("marker_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_request_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_message_request_observed": (confirmation.get("submit_network_evidence") or {}).get("message_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
                 "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
@@ -6868,6 +7055,11 @@ class ChatGPTBrowserClient:
             "submit_network_response_observed": (confirmation.get("submit_network_evidence") or {}).get("response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_network_response_status": (confirmation.get("submit_network_evidence") or {}).get("response_status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_network_stream_started": (confirmation.get("submit_network_evidence") or {}).get("stream_started") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_event_urls": (confirmation.get("submit_network_evidence") or {}).get("event_urls") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_backend_event_count": (confirmation.get("submit_network_evidence") or {}).get("backend_write_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_marker_event_count": (confirmation.get("submit_network_evidence") or {}).get("marker_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_request_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_message_request_observed": (confirmation.get("submit_network_evidence") or {}).get("message_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
             "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
             "submit_network_evidence": confirmation.get("submit_network_evidence"),
