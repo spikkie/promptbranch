@@ -1625,3 +1625,103 @@ def test_ensure_target_conversation_hydrated_accepts_existing_turns(tmp_path: Pa
 
     assert result["status"] == "target_conversation_hydrated"
     assert result["reload_performed"] is False
+
+
+def test_wait_for_submit_confirmation_accepts_stop_button_signal(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("should not wait after immediate confirmation")
+
+    async def fake_state(page, *, before_assistant_count: int):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["stop_button"],
+            "stop_button_visible": True,
+            "conversation_url_visible": False,
+            "assistant_turn_count": before_assistant_count,
+            "assistant_turn_delta": 0,
+            "current_url": "https://chatgpt.com/g/g-p-current-demo/project",
+        }
+
+    client._capture_submit_confirmation_state = fake_state
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(DummyPage(), before_assistant_count=2))
+
+    assert result["status"] == "submit_confirmed"
+    assert result["confirmed"] is True
+    assert result["confirmed_by"] == ["stop_button"]
+    assert result["attempt_count"] == 1
+
+
+def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyButton:
+        async def count(self):
+            return 1
+
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def is_enabled(self, timeout=None):
+            return True
+
+        async def click(self):
+            return None
+
+    class DummyLocator:
+        @property
+        def first(self):
+            return DummyButton()
+
+    class DummyPage:
+        def locator(self, selector):
+            return DummyLocator()
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("button path should not wait after first enabled selector")
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt": True,
+            "text_length": 0,
+            "submit_button": {"send_ready": True},
+        }
+
+    async def fake_user_turn_state(page, *, prompt=None):
+        return {"count": 0, "generic_turns": {"count": 0}, "last_text_length": 0}
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def fake_confirmation(page, *, before_assistant_count, timeout_ms=3000, poll_interval_ms=250):
+        return {
+            "status": "submit_confirmed",
+            "confirmed": True,
+            "confirmed_by": ["stop_button"],
+            "duration_seconds": 0.05,
+            "stop_button_visible": True,
+            "assistant_turn_delta": 0,
+        }
+
+    async def fail_user_turn_dom(*args, **kwargs):
+        raise AssertionError("_submit_prompt must not wait for slow user-turn DOM after submit confirmation")
+
+    client._capture_composer_state = fake_composer_state
+    client._capture_user_turn_state = fake_user_turn_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = fake_confirmation
+    client._wait_for_user_turn_dom_evidence = fail_user_turn_dom
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(DummyPage(), prompt="hello"))
+
+    assert result["submit_method"] == "button"
+    assert result["submit_confirmed"] is True
+    assert result["submit_confirmed_by"] == ["stop_button"]
+    assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
