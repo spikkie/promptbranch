@@ -1731,3 +1731,95 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     assert "submit_unaccounted_seconds" in result
     assert abs(result["submit_unaccounted_seconds"]) < 0.1
     assert result["submit_wait_seconds"] >= result["submit_confirmation_seconds"]
+
+
+def test_extract_last_text_from_selector_avoids_full_historical_evaluate_all(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyItem:
+        def __init__(self, index: int) -> None:
+            self.index = index
+
+        async def inner_text(self, timeout=None):
+            return "LATEST" if self.index == 499 else "OLD"
+
+        async def text_content(self, timeout=None):
+            return ""
+
+    class DummyLocator:
+        async def count(self):
+            return 500
+
+        def nth(self, index: int):
+            return DummyItem(index)
+
+        async def evaluate_all(self, script):
+            raise AssertionError("long historical evaluate_all must not run")
+
+    class DummyPage:
+        def locator(self, selector):
+            return DummyLocator()
+
+    import asyncio
+
+    count, text = asyncio.run(client._extract_last_text_from_selector(DummyPage(), "[data-message-author-role='assistant']"))
+
+    assert count == 500
+    assert text == "LATEST"
+
+
+def test_try_extract_json_payload_prefers_latest_assistant_turn_scope(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyJsonItem:
+        async def inner_text(self, timeout=None):
+            return '{"ok": true, "sentinel": "SCOPED_JSON_OK"}'
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class ScopedJsonLocator:
+        @property
+        def last(self):
+            return DummyJsonItem()
+
+        async def count(self):
+            return 1
+
+    class DummyAssistantTurn:
+        def locator(self, selector):
+            return ScopedJsonLocator()
+
+        async def inner_text(self, timeout=None):
+            return '{"ok": true, "sentinel": "TURN_TEXT_OK"}'
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class GlobalLocator:
+        async def count(self):
+            raise AssertionError("global historical JSON selectors should not be used before scoped latest turn")
+
+    class DummyPage:
+        def locator(self, selector):
+            return GlobalLocator()
+
+    async def fake_last_assistant(page):
+        return DummyAssistantTurn(), "section[data-turn='assistant']"
+
+    client._get_last_assistant_turn_locator = fake_last_assistant
+
+    import asyncio
+
+    payload, selector, text_length, probes = asyncio.run(client._try_extract_json_payload(DummyPage()))
+
+    assert payload == {"ok": True, "sentinel": "SCOPED_JSON_OK"}
+    assert selector == "section[data-turn='assistant'] >> #code-block-viewer .cm-content"
+    assert text_length > 0
+    assert probes[0]["scoped_latest_turn"] is True

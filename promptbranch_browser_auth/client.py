@@ -1613,6 +1613,15 @@ class ChatGPTBrowserClient:
         phase_started = time.monotonic()
         response_context = await self._capture_response_context(page)
         mark_phase("response_context_seconds", phase_started)
+        dom_weight = response_context.get("dom_weight") if isinstance(response_context, dict) else {}
+        if isinstance(dom_weight, dict):
+            phase_timings["conversation_assistant_turn_count"] = dom_weight.get("assistant_turn_count")
+            phase_timings["conversation_user_turn_count"] = dom_weight.get("user_turn_count")
+            phase_timings["conversation_generic_turn_count"] = dom_weight.get("generic_turn_count")
+            phase_timings["conversation_code_block_count"] = dom_weight.get("code_block_count")
+            phase_timings["large_conversation_dom_detected"] = dom_weight.get("large_conversation_dom_detected")
+            phase_timings["recommend_new_task_when_large"] = dom_weight.get("recommend_new_task_when_large")
+            phase_timings["dom_weight_capture_seconds"] = dom_weight.get("capture_seconds")
 
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
@@ -1635,6 +1644,7 @@ class ChatGPTBrowserClient:
         phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
         phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
+        phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["submit_dispatch_to_confirmation_seconds"] = submit_evidence.get("submit_dispatch_to_confirmation_seconds")
         phase_timings["submit_accounted_seconds"] = submit_evidence.get("submit_accounted_seconds")
         phase_timings["submit_unaccounted_seconds"] = submit_evidence.get("submit_unaccounted_seconds")
@@ -4770,6 +4780,93 @@ class ChatGPTBrowserClient:
             "text": "",
         }
 
+    async def _count_first_working_selector(self, page: Any, selectors: list[str]) -> tuple[int, Optional[str]]:
+        best_count = 0
+        best_selector: Optional[str] = None
+        for selector in selectors:
+            try:
+                count = int(await page.locator(selector).count() or 0)
+            except Exception:
+                count = 0
+            if count > best_count:
+                best_count = count
+                best_selector = selector
+        return best_count, best_selector
+
+    async def _capture_conversation_dom_weight(self, page: Any) -> dict[str, Any]:
+        """Capture cheap DOM-size diagnostics without extracting historical text."""
+
+        started = time.monotonic()
+        assistant_count, assistant_selector = await self._count_first_working_selector(page, ASSISTANT_MESSAGE_SELECTORS)
+        user_count, user_selector = await self._count_first_working_selector(page, USER_MESSAGE_SELECTORS)
+        generic_count, generic_selector = await self._count_first_working_selector(page, GENERIC_CONVERSATION_TURN_SELECTORS)
+        json_block_count, json_block_selector = await self._count_first_working_selector(page, JSON_BLOCK_SELECTORS)
+        large_dom = bool(assistant_count >= 80 or user_count >= 80 or generic_count >= 160 or json_block_count >= 100)
+        return {
+            "assistant_turn_count": assistant_count,
+            "assistant_selector": assistant_selector,
+            "user_turn_count": user_count,
+            "user_selector": user_selector,
+            "generic_turn_count": generic_count,
+            "generic_selector": generic_selector,
+            "code_block_count": json_block_count,
+            "code_block_selector": json_block_selector,
+            "large_conversation_dom_detected": large_dom,
+            "recommend_new_task_when_large": large_dom,
+            "capture_seconds": round(time.monotonic() - started, 3),
+        }
+
+    async def _capture_post_submit_composer_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+        """Capture a minimal post-dispatch composer state for successful paths.
+
+        The full composer probe searches fallback contenteditable selectors and can
+        become expensive in old conversations with a large DOM.  After a submit
+        dispatch we only need enough evidence for accounting and diagnostics: URL,
+        whether the primary prompt element cleared, and submit/stop/idle state.
+        """
+
+        state: dict[str, Any] = {
+            "snapshot_mode": "post_submit_minimal",
+            "input_selector": "#prompt-textarea",
+            "input_count": 0,
+            "input_visible": False,
+            "text_length": None,
+            "contains_prompt_prefix": None,
+            "submit_button": {},
+            "current_url": await self._safe_page_url(page),
+        }
+        prompt_prefix = (prompt or "")[:80]
+        try:
+            locator = page.locator("#prompt-textarea")
+            count = await locator.count()
+            state["input_count"] = int(count or 0)
+            if count:
+                item = locator.first
+                try:
+                    visible = await item.is_visible(timeout=250)
+                except Exception:
+                    visible = False
+                state["input_visible"] = bool(visible)
+                if visible:
+                    text = await self._extract_text_from_locator(item, timeout_ms=250)
+                    if not text:
+                        try:
+                            text = (await item.input_value(timeout=250) or "").strip()
+                        except Exception:
+                            text = ""
+                    state.update({
+                        "text_length": len(text),
+                        "text_preview": text[:80],
+                        "contains_prompt_prefix": bool(prompt_prefix and prompt_prefix in text),
+                    })
+        except Exception as exc:
+            state["input_probe_error"] = str(exc)
+        try:
+            state["submit_button"] = await self._probe_submit_button_state(page)
+        except Exception as exc:
+            state["submit_button"] = {"probe_failed": True, "error": str(exc)}
+        return state
+
     async def _capture_composer_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         state: dict[str, Any] = {
             "input_selector": None,
@@ -5179,14 +5276,12 @@ class ChatGPTBrowserClient:
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
-        v0.0.278.9 keeps the v0.0.278.8 send-button repair,
-        but makes submit timing mathematically reconcilable with service-log
-        timestamps by accounting for post-dispatch snapshots and confirmation
-        polling separately.  The previous implementation omitted the
-        after-submit composer snapshot from submit_wait_seconds, so long
-        Playwright/DOM delays could appear only in submit_total_seconds.  In long conversations that can
-        hide the real failure mode and incorrectly choose Enter fallback even
-        when a later matching send button is visible/enabled.
+        v0.0.278.10 keeps the v0.0.278.9 accounting invariant while
+        avoiding broad historical DOM probes on the successful submit path.
+        Long task chats can make generic contenteditable/code-block scans
+        tens of seconds slower than fresh chats, so the fast path captures a
+        minimal post-submit composer snapshot and uses latest-turn response
+        extraction before falling back to broad historical selectors.
         """
 
         submit_total_started = time.monotonic()
@@ -5244,6 +5339,7 @@ class ChatGPTBrowserClient:
             "enter_fallback_decision_seconds": None,
             "enter_fallback_press_seconds": None,
             "after_submit_composer_snapshot_seconds": None,
+            "after_submit_snapshot_mode": None,
             "submit_dispatch_to_confirmation_seconds": None,
             "submit_accounted_seconds": None,
             "submit_unaccounted_seconds": None,
@@ -5419,7 +5515,7 @@ class ChatGPTBrowserClient:
                 dispatch_completed_at_monotonic=round(dispatch_completed, 6) if isinstance(dispatch_completed, (int, float)) else None,
             )
             snapshot_started = time.monotonic()
-            after_composer = await self._capture_composer_state(page, prompt=prompt)
+            after_composer = await self._capture_post_submit_composer_state(page, prompt=prompt)
             snapshot_completed = time.monotonic()
             after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
             confirmation_started = time.monotonic()
@@ -5461,6 +5557,7 @@ class ChatGPTBrowserClient:
                 "send_button_wait_seconds": send_button_wait_seconds,
                 "submit_wait_seconds": submit_wait_seconds,
                 "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
+                "after_submit_snapshot_mode": after_composer.get("snapshot_mode"),
                 "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
                 "after_composer": after_composer,
                 "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
@@ -5552,7 +5649,7 @@ class ChatGPTBrowserClient:
         enter_completed = time.monotonic()
         enter_press_seconds = round(enter_completed - enter_started, 3)
         snapshot_started = time.monotonic()
-        after_composer = await self._capture_composer_state(page, prompt=prompt)
+        after_composer = await self._capture_post_submit_composer_state(page, prompt=prompt)
         snapshot_completed = time.monotonic()
         after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
         confirmation_started = time.monotonic()
@@ -5595,6 +5692,7 @@ class ChatGPTBrowserClient:
             "enter_fallback_press_seconds": enter_press_seconds,
             "submit_wait_seconds": submit_wait_seconds,
             "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
+            "after_submit_snapshot_mode": after_composer.get("snapshot_mode"),
             "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
             "submit_confirmation": confirmation,
             "submit_confirmed": bool(confirmation.get("confirmed")),
@@ -5668,26 +5766,17 @@ class ChatGPTBrowserClient:
         if count <= 0:
             return 0, ""
 
-        try:
-            texts = await locator.evaluate_all(
-                "els => els.map(el => ((el.innerText || el.textContent || '').trim()))"
-            )
-            if texts:
-                for candidate in reversed(texts):
-                    normalized = (candidate or "").strip()
-                    if normalized:
-                        return count, normalized
-                return count, (texts[-1] or "").strip()
-        except Exception:
-            pass
-
-        try:
-            for index in range(count - 1, -1, -1):
-                candidate = await self._extract_text_from_locator(locator.nth(index), timeout_ms=1_000)
-                if candidate:
-                    return count, candidate
-        except Exception:
-            pass
+        # v0.0.278.10: do not evaluate every historical match in a long
+        # conversation.  The old evaluate_all path scaled with total DOM history
+        # and made old task chats much slower than fresh chats.  Prefer the last
+        # few candidates only; if the latest node has the answer, this is O(1).
+        for index in range(count - 1, max(-1, count - 4), -1):
+            try:
+                candidate = await self._extract_text_from_locator(locator.nth(index), timeout_ms=500)
+            except Exception:
+                candidate = ""
+            if candidate:
+                return count, candidate
 
         return count, ""
 
@@ -5700,6 +5789,34 @@ class ChatGPTBrowserClient:
         first_nonempty: Optional[tuple[str, int, str]] = None
         best_fallback: Optional[tuple[str, int, str]] = None
 
+        prefer_latest_assistant = selectors is ASSISTANT_MESSAGE_SELECTORS or selectors == ASSISTANT_MESSAGE_SELECTORS
+        if prefer_latest_assistant:
+            assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
+            if assistant_turn is not None:
+                try:
+                    assistant_count = await page.locator(assistant_selector).count() if assistant_selector else 0
+                except Exception:
+                    assistant_count = 0
+                try:
+                    visible = await assistant_turn.is_visible(timeout=500)
+                except Exception:
+                    visible = False
+                text = await self._extract_text_from_locator(assistant_turn, timeout_ms=500)
+                probe = {
+                    "selector": assistant_selector,
+                    "count": assistant_count,
+                    "visible": visible,
+                    "text_length": len(text),
+                    "parsed": False,
+                    "preview": self._preview_text(text, 220),
+                    "scoped_latest_turn": True,
+                }
+                probes.append(probe)
+                if text:
+                    return assistant_selector, int(assistant_count or 0), text, probes
+                if assistant_count:
+                    best_fallback = (assistant_selector, int(assistant_count or 0), text)
+
         for selector in selectors:
             locator = page.locator(selector)
             try:
@@ -5710,7 +5827,7 @@ class ChatGPTBrowserClient:
             visible = False
             if count:
                 try:
-                    visible = await locator.last.is_visible(timeout=1_000)
+                    visible = await locator.last.is_visible(timeout=500)
                 except Exception:
                     visible = False
 
@@ -5722,6 +5839,7 @@ class ChatGPTBrowserClient:
                 "text_length": len(text),
                 "parsed": False,
                 "preview": self._preview_text(text, 220),
+                "scoped_latest_turn": False,
             }
             probes.append(probe)
 
@@ -10646,6 +10764,7 @@ class ChatGPTBrowserClient:
         return normalized[: max_len - 3] + "..."
 
     async def _capture_response_context(self, page: Any) -> dict[str, Any]:
+        dom_weight = await self._capture_conversation_dom_weight(page)
         assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
             page,
             ASSISTANT_MESSAGE_SELECTORS,
@@ -10658,6 +10777,7 @@ class ChatGPTBrowserClient:
             "assistant_text": assistant_text,
             "assistant_probes": assistant_probes,
             "project_conversation_links": project_conversation_links,
+            "dom_weight": dom_weight,
         }
         self._log(
             "response",
@@ -10668,6 +10788,11 @@ class ChatGPTBrowserClient:
             assistant_text_length=len(assistant_text),
             assistant_preview=self._preview_text(assistant_text, 160),
             project_conversation_link_count=len(project_conversation_links),
+            conversation_assistant_turn_count=dom_weight.get("assistant_turn_count"),
+            conversation_user_turn_count=dom_weight.get("user_turn_count"),
+            conversation_generic_turn_count=dom_weight.get("generic_turn_count"),
+            code_block_count=dom_weight.get("code_block_count"),
+            large_conversation_dom_detected=dom_weight.get("large_conversation_dom_detected"),
         )
         return context
 
@@ -10855,6 +10980,58 @@ class ChatGPTBrowserClient:
         page: Any,
     ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
         probes: list[dict[str, Any]] = []
+
+        assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
+        if assistant_turn is not None:
+            for selector in JSON_BLOCK_SELECTORS:
+                scoped_selector = f"{assistant_selector} >> {selector}" if assistant_selector else selector
+                try:
+                    locator = assistant_turn.locator(selector)
+                    count = await locator.count()
+                except Exception as exc:
+                    probes.append({
+                        "selector": scoped_selector,
+                        "count": 0,
+                        "visible": False,
+                        "text_length": 0,
+                        "parsed": False,
+                        "scoped_latest_turn": True,
+                        "error": str(exc),
+                    })
+                    continue
+                visible = False
+                payload_text = ""
+                if count:
+                    last = locator.last
+                    try:
+                        visible = await last.is_visible(timeout=500)
+                    except Exception:
+                        visible = False
+                    payload_text = await self._extract_text_from_locator(last, timeout_ms=500)
+                parsed = self._extract_json_from_text(payload_text) if payload_text else None
+                probes.append({
+                    "selector": scoped_selector,
+                    "count": count,
+                    "visible": visible,
+                    "text_length": len(payload_text),
+                    "parsed": parsed is not None,
+                    "preview": self._preview_text(payload_text, 220),
+                    "scoped_latest_turn": True,
+                })
+                if count:
+                    self._log(
+                        "response",
+                        "json selector probe",
+                        selector=scoped_selector,
+                        count=count,
+                        visible=visible,
+                        text_length=len(payload_text),
+                        parsed=parsed is not None,
+                        scoped_latest_turn=True,
+                    )
+                if parsed is not None:
+                    return parsed, scoped_selector, len(payload_text), probes
+
         for selector in JSON_BLOCK_SELECTORS:
             locator = page.locator(selector)
             count = await locator.count()
@@ -10863,10 +11040,10 @@ class ChatGPTBrowserClient:
             if count:
                 last = locator.last
                 try:
-                    visible = await last.is_visible(timeout=1_000)
+                    visible = await last.is_visible(timeout=500)
                 except Exception:
                     visible = False
-                payload_text = await self._extract_text_from_locator(last)
+                payload_text = await self._extract_text_from_locator(last, timeout_ms=500)
             parsed = self._extract_json_from_text(payload_text) if payload_text else None
             probes.append({
                 "selector": selector,
@@ -10875,6 +11052,7 @@ class ChatGPTBrowserClient:
                 "text_length": len(payload_text),
                 "parsed": parsed is not None,
                 "preview": self._preview_text(payload_text, 220),
+                "scoped_latest_turn": False,
             })
             if count:
                 self._log(
@@ -10885,6 +11063,7 @@ class ChatGPTBrowserClient:
                     visible=visible,
                     text_length=len(payload_text),
                     parsed=parsed is not None,
+                    scoped_latest_turn=False,
                 )
             if parsed is not None:
                 return parsed, selector, len(payload_text), probes
