@@ -14266,6 +14266,116 @@ class ChatGPTBrowserClient:
                     return True, marker, "request_nonce_match"
         return False, None, "request_marker_missing"
 
+    def _response_payload_marker_status(
+        self,
+        response_context: Optional[dict[str, Any]],
+        payload: Any,
+        *,
+        text: str = "",
+    ) -> tuple[bool, str, Optional[str]]:
+        if not isinstance(response_context, dict):
+            return True, "no_response_context", None
+        request_markers_raw = response_context.get("response_request_markers")
+        request_markers = [str(marker) for marker in request_markers_raw] if isinstance(request_markers_raw, list) else []
+        request_binding_required = bool(response_context.get("response_request_binding_required") and request_markers)
+        if not request_binding_required:
+            return True, "request_marker_not_required", None
+        nonce_key = str(response_context.get("response_request_nonce_key") or self._response_request_nonce_key())
+        marker_verified, marker, reason = self._payload_contains_response_request_marker(
+            payload,
+            markers=request_markers,
+            nonce_key=nonce_key,
+        )
+        if not marker_verified and text:
+            for candidate_marker in request_markers:
+                if candidate_marker and candidate_marker in text:
+                    return True, "request_marker_match_in_visible_text", candidate_marker
+        return bool(marker_verified), reason or "request_marker_missing", marker
+
+    def _append_response_extraction_candidate(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        source: str,
+        selector: Optional[str],
+        parsed: bool,
+        payload: Any = None,
+        text: str = "",
+        probe: Optional[dict[str, Any]] = None,
+        accepted: bool = False,
+        rejected_reason: Optional[str] = None,
+    ) -> None:
+        if not isinstance(response_context, dict):
+            return
+        marker_verified, marker_reason, marker = self._response_payload_marker_status(
+            response_context,
+            payload if payload is not None else {},
+            text=text,
+        )
+        if payload is None and text:
+            request_markers_raw = response_context.get("response_request_markers")
+            request_markers = [str(marker) for marker in request_markers_raw] if isinstance(request_markers_raw, list) else []
+            for candidate_marker in request_markers:
+                if candidate_marker and candidate_marker in text:
+                    marker_verified = True
+                    marker_reason = "request_marker_match_in_visible_text"
+                    marker = candidate_marker
+                    break
+        text_hash = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:12] if text else None
+        entry: dict[str, Any] = {
+            "source": source,
+            "selector": selector,
+            "parsed_json_ok": bool(parsed),
+            "accepted": bool(accepted),
+            "rejected_reason": rejected_reason,
+            "text_length": len(text or ""),
+            "text_sha256_12": text_hash,
+            "text_preview": self._preview_text(text or "", 220),
+            "contains_request_marker": bool(marker_verified),
+            "request_marker_reason": marker_reason,
+            "request_marker_matched": marker,
+        }
+        if isinstance(probe, dict):
+            for key in [
+                "status",
+                "qualification_status",
+                "http_status",
+                "conversation_id",
+                "target_user_turn_id",
+                "target_user_turn_index",
+                "assistant_turn_id",
+                "assistant_turn_index",
+                "turn_selector",
+                "turn_index",
+                "baseline_turn_index",
+                "current_turn_count",
+                "count",
+                "visible",
+                "post_submit_only",
+            ]:
+                if key in probe:
+                    entry[key] = probe.get(key)
+        candidates = response_context.setdefault("response_extraction_candidates", [])
+        if isinstance(candidates, list):
+            candidates.append(entry)
+            response_context["response_extraction_candidate_count"] = len(candidates)
+            response_context["last_response_extraction_candidate"] = entry
+            if accepted:
+                response_context["response_extraction_accepted_source"] = source
+                response_context["response_extraction_accepted_selector"] = selector
+            elif rejected_reason:
+                response_context["response_extraction_last_rejected_reason"] = rejected_reason
+
+    def _parsed_payload_has_required_marker(
+        self,
+        response_context: Optional[dict[str, Any]],
+        payload: Any,
+        *,
+        text: str = "",
+    ) -> tuple[bool, str, Optional[str]]:
+        marker_ok, marker_reason, marker = self._response_payload_marker_status(response_context, payload, text=text)
+        return marker_ok, marker_reason, marker
+
     def _strip_response_request_nonce(self, payload: Any, response_context: Optional[dict[str, Any]]) -> Any:
         if not isinstance(payload, dict) or not isinstance(response_context, dict):
             return payload
@@ -14451,7 +14561,58 @@ class ChatGPTBrowserClient:
             remaining_ms = int((float(deadline_monotonic) - time.monotonic()) * 1000)
         except (TypeError, ValueError):
             return None
-        return max(1_000, remaining_ms)
+        return max(0, remaining_ms)
+
+    def _response_probe_minimum_budget_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_RESPONSE_PROBE_MINIMUM_BUDGET_MS") or "").strip()
+        try:
+            value = int(raw) if raw else 2_500
+        except ValueError:
+            value = 2_500
+        return max(500, min(value, 30_000))
+
+    def _response_debug_minimum_budget_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_RESPONSE_DEBUG_MINIMUM_BUDGET_MS") or "").strip()
+        try:
+            value = int(raw) if raw else 15_000
+        except ValueError:
+            value = 15_000
+        return max(1_000, min(value, 60_000))
+
+    def _response_deadline_remaining_ms(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        loop_deadline: Optional[float] = None,
+    ) -> Optional[int]:
+        values: list[int] = []
+        if isinstance(response_context, dict):
+            absolute_remaining = self._remaining_deadline_budget_ms(response_context.get("ask_operation_deadline_monotonic"))
+            if absolute_remaining is not None:
+                values.append(absolute_remaining)
+        if loop_deadline is not None:
+            try:
+                loop_remaining = int((float(loop_deadline) - asyncio.get_running_loop().time()) * 1000)
+            except (RuntimeError, TypeError, ValueError):
+                loop_remaining = None
+            if loop_remaining is not None:
+                values.append(max(0, loop_remaining))
+        if not values:
+            return None
+        return min(values)
+
+    def _response_deadline_budget_available(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        loop_deadline: Optional[float] = None,
+        minimum_ms: Optional[int] = None,
+    ) -> bool:
+        remaining = self._response_deadline_remaining_ms(response_context, loop_deadline=loop_deadline)
+        if remaining is None:
+            return True
+        minimum = self._response_probe_minimum_budget_ms() if minimum_ms is None else int(minimum_ms)
+        return remaining >= minimum
 
     def _submit_confirmed_answer_timeout_reserve_ms(self) -> int:
         raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_RESERVE_MS") or "").strip()
@@ -14736,6 +14897,17 @@ class ChatGPTBrowserClient:
         response_context["backend_answer_qualification_status"] = probe.get("qualification_status")
         response_context["backend_answer_probe_seconds"] = probe.get("probe_seconds")
         if parsed is None:
+            self._append_response_extraction_candidate(
+                response_context,
+                source="backend_conversation_detail",
+                selector=selector,
+                parsed=False,
+                payload=None,
+                text=assistant_text,
+                probe=probe,
+                accepted=False,
+                rejected_reason=qualification_status,
+            )
             self._record_post_submit_payload_binding(
                 response_context,
                 bound=False,
@@ -14755,6 +14927,28 @@ class ChatGPTBrowserClient:
                 started_at=extraction_started,
             )
             return None, None, len(assistant_text), probes
+
+        marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+            response_context,
+            parsed,
+            text=assistant_text,
+        )
+        self._append_response_extraction_candidate(
+            response_context,
+            source="backend_conversation_detail",
+            selector=selector,
+            parsed=True,
+            payload=parsed,
+            text=assistant_text,
+            probe=probe,
+            accepted=marker_ok,
+            rejected_reason=None if marker_ok else marker_reason,
+        )
+        if not marker_ok:
+            response_context["backend_answer_freshness_verified"] = False
+            response_context["backend_answer_freshness_reason"] = marker_reason
+            response_context["backend_answer_qualification_status"] = "backend_assistant_after_commit_marker_missing" if marker_reason == "request_marker_missing" else f"backend_assistant_after_commit_{marker_reason}"
+            response_context["backend_answer_last_status"] = response_context["backend_answer_qualification_status"]
 
         self._record_post_submit_payload_binding(
             response_context,
@@ -14907,6 +15101,24 @@ class ChatGPTBrowserClient:
                         "current_turn_count": current_count,
                     })
                     if parsed is not None:
+                        marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                            response_context,
+                            parsed,
+                            text=payload_text,
+                        )
+                        self._append_response_extraction_candidate(
+                            response_context,
+                            source="dom_post_submit_code",
+                            selector=scoped_selector,
+                            parsed=True,
+                            payload=parsed,
+                            text=payload_text,
+                            probe=probes[-1] if probes else None,
+                            accepted=marker_ok,
+                            rejected_reason=None if marker_ok else marker_reason,
+                        )
+                        if not marker_ok:
+                            continue
                         self._record_post_submit_payload_binding(
                             response_context,
                             bound=True,
@@ -14944,6 +15156,24 @@ class ChatGPTBrowserClient:
                     "current_turn_count": current_count,
                 })
                 if parsed is not None:
+                    marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                        response_context,
+                        parsed,
+                        text=turn_text,
+                    )
+                    self._append_response_extraction_candidate(
+                        response_context,
+                        source="dom_post_submit_visible_text",
+                        selector=turn_selector,
+                        parsed=True,
+                        payload=parsed,
+                        text=turn_text,
+                        probe=probes[-1] if probes else None,
+                        accepted=marker_ok,
+                        rejected_reason=None if marker_ok else marker_reason,
+                    )
+                    if not marker_ok:
+                        continue
                     self._record_post_submit_payload_binding(
                         response_context,
                         bound=True,
@@ -15258,6 +15488,12 @@ class ChatGPTBrowserClient:
             "response_effective_timeout_ms",
             "response_backend_first_answer_wait_enabled",
             "response_wait_timeout_status",
+            "response_deadline_hard_stop",
+            "response_deadline_hard_stop_reason",
+            "response_deadline_remaining_ms_last",
+            "response_final_probe_skipped_due_to_deadline",
+            "response_debug_artifact_skipped_due_to_deadline",
+            "response_timeout_debug_artifact_skipped_due_to_deadline",
             "backend_answer_last_status",
             "backend_answer_http_status",
             "backend_answer_turn_count",
@@ -15295,6 +15531,12 @@ class ChatGPTBrowserClient:
                 "backend_answer_timeout_reserve_ms",
                 "ask_operation_elapsed_before_answer_wait_ms",
                 "response_wait_timeout_status",
+                "response_extraction_candidates",
+                "response_extraction_candidate_count",
+                "response_extraction_accepted_source",
+                "response_extraction_accepted_selector",
+                "response_extraction_last_rejected_reason",
+                "backend_answer_marker_missing_fell_through_to_dom",
             ]:
                 if key in response_context:
                     fields[key] = response_context.get(key)
@@ -15576,6 +15818,209 @@ class ChatGPTBrowserClient:
         response_context["last_response_historical_scan_used"] = historical_scan_used
         response_context["last_response_extraction_seconds"] = round(time.monotonic() - started_at, 3)
 
+    async def _try_extract_visible_answer_json_payload(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]],
+        extraction_started: float,
+    ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
+        """Probe visible/latest assistant answer surfaces as a diagnostic fallback.
+
+        Backend-first remains preferred, but live runs showed backend detail can
+        return a marker-missing candidate while the UI may contain the fresh JSON
+        answer.  This fallback only accepts a visible/DOM payload when the
+        request marker/sentinel is present, so it does not weaken stale-answer
+        protection.
+        """
+        probes: list[dict[str, Any]] = []
+
+        assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
+        if assistant_turn is not None:
+            for json_selector in JSON_BLOCK_SELECTORS:
+                scoped_selector = f"{assistant_selector} >> {json_selector}" if assistant_selector else json_selector
+                try:
+                    json_locator = assistant_turn.locator(json_selector)
+                    count = int(await json_locator.count() or 0)
+                except Exception as exc:
+                    probes.append({
+                        "selector": scoped_selector,
+                        "source": "visible_latest_turn_code",
+                        "count": 0,
+                        "visible": False,
+                        "text_length": 0,
+                        "parsed": False,
+                        "error": str(exc),
+                    })
+                    continue
+                visible = False
+                payload_text = ""
+                if count:
+                    try:
+                        visible = await json_locator.last.is_visible(timeout=300)
+                    except Exception:
+                        visible = False
+                    try:
+                        payload_text = await self._extract_text_from_locator(json_locator.last, timeout_ms=300)
+                    except Exception:
+                        payload_text = ""
+                parsed = self._extract_json_from_text(payload_text) if payload_text else None
+                probe = {
+                    "selector": scoped_selector,
+                    "source": "visible_latest_turn_code",
+                    "count": count,
+                    "visible": visible,
+                    "text_length": len(payload_text),
+                    "parsed": parsed is not None,
+                    "preview": self._preview_text(payload_text, 220),
+                    "scoped_latest_turn": True,
+                    "post_submit_only": False,
+                    "turn_selector": assistant_selector,
+                }
+                probes.append(probe)
+                if parsed is not None:
+                    marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                        response_context,
+                        parsed,
+                        text=payload_text,
+                    )
+                    self._append_response_extraction_candidate(
+                        response_context,
+                        source="visible_latest_turn_code",
+                        selector=scoped_selector,
+                        parsed=True,
+                        payload=parsed,
+                        text=payload_text,
+                        probe=probe,
+                        accepted=marker_ok,
+                        rejected_reason=None if marker_ok else marker_reason,
+                    )
+                    if marker_ok:
+                        self._record_post_submit_payload_binding(
+                            response_context,
+                            bound=True,
+                            selector=scoped_selector,
+                            turn_selector=assistant_selector,
+                            payload=parsed,
+                            text_length=len(payload_text),
+                            mode="visible_latest_turn_json_marker_verified",
+                        )
+                        self._record_response_extraction_context(
+                            response_context,
+                            mode="visible_latest_turn_json_marker_verified",
+                            historical_scan_used=False,
+                            started_at=extraction_started,
+                        )
+                        return parsed, scoped_selector, len(payload_text), probes
+
+            try:
+                turn_text = await self._extract_text_from_locator(assistant_turn, timeout_ms=500)
+            except Exception:
+                turn_text = ""
+            parsed = self._extract_json_from_text(turn_text) if turn_text else None
+            probe = {
+                "selector": assistant_selector,
+                "source": "visible_latest_turn_text",
+                "count": 1,
+                "visible": True,
+                "text_length": len(turn_text),
+                "parsed": parsed is not None,
+                "preview": self._preview_text(turn_text, 220),
+                "scoped_latest_turn": True,
+                "post_submit_only": False,
+                "turn_selector": assistant_selector,
+            }
+            probes.append(probe)
+            if parsed is not None:
+                marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                    response_context,
+                    parsed,
+                    text=turn_text,
+                )
+                self._append_response_extraction_candidate(
+                    response_context,
+                    source="visible_latest_turn_text",
+                    selector=assistant_selector,
+                    parsed=True,
+                    payload=parsed,
+                    text=turn_text,
+                    probe=probe,
+                    accepted=marker_ok,
+                    rejected_reason=None if marker_ok else marker_reason,
+                )
+                if marker_ok:
+                    self._record_post_submit_payload_binding(
+                        response_context,
+                        bound=True,
+                        selector=assistant_selector,
+                        turn_selector=assistant_selector,
+                        payload=parsed,
+                        text_length=len(turn_text),
+                        mode="visible_latest_turn_text_marker_verified",
+                    )
+                    self._record_response_extraction_context(
+                        response_context,
+                        mode="visible_latest_turn_text_marker_verified",
+                        historical_scan_used=False,
+                        started_at=extraction_started,
+                    )
+                    return parsed, assistant_selector, len(turn_text), probes
+
+        assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
+        probes.extend(assistant_probes)
+        parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
+        probe = {
+            "selector": assistant_selector,
+            "source": "visible_assistant_selector_text",
+            "count": assistant_count,
+            "visible": bool(assistant_count),
+            "text_length": len(assistant_text),
+            "parsed": parsed is not None,
+            "preview": self._preview_text(assistant_text, 220),
+            "scoped_latest_turn": False,
+            "post_submit_only": False,
+        }
+        probes.append(probe)
+        if parsed is not None:
+            marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                response_context,
+                parsed,
+                text=assistant_text,
+            )
+            self._append_response_extraction_candidate(
+                response_context,
+                source="visible_assistant_selector_text",
+                selector=assistant_selector,
+                parsed=True,
+                payload=parsed,
+                text=assistant_text,
+                probe=probe,
+                accepted=marker_ok,
+                rejected_reason=None if marker_ok else marker_reason,
+            )
+            if marker_ok:
+                self._record_post_submit_payload_binding(
+                    response_context,
+                    bound=True,
+                    selector=assistant_selector,
+                    turn_selector=assistant_selector,
+                    payload=parsed,
+                    text_length=len(assistant_text),
+                    mode="visible_assistant_selector_text_marker_verified",
+                )
+                self._record_response_extraction_context(
+                    response_context,
+                    mode="visible_assistant_selector_text_marker_verified",
+                    historical_scan_used=False,
+                    started_at=extraction_started,
+                )
+                return parsed, assistant_selector, len(assistant_text), probes
+
+        return None, None, 0, probes
+
     async def _try_extract_json_payload(
         self,
         page: Any,
@@ -15592,13 +16037,31 @@ class ChatGPTBrowserClient:
                 extraction_started=extraction_started,
             )
             if backend_payload is not None:
-                return backend_payload, backend_selector, backend_text_length, backend_probes
+                marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                    response_context,
+                    backend_payload,
+                )
+                if marker_ok:
+                    return backend_payload, backend_selector, backend_text_length, backend_probes
+                if isinstance(response_context, dict):
+                    response_context["backend_answer_freshness_verified"] = False
+                    response_context["backend_answer_freshness_reason"] = marker_reason
+                    response_context["backend_answer_qualification_status"] = "backend_assistant_after_commit_marker_missing" if marker_reason == "request_marker_missing" else f"backend_assistant_after_commit_{marker_reason}"
+                    response_context["backend_answer_last_status"] = response_context["backend_answer_qualification_status"]
+                    response_context["backend_answer_marker_missing_fell_through_to_dom"] = True
             dom_payload, dom_selector, dom_text_length, dom_probes = await self._try_extract_post_submit_json_payload(
                 page,
                 response_context=response_context,
                 extraction_started=extraction_started,
             )
-            return dom_payload, dom_selector, dom_text_length, [*backend_probes, *dom_probes]
+            if dom_payload is not None:
+                return dom_payload, dom_selector, dom_text_length, [*backend_probes, *dom_probes]
+            visible_payload, visible_selector, visible_text_length, visible_probes = await self._try_extract_visible_answer_json_payload(
+                page,
+                response_context=response_context,
+                extraction_started=extraction_started,
+            )
+            return visible_payload, visible_selector, visible_text_length, [*backend_probes, *dom_probes, *visible_probes]
 
         assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
         if assistant_turn is not None:
@@ -15962,15 +16425,23 @@ class ChatGPTBrowserClient:
                 last_probe_summary = probe_summary
 
             if self.config.debug and (elapsed_s - last_diagnostic_dump >= 30.0):
-                await self._save_response_diagnostics(
-                    page,
-                    probes=probes,
-                    response_context=response_context,
-                    attempt=attempt,
-                    elapsed_s=elapsed_s,
-                    include_page_artifacts=False,
-                )
-                last_diagnostic_dump = elapsed_s
+                if self._response_deadline_budget_available(
+                    response_context,
+                    loop_deadline=deadline,
+                    minimum_ms=self._response_debug_minimum_budget_ms(),
+                ):
+                    await self._save_response_diagnostics(
+                        page,
+                        probes=probes,
+                        response_context=response_context,
+                        attempt=attempt,
+                        elapsed_s=elapsed_s,
+                        include_page_artifacts=False,
+                    )
+                    last_diagnostic_dump = elapsed_s
+                else:
+                    breakdown["response_debug_artifact_skipped_due_to_deadline"] = True
+                    last_diagnostic_dump = elapsed_s
 
             await page.wait_for_timeout(poll_interval_ms)
 
@@ -16061,7 +16532,24 @@ class ChatGPTBrowserClient:
                     return text_length
             return 0
 
+        def record_deadline_budget(label: str) -> Optional[int]:
+            remaining = self._response_deadline_remaining_ms(response_context, loop_deadline=deadline)
+            if remaining is not None:
+                breakdown[f"response_deadline_remaining_ms_at_{label}"] = remaining
+                breakdown["response_deadline_remaining_ms_last"] = remaining
+            return remaining
+
+        last_selector: Optional[str] = None
+        last_text_length = 0
+        last_probes: list[dict[str, Any]] = []
+        last_submit_state: dict[str, Any] = {}
+
         while asyncio.get_running_loop().time() < deadline:
+            remaining_at_loop = record_deadline_budget("loop_start")
+            if remaining_at_loop is not None and remaining_at_loop < self._response_probe_minimum_budget_ms():
+                breakdown["response_deadline_hard_stop"] = True
+                breakdown["response_deadline_hard_stop_reason"] = "insufficient_budget_before_probe"
+                break
 
             conversation_url = page.url
             attempt += 1
@@ -16081,8 +16569,17 @@ class ChatGPTBrowserClient:
             )
             add_duration("response_project_conversation_open_seconds", time.monotonic() - open_started)
 
+            remaining_before_extract = record_deadline_budget("before_extract")
+            if remaining_before_extract is not None and remaining_before_extract < self._response_probe_minimum_budget_ms():
+                breakdown["response_deadline_hard_stop"] = True
+                breakdown["response_deadline_hard_stop_reason"] = "insufficient_budget_before_extract"
+                break
+
             extract_started = time.monotonic()
             payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
+            last_selector = selector
+            last_text_length = int(text_length or 0)
+            last_probes = probes
             extract_finished = time.monotonic()
             add_duration("response_json_extract_total_seconds", extract_finished - extract_started)
             if first_probe_text_length(probes) > 0 and "response_first_json_candidate_at_monotonic" not in breakdown:
@@ -16196,8 +16693,15 @@ class ChatGPTBrowserClient:
                 breakdown.setdefault("response_debug_artifact_saved", False)
                 breakdown.setdefault("response_debug_artifact_seconds", 0.0)
 
+            remaining_before_completion_probe = record_deadline_budget("before_completion_probe")
+            if remaining_before_completion_probe is not None and remaining_before_completion_probe < self._response_probe_minimum_budget_ms():
+                breakdown["response_deadline_hard_stop"] = True
+                breakdown["response_deadline_hard_stop_reason"] = "insufficient_budget_before_completion_probe"
+                break
+
             completion_probe_started = time.monotonic()
             submit_state = await self._probe_submit_button_state(page)
+            last_submit_state = submit_state
             thinking_state = await self._probe_thinking_state(page)
             current_url = await self._safe_page_url(page)
             completion_probe_finished = time.monotonic()
@@ -16300,7 +16804,12 @@ class ChatGPTBrowserClient:
                         observed_running_state=observed_running_state,
                         observed_idle_after_running=observed_idle_after_running,
                     )
-                    if self._response_deep_debug_enabled():
+                    debug_budget_ok = self._response_deadline_budget_available(
+                        response_context,
+                        loop_deadline=deadline,
+                        minimum_ms=self._response_debug_minimum_budget_ms(),
+                    )
+                    if self._response_deep_debug_enabled() and debug_budget_ok:
                         debug_started = time.monotonic()
                         await self._save_response_diagnostics(
                             page,
@@ -16349,15 +16858,23 @@ class ChatGPTBrowserClient:
                 last_probe_summary = probe_summary
 
             if self.config.debug and (elapsed_s - last_diagnostic_dump >= 30.0):
-                await self._save_response_diagnostics(
-                    page,
-                    probes=probes,
-                    response_context=response_context,
-                    attempt=attempt,
-                    elapsed_s=elapsed_s,
-                    include_page_artifacts=False,
-                )
-                last_diagnostic_dump = elapsed_s
+                if self._response_deadline_budget_available(
+                    response_context,
+                    loop_deadline=deadline,
+                    minimum_ms=self._response_debug_minimum_budget_ms(),
+                ):
+                    await self._save_response_diagnostics(
+                        page,
+                        probes=probes,
+                        response_context=response_context,
+                        attempt=attempt,
+                        elapsed_s=elapsed_s,
+                        include_page_artifacts=False,
+                    )
+                    last_diagnostic_dump = elapsed_s
+                else:
+                    breakdown["response_debug_artifact_skipped_due_to_deadline"] = True
+                    last_diagnostic_dump = elapsed_s
 
             sleep_started = time.monotonic()
             remaining_loop_ms = max(1, int((deadline - asyncio.get_running_loop().time()) * 1000))
@@ -16365,23 +16882,41 @@ class ChatGPTBrowserClient:
             add_duration("response_poll_sleep_seconds", time.monotonic() - sleep_started)
 
         elapsed_s = asyncio.get_running_loop().time() - start
-        await self._maybe_open_new_project_conversation(
-            page,
-            response_context=response_context,
-            attempt=attempt,
-            elapsed_s=elapsed_s,
-        )
-        payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
-        submit_state = await self._probe_submit_button_state(page)
-        if self.config.debug:
-            await self._save_response_diagnostics(
+        probes = last_probes
+        selector = last_selector
+        text_length = last_text_length
+        submit_state = last_submit_state
+        if self._response_deadline_budget_available(
+            response_context,
+            loop_deadline=deadline,
+            minimum_ms=self._response_probe_minimum_budget_ms(),
+        ):
+            await self._maybe_open_new_project_conversation(
                 page,
-                probes=probes,
                 response_context=response_context,
                 attempt=attempt,
                 elapsed_s=elapsed_s,
-                include_page_artifacts=True,
             )
+            payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
+            submit_state = await self._probe_submit_button_state(page)
+        else:
+            breakdown["response_final_probe_skipped_due_to_deadline"] = True
+        if self.config.debug:
+            if self._response_deadline_budget_available(
+                response_context,
+                loop_deadline=deadline,
+                minimum_ms=self._response_debug_minimum_budget_ms(),
+            ):
+                await self._save_response_diagnostics(
+                    page,
+                    probes=probes,
+                    response_context=response_context,
+                    attempt=attempt,
+                    elapsed_s=elapsed_s,
+                    include_page_artifacts=True,
+                )
+            else:
+                breakdown["response_timeout_debug_artifact_skipped_due_to_deadline"] = True
         breakdown["response_wait_returned_at_monotonic"] = time.monotonic()
         timeout_status = "submit_confirmed_answer_timeout" if self._backend_answer_wait_context_available(response_context) else "assistant_response_timeout"
         if isinstance(response_context, dict):
