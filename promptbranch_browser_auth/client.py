@@ -2025,6 +2025,60 @@ class ChatGPTBrowserClient:
             ask_phase_timings=phase_timings,
         )
 
+        promoted_visibility_answer = self._promote_visible_answer_from_submit_evidence(
+            submit_evidence=submit_evidence,
+            response_context=response_context,
+            extraction_started=time.monotonic(),
+        )
+        if promoted_visibility_answer is not None:
+            promoted_payload = promoted_visibility_answer.get("payload")
+            if expect_json:
+                promoted_payload = self._strip_response_request_nonce(promoted_payload, response_context)
+            current_url = await self._safe_page_url(page)
+            conversation_url = current_url if self._is_conversation_url(current_url) else (target_url if self._is_conversation_url(target_url) else None)
+            phase_timings["response_wait_skipped"] = True
+            phase_timings["response_wait_skipped_reason"] = "post_submit_visibility_answer_promoted"
+            phase_timings["response_accepted_source"] = promoted_visibility_answer.get("source")
+            phase_timings["response_accepted_selector"] = promoted_visibility_answer.get("selector")
+            phase_timings["response_accepted_text_length"] = promoted_visibility_answer.get("text_length")
+            phase_timings["response_extraction_mode"] = promoted_visibility_answer.get("source")
+            phase_timings["response_freshness_verified"] = True
+            phase_timings["response_visibility_promotion_used"] = True
+            if isinstance(response_context, dict):
+                phase_timings.update(self._response_wait_timing_fields(
+                    response_context,
+                    response_wait_started_at=time.monotonic(),
+                    response_wait_returned_at=time.monotonic(),
+                ))
+                for key in [
+                    "response_extraction_candidates",
+                    "response_extraction_candidate_count",
+                    "response_extraction_accepted_source",
+                    "response_extraction_accepted_selector",
+                ]:
+                    if key in response_context:
+                        phase_timings[key] = response_context.get(key)
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            result = {
+                "answer": promoted_payload,
+                "conversation_url": conversation_url,
+                "submit_evidence": submit_evidence,
+                "ask_phase_timings": phase_timings,
+                "status": "completed",
+                "response_accepted_source": promoted_visibility_answer.get("source"),
+                "response_freshness_verified": True,
+            }
+            self._record_ask_progress(**result)
+            self._log(
+                "response",
+                "fresh visible JSON answer promoted from post-submit visibility evidence",
+                source=promoted_visibility_answer.get("source"),
+                selector=promoted_visibility_answer.get("selector"),
+                text_length=promoted_visibility_answer.get("text_length"),
+                total_seconds=phase_timings.get("total_seconds"),
+            )
+            return result
+
         if submit_evidence.get("submit_backend_confirmed_but_user_turn_not_visible"):
             current_url = await self._safe_page_url(page)
             phase_timings["response_wait_skipped"] = True
@@ -7374,6 +7428,130 @@ class ChatGPTBrowserClient:
             "probe_seconds": round(time.monotonic() - started, 3),
             "state": state,
         }
+
+    def _text_looks_like_prompt_request(self, text: str) -> bool:
+        lowered = str(text or "").lower()
+        return (
+            "return exactly this json object" in lowered
+            or "json generation strict rules" in lowered
+            or "your goal is to generate exactly one valid json object" in lowered
+        )
+
+    def _iter_visibility_evidence_text_candidates(
+        self,
+        value: Any,
+        *,
+        path: str = "post_submit_user_turn_visibility_evidence",
+    ) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        text_keys = {"last_text_preview", "text_preview", "preview", "text", "payload_text", "assistant_preview"}
+        if isinstance(value, dict):
+            selector = value.get("selector") if isinstance(value.get("selector"), str) else None
+            turn_index = value.get("index", value.get("turn_index"))
+            for key, item in value.items():
+                child_path = f"{path}.{key}"
+                if key in text_keys and isinstance(item, str) and item.strip():
+                    candidates.append({
+                        "path": child_path,
+                        "selector": selector or child_path,
+                        "turn_index": turn_index,
+                        "text": item,
+                        "source": (
+                            "post_submit_visibility_generic_turn"
+                            if "generic_turns" in child_path or "data-message-author-role" in str(selector or "")
+                            else "post_submit_visibility_probe"
+                        ),
+                    })
+                if isinstance(item, (dict, list)):
+                    candidates.extend(self._iter_visibility_evidence_text_candidates(item, path=child_path))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                candidates.extend(self._iter_visibility_evidence_text_candidates(item, path=f"{path}[{index}]"))
+        return candidates
+
+    def _promote_visible_answer_from_submit_evidence(
+        self,
+        *,
+        submit_evidence: dict[str, Any],
+        response_context: Optional[dict[str, Any]],
+        extraction_started: float,
+    ) -> Optional[dict[str, Any]]:
+        """Return a fresh JSON answer already captured during post-submit visibility probing.
+
+        The visibility probe may already contain the latest assistant/generic turn
+        with the exact current sentinel.  Promoting that evidence avoids a second
+        response wait when the client deadline is nearly exhausted.  User prompt
+        echoes are deliberately ignored because they can contain the same target
+        JSON object inside the instruction text.
+        """
+        if not isinstance(submit_evidence, dict):
+            return None
+        evidence = submit_evidence.get("post_submit_user_turn_visibility_evidence")
+        if not isinstance(evidence, dict):
+            return None
+
+        for candidate in reversed(self._iter_visibility_evidence_text_candidates(evidence)):
+            text = str(candidate.get("text") or "").strip()
+            if not text or self._text_looks_like_prompt_request(text):
+                continue
+            parsed = self._extract_json_from_text(text)
+            if parsed is None:
+                continue
+            source = str(candidate.get("source") or "post_submit_visibility_probe")
+            selector = str(candidate.get("selector") or candidate.get("path") or source)
+            marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                response_context,
+                parsed,
+                text=text,
+            )
+            probe = {
+                "selector": selector,
+                "source": source,
+                "visible": True,
+                "text_length": len(text),
+                "parsed": True,
+                "preview": self._preview_text(text, 220),
+                "post_submit_visibility_evidence": True,
+                "path": candidate.get("path"),
+                "turn_index": candidate.get("turn_index"),
+            }
+            self._append_response_extraction_candidate(
+                response_context,
+                source=source,
+                selector=selector,
+                parsed=True,
+                payload=parsed,
+                text=text,
+                probe=probe,
+                accepted=marker_ok,
+                rejected_reason=None if marker_ok else marker_reason,
+            )
+            if not marker_ok:
+                continue
+            self._record_post_submit_payload_binding(
+                response_context,
+                bound=True,
+                selector=selector,
+                turn_selector=selector,
+                turn_index=candidate.get("turn_index") if isinstance(candidate.get("turn_index"), int) else None,
+                payload=parsed,
+                text_length=len(text),
+                mode=source,
+            )
+            self._record_response_extraction_context(
+                response_context,
+                mode=source,
+                historical_scan_used=False,
+                started_at=extraction_started,
+            )
+            return {
+                "payload": parsed,
+                "selector": selector,
+                "source": source,
+                "text_length": len(text),
+                "text_preview": self._preview_text(text, 220),
+            }
+        return None
 
     async def _capture_submit_confirmation_fast_state(self, page: Any) -> dict[str, Any]:
         started = time.monotonic()

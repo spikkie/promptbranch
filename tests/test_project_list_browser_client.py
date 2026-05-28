@@ -4593,3 +4593,63 @@ def test_wait_and_get_json_skips_final_debug_when_hard_deadline_exhausted(tmp_pa
     assert breakdown["response_deadline_hard_stop"] is True
     assert breakdown["response_final_probe_skipped_due_to_deadline"] is True
     assert breakdown["response_timeout_debug_artifact_skipped_due_to_deadline"] is True
+
+
+def test_promotes_fresh_json_from_post_submit_visibility_generic_turn(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    marker = "STALE_GUARD_LIVE_OK_1780009919490820134"
+    response_context = {
+        "response_request_binding_required": True,
+        "response_request_markers": [marker],
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "pre_submit_payload_hashes": [],
+    }
+    submit_evidence = {
+        "post_submit_user_turn_visibility_evidence": {
+            "state": {
+                "last_text_preview": f'Return exactly this JSON object: {{"ok": true, "sentinel": "{marker}", "finished": "finished"}}.',
+                "generic_turns": {
+                    "last_text_preview": f'JSON\n{{"ok":true,"sentinel":"{marker}","finished":"finished"}}',
+                },
+            }
+        }
+    }
+
+    promoted = client._promote_visible_answer_from_submit_evidence(
+        submit_evidence=submit_evidence,
+        response_context=response_context,
+        extraction_started=0.0,
+    )
+
+    assert promoted is not None
+    assert promoted["payload"] == {"ok": True, "sentinel": marker, "finished": "finished"}
+    assert promoted["source"] == "post_submit_visibility_generic_turn"
+    assert response_context["response_extraction_accepted_source"] == "post_submit_visibility_generic_turn"
+    assert response_context["last_response_payload_binding"]["bound_to_post_submit_turn"] is True
+
+
+def test_does_not_promote_prompt_echo_from_visibility_evidence(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    marker = "STALE_GUARD_LIVE_OK_1780009919490820134"
+    response_context = {
+        "response_request_binding_required": True,
+        "response_request_markers": [marker],
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "pre_submit_payload_hashes": [],
+    }
+    submit_evidence = {
+        "post_submit_user_turn_visibility_evidence": {
+            "state": {
+                "last_text_preview": f'Return exactly this JSON object: {{"ok": true, "sentinel": "{marker}", "finished": "finished"}}. JSON GENERATION STRICT RULES:',
+            }
+        }
+    }
+
+    promoted = client._promote_visible_answer_from_submit_evidence(
+        submit_evidence=submit_evidence,
+        response_context=response_context,
+        extraction_started=0.0,
+    )
+
+    assert promoted is None
+    assert "response_extraction_accepted_source" not in response_context
