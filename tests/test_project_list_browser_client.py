@@ -1823,3 +1823,125 @@ def test_try_extract_json_payload_prefers_latest_assistant_turn_scope(tmp_path: 
     assert selector == "section[data-turn='assistant'] >> #code-block-viewer .cm-content"
     assert text_length > 0
     assert probes[0]["scoped_latest_turn"] is True
+
+
+def test_capture_conversation_dom_weight_light_mode_skips_historical_code_blocks(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyLocator:
+        async def count(self):
+            raise AssertionError("light mode must not use broad locator counts")
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.evaluated: list[str] = []
+
+        async def evaluate(self, script, selector):
+            self.evaluated.append(selector)
+            values = {
+                '[data-message-author-role="assistant"]': 145,
+                '[data-message-author-role="user"]': 109,
+                '[data-testid*="conversation-turn"]': 254,
+            }
+            return values.get(selector, 0)
+
+        def locator(self, selector):
+            return DummyLocator()
+
+    import asyncio
+
+    result = asyncio.run(client._capture_conversation_dom_weight(DummyPage()))
+
+    assert result["diagnostic_mode"] == "light"
+    assert result["capture_mode"] == "light"
+    assert result["capture_capped"] is True
+    assert result["assistant_turn_count"] == 145
+    assert result["user_turn_count"] == 109
+    assert result["generic_turn_count"] == 254
+    assert result["code_block_count"] is None
+    assert result["code_block_count_mode"] == "skipped_light"
+    assert result["historical_scan_used"] is False
+    assert result["large_conversation_dom_detected"] is True
+
+
+def test_capture_conversation_dom_weight_deep_mode_allows_exact_counts(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_count(page, selectors):
+        calls.append(tuple(selectors))
+        if selectors == ASSISTANT_MESSAGE_SELECTORS:
+            return 12, selectors[0]
+        if selectors == USER_MESSAGE_SELECTORS:
+            return 8, selectors[0]
+        if selectors == GENERIC_CONVERSATION_TURN_SELECTORS:
+            return 20, selectors[0]
+        if selectors == JSON_BLOCK_SELECTORS:
+            return 222, selectors[0]
+        return 0, None
+
+    from promptbranch_browser_auth.client import (
+        ASSISTANT_MESSAGE_SELECTORS,
+        GENERIC_CONVERSATION_TURN_SELECTORS,
+        JSON_BLOCK_SELECTORS,
+        USER_MESSAGE_SELECTORS,
+    )
+
+    client._count_first_working_selector = fake_count
+
+    import asyncio
+
+    result = asyncio.run(client._capture_conversation_dom_weight(object(), mode="deep"))
+
+    assert result["diagnostic_mode"] == "deep"
+    assert result["capture_capped"] is False
+    assert result["code_block_count"] == 222
+    assert result["code_block_count_mode"] == "exact"
+    assert result["historical_scan_used"] is True
+    assert len(calls) == 4
+
+
+def test_try_extract_json_payload_uses_latest_turn_text_before_historical_json_fallback(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class EmptyScopedJsonLocator:
+        async def count(self):
+            return 0
+
+    class DummyAssistantTurn:
+        def locator(self, selector):
+            return EmptyScopedJsonLocator()
+
+        async def inner_text(self, timeout=None):
+            return '{"ok": true, "sentinel": "LATEST_TEXT_OK"}'
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class GlobalLocator:
+        async def count(self):
+            raise AssertionError("historical JSON fallback must not run when latest-turn text parses")
+
+    class DummyPage:
+        def locator(self, selector):
+            return GlobalLocator()
+
+    async def fake_last_assistant(page):
+        return DummyAssistantTurn(), 'section[data-turn="assistant"]'
+
+    client._get_last_assistant_turn_locator = fake_last_assistant
+    context: dict[str, object] = {}
+
+    import asyncio
+
+    payload, selector, text_length, probes = asyncio.run(
+        client._try_extract_json_payload(DummyPage(), response_context=context)
+    )
+
+    assert payload == {"ok": True, "sentinel": "LATEST_TEXT_OK"}
+    assert selector == 'section[data-turn="assistant"]'
+    assert context["last_response_extraction_mode"] == "latest_turn_text"
+    assert context["last_response_historical_scan_used"] is False
