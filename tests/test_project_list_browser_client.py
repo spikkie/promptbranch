@@ -1711,11 +1711,15 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     async def fail_user_turn_dom(*args, **kwargs):
         raise AssertionError("_submit_prompt must not wait for slow user-turn DOM after submit confirmation")
 
+    async def fail_post_submit_snapshot(*args, **kwargs):
+        raise AssertionError("successful button path must skip post-submit composer snapshots")
+
     client._capture_composer_state = fake_composer_state
     client._capture_user_turn_state = fake_user_turn_state
     client._count_assistant_turns = fake_count_assistant
     client._wait_for_submit_confirmation = fake_confirmation
     client._wait_for_user_turn_dom_evidence = fail_user_turn_dom
+    client._capture_post_submit_composer_state = fail_post_submit_snapshot
 
     import asyncio
 
@@ -1725,7 +1729,10 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["stop_button"]
     assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
-    assert "after_submit_composer_snapshot_seconds" in result
+    assert result["after_submit_composer_snapshot_seconds"] == 0.0
+    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
+    assert result["after_submit_snapshot_skipped_reason"] == "submit_confirmed_without_deep_debug"
+    assert result["after_composer"]["skipped"] is True
     assert "submit_dispatch_to_confirmation_seconds" in result
     assert "submit_accounted_seconds" in result
     assert "submit_unaccounted_seconds" in result

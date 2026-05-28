@@ -1652,6 +1652,7 @@ class ChatGPTBrowserClient:
         phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
+        phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
         phase_timings["submit_dispatch_to_confirmation_seconds"] = submit_evidence.get("submit_dispatch_to_confirmation_seconds")
         phase_timings["submit_accounted_seconds"] = submit_evidence.get("submit_accounted_seconds")
         phase_timings["submit_unaccounted_seconds"] = submit_evidence.get("submit_unaccounted_seconds")
@@ -5383,12 +5384,13 @@ class ChatGPTBrowserClient:
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
-        v0.0.278.10 keeps the v0.0.278.9 accounting invariant while
+        v0.0.278.12 keeps the v0.0.278.9 accounting invariant while
         avoiding broad historical DOM probes on the successful submit path.
         Long task chats can make generic contenteditable/code-block scans
-        tens of seconds slower than fresh chats, so the fast path captures a
-        minimal post-submit composer snapshot and uses latest-turn response
-        extraction before falling back to broad historical selectors.
+        tens of seconds slower than fresh chats, so the fast path skips
+        post-submit composer snapshots after confirmed submits and uses
+        latest-turn response extraction before falling back to broad
+        historical selectors.
         """
 
         submit_total_started = time.monotonic()
@@ -5603,6 +5605,34 @@ class ChatGPTBrowserClient:
                     continue
             return focus_evidence
 
+        post_submit_snapshot_mode = (os.getenv("CHATGPT_POST_SUBMIT_SNAPSHOT_MODE") or "").strip().lower()
+        deep_post_submit_snapshot = (
+            post_submit_snapshot_mode in {"1", "true", "yes", "deep", "full"}
+            or (os.getenv("CHATGPT_DEEP_DEBUG") or "").strip().lower() in {"1", "true", "yes"}
+            or (os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE") or "").strip().lower() == "deep"
+        )
+
+        async def maybe_capture_after_submit_snapshot(*, confirmation: dict[str, Any], reason: str) -> tuple[dict[str, Any], float]:
+            confirmed = bool(confirmation.get("confirmed"))
+            if confirmed and not deep_post_submit_snapshot:
+                return (
+                    {
+                        "snapshot_mode": "skipped_success_fast_path",
+                        "skipped": True,
+                        "skipped_reason": reason,
+                        "deep_debug_enabled": False,
+                    },
+                    0.0,
+                )
+
+            snapshot_started = time.monotonic()
+            after_composer = await self._capture_post_submit_composer_state(page, prompt=prompt)
+            snapshot_completed = time.monotonic()
+            after_composer.setdefault("snapshot_mode", "post_submit_minimal")
+            after_composer["skipped"] = False
+            after_composer["capture_reason"] = "deep_debug" if deep_post_submit_snapshot and confirmed else "submit_confirmation_failed"
+            return after_composer, round(snapshot_completed - snapshot_started, 3)
+
         async def finalize_clicked_submit(click_result: dict[str, Any], *, method: str = "button") -> dict[str, Any]:
             nonlocal send_button_probe_seconds, send_button_click_seconds
             send_button_wait_seconds = round(time.monotonic() - send_wait_started, 3)
@@ -5621,10 +5651,6 @@ class ChatGPTBrowserClient:
                 dispatch_started_at_monotonic=round(dispatch_started, 6) if isinstance(dispatch_started, (int, float)) else None,
                 dispatch_completed_at_monotonic=round(dispatch_completed, 6) if isinstance(dispatch_completed, (int, float)) else None,
             )
-            snapshot_started = time.monotonic()
-            after_composer = await self._capture_post_submit_composer_state(page, prompt=prompt)
-            snapshot_completed = time.monotonic()
-            after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
             confirmation_started = time.monotonic()
             confirmation = await self._wait_for_submit_confirmation(
                 page,
@@ -5632,20 +5658,25 @@ class ChatGPTBrowserClient:
             )
             confirmation_completed = time.monotonic()
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
-            submit_wait_seconds = round(send_button_wait_seconds + after_submit_composer_snapshot_seconds + confirmation_seconds, 3)
+            after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
+                confirmation=confirmation,
+                reason="submit_confirmed_without_deep_debug",
+            )
+            snapshot_completed = time.monotonic()
+            submit_wait_seconds = round(send_button_wait_seconds + confirmation_seconds + after_submit_composer_snapshot_seconds, 3)
             submit_dispatch_to_confirmation_seconds = (
                 round(confirmation_completed - dispatch_completed, 3)
                 if isinstance(dispatch_completed, (int, float))
                 else None
             )
-            duration_seconds = round(confirmation_completed - submit_total_started, 3)
+            duration_seconds = round(snapshot_completed - submit_total_started, 3)
             submit_accounted_seconds = round(
                 composer_state_capture_seconds
                 + user_turn_state_capture_seconds
                 + assistant_turn_count_seconds
                 + send_button_wait_seconds
-                + after_submit_composer_snapshot_seconds
-                + confirmation_seconds,
+                + confirmation_seconds
+                + after_submit_composer_snapshot_seconds,
                 3,
             )
             submit_unaccounted_seconds = round(duration_seconds - submit_accounted_seconds, 3)
@@ -5667,7 +5698,12 @@ class ChatGPTBrowserClient:
                 "after_submit_snapshot_mode": after_composer.get("snapshot_mode"),
                 "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
                 "after_composer": after_composer,
-                "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
+                "composer_cleared": (
+                    None
+                    if after_composer.get("skipped")
+                    else bool((after_composer.get("text_length") or 0) == 0)
+                ),
+                "after_submit_snapshot_skipped_reason": after_composer.get("skipped_reason"),
                 "submit_confirmation": confirmation,
                 "submit_confirmed": bool(confirmation.get("confirmed")),
                 "submit_confirmed_by": confirmation.get("confirmed_by") or [],
@@ -5755,10 +5791,6 @@ class ChatGPTBrowserClient:
         await page.keyboard.press("Enter")
         enter_completed = time.monotonic()
         enter_press_seconds = round(enter_completed - enter_started, 3)
-        snapshot_started = time.monotonic()
-        after_composer = await self._capture_post_submit_composer_state(page, prompt=prompt)
-        snapshot_completed = time.monotonic()
-        after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
         confirmation_started = time.monotonic()
         confirmation = await self._wait_for_submit_confirmation(
             page,
@@ -5766,16 +5798,21 @@ class ChatGPTBrowserClient:
         )
         confirmation_completed = time.monotonic()
         confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
+        after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
+            confirmation=confirmation,
+            reason="submit_confirmed_without_deep_debug",
+        )
+        snapshot_completed = time.monotonic()
         submit_wait_seconds = round(
             send_button_wait_seconds
             + enter_fallback_decision_seconds
             + (enter_press_seconds or 0.0)
-            + after_submit_composer_snapshot_seconds
-            + confirmation_seconds,
+            + confirmation_seconds
+            + after_submit_composer_snapshot_seconds,
             3,
         )
         submit_dispatch_to_confirmation_seconds = round(confirmation_completed - enter_completed, 3)
-        duration_seconds = round(confirmation_completed - submit_total_started, 3)
+        duration_seconds = round(snapshot_completed - submit_total_started, 3)
         submit_accounted_seconds = round(
             composer_state_capture_seconds
             + user_turn_state_capture_seconds
@@ -5783,8 +5820,8 @@ class ChatGPTBrowserClient:
             + send_button_wait_seconds
             + enter_fallback_decision_seconds
             + (enter_press_seconds or 0.0)
-            + after_submit_composer_snapshot_seconds
-            + confirmation_seconds,
+            + confirmation_seconds
+            + after_submit_composer_snapshot_seconds,
             3,
         )
         submit_unaccounted_seconds = round(duration_seconds - submit_accounted_seconds, 3)
@@ -5815,7 +5852,12 @@ class ChatGPTBrowserClient:
             "submit_confirmation_started_at_monotonic": round(confirmation_started, 6),
             "submit_confirmed_at_monotonic": round(confirmation_completed, 6),
             "after_composer": after_composer,
-            "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
+            "composer_cleared": (
+                None
+                if after_composer.get("skipped")
+                else bool((after_composer.get("text_length") or 0) == 0)
+            ),
+            "after_submit_snapshot_skipped_reason": after_composer.get("skipped_reason"),
             "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
         })
         self._log(
