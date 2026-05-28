@@ -1824,7 +1824,11 @@ class ChatGPTBrowserClient:
         phase_timings["submit_network_backend_event_count"] = submit_evidence.get("submit_network_backend_event_count")
         phase_timings["submit_network_marker_event_count"] = submit_evidence.get("submit_network_marker_event_count")
         phase_timings["submit_prepare_request_observed"] = submit_evidence.get("submit_prepare_request_observed")
+        phase_timings["submit_prepare_request_count"] = submit_evidence.get("submit_prepare_request_count")
+        phase_timings["submit_prepare_only"] = submit_evidence.get("submit_prepare_only")
+        phase_timings["submit_prepare_first_observed_after_click_seconds"] = submit_evidence.get("submit_prepare_first_observed_after_click_seconds")
         phase_timings["submit_message_request_observed"] = submit_evidence.get("submit_message_request_observed")
+        phase_timings["submit_message_request_count"] = submit_evidence.get("submit_message_request_count")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -1863,18 +1867,29 @@ class ChatGPTBrowserClient:
         phase_timings["submit_network_backend_event_count"] = submit_evidence.get("submit_network_backend_event_count")
         phase_timings["submit_network_marker_event_count"] = submit_evidence.get("submit_network_marker_event_count")
         phase_timings["submit_prepare_request_observed"] = submit_evidence.get("submit_prepare_request_observed")
+        phase_timings["submit_prepare_request_count"] = submit_evidence.get("submit_prepare_request_count")
+        phase_timings["submit_prepare_only"] = submit_evidence.get("submit_prepare_only")
+        phase_timings["submit_prepare_first_observed_after_click_seconds"] = submit_evidence.get("submit_prepare_first_observed_after_click_seconds")
         phase_timings["submit_message_request_observed"] = submit_evidence.get("submit_message_request_observed")
+        phase_timings["submit_message_request_count"] = submit_evidence.get("submit_message_request_count")
 
         if not bool(submit_evidence.get("submit_confirmed")):
+            failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
+            failure_status = failure_reason if failure_reason == "submit_prepare_without_message_commit" else "submit_causality_not_confirmed"
+            failure_error = (
+                "conversation prepare was observed but no final message commit was proven"
+                if failure_reason == "submit_prepare_without_message_commit"
+                else "submit causality was not confirmed; refusing to wait for or return a response"
+            )
             phase_timings["response_wait_skipped"] = True
-            phase_timings["response_wait_skipped_reason"] = "submit_causality_not_confirmed"
+            phase_timings["response_wait_skipped_reason"] = failure_reason
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             return {
                 "ok": False,
                 "action": "ask",
-                "status": "submit_causality_not_confirmed",
-                "error": "submit causality was not confirmed; refusing to wait for or return a response",
-                "error_type": "submit_causality_not_confirmed",
+                "status": failure_status,
+                "error": failure_error,
+                "error_type": failure_status,
                 "conversation_url": target_url if self._is_conversation_url(target_url) else None,
                 "submit_evidence": submit_evidence,
                 "partial_result": True,
@@ -5604,6 +5619,13 @@ class ChatGPTBrowserClient:
         except ValueError:
             return 5_000
 
+    def _submit_prepare_commit_timeout_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_PREPARE_COMMIT_TIMEOUT_MS") or "3000").strip()
+        try:
+            return max(250, min(15_000, int(raw)))
+        except ValueError:
+            return 3_000
+
     def _request_post_data_text(self, request: Any) -> str:
         try:
             value = getattr(request, "post_data", None)
@@ -5767,12 +5789,25 @@ class ChatGPTBrowserClient:
         marker_events = [event for event in events if event.get("marker_found")]
         prepare_events = [event for event in events if event.get("prepare_request")]
         message_events = [event for event in events if event.get("message_request_candidate")]
+        prepare_only = bool(prepare_events and not message_events and not found)
         if found:
             status = "submit_network_request_observed"
+        elif prepare_only:
+            status = "submit_prepare_without_message_commit"
         elif backend_write_events:
             status = "submit_network_marker_not_observed"
         else:
             status = observer.get("status") or "submit_network_request_not_observed"
+        observer_started = observer.get("started_at_monotonic")
+        prepare_first_after_click = None
+        if prepare_events and isinstance(observer_started, (int, float)):
+            prepare_captured = [
+                event.get("captured_at_monotonic")
+                for event in prepare_events
+                if isinstance(event.get("captured_at_monotonic"), (int, float))
+            ]
+            if prepare_captured:
+                prepare_first_after_click = round(min(prepare_captured) - float(observer_started), 3)
         event_summaries = [
             {
                 "url": event.get("url"),
@@ -5811,7 +5846,14 @@ class ChatGPTBrowserClient:
             "backend_write_event_count": len(backend_write_events),
             "marker_event_count": len(marker_events),
             "prepare_request_observed": bool(prepare_events),
+            "prepare_request_count": len(prepare_events),
+            "prepare_only": prepare_only,
+            "prepare_first_observed_after_click_seconds": prepare_first_after_click,
+            "prepare_request_urls": [event.get("url") for event in prepare_events[:20]],
+            "prepare_request_post_data_lengths": [event.get("post_data_length") for event in prepare_events[:20]],
             "message_request_observed": bool(message_events),
+            "message_request_count": len(message_events),
+            "message_request_urls": [event.get("url") for event in message_events[:20]],
             "event_urls": [event.get("url") for event in events[:20]],
             "backend_write_event_urls": [event.get("url") for event in backend_write_events[:20]],
             "event_summaries": event_summaries,
@@ -5854,7 +5896,9 @@ class ChatGPTBrowserClient:
                 return snapshot
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
-                if snapshot.get("backend_write_event_count"):
+                if snapshot.get("prepare_request_observed") and not snapshot.get("message_request_observed") and not snapshot.get("request_marker_found"):
+                    snapshot["status"] = "submit_prepare_without_message_commit"
+                elif snapshot.get("backend_write_event_count"):
                     snapshot["status"] = "submit_network_marker_not_observed"
                 else:
                     snapshot["status"] = "submit_network_request_not_observed"
@@ -6032,12 +6076,13 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.23 keeps URL-only confirmation rejected, but moves the
+        v0.0.278.24 keeps URL-only confirmation rejected, but moves the
         first causality proof closer to the mutation trigger.  A browser network
         observer is armed before clicking submit; this method first requires a
         post-click ChatGPT backend request carrying the current prompt marker.
-        Only after that network proof is unavailable/disabled does it rely on
-        backend conversation state or DOM echo fallbacks.
+        It models /backend-api/f/conversation/prepare as a separate phase:
+        prepare-only evidence is useful diagnostics, but it is not message
+        submission proof and fails closed as submit_prepare_without_message_commit.
         """
 
         started = time.monotonic()
@@ -6108,6 +6153,12 @@ class ChatGPTBrowserClient:
                 fields["network_submit_request_observed"] = True
                 fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
                 fields["network_submit_request_status"] = network_evidence.get("status")
+                fields["prepare_request_observed"] = bool(network_evidence.get("prepare_request_observed"))
+                fields["prepare_request_count"] = network_evidence.get("prepare_request_count")
+                fields["prepare_only"] = bool(network_evidence.get("prepare_only"))
+                fields["prepare_first_observed_after_click_seconds"] = network_evidence.get("prepare_first_observed_after_click_seconds")
+                fields["message_request_observed"] = bool(network_evidence.get("message_request_observed"))
+                fields["message_request_count"] = network_evidence.get("message_request_count")
                 return {
                     **fields,
                     "confirmed": True,
@@ -6126,8 +6177,15 @@ class ChatGPTBrowserClient:
                     "historical_count_used": False,
                 }
             duration = round(time.monotonic() - started, 3)
+            prepare_only = bool(
+                network_evidence.get("prepare_request_observed")
+                and not network_evidence.get("message_request_observed")
+                and not network_evidence.get("request_marker_found")
+            )
+            causal_reason = "submit_prepare_without_message_commit" if prepare_only else "network_submit_request_not_observed"
+            confirmation_mode = "submit_prepare_only_timeout" if prepare_only else "network_submit_request_timeout"
             fields = self._submit_confirmation_timing_fields(
-                mode="network_submit_request_timeout",
+                mode=confirmation_mode,
                 fast_path_used=False,
                 fallback_used=False,
                 duration_seconds=duration,
@@ -6137,7 +6195,7 @@ class ChatGPTBrowserClient:
                 confirmed_by=[],
                 causal_required=causal_required,
                 causal_verified=False,
-                causal_reason="network_submit_request_not_observed",
+                causal_reason=causal_reason,
                 url_only_rejected=False,
                 user_turn_echo_found=False,
                 user_turn_echo_seconds=user_echo_seconds_total,
@@ -6145,6 +6203,12 @@ class ChatGPTBrowserClient:
             fields["network_submit_request_observed"] = False
             fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
             fields["network_submit_request_status"] = network_evidence.get("status")
+            fields["prepare_request_observed"] = bool(network_evidence.get("prepare_request_observed"))
+            fields["prepare_request_count"] = network_evidence.get("prepare_request_count")
+            fields["prepare_only"] = prepare_only
+            fields["prepare_first_observed_after_click_seconds"] = network_evidence.get("prepare_first_observed_after_click_seconds")
+            fields["message_request_observed"] = bool(network_evidence.get("message_request_observed"))
+            fields["message_request_count"] = network_evidence.get("message_request_count")
             return {
                 **fields,
                 "confirmed": False,
@@ -6882,7 +6946,11 @@ class ChatGPTBrowserClient:
                 "submit_network_backend_event_count": (confirmation.get("submit_network_evidence") or {}).get("backend_write_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_network_marker_event_count": (confirmation.get("submit_network_evidence") or {}).get("marker_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_prepare_request_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_request_count": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_only": (confirmation.get("submit_network_evidence") or {}).get("prepare_only") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_first_observed_after_click_seconds": (confirmation.get("submit_network_evidence") or {}).get("prepare_first_observed_after_click_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_message_request_observed": (confirmation.get("submit_network_evidence") or {}).get("message_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_message_request_count": (confirmation.get("submit_network_evidence") or {}).get("message_request_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
                 "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
@@ -7059,7 +7127,11 @@ class ChatGPTBrowserClient:
             "submit_network_backend_event_count": (confirmation.get("submit_network_evidence") or {}).get("backend_write_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_network_marker_event_count": (confirmation.get("submit_network_evidence") or {}).get("marker_event_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_prepare_request_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_request_count": (confirmation.get("submit_network_evidence") or {}).get("prepare_request_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_only": (confirmation.get("submit_network_evidence") or {}).get("prepare_only") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_first_observed_after_click_seconds": (confirmation.get("submit_network_evidence") or {}).get("prepare_first_observed_after_click_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_message_request_observed": (confirmation.get("submit_network_evidence") or {}).get("message_request_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_message_request_count": (confirmation.get("submit_network_evidence") or {}).get("message_request_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
             "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
             "submit_network_evidence": confirmation.get("submit_network_evidence"),
