@@ -1978,9 +1978,81 @@ def test_response_wait_timing_fields_accounts_post_stabilization_tail(tmp_path: 
     assert fields["response_probe_attempt_count"] == 3
 
 
-def test_wait_and_get_json_records_response_wait_breakdown_and_debug_tail(tmp_path: Path) -> None:
+def test_wait_and_get_json_fast_returns_latest_turn_json_without_completion_probe(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.debug = True
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("latest-turn JSON fast return should not poll after parseable payload")
+
+    async def fake_open(*args, **kwargs):
+        return None
+
+    async def fake_extract(page, *, response_context=None):
+        if isinstance(response_context, dict):
+            response_context["last_response_extraction_mode"] = "latest_turn_json"
+        return (
+            {"ok": True, "sentinel": "FAST_RETURN_OK"},
+            'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+            35,
+            [
+                {
+                    "selector": 'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+                    "count": 1,
+                    "visible": True,
+                    "text_length": 35,
+                    "parsed": True,
+                    "scoped_latest_turn": True,
+                }
+            ],
+        )
+
+    async def forbidden_submit_state(page):
+        raise AssertionError("latest-turn JSON fast return should skip completion submit-state probe")
+
+    async def forbidden_thinking_state(page):
+        raise AssertionError("latest-turn JSON fast return should skip thinking-state probe")
+
+    async def fake_safe_url(page):
+        return page.url
+
+    async def forbidden_save(*args, **kwargs):
+        raise AssertionError("latest-turn JSON fast return should skip success-path debug artifact save")
+
+    client._maybe_open_new_project_conversation = fake_open
+    client._try_extract_json_payload = fake_extract
+    client._probe_submit_button_state = forbidden_submit_state
+    client._probe_thinking_state = forbidden_thinking_state
+    client._safe_page_url = fake_safe_url
+    client._save_response_diagnostics = forbidden_save
+
+    import asyncio
+    import time
+
+    context = {"response_wait_started_at_monotonic": time.monotonic()}
+    payload = asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+
+    assert payload == {"ok": True, "sentinel": "FAST_RETURN_OK"}
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_probe_attempt_count"] == 1
+    assert breakdown["response_parseable_probe_attempt_count"] == 1
+    assert breakdown["response_json_fast_return_used"] is True
+    assert breakdown["response_json_fast_return_reason"] == "latest_turn_json_parseable"
+    assert breakdown["response_completion_signal_skipped"] is True
+    assert breakdown["response_completion_signal_skipped_reason"] == "latest_turn_json_fast_return"
+    assert breakdown["response_completion_signal_probe_seconds"] == 0.0
+    assert breakdown["response_debug_artifact_saved"] is False
+    assert breakdown["response_debug_artifact_seconds"] == 0.0
+    assert breakdown["response_post_stabilization_return_seconds"] == 0.0
+
+
+def test_wait_and_get_json_deep_debug_keeps_completion_probe_and_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+    monkeypatch.setenv("CHATGPT_RESPONSE_DEBUG_ARTIFACTS", "1")
 
     class DummyPage:
         url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
@@ -1992,6 +2064,8 @@ def test_wait_and_get_json_records_response_wait_breakdown_and_debug_tail(tmp_pa
         return None
 
     async def fake_extract(page, *, response_context=None):
+        if isinstance(response_context, dict):
+            response_context["last_response_extraction_mode"] = "latest_turn_json"
         return (
             {"ok": True, "sentinel": "TIMING_OK"},
             'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
@@ -2003,6 +2077,7 @@ def test_wait_and_get_json_records_response_wait_breakdown_and_debug_tail(tmp_pa
                     "visible": True,
                     "text_length": 35,
                     "parsed": True,
+                    "scoped_latest_turn": True,
                 }
             ],
         )
@@ -2044,10 +2119,11 @@ def test_wait_and_get_json_records_response_wait_breakdown_and_debug_tail(tmp_pa
 
     assert payload == {"ok": True, "sentinel": "TIMING_OK"}
     breakdown = context["response_wait_breakdown"]
-    assert breakdown["response_probe_attempt_count"] == 1
-    assert breakdown["response_parseable_probe_attempt_count"] == 1
-    assert breakdown["response_wait_to_first_json_candidate_seconds"] is not None
-    assert breakdown["response_wait_to_first_parseable_json_seconds"] is not None
-    assert breakdown["response_json_stabilization_seconds"] is not None
-    assert breakdown["response_completion_signal_seconds"] is not None
+    assert breakdown["response_json_fast_return_used"] is False
+    assert breakdown["response_json_fast_return_reason"] == "deep_debug_enabled"
+    assert breakdown["response_completion_signal_skipped"] is False
+    assert breakdown["response_completion_signal_probe_seconds"] is not None
+    assert breakdown["response_debug_artifact_saved"] is True
+    assert breakdown["response_debug_artifact_seconds"] >= 0.015
     assert breakdown["response_post_stabilization_return_seconds"] >= 0.015
+

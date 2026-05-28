@@ -10959,6 +10959,52 @@ class ChatGPTBrowserClient:
             return None
         return round(max(0.0, end - start), 3)
 
+
+    def _response_deep_debug_enabled(self) -> bool:
+        """Return True only when response success-path deep diagnostics were explicitly requested."""
+        return (
+            (os.getenv("CHATGPT_RESPONSE_DEBUG_ARTIFACTS") or "").strip().lower() in {"1", "true", "yes", "deep", "full"}
+            or (os.getenv("CHATGPT_DEEP_DEBUG") or "").strip().lower() in {"1", "true", "yes"}
+            or (os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE") or "").strip().lower() == "deep"
+        )
+
+    def _latest_turn_json_fast_return_enabled(self, response_context: Optional[dict[str, Any]]) -> tuple[bool, str]:
+        """Return whether parseable latest-turn JSON may bypass global completion probes."""
+        mode = (os.getenv("CHATGPT_RESPONSE_JSON_FAST_RETURN") or "").strip().lower()
+        if mode in {"0", "false", "no", "off", "disabled"}:
+            return False, "disabled_by_env"
+        if self._response_deep_debug_enabled():
+            return False, "deep_debug_enabled"
+        extraction_mode = None
+        if isinstance(response_context, dict):
+            extraction_mode = response_context.get("last_response_extraction_mode")
+        if extraction_mode != "latest_turn_json":
+            return False, f"extraction_mode_not_latest_turn_json:{extraction_mode or 'unknown'}"
+        return True, "latest_turn_json_parseable"
+
+    def _mark_response_json_fast_return(
+        self,
+        breakdown: dict[str, Any],
+        *,
+        first_payload_seen_at: float,
+        returned_at: Optional[float] = None,
+        reason: str,
+    ) -> None:
+        stabilized_at = time.monotonic() if returned_at is None else returned_at
+        breakdown["response_payload_stabilized_at_monotonic"] = stabilized_at
+        breakdown["response_json_stabilization_seconds"] = self._duration_between(first_payload_seen_at, stabilized_at)
+        first_parseable_at = self._safe_timing_float(breakdown.get("response_first_parseable_json_at_monotonic"))
+        breakdown["response_completion_signal_seconds"] = 0.0
+        breakdown["response_completion_signal_probe_seconds"] = round(float(breakdown.get("response_completion_signal_probe_seconds") or 0.0), 3)
+        breakdown["response_json_fast_return_used"] = True
+        breakdown["response_json_fast_return_reason"] = reason
+        breakdown["response_completion_signal_skipped"] = True
+        breakdown["response_completion_signal_skipped_reason"] = "latest_turn_json_fast_return"
+        breakdown["response_debug_artifact_saved"] = False
+        breakdown["response_debug_artifact_seconds"] = 0.0
+        breakdown["response_post_stabilization_return_seconds"] = 0.0
+        breakdown["response_wait_returned_at_monotonic"] = stabilized_at
+
     def _response_wait_timing_fields(
         self,
         response_context: Optional[dict[str, Any]],
@@ -10999,6 +11045,12 @@ class ChatGPTBrowserClient:
             "response_probe_attempt_count",
             "response_parseable_probe_attempt_count",
             "response_stable_poll_count",
+            "response_json_fast_return_used",
+            "response_json_fast_return_reason",
+            "response_completion_signal_skipped",
+            "response_completion_signal_skipped_reason",
+            "response_debug_artifact_saved",
+            "response_debug_artifact_seconds",
         ]
         for key in timing_keys:
             if key in breakdown:
@@ -11747,19 +11799,15 @@ class ChatGPTBrowserClient:
                 breakdown["response_parseable_probe_attempt_count"] = attempt
 
             probe_summary = self._summarize_probes(probes)
-            completion_probe_started = time.monotonic()
-            submit_state = await self._probe_submit_button_state(page)
-            thinking_state = await self._probe_thinking_state(page)
+            submit_state: dict[str, Any] = {}
+            thinking_state: dict[str, Any] = {}
             current_url = await self._safe_page_url(page)
-            completion_probe_finished = time.monotonic()
-            add_duration("response_completion_signal_probe_seconds", completion_probe_finished - completion_probe_started)
-            running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
-            idle_now = bool(observed_running_state and not submit_state.get("stop_visible") and not thinking_state.get("visible"))
-
-            if running_now:
-                observed_running_state = True
-            elif idle_now:
-                observed_idle_after_running = True
+            running_now = False
+            idle_now = False
+            completion_ready = False
+            completion_blockers: list[str] = []
+            strong_idle_completion = False
+            idle_label_visible = False
 
             if payload is not None:
                 payload_signature = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -11770,7 +11818,7 @@ class ChatGPTBrowserClient:
                     breakdown["response_detected_after_parseable_probe_seconds"] = self._duration_between(first_parseable_at, first_payload_seen_at)
                     self._log(
                         "response",
-                        "parseable json payload detected; waiting for completion signals",
+                        "parseable json payload detected",
                         selector=selector,
                         attempt=attempt,
                         elapsed_s=round(elapsed_s, 1),
@@ -11793,6 +11841,48 @@ class ChatGPTBrowserClient:
                     )
                 breakdown["response_stable_poll_count"] = stable_polls
 
+                fast_return_enabled, fast_return_reason = self._latest_turn_json_fast_return_enabled(response_context)
+                if fast_return_enabled:
+                    returned_at = time.monotonic()
+                    self._mark_response_json_fast_return(
+                        breakdown,
+                        first_payload_seen_at=first_payload_seen_at,
+                        returned_at=returned_at,
+                        reason=fast_return_reason,
+                    )
+                    self._log(
+                        "response",
+                        "parseable latest-turn json fast-returned without completion probes",
+                        selector=selector,
+                        attempt=attempt,
+                        elapsed_s=round(elapsed_s, 1),
+                        text_length=text_length,
+                        fast_return_reason=fast_return_reason,
+                        response_completion_signal_skipped=True,
+                    )
+                    return payload
+                breakdown["response_json_fast_return_used"] = False
+                breakdown["response_json_fast_return_reason"] = fast_return_reason
+                breakdown["response_completion_signal_skipped"] = False
+                breakdown["response_completion_signal_skipped_reason"] = None
+                breakdown.setdefault("response_debug_artifact_saved", False)
+                breakdown.setdefault("response_debug_artifact_seconds", 0.0)
+
+            completion_probe_started = time.monotonic()
+            submit_state = await self._probe_submit_button_state(page)
+            thinking_state = await self._probe_thinking_state(page)
+            current_url = await self._safe_page_url(page)
+            completion_probe_finished = time.monotonic()
+            add_duration("response_completion_signal_probe_seconds", completion_probe_finished - completion_probe_started)
+            running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
+            idle_now = bool(observed_running_state and not submit_state.get("stop_visible") and not thinking_state.get("visible"))
+
+            if running_now:
+                observed_running_state = True
+            elif idle_now:
+                observed_idle_after_running = True
+
+            if payload is not None:
                 stable_elapsed_s = 0.0
                 if first_payload_seen_at is not None:
                     stable_elapsed_s = time.monotonic() - first_payload_seen_at
@@ -11882,7 +11972,8 @@ class ChatGPTBrowserClient:
                         observed_running_state=observed_running_state,
                         observed_idle_after_running=observed_idle_after_running,
                     )
-                    if self.config.debug:
+                    if self._response_deep_debug_enabled():
+                        debug_started = time.monotonic()
                         await self._save_response_diagnostics(
                             page,
                             probes=probes,
@@ -11891,6 +11982,11 @@ class ChatGPTBrowserClient:
                             elapsed_s=elapsed_s,
                             include_page_artifacts=False,
                         )
+                        breakdown["response_debug_artifact_saved"] = True
+                        add_duration("response_debug_artifact_seconds", time.monotonic() - debug_started)
+                    else:
+                        breakdown["response_debug_artifact_saved"] = False
+                        breakdown["response_debug_artifact_seconds"] = round(float(breakdown.get("response_debug_artifact_seconds") or 0.0), 3)
                     returned_at = time.monotonic()
                     breakdown["response_wait_returned_at_monotonic"] = returned_at
                     breakdown["response_post_stabilization_return_seconds"] = self._duration_between(stabilized_at, returned_at)
