@@ -3138,7 +3138,7 @@ def test_submit_response_body_shape_reports_redacted_conduit_token_metadata(tmp_
     assert "secret-conduit-token" not in json.dumps(shape)
 
 
-def test_submit_network_snapshot_classifies_prepare_conduit_token_not_consumed(tmp_path: Path) -> None:
+def test_submit_network_snapshot_classifies_prepare_token_set_not_consumed(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     prepare_event = {
         "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
@@ -3178,11 +3178,13 @@ def test_submit_network_snapshot_classifies_prepare_conduit_token_not_consumed(t
 
     snapshot = client._submit_network_evidence_snapshot(observer)
 
-    assert snapshot["status"] == "submit_prepare_conduit_token_not_consumed"
+    assert snapshot["status"] == "prepare_token_set_not_consumed"
     assert snapshot["prepare_conduit_token_present"] is True
     assert snapshot["prepare_conduit_token_sha256_12"] == prepare_shape["conduit_token_sha256_12"]
     assert snapshot["conduit_transport_observed"] is False
-    assert snapshot["conduit_error_hint"] == "submit_prepare_conduit_token_not_consumed"
+    assert snapshot["prepare_token_set_not_consumed"] is True
+    assert snapshot["prepare_only_then_idle_without_commit"] is False
+    assert snapshot["conduit_error_hint"] == "prepare_token_set_not_consumed"
     assert "secret-conduit-token" not in json.dumps(snapshot)
 
 
@@ -3420,3 +3422,113 @@ def test_submit_network_snapshot_classifies_stream_started_without_user_message_
     assert snapshot["stream_started_without_user_message_commit"] is True
     assert snapshot["post_prepare_stream_status_streaming_observed"] is True
     assert snapshot["post_prepare_stream_observed"] is True
+
+
+def test_submit_network_snapshot_classifies_prepare_only_then_idle_without_commit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    prepare_shape = client._submit_response_body_shape(
+        json.dumps({"status": "ok", "conduit_token": "secret-conduit-token"}),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+    stream_shape = client._submit_response_body_shape(
+        json.dumps({"status": "COMPLETE"}),
+        url="https://chatgpt.com/backend-api/conversation/abc/stream_status",
+        status=200,
+    )
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event],
+        "all_events": [prepare_event],
+        "responses": [],
+        "all_responses": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "status": 200,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.30,
+                "body_shape": prepare_shape,
+            },
+            {
+                "url": "https://chatgpt.com/backend-api/conversation/abc/stream_status",
+                "status": 200,
+                "prepare_request": False,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.40,
+                "body_shape": stream_shape,
+            },
+        ],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["status"] == "prepare_only_then_idle_without_commit"
+    assert snapshot["conduit_error_hint"] == "prepare_only_then_idle_without_commit"
+    assert snapshot["prepare_token_set_not_consumed"] is True
+    assert snapshot["prepare_only_then_idle_without_commit"] is True
+    assert snapshot["post_prepare_stream_status_complete_observed"] is True
+    assert snapshot["post_prepare_stream_status_streaming_observed"] is False
+    assert snapshot["conduit_transport_observed"] is False
+    assert "secret-conduit-token" not in json.dumps(snapshot)
+
+
+def test_post_prepare_ui_error_text_filter_ignores_composer_footer_noise(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._post_prepare_ui_error_text_is_strict(
+        "Instant\nUse Voice\nCtrl\nShift\nV\nChatGPT can make mistakes. Check important info.",
+        selector='[role="alert"]',
+    ) is False
+    assert client._post_prepare_ui_error_text_is_strict(
+        "Something went wrong. Please try again.",
+        selector='[role="alert"]',
+    ) is True
+
+
+def test_submit_variant_network_summary_reports_keyboard_prepare_only(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    confirmation = {
+        "confirmed": False,
+        "confirmation_mode": "submit_prepare_only_then_idle_without_commit_timeout",
+        "causal_confirmation_reason": "prepare_only_then_idle_without_commit",
+        "submit_network_evidence": {
+            "status": "prepare_only_then_idle_without_commit",
+            "prepare_request_observed": True,
+            "prepare_request_count": 2,
+            "prepare_only": True,
+            "prepare_only_then_idle_without_commit": True,
+            "prepare_token_set_not_consumed": True,
+            "message_request_observed": False,
+            "message_request_count": 0,
+            "conduit_transport_observed": False,
+            "conduit_error_hint": "prepare_only_then_idle_without_commit",
+            "stream_status_values": ["COMPLETE"],
+            "post_prepare_stream_status_values": ["COMPLETE"],
+        },
+    }
+
+    summary = client._submit_variant_network_summary(confirmation, variant="keyboard_enter", dispatch_key="Enter")
+
+    assert summary["variant"] == "keyboard_enter"
+    assert summary["dispatch_key"] == "Enter"
+    assert summary["confirmed"] is False
+    assert summary["network_status"] == "prepare_only_then_idle_without_commit"
+    assert summary["prepare_only_then_idle_without_commit"] is True
+    assert summary["prepare_token_set_not_consumed"] is True
