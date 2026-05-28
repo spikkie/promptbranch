@@ -1648,6 +1648,15 @@ class ChatGPTBrowserClient:
         def mark_phase(name: str, started: float) -> None:
             phase_timings[name] = round(time.monotonic() - started, 3)
 
+        prompt, response_request_binding = self._prepare_json_response_request_binding(
+            prompt,
+            expect_json=expect_json,
+        )
+        phase_timings["response_request_binding_required"] = response_request_binding.get("response_request_binding_required")
+        phase_timings["response_request_binding_mode"] = response_request_binding.get("response_request_binding_mode")
+        phase_timings["response_request_marker_count"] = response_request_binding.get("response_request_marker_count")
+        phase_timings["response_request_nonce_injected"] = response_request_binding.get("response_request_nonce_injected")
+
         phase_started = time.monotonic()
         await self.ensure_logged_in(page, context)
         mark_phase("auth_check_seconds", phase_started)
@@ -1738,6 +1747,8 @@ class ChatGPTBrowserClient:
 
         phase_started = time.monotonic()
         response_context = await self._capture_response_context(page)
+        if isinstance(response_context, dict):
+            response_context.update(response_request_binding)
         mark_phase("response_context_seconds", phase_started)
         dom_weight = response_context.get("dom_weight") if isinstance(response_context, dict) else {}
         if isinstance(dom_weight, dict):
@@ -1825,6 +1836,8 @@ class ChatGPTBrowserClient:
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             timeout_result["ask_phase_timings"] = phase_timings
             return timeout_result
+        if expect_json:
+            answer = self._strip_response_request_nonce(answer, response_context)
         response_wait_returned = time.monotonic()
         phase_timings.update(self._response_wait_timing_fields(
             response_context,
@@ -11259,6 +11272,132 @@ class ChatGPTBrowserClient:
             text = str(value)
         return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
 
+    def _response_request_binding_guard_enabled(self) -> bool:
+        mode = (os.getenv("CHATGPT_RESPONSE_REQUEST_BINDING_GUARD") or "").strip().lower()
+        return mode not in {"0", "false", "no", "off", "disabled"}
+
+    @staticmethod
+    def _response_request_nonce_key() -> str:
+        return "promptbranch_request_nonce"
+
+    def _new_response_request_nonce(self) -> str:
+        seed = f"{time.time_ns()}:{os.getpid()}:{id(self)}"
+        digest = hashlib.sha256(seed.encode("utf-8", errors="replace")).hexdigest()[:20]
+        return f"pb_req_{digest}"
+
+    def _extract_prompt_response_markers(self, prompt: str) -> list[str]:
+        """Extract request-specific markers already present in a JSON ask."""
+        text = str(prompt or "")
+        markers: list[str] = []
+
+        def add(value: object) -> None:
+            marker = str(value or "").strip()
+            if not marker or marker in markers:
+                return
+            if len(marker) < 12:
+                return
+            lowered = marker.lower()
+            if lowered in {"finished", "true", "false", "null"}:
+                return
+            if not (any(ch.isdigit() for ch in marker) or "_" in marker or "-" in marker or marker.startswith("pb_req_")):
+                return
+            markers.append(marker)
+
+        for pattern in [
+            r'"(?:sentinel|nonce|request_nonce|promptbranch_request_nonce|request_id|correlation_id)"\s*:\s*"([^"]+)"',
+            r"'(?:sentinel|nonce|request_nonce|promptbranch_request_nonce|request_id|correlation_id)'\s*:\s*'([^']+)'",
+        ]:
+            for match in re.finditer(pattern, text):
+                add(match.group(1))
+
+        for match in re.finditer(r"\b[A-Z][A-Z0-9_]{8,}_[0-9]{8,}\b", text):
+            add(match.group(0))
+
+        return markers[:8]
+
+    def _prepare_json_response_request_binding(self, prompt: str, *, expect_json: bool) -> tuple[str, dict[str, Any]]:
+        guard: dict[str, Any] = {
+            "response_request_binding_required": False,
+            "response_request_binding_mode": "not_required",
+            "response_request_nonce_key": self._response_request_nonce_key(),
+            "response_request_nonce": None,
+            "response_request_nonce_injected": False,
+            "response_request_markers": [],
+            "response_request_marker_count": 0,
+        }
+        if not expect_json or not self._response_request_binding_guard_enabled():
+            guard["response_request_binding_mode"] = "disabled_or_not_json"
+            return prompt, guard
+
+        markers = self._extract_prompt_response_markers(prompt)
+        if markers:
+            guard.update({
+                "response_request_binding_required": True,
+                "response_request_binding_mode": "prompt_marker",
+                "response_request_markers": markers,
+                "response_request_marker_count": len(markers),
+            })
+            return prompt, guard
+
+        nonce = self._new_response_request_nonce()
+        nonce_key = self._response_request_nonce_key()
+        guarded_prompt = (
+            prompt
+            + "\n\nPROMPTBRANCH RESPONSE FRESHNESS GUARD:\n"
+            + f'- Include the key-value pair "{nonce_key}": "{nonce}" in the JSON object you return.\n'
+            + "- Preserve all user-requested JSON fields.\n"
+            + f'- If a "finished" field is required to be last, place "{nonce_key}" before "finished".\n'
+            + "- This field is required for client-side freshness verification.\n"
+        )
+        guard.update({
+            "response_request_binding_required": True,
+            "response_request_binding_mode": "injected_nonce",
+            "response_request_nonce": nonce,
+            "response_request_nonce_injected": True,
+            "response_request_markers": [nonce],
+            "response_request_marker_count": 1,
+        })
+        return guarded_prompt, guard
+
+    def _payload_contains_response_request_marker(
+        self,
+        payload: Any,
+        *,
+        markers: list[str],
+        nonce_key: Optional[str] = None,
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        if not markers:
+            return True, None, "no_marker_required"
+        try:
+            payload_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            payload_text = str(payload)
+        for marker in markers:
+            if marker and marker in payload_text:
+                return True, marker, "request_marker_match"
+        if isinstance(payload, dict) and nonce_key:
+            nonce_value = str(payload.get(nonce_key) or "")
+            for marker in markers:
+                if nonce_value == marker:
+                    return True, marker, "request_nonce_match"
+        return False, None, "request_marker_missing"
+
+    def _strip_response_request_nonce(self, payload: Any, response_context: Optional[dict[str, Any]]) -> Any:
+        if not isinstance(payload, dict) or not isinstance(response_context, dict):
+            return payload
+        nonce_key = response_context.get("response_request_nonce_key") or self._response_request_nonce_key()
+        if not response_context.get("response_request_nonce_injected"):
+            return payload
+        if nonce_key not in payload:
+            return payload
+        stripped = dict(payload)
+        stripped.pop(str(nonce_key), None)
+        response_context["response_request_nonce_stripped_from_answer"] = True
+        breakdown = response_context.get("response_wait_breakdown")
+        if isinstance(breakdown, dict):
+            breakdown["response_request_nonce_stripped_from_answer"] = True
+        return stripped
+
     def _response_freshness_guard_enabled(self) -> bool:
         mode = (os.getenv("CHATGPT_RESPONSE_FRESHNESS_GUARD") or "").strip().lower()
         return mode not in {"0", "false", "no", "off", "disabled"}
@@ -11609,6 +11748,15 @@ class ChatGPTBrowserClient:
             "payload_current_turn_count": None,
             "payload_seen_before_submit": None,
             "pre_submit_payload_hashes_count": 0,
+            "request_binding_required": False,
+            "request_binding_mode": "not_required",
+            "request_marker_count": 0,
+            "request_marker_verified": False,
+            "request_marker_matched": None,
+            "request_marker_reason": None,
+            "request_nonce_key": None,
+            "request_nonce_injected": False,
+            "request_nonce_stripped_from_answer": False,
         }
         if not isinstance(response_context, dict):
             return result
@@ -11625,12 +11773,44 @@ class ChatGPTBrowserClient:
             result.update({"mode": "disabled", "reason": "disabled_by_env"})
             return result
 
+        request_markers_raw = response_context.get("response_request_markers")
+        request_markers = [str(marker) for marker in request_markers_raw] if isinstance(request_markers_raw, list) else []
+        request_binding_required = bool(response_context.get("response_request_binding_required") and request_markers)
+        nonce_key = str(response_context.get("response_request_nonce_key") or self._response_request_nonce_key())
         result.update({
             "required": True,
             "verified": False,
-            "mode": "post_submit_payload_binding",
-            "reason": "payload_not_bound_to_post_submit_turn",
+            "mode": "request_marker" if request_binding_required else "post_submit_payload_binding",
+            "reason": "request_marker_missing" if request_binding_required else "payload_not_bound_to_post_submit_turn",
+            "request_binding_required": request_binding_required,
+            "request_binding_mode": response_context.get("response_request_binding_mode") or "not_required",
+            "request_marker_count": len(request_markers),
+            "request_nonce_key": nonce_key,
+            "request_nonce_injected": bool(response_context.get("response_request_nonce_injected")),
         })
+
+        if request_binding_required:
+            marker_verified, marker, marker_reason = self._payload_contains_response_request_marker(
+                payload,
+                markers=request_markers,
+                nonce_key=nonce_key,
+            )
+            result["request_marker_verified"] = bool(marker_verified)
+            result["request_marker_matched"] = marker
+            result["request_marker_reason"] = marker_reason
+            if marker_verified:
+                result.update({
+                    "verified": True,
+                    "reason": marker_reason or "request_marker_match",
+                    "stale_candidate_detected": False,
+                })
+                response_context["last_response_request_marker_verified"] = True
+                response_context["last_response_request_marker_reason"] = result["reason"]
+                return result
+            result["stale_candidate_detected"] = True
+            response_context["last_response_request_marker_verified"] = False
+            response_context["last_response_request_marker_reason"] = marker_reason or "request_marker_missing"
+            return result
 
         binding = response_context.get("last_response_payload_binding")
         if isinstance(binding, dict):
@@ -11692,6 +11872,14 @@ class ChatGPTBrowserClient:
         breakdown["response_payload_current_turn_count"] = freshness.get("payload_current_turn_count")
         breakdown["response_pre_submit_payload_hashes_count"] = freshness.get("pre_submit_payload_hashes_count")
         breakdown["response_payload_seen_before_submit"] = bool(freshness.get("payload_seen_before_submit"))
+        breakdown["response_request_binding_required"] = bool(freshness.get("request_binding_required"))
+        breakdown["response_request_binding_mode"] = freshness.get("request_binding_mode")
+        breakdown["response_request_marker_count"] = freshness.get("request_marker_count")
+        breakdown["response_request_marker_verified"] = bool(freshness.get("request_marker_verified"))
+        breakdown["response_request_marker_reason"] = freshness.get("request_marker_reason")
+        breakdown["response_request_nonce_key"] = freshness.get("request_nonce_key")
+        breakdown["response_request_nonce_injected"] = bool(freshness.get("request_nonce_injected"))
+        breakdown.setdefault("response_request_nonce_stripped_from_answer", False)
 
     def _latest_turn_json_fast_return_enabled(self, response_context: Optional[dict[str, Any]]) -> tuple[bool, str]:
         """Return whether parseable latest-turn JSON may bypass global completion probes."""
@@ -11702,6 +11890,8 @@ class ChatGPTBrowserClient:
             return False, "deep_debug_enabled"
         extraction_mode = None
         if isinstance(response_context, dict):
+            if response_context.get("last_response_request_marker_verified"):
+                return True, response_context.get("last_response_request_marker_reason") or "request_marker_match"
             extraction_mode = response_context.get("last_response_extraction_mode")
         if extraction_mode != "latest_turn_json":
             return False, f"extraction_mode_not_latest_turn_json:{extraction_mode or 'unknown'}"
@@ -11794,6 +11984,14 @@ class ChatGPTBrowserClient:
             "response_payload_current_turn_count",
             "response_pre_submit_payload_hashes_count",
             "response_payload_seen_before_submit",
+            "response_request_binding_required",
+            "response_request_binding_mode",
+            "response_request_marker_count",
+            "response_request_marker_verified",
+            "response_request_marker_reason",
+            "response_request_nonce_key",
+            "response_request_nonce_injected",
+            "response_request_nonce_stripped_from_answer",
         ]
         for key in timing_keys:
             if key in breakdown:
