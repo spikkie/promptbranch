@@ -409,6 +409,7 @@ async def ask(
     expect_json: bool = Form(False),
     keep_open: bool = Form(False),
     retries: Optional[int] = Form(None),
+    service_timeout_seconds: Optional[float] = Form(default=None),
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
@@ -431,6 +432,8 @@ async def ask(
             "keep_open": keep_open,
             "retries": retries,
         }
+        if service_timeout_seconds is not None:
+            ask_kwargs["service_timeout_seconds"] = service_timeout_seconds
         if len(temp_paths) == 1:
             ask_kwargs["file_path"] = str(temp_paths[0])
         elif temp_paths:

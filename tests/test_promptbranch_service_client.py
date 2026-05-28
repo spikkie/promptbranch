@@ -372,3 +372,17 @@ def test_browser_status_client_calls_service_endpoint() -> None:
         payload = client.browser_status()
 
     assert payload["status"] == "available"
+
+
+def test_ask_result_posts_service_timeout_seconds_form_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        body = request.read().decode("utf-8")
+        assert "service_timeout_seconds=180.0" in body
+        return httpx.Response(200, json={"ok": True, "answer": "ready"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.ask_result("hello", service_timeout_seconds=180.0)
+
+    assert payload["answer"] == "ready"

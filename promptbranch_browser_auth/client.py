@@ -758,6 +758,7 @@ class ChatGPTBrowserClient:
         attachment_paths: Optional[list[str]] = None,
         expect_json: bool = False,
         keep_open: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
@@ -765,6 +766,7 @@ class ChatGPTBrowserClient:
             attachment_paths=attachment_paths,
             expect_json=expect_json,
             keep_open=keep_open,
+            service_timeout_seconds=service_timeout_seconds,
         )
         return result["answer"]
 
@@ -776,6 +778,7 @@ class ChatGPTBrowserClient:
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         self._log(
             "ask",
@@ -799,6 +802,7 @@ class ChatGPTBrowserClient:
             conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
+            service_timeout_seconds=service_timeout_seconds,
         )
 
     async def list_projects(
@@ -1638,11 +1642,19 @@ class ChatGPTBrowserClient:
         conversation_url: str | None = None,
         expect_json: bool,
         keep_open: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         operation_started = time.monotonic()
+        ask_operation_deadline_monotonic = self._ask_operation_deadline_monotonic(
+            operation_started=operation_started,
+            service_timeout_seconds=service_timeout_seconds,
+        )
         phase_timings: dict[str, Any] = {
             "submit_method": None,
             "slow_phase_warnings": [],
+            "service_timeout_seconds": float(service_timeout_seconds) if service_timeout_seconds is not None else None,
+            "ask_operation_deadline_reserve_ms": self._ask_operation_deadline_reserve_ms(),
+            "ask_operation_deadline_monotonic": ask_operation_deadline_monotonic,
         }
 
         def mark_phase(name: str, started: float) -> None:
@@ -1924,7 +1936,13 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
         if isinstance(response_context, dict):
-            self._configure_backend_answer_wait_context(response_context, submit_evidence=submit_evidence, operation_started=operation_started)
+            self._configure_backend_answer_wait_context(
+                response_context,
+                submit_evidence=submit_evidence,
+                operation_started=operation_started,
+                service_timeout_seconds=service_timeout_seconds,
+                ask_deadline_monotonic=ask_operation_deadline_monotonic,
+            )
             phase_timings["backend_first_answer_wait_enabled"] = response_context.get("backend_answer_wait_enabled")
             phase_timings["backend_first_answer_wait_keyed_to_user_commit"] = response_context.get("backend_answer_wait_keyed_to_user_commit")
             phase_timings["backend_first_answer_conversation_id"] = response_context.get("backend_answer_conversation_id")
@@ -1934,6 +1952,7 @@ class ChatGPTBrowserClient:
             phase_timings["backend_first_answer_service_client_budget_ms"] = response_context.get("backend_answer_service_client_budget_ms")
             phase_timings["backend_first_answer_timeout_reserve_ms"] = response_context.get("backend_answer_timeout_reserve_ms")
             phase_timings["backend_first_answer_budget_elapsed_before_wait_ms"] = response_context.get("ask_operation_elapsed_before_answer_wait_ms")
+            phase_timings["ask_operation_deadline_remaining_ms_at_answer_wait_config"] = response_context.get("ask_operation_deadline_remaining_ms_at_answer_wait_config")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
@@ -1982,6 +2001,8 @@ class ChatGPTBrowserClient:
         response_wait_started = time.monotonic()
         if isinstance(response_context, dict):
             response_context["response_wait_started_at_monotonic"] = response_wait_started
+            response_context["ask_operation_deadline_monotonic"] = ask_operation_deadline_monotonic
+            response_context["ask_operation_deadline_remaining_ms_at_response_wait_start"] = self._remaining_deadline_budget_ms(ask_operation_deadline_monotonic)
         try:
             answer = (
                 await self._wait_and_get_json(page, response_context=response_context)
@@ -14381,7 +14402,14 @@ class ChatGPTBrowserClient:
         mode = (os.getenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT") or "").strip().lower()
         return mode not in {"0", "false", "no", "off", "disabled"}
 
-    def _service_client_timeout_budget_ms(self) -> int:
+    def _service_client_timeout_budget_ms(self, *, service_timeout_seconds: Optional[float] = None) -> int:
+        if service_timeout_seconds is not None:
+            try:
+                seconds = float(service_timeout_seconds)
+            except (TypeError, ValueError):
+                seconds = 0.0
+            if seconds > 0:
+                return max(30_000, min(int(seconds * 1000), 3_600_000))
         for env_name in (
             "CHATGPT_SERVICE_CLIENT_TIMEOUT_SECONDS",
             "PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS",
@@ -14396,10 +14424,34 @@ class ChatGPTBrowserClient:
                 continue
             if seconds > 0:
                 return max(30_000, min(int(seconds * 1000), 3_600_000))
-        # The CLI default used by the stale-guard diagnostic is 180 seconds.
-        # Use it as the service-side safety budget unless the operator provides
-        # an explicit environment override.
+        # The stale-guard operator path normally uses --service-timeout-seconds
+        # 180.  Use the same value as the service-side default when no explicit
+        # request budget was supplied so the browser worker never waits longer
+        # than the common CLI client contract by default.
         return 180_000
+
+    def _ask_operation_deadline_reserve_ms(self) -> int:
+        return self._submit_confirmed_answer_timeout_reserve_ms()
+
+    def _ask_operation_deadline_monotonic(
+        self,
+        *,
+        operation_started: float,
+        service_timeout_seconds: Optional[float] = None,
+    ) -> float:
+        budget_ms = self._service_client_timeout_budget_ms(service_timeout_seconds=service_timeout_seconds)
+        reserve_ms = self._ask_operation_deadline_reserve_ms()
+        return float(operation_started) + (max(1_000, budget_ms - reserve_ms) / 1000.0)
+
+    @staticmethod
+    def _remaining_deadline_budget_ms(deadline_monotonic: Any) -> Optional[int]:
+        if deadline_monotonic is None:
+            return None
+        try:
+            remaining_ms = int((float(deadline_monotonic) - time.monotonic()) * 1000)
+        except (TypeError, ValueError):
+            return None
+        return max(1_000, remaining_ms)
 
     def _submit_confirmed_answer_timeout_reserve_ms(self) -> int:
         raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_RESERVE_MS") or "").strip()
@@ -14409,7 +14461,12 @@ class ChatGPTBrowserClient:
             value = 30_000
         return max(5_000, min(value, 120_000))
 
-    def _submit_confirmed_answer_timeout_ms(self, *, operation_started: Optional[float] = None) -> int:
+    def _submit_confirmed_answer_timeout_ms(
+        self,
+        *,
+        operation_started: Optional[float] = None,
+        service_timeout_seconds: Optional[float] = None,
+    ) -> int:
         raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_MS") or "").strip()
         try:
             configured_value = int(raw) if raw else 120_000
@@ -14417,7 +14474,7 @@ class ChatGPTBrowserClient:
             configured_value = 120_000
         configured_value = max(5_000, min(configured_value, 300_000))
 
-        service_budget_ms = self._service_client_timeout_budget_ms()
+        service_budget_ms = self._service_client_timeout_budget_ms(service_timeout_seconds=service_timeout_seconds)
         reserve_ms = self._submit_confirmed_answer_timeout_reserve_ms()
         elapsed_ms = 0
         if operation_started is not None:
@@ -14455,6 +14512,8 @@ class ChatGPTBrowserClient:
         *,
         submit_evidence: Any,
         operation_started: Optional[float] = None,
+        service_timeout_seconds: Optional[float] = None,
+        ask_deadline_monotonic: Optional[float] = None,
     ) -> None:
         if not isinstance(response_context, dict):
             return
@@ -14468,14 +14527,22 @@ class ChatGPTBrowserClient:
         response_context["backend_answer_user_turn_id"] = binding.get("user_turn_id")
         response_context["backend_answer_user_turn_index"] = binding.get("user_turn_index")
         response_context["backend_answer_commit_evidence"] = binding.get("backend_task_message_evidence")
-        response_context["backend_answer_service_client_budget_ms"] = self._service_client_timeout_budget_ms()
+        response_context["backend_answer_service_client_budget_ms"] = self._service_client_timeout_budget_ms(service_timeout_seconds=service_timeout_seconds)
         response_context["backend_answer_timeout_reserve_ms"] = self._submit_confirmed_answer_timeout_reserve_ms()
+        if service_timeout_seconds is not None:
+            response_context["service_timeout_seconds"] = float(service_timeout_seconds)
+        if ask_deadline_monotonic is not None:
+            response_context["ask_operation_deadline_monotonic"] = float(ask_deadline_monotonic)
+            response_context["ask_operation_deadline_remaining_ms_at_answer_wait_config"] = self._remaining_deadline_budget_ms(ask_deadline_monotonic)
         if operation_started is not None:
             try:
                 response_context["ask_operation_elapsed_before_answer_wait_ms"] = max(0, int((time.monotonic() - float(operation_started)) * 1000))
             except (TypeError, ValueError):
                 response_context["ask_operation_elapsed_before_answer_wait_ms"] = None
-        response_context["backend_answer_wait_timeout_ms"] = self._submit_confirmed_answer_timeout_ms(operation_started=operation_started)
+        response_context["backend_answer_wait_timeout_ms"] = self._submit_confirmed_answer_timeout_ms(
+            operation_started=operation_started,
+            service_timeout_seconds=service_timeout_seconds,
+        )
         response_context["backend_answer_wait_keyed_to_user_commit"] = True
 
     def _backend_answer_wait_context_available(self, response_context: Optional[dict[str, Any]]) -> bool:
@@ -14492,6 +14559,23 @@ class ChatGPTBrowserClient:
             str(response_context.get("backend_answer_user_turn_id") or "").strip()
             or response_context.get("backend_answer_user_turn_index") is not None
         )
+
+    def _response_effective_timeout_ms(self, response_context: Optional[dict[str, Any]]) -> int:
+        effective_timeout_ms = int(self.config.response_timeout_ms)
+        if isinstance(response_context, dict):
+            absolute_remaining_ms = self._remaining_deadline_budget_ms(response_context.get("ask_operation_deadline_monotonic"))
+            if absolute_remaining_ms is not None:
+                response_context["ask_operation_deadline_remaining_ms_at_json_wait_start"] = absolute_remaining_ms
+                effective_timeout_ms = min(effective_timeout_ms, absolute_remaining_ms)
+        if self._backend_answer_wait_context_available(response_context):
+            backend_timeout = None
+            if isinstance(response_context, dict):
+                backend_timeout = response_context.get("backend_answer_wait_timeout_ms")
+            try:
+                effective_timeout_ms = min(effective_timeout_ms, int(backend_timeout or self._submit_confirmed_answer_timeout_ms()))
+            except (TypeError, ValueError):
+                effective_timeout_ms = min(effective_timeout_ms, self._submit_confirmed_answer_timeout_ms())
+        return max(1_000, int(effective_timeout_ms))
 
     def _find_backend_assistant_turn_after_user_commit(
         self,
@@ -15916,22 +16000,19 @@ class ChatGPTBrowserClient:
         )
 
     async def _wait_and_get_json(self, page: Any, response_context: Optional[dict[str, Any]] = None) -> Any:
+        start = asyncio.get_running_loop().time()
+        effective_timeout_ms = self._response_effective_timeout_ms(response_context)
         self._log(
             "response",
             "waiting for parseable JSON response",
             selectors=JSON_BLOCK_SELECTORS,
             timeout_ms=self.config.response_timeout_ms,
+            effective_timeout_ms=effective_timeout_ms,
+            ask_deadline_remaining_ms=(
+                response_context.get("ask_operation_deadline_remaining_ms_at_json_wait_start")
+                if isinstance(response_context, dict) else None
+            ),
         )
-        start = asyncio.get_running_loop().time()
-        effective_timeout_ms = int(self.config.response_timeout_ms)
-        if self._backend_answer_wait_context_available(response_context):
-            backend_timeout = None
-            if isinstance(response_context, dict):
-                backend_timeout = response_context.get("backend_answer_wait_timeout_ms")
-            try:
-                effective_timeout_ms = min(effective_timeout_ms, int(backend_timeout or self._submit_confirmed_answer_timeout_ms()))
-            except (TypeError, ValueError):
-                effective_timeout_ms = min(effective_timeout_ms, self._submit_confirmed_answer_timeout_ms())
         deadline = start + (effective_timeout_ms / 1000)
         wait_started_monotonic = time.monotonic()
         if isinstance(response_context, dict):
@@ -16279,7 +16360,8 @@ class ChatGPTBrowserClient:
                 last_diagnostic_dump = elapsed_s
 
             sleep_started = time.monotonic()
-            await page.wait_for_timeout(poll_interval_ms)
+            remaining_loop_ms = max(1, int((deadline - asyncio.get_running_loop().time()) * 1000))
+            await page.wait_for_timeout(min(poll_interval_ms, remaining_loop_ms))
             add_duration("response_poll_sleep_seconds", time.monotonic() - sleep_started)
 
         elapsed_s = asyncio.get_running_loop().time() - start

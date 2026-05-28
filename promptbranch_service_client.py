@@ -90,6 +90,7 @@ class ChatGPTServiceClient:
         keep_open: bool = False,
         retries: Optional[int] = None,
         project_url: Optional[str] = None,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         payload = self.ask_result(
             prompt,
@@ -100,6 +101,7 @@ class ChatGPTServiceClient:
             keep_open=keep_open,
             retries=retries,
             project_url=project_url,
+            service_timeout_seconds=service_timeout_seconds,
         )
         return payload.get("answer")
 
@@ -127,6 +129,7 @@ class ChatGPTServiceClient:
         keep_open: bool = False,
         retries: Optional[int] = None,
         project_url: Optional[str] = None,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {
             "prompt": prompt,
@@ -139,6 +142,8 @@ class ChatGPTServiceClient:
             data["project_url"] = project_url
         if conversation_url:
             data["conversation_url"] = conversation_url
+        if service_timeout_seconds is not None:
+            data["service_timeout_seconds"] = str(float(service_timeout_seconds))
 
         attachment_path_objects = self._coerce_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
         if attachment_path_objects:
