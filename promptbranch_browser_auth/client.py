@@ -1670,6 +1670,8 @@ class ChatGPTBrowserClient:
         phase_timings["user_turn_dom_evidence_status"] = (submit_evidence.get("dom_user_turn_evidence") or {}).get("status") if isinstance(submit_evidence.get("dom_user_turn_evidence"), dict) else None
 
         response_wait_started = time.monotonic()
+        if isinstance(response_context, dict):
+            response_context["response_wait_started_at_monotonic"] = response_wait_started
         try:
             answer = (
                 await self._wait_and_get_json(page, response_context=response_context)
@@ -1677,12 +1679,22 @@ class ChatGPTBrowserClient:
                 else await self._wait_and_get_response(page, response_context=response_context)
             )
         except ResponseTimeoutError as exc:
+            response_wait_returned = time.monotonic()
             timeout_result = await self._build_ask_response_timeout_result(page, exc=exc, submit_evidence=submit_evidence)
-            phase_timings["response_wait_seconds"] = round(time.monotonic() - response_wait_started, 3)
+            phase_timings.update(self._response_wait_timing_fields(
+                response_context,
+                response_wait_started_at=response_wait_started,
+                response_wait_returned_at=response_wait_returned,
+            ))
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             timeout_result["ask_phase_timings"] = phase_timings
             return timeout_result
-        phase_timings["response_wait_seconds"] = round(time.monotonic() - response_wait_started, 3)
+        response_wait_returned = time.monotonic()
+        phase_timings.update(self._response_wait_timing_fields(
+            response_context,
+            response_wait_started_at=response_wait_started,
+            response_wait_returned_at=response_wait_returned,
+        ))
         if isinstance(response_context, dict):
             phase_timings["response_extraction_mode"] = response_context.get("last_response_extraction_mode")
             phase_timings["response_extraction_seconds"] = response_context.get("last_response_extraction_seconds")
@@ -1692,7 +1704,13 @@ class ChatGPTBrowserClient:
         finalize_started = time.monotonic()
         current_url = await self._safe_page_url(page)
         conversation_url = current_url if self._is_conversation_url(current_url) else None
-        phase_timings["completion_to_return_seconds"] = round(time.monotonic() - finalize_started, 3)
+        finalize_seconds = time.monotonic() - finalize_started
+        phase_timings["response_finalize_url_seconds"] = round(finalize_seconds, 3)
+        phase_timings["completion_to_return_seconds"] = round(
+            float(phase_timings.get("response_post_stabilization_return_seconds") or 0.0)
+            + finalize_seconds,
+            3,
+        )
         phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
         slow_warnings: list[str] = []
         if (phase_timings.get("prompt_fill_seconds") or 0) > 10:
@@ -5384,7 +5402,7 @@ class ChatGPTBrowserClient:
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
-        v0.0.278.12 keeps the v0.0.278.9 accounting invariant while
+        v0.0.278.13 keeps the v0.0.278.9 accounting invariant while
         avoiding broad historical DOM probes on the successful submit path.
         Long task chats can make generic contenteditable/code-block scans
         tens of seconds slower than fresh chats, so the fast path skips
@@ -10926,6 +10944,84 @@ class ChatGPTBrowserClient:
             return normalized
         return normalized[: max_len - 3] + "..."
 
+    @staticmethod
+    def _safe_timing_float(value: Any) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _duration_between(start: Optional[float], end: Optional[float]) -> Optional[float]:
+        if start is None or end is None:
+            return None
+        return round(max(0.0, end - start), 3)
+
+    def _response_wait_timing_fields(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        response_wait_started_at: float,
+        response_wait_returned_at: float,
+    ) -> dict[str, Any]:
+        """Export response-wait timing fields with a truthful completion tail.
+
+        v0.0.278.13 distinguishes time spent waiting for a parseable latest-turn
+        response from the post-stabilization return tail.  The latter can include
+        debug artifact writes and other in-method finalization that happen after
+        the JSON payload is already complete.
+        """
+        breakdown: dict[str, Any] = {}
+        if isinstance(response_context, dict) and isinstance(response_context.get("response_wait_breakdown"), dict):
+            breakdown = response_context["response_wait_breakdown"]
+
+        fields: dict[str, Any] = {}
+        timing_keys = [
+            "response_wait_started_at_monotonic",
+            "response_first_probe_at_monotonic",
+            "response_first_json_candidate_at_monotonic",
+            "response_first_parseable_json_at_monotonic",
+            "response_payload_detected_at_monotonic",
+            "response_payload_stabilized_at_monotonic",
+            "response_wait_returned_at_monotonic",
+            "response_wait_to_first_probe_seconds",
+            "response_wait_to_first_json_candidate_seconds",
+            "response_wait_to_first_parseable_json_seconds",
+            "response_detected_after_parseable_probe_seconds",
+            "response_json_stabilization_seconds",
+            "response_completion_signal_seconds",
+            "response_completion_signal_probe_seconds",
+            "response_json_extract_total_seconds",
+            "response_project_conversation_open_seconds",
+            "response_poll_sleep_seconds",
+            "response_probe_attempt_count",
+            "response_parseable_probe_attempt_count",
+            "response_stable_poll_count",
+        ]
+        for key in timing_keys:
+            if key in breakdown:
+                fields[key] = breakdown.get(key)
+
+        wait_started = self._safe_timing_float(
+            breakdown.get("response_wait_started_at_monotonic")
+            or response_wait_started_at
+        ) or response_wait_started_at
+        payload_stabilized_at = self._safe_timing_float(breakdown.get("response_payload_stabilized_at_monotonic"))
+        wait_returned_at = self._safe_timing_float(
+            breakdown.get("response_wait_returned_at_monotonic")
+            or response_wait_returned_at
+        ) or response_wait_returned_at
+
+        if payload_stabilized_at is not None:
+            fields["response_wait_seconds"] = self._duration_between(wait_started, payload_stabilized_at)
+            fields["response_post_stabilization_return_seconds"] = self._duration_between(payload_stabilized_at, wait_returned_at)
+        else:
+            fields["response_wait_seconds"] = self._duration_between(wait_started, wait_returned_at)
+            fields["response_post_stabilization_return_seconds"] = 0.0
+        return fields
+
     async def _capture_response_context(self, page: Any) -> dict[str, Any]:
         dom_weight = await self._capture_conversation_dom_weight(page)
         assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
@@ -11573,6 +11669,21 @@ class ChatGPTBrowserClient:
         )
         start = asyncio.get_running_loop().time()
         deadline = start + (self.config.response_timeout_ms / 1000)
+        wait_started_monotonic = time.monotonic()
+        if isinstance(response_context, dict):
+            wait_started_monotonic = float(response_context.get("response_wait_started_at_monotonic") or wait_started_monotonic)
+            breakdown = response_context.setdefault("response_wait_breakdown", {})
+        else:
+            breakdown = {}
+        breakdown["response_wait_started_at_monotonic"] = wait_started_monotonic
+        breakdown.setdefault("response_project_conversation_open_seconds", 0.0)
+        breakdown.setdefault("response_json_extract_total_seconds", 0.0)
+        breakdown.setdefault("response_completion_signal_probe_seconds", 0.0)
+        breakdown.setdefault("response_poll_sleep_seconds", 0.0)
+        breakdown.setdefault("response_probe_attempt_count", 0)
+        breakdown.setdefault("response_parseable_probe_attempt_count", 0)
+        breakdown.setdefault("response_stable_poll_count", 0)
+
         attempt = 0
         last_diagnostic_dump = -30.0
         last_probe_summary = ""
@@ -11585,24 +11696,63 @@ class ChatGPTBrowserClient:
         observed_idle_after_running = False
         min_completion_delay_s = 1.0
 
+        def mark_once(name: str, at: Optional[float] = None) -> float:
+            value = time.monotonic() if at is None else at
+            breakdown.setdefault(name, value)
+            return float(breakdown[name])
+
+        def add_duration(name: str, seconds: float) -> None:
+            breakdown[name] = round(float(breakdown.get(name) or 0.0) + max(0.0, seconds), 3)
+
+        def first_probe_text_length(probes: list[dict[str, Any]]) -> int:
+            for probe in probes:
+                try:
+                    text_length = int(probe.get("text_length") or 0)
+                except (TypeError, ValueError):
+                    text_length = 0
+                if text_length > 0:
+                    return text_length
+            return 0
+
         while asyncio.get_running_loop().time() < deadline:
 
             conversation_url = page.url
             attempt += 1
+            breakdown["response_probe_attempt_count"] = attempt
+            attempt_started_monotonic = time.monotonic()
+            mark_once("response_first_probe_at_monotonic", attempt_started_monotonic)
+            first_probe_at = self._safe_timing_float(breakdown.get("response_first_probe_at_monotonic"))
+            breakdown["response_wait_to_first_probe_seconds"] = self._duration_between(wait_started_monotonic, first_probe_at)
             elapsed_s = asyncio.get_running_loop().time() - start
 
+            open_started = time.monotonic()
             await self._maybe_open_new_project_conversation(
                 page,
                 response_context=response_context,
                 attempt=attempt,
                 elapsed_s=elapsed_s,
             )
+            add_duration("response_project_conversation_open_seconds", time.monotonic() - open_started)
 
+            extract_started = time.monotonic()
             payload, selector, text_length, probes = await self._try_extract_json_payload(page, response_context=response_context)
+            extract_finished = time.monotonic()
+            add_duration("response_json_extract_total_seconds", extract_finished - extract_started)
+            if first_probe_text_length(probes) > 0 and "response_first_json_candidate_at_monotonic" not in breakdown:
+                candidate_at = mark_once("response_first_json_candidate_at_monotonic", extract_finished)
+                breakdown["response_wait_to_first_json_candidate_seconds"] = self._duration_between(wait_started_monotonic, candidate_at)
+            if payload is not None and "response_first_parseable_json_at_monotonic" not in breakdown:
+                parseable_at = mark_once("response_first_parseable_json_at_monotonic", extract_finished)
+                breakdown["response_wait_to_first_parseable_json_seconds"] = self._duration_between(wait_started_monotonic, parseable_at)
+                breakdown["response_parseable_probe_attempt_count"] = attempt
+
             probe_summary = self._summarize_probes(probes)
+            completion_probe_started = time.monotonic()
             submit_state = await self._probe_submit_button_state(page)
             thinking_state = await self._probe_thinking_state(page)
             current_url = await self._safe_page_url(page)
+            completion_probe_finished = time.monotonic()
+            add_duration("response_completion_signal_probe_seconds", completion_probe_finished - completion_probe_started)
             running_now = bool(submit_state.get("stop_visible") or thinking_state.get("visible"))
             idle_now = bool(observed_running_state and not submit_state.get("stop_visible") and not thinking_state.get("visible"))
 
@@ -11614,7 +11764,10 @@ class ChatGPTBrowserClient:
             if payload is not None:
                 payload_signature = json.dumps(payload, ensure_ascii=False, sort_keys=True)
                 if first_payload_seen_at is None:
-                    first_payload_seen_at = asyncio.get_running_loop().time()
+                    first_payload_seen_at = time.monotonic()
+                    breakdown["response_payload_detected_at_monotonic"] = first_payload_seen_at
+                    first_parseable_at = self._safe_timing_float(breakdown.get("response_first_parseable_json_at_monotonic"))
+                    breakdown["response_detected_after_parseable_probe_seconds"] = self._duration_between(first_parseable_at, first_payload_seen_at)
                     self._log(
                         "response",
                         "parseable json payload detected; waiting for completion signals",
@@ -11638,10 +11791,11 @@ class ChatGPTBrowserClient:
                         text_length=text_length,
                         stable_polls=stable_polls,
                     )
+                breakdown["response_stable_poll_count"] = stable_polls
 
                 stable_elapsed_s = 0.0
                 if first_payload_seen_at is not None:
-                    stable_elapsed_s = asyncio.get_running_loop().time() - first_payload_seen_at
+                    stable_elapsed_s = time.monotonic() - first_payload_seen_at
 
                 composer_signal_known = bool(submit_state.get("selector"))
                 composer_idle_visible = bool(submit_state.get("idle_visible") or submit_state.get("send_ready"))
@@ -11692,6 +11846,11 @@ class ChatGPTBrowserClient:
                     strong_idle_completion=strong_idle_completion,
                 )
                 if stable_completion or strong_idle_completion:
+                    stabilized_at = time.monotonic()
+                    breakdown["response_payload_stabilized_at_monotonic"] = stabilized_at
+                    breakdown["response_json_stabilization_seconds"] = self._duration_between(first_payload_seen_at, stabilized_at)
+                    first_parseable_at = self._safe_timing_float(breakdown.get("response_first_parseable_json_at_monotonic"))
+                    breakdown["response_completion_signal_seconds"] = self._duration_between(first_parseable_at or first_payload_seen_at, stabilized_at)
                     completion_reason = (
                         "parseable_json_present_and_idle_voice_button_visible"
                         if strong_idle_completion and not stable_completion
@@ -11732,6 +11891,9 @@ class ChatGPTBrowserClient:
                             elapsed_s=elapsed_s,
                             include_page_artifacts=False,
                         )
+                    returned_at = time.monotonic()
+                    breakdown["response_wait_returned_at_monotonic"] = returned_at
+                    breakdown["response_post_stabilization_return_seconds"] = self._duration_between(stabilized_at, returned_at)
                     return payload
 
             if attempt == 1 or attempt % 10 == 0 or probe_summary != last_probe_summary:
@@ -11773,7 +11935,9 @@ class ChatGPTBrowserClient:
                 )
                 last_diagnostic_dump = elapsed_s
 
+            sleep_started = time.monotonic()
             await page.wait_for_timeout(poll_interval_ms)
+            add_duration("response_poll_sleep_seconds", time.monotonic() - sleep_started)
 
         elapsed_s = asyncio.get_running_loop().time() - start
         await self._maybe_open_new_project_conversation(
@@ -11793,6 +11957,7 @@ class ChatGPTBrowserClient:
                 elapsed_s=elapsed_s,
                 include_page_artifacts=True,
             )
+        breakdown["response_wait_returned_at_monotonic"] = time.monotonic()
         raise ResponseTimeoutError(
             f"Timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
         )
