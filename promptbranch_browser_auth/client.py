@@ -1806,6 +1806,13 @@ class ChatGPTBrowserClient:
         phase_timings["submit_backend_task_message_found"] = submit_evidence.get("submit_backend_task_message_found")
         phase_timings["submit_backend_task_message_seconds"] = submit_evidence.get("submit_backend_task_message_seconds")
         phase_timings["submit_backend_task_message_status"] = submit_evidence.get("submit_backend_task_message_status")
+        phase_timings["submit_network_request_observed"] = submit_evidence.get("submit_network_request_observed")
+        phase_timings["submit_network_request_seconds"] = submit_evidence.get("submit_network_request_seconds")
+        phase_timings["submit_network_request_status"] = submit_evidence.get("submit_network_request_status")
+        phase_timings["submit_network_request_marker_found"] = submit_evidence.get("submit_network_request_marker_found")
+        phase_timings["submit_network_response_observed"] = submit_evidence.get("submit_network_response_observed")
+        phase_timings["submit_network_response_status"] = submit_evidence.get("submit_network_response_status")
+        phase_timings["submit_network_stream_started"] = submit_evidence.get("submit_network_stream_started")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -1833,6 +1840,13 @@ class ChatGPTBrowserClient:
         phase_timings["submit_backend_task_message_found"] = submit_evidence.get("submit_backend_task_message_found")
         phase_timings["submit_backend_task_message_seconds"] = submit_evidence.get("submit_backend_task_message_seconds")
         phase_timings["submit_backend_task_message_status"] = submit_evidence.get("submit_backend_task_message_status")
+        phase_timings["submit_network_request_observed"] = submit_evidence.get("submit_network_request_observed")
+        phase_timings["submit_network_request_seconds"] = submit_evidence.get("submit_network_request_seconds")
+        phase_timings["submit_network_request_status"] = submit_evidence.get("submit_network_request_status")
+        phase_timings["submit_network_request_marker_found"] = submit_evidence.get("submit_network_request_marker_found")
+        phase_timings["submit_network_response_observed"] = submit_evidence.get("submit_network_response_observed")
+        phase_timings["submit_network_response_status"] = submit_evidence.get("submit_network_response_status")
+        phase_timings["submit_network_stream_started"] = submit_evidence.get("submit_network_stream_started")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             phase_timings["response_wait_skipped"] = True
@@ -5532,19 +5546,262 @@ class ChatGPTBrowserClient:
         body = str(text or "")
         matched_by: list[str] = []
         request_id = markers.get("request_id")
-        if request_id and str(request_id) in body:
+        def contains_marker(marker: Any) -> bool:
+            marker_text = str(marker or "")
+            if not marker_text:
+                return False
+            if marker_text in body:
+                return True
+            try:
+                escaped = json.dumps(marker_text, ensure_ascii=False)[1:-1]
+            except Exception:
+                escaped = marker_text
+            return bool(escaped and escaped in body)
+
+        if request_id and contains_marker(request_id):
             matched_by.append("request_id")
         for marker in markers.get("response_markers") or []:
-            if marker and str(marker) in body:
+            if marker and contains_marker(marker):
                 matched_by.append("response_marker")
                 break
         prompt_prefix = markers.get("prompt_prefix")
-        if prompt_prefix and str(prompt_prefix) in body:
+        if prompt_prefix and contains_marker(prompt_prefix):
             matched_by.append("prompt_prefix")
         prompt_short_prefix = markers.get("prompt_short_prefix")
-        if prompt_short_prefix and str(prompt_short_prefix) in body:
+        if prompt_short_prefix and contains_marker(prompt_short_prefix):
             matched_by.append("prompt_short_prefix")
         return bool(matched_by), matched_by, (markers.get("response_markers") or [None])[0]
+
+    def _submit_network_causality_enabled(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_NETWORK_CAUSALITY") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled", "dom-only", "backend-only"}
+
+    def _submit_network_causality_required(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_NETWORK_REQUIRED") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled", "optional"}
+
+    def _submit_network_timeout_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS") or "5000").strip()
+        try:
+            return max(250, min(30_000, int(raw)))
+        except ValueError:
+            return 5_000
+
+    def _request_post_data_text(self, request: Any) -> str:
+        try:
+            value = getattr(request, "post_data", None)
+            if callable(value):
+                value = value()
+            if value is None:
+                return ""
+            return str(value)
+        except Exception:
+            return ""
+
+    def _submit_network_request_record(self, request: Any, *, prompt: str | None) -> dict[str, Any]:
+        started = time.monotonic()
+        try:
+            url = str(getattr(request, "url", "") or "")
+        except Exception:
+            url = ""
+        try:
+            method = str(getattr(request, "method", "") or "").upper()
+        except Exception:
+            method = ""
+        post_data = self._request_post_data_text(request)
+        combined = "\n".join(part for part in [url, post_data] if part)
+        marker_found, matched_by, matched_marker = self._turn_text_matches_submit_prompt(combined, prompt=prompt)
+        parsed = urlparse(url) if url else None
+        host = (parsed.netloc if parsed else "").lower()
+        path = (parsed.path if parsed else "").lower()
+        backend_like = (
+            "chatgpt.com" in host
+            and ("/backend-api/" in path or "/conversation" in path or "/completion" in path)
+        )
+        mutating = method in {"POST", "PUT", "PATCH"}
+        interesting = bool(marker_found or (backend_like and mutating))
+        return {
+            "url": url,
+            "method": method,
+            "host": host,
+            "path": path,
+            "backend_like": backend_like,
+            "mutating": mutating,
+            "interesting": interesting,
+            "marker_found": bool(marker_found),
+            "matched_by": matched_by,
+            "matched_marker": matched_marker,
+            "post_data_length": len(post_data),
+            "post_data_preview": post_data[:240],
+            "captured_at_monotonic": round(started, 6),
+        }
+
+    def _start_submit_network_observer(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
+        started = time.monotonic()
+        markers = self._prompt_submit_markers(prompt).get("markers") or []
+        observer: dict[str, Any] = {
+            "enabled": self._submit_network_causality_enabled(),
+            "started_at_monotonic": started,
+            "markers_count": len(markers),
+            "events": [],
+            "responses": [],
+            "matched_request": None,
+            "matched_response": None,
+            "handler_error": None,
+            "stopped": False,
+        }
+        if not observer["enabled"]:
+            observer["status"] = "submit_network_observer_disabled"
+            return observer
+        if not hasattr(page, "on"):
+            observer.update({"enabled": False, "status": "submit_network_observer_unavailable"})
+            return observer
+
+        def on_request(request: Any) -> None:
+            if observer.get("stopped"):
+                return
+            try:
+                record = self._submit_network_request_record(request, prompt=prompt)
+                if record.get("interesting") and len(observer["events"]) < 40:
+                    observer["events"].append(record)
+                if record.get("marker_found") and observer.get("matched_request") is None:
+                    record["observed_after_click_seconds"] = round(time.monotonic() - started, 3)
+                    observer["matched_request"] = record
+                    self._log(
+                        "submit",
+                        "submit network request carrying current marker observed",
+                        url=record.get("url"),
+                        method=record.get("method"),
+                        matched_by=record.get("matched_by"),
+                        matched_marker=record.get("matched_marker"),
+                        post_data_length=record.get("post_data_length"),
+                    )
+            except Exception as exc:
+                observer["handler_error"] = str(exc)
+
+        def on_response(response: Any) -> None:
+            if observer.get("stopped"):
+                return
+            try:
+                url = str(getattr(response, "url", "") or "")
+                status = getattr(response, "status", None)
+                request = getattr(response, "request", None)
+                method = str(getattr(request, "method", "") or "").upper() if request is not None else ""
+                record = {
+                    "url": url,
+                    "method": method,
+                    "status": status,
+                    "observed_after_click_seconds": round(time.monotonic() - started, 3),
+                }
+                matched = observer.get("matched_request")
+                if isinstance(matched, dict) and matched.get("url") == url:
+                    observer["matched_response"] = record
+                elif len(observer["responses"]) < 40 and ("/backend-api/" in url or "/conversation" in url):
+                    observer["responses"].append(record)
+            except Exception as exc:
+                observer["handler_error"] = str(exc)
+
+        observer["request_handler"] = on_request
+        observer["response_handler"] = on_response
+        try:
+            page.on("request", on_request)
+            page.on("response", on_response)
+            observer["status"] = "submit_network_observer_started"
+        except Exception as exc:
+            observer.update({"enabled": False, "status": "submit_network_observer_attach_failed", "error": str(exc)})
+        return observer
+
+    def _stop_submit_network_observer(self, page: Any, observer: Any) -> None:
+        if not isinstance(observer, dict) or observer.get("stopped"):
+            return
+        observer["stopped"] = True
+        for event_name, handler_key in [("request", "request_handler"), ("response", "response_handler")]:
+            handler = observer.get(handler_key)
+            if handler is None:
+                continue
+            try:
+                if hasattr(page, "remove_listener"):
+                    page.remove_listener(event_name, handler)
+                elif hasattr(page, "off"):
+                    page.off(event_name, handler)
+            except Exception:
+                pass
+
+    def _submit_network_evidence_snapshot(self, observer: Any) -> dict[str, Any]:
+        started = time.monotonic()
+        if not isinstance(observer, dict):
+            return {
+                "visible": False,
+                "status": "submit_network_observer_missing",
+                "probe_seconds": 0.0,
+            }
+        matched = observer.get("matched_request") if isinstance(observer.get("matched_request"), dict) else None
+        matched_response = observer.get("matched_response") if isinstance(observer.get("matched_response"), dict) else None
+        found = matched is not None and bool(matched.get("marker_found"))
+        first_event = (observer.get("events") or [None])[0]
+        return {
+            "visible": found,
+            "status": "submit_network_request_observed" if found else (observer.get("status") or "submit_network_request_not_observed"),
+            "source": "browser_network_events",
+            "enabled": bool(observer.get("enabled")),
+            "markers_count": observer.get("markers_count"),
+            "request_observed": found,
+            "request_marker_found": bool(matched.get("marker_found")) if matched else False,
+            "request_url": matched.get("url") if matched else None,
+            "request_method": matched.get("method") if matched else None,
+            "request_matched_by": matched.get("matched_by") if matched else [],
+            "request_matched_marker": matched.get("matched_marker") if matched else None,
+            "request_post_data_length": matched.get("post_data_length") if matched else None,
+            "request_observed_after_click_seconds": matched.get("observed_after_click_seconds") if matched else None,
+            "response_observed": matched_response is not None,
+            "response_status": matched_response.get("status") if matched_response else None,
+            "response_observed_after_click_seconds": matched_response.get("observed_after_click_seconds") if matched_response else None,
+            "stream_started": bool(matched_response is not None and matched_response.get("status") is not None),
+            "event_count": len(observer.get("events") or []),
+            "response_event_count": len(observer.get("responses") or []),
+            "first_event_url": first_event.get("url") if isinstance(first_event, dict) else None,
+            "first_event_method": first_event.get("method") if isinstance(first_event, dict) else None,
+            "handler_error": observer.get("handler_error"),
+            "probe_seconds": round(time.monotonic() - started, 3),
+        }
+
+    async def _wait_for_submit_network_evidence(
+        self,
+        page: Any,
+        observer: Any,
+        *,
+        timeout_ms: int | None = None,
+        poll_interval_ms: int = 100,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        timeout_ms = self._submit_network_timeout_ms() if timeout_ms is None else timeout_ms
+        if not isinstance(observer, dict) or not observer.get("enabled"):
+            snapshot = self._submit_network_evidence_snapshot(observer)
+            snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
+            return snapshot
+        if int(observer.get("markers_count") or 0) <= 0:
+            return {
+                "visible": False,
+                "status": "submit_network_request_marker_unavailable",
+                "source": "browser_network_events",
+                "enabled": bool(observer.get("enabled")),
+                "markers_count": observer.get("markers_count"),
+                "request_observed": False,
+                "request_marker_found": False,
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        while True:
+            snapshot = self._submit_network_evidence_snapshot(observer)
+            if snapshot.get("visible"):
+                snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
+                return snapshot
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                snapshot["status"] = "submit_network_request_not_observed"
+                snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
+                return snapshot
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
 
     async def _capture_backend_task_message_echo_state(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
@@ -5712,15 +5969,16 @@ class ChatGPTBrowserClient:
         prompt: str | None = None,
         timeout_ms: int = 3_000,
         poll_interval_ms: int = 250,
+        submit_network_observer: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.21 keeps URL-only confirmation rejected, but adds a
-        backend-first causality proof.  Warm/virtualized old task DOM can report
-        zero user/assistant turns even after the composer is cleared.  Before
-        relying on DOM echo, probe /backend-api/conversation/<id> and accept the
-        submit only when the backend transcript contains the current prompt
-        marker in a user message.
+        v0.0.278.22 keeps URL-only confirmation rejected, but moves the
+        first causality proof closer to the mutation trigger.  A browser network
+        observer is armed before clicking submit; this method first requires a
+        post-click ChatGPT backend request carrying the current prompt marker.
+        Only after that network proof is unavailable/disabled does it rely on
+        backend conversation state or DOM echo fallbacks.
         """
 
         started = time.monotonic()
@@ -5730,15 +5988,120 @@ class ChatGPTBrowserClient:
         last_state: dict[str, Any] = {}
         last_user_echo: dict[str, Any] = {}
         last_backend_echo: dict[str, Any] = {}
+        last_network_evidence: dict[str, Any] = {}
         probe_seconds_total = 0.0
         user_echo_seconds_total = 0.0
         backend_echo_seconds_total = 0.0
+        network_submit_seconds_total = 0.0
         fast_enabled = self._submit_confirmation_fast_path_enabled()
         causal_required = self._submit_causal_confirmation_required()
+        network_required = bool(
+            causal_required
+            and submit_network_observer is not None
+            and self._submit_network_causality_required()
+        )
         url_only_rejected = False
 
         def strict_signals(confirmed_by: list[str]) -> list[str]:
-            return [signal for signal in confirmed_by if signal in {"stop_button", "composer_running", "user_turn_echo", "backend_task_message"}]
+            return [
+                signal
+                for signal in confirmed_by
+                if signal in {"stop_button", "composer_running", "user_turn_echo", "backend_task_message", "network_submit_request"}
+            ]
+
+        if network_required:
+            attempt += 1
+            network_evidence = await self._wait_for_submit_network_evidence(page, submit_network_observer)
+            network_submit_seconds_total += float(network_evidence.get("probe_seconds") or 0.0)
+            last_network_evidence = network_evidence
+            network_found = bool(network_evidence.get("visible") and network_evidence.get("request_marker_found"))
+            attempts.append({
+                "attempt": attempt,
+                "mode": "network_submit",
+                "confirmed": network_found,
+                "confirmed_by": ["network_submit_request"] if network_found else [],
+                "network_request_observed": bool(network_evidence.get("request_observed")),
+                "network_request_marker_found": bool(network_evidence.get("request_marker_found")),
+                "network_status": network_evidence.get("status"),
+                "network_request_url": network_evidence.get("request_url"),
+                "network_request_method": network_evidence.get("request_method"),
+                "network_response_status": network_evidence.get("response_status"),
+                "probe_seconds": network_evidence.get("probe_seconds"),
+            })
+            if network_found:
+                duration = round(time.monotonic() - started, 3)
+                fields = self._submit_confirmation_timing_fields(
+                    mode="network_submit_request",
+                    fast_path_used=False,
+                    fallback_used=False,
+                    duration_seconds=duration,
+                    probe_seconds=probe_seconds_total,
+                    poll_attempt_count=attempt,
+                    historical_count_used=False,
+                    confirmed_by=["network_submit_request"],
+                    causal_required=causal_required,
+                    causal_verified=True,
+                    causal_reason="network_submit_request",
+                    url_only_rejected=False,
+                    user_turn_echo_found=False,
+                    user_turn_echo_seconds=user_echo_seconds_total,
+                )
+                fields["network_submit_request_observed"] = True
+                fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
+                fields["network_submit_request_status"] = network_evidence.get("status")
+                return {
+                    **fields,
+                    "confirmed": True,
+                    "confirmed_by": ["network_submit_request"],
+                    "raw_confirmed_by": [],
+                    "submit_network_evidence": network_evidence,
+                    "user_turn_evidence": last_user_echo,
+                    "backend_task_message_evidence": last_backend_echo,
+                    "submit_network_evidence": last_network_evidence,
+                    "status": "submit_confirmed",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "duration_seconds": duration,
+                    "historical_count_used": False,
+                }
+            duration = round(time.monotonic() - started, 3)
+            fields = self._submit_confirmation_timing_fields(
+                mode="network_submit_request_timeout",
+                fast_path_used=False,
+                fallback_used=False,
+                duration_seconds=duration,
+                probe_seconds=probe_seconds_total,
+                poll_attempt_count=attempt,
+                historical_count_used=False,
+                confirmed_by=[],
+                causal_required=causal_required,
+                causal_verified=False,
+                causal_reason="network_submit_request_not_observed",
+                url_only_rejected=False,
+                user_turn_echo_found=False,
+                user_turn_echo_seconds=user_echo_seconds_total,
+            )
+            fields["network_submit_request_observed"] = False
+            fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
+            fields["network_submit_request_status"] = network_evidence.get("status")
+            return {
+                **fields,
+                "confirmed": False,
+                "confirmed_by": [],
+                "raw_confirmed_by": [],
+                "submit_network_evidence": network_evidence,
+                "user_turn_evidence": last_user_echo,
+                "backend_task_message_evidence": last_backend_echo,
+                "status": "submit_confirmation_not_observed",
+                "timeout_ms": timeout_ms,
+                "poll_interval_ms": poll_interval_ms,
+                "attempt_count": attempt,
+                "attempts": attempts,
+                "duration_seconds": duration,
+                "historical_count_used": False,
+            }
 
         if fast_enabled:
             attempt += 1
@@ -5864,6 +6227,9 @@ class ChatGPTBrowserClient:
                 fields["backend_task_message_found"] = "backend_task_message" in effective_confirmed_by
                 fields["backend_task_message_seconds"] = round(backend_echo_seconds_total, 3)
                 fields["backend_task_message_status"] = last_backend_echo.get("status") if isinstance(last_backend_echo, dict) else None
+                fields["network_submit_request_observed"] = bool(last_network_evidence.get("visible")) if isinstance(last_network_evidence, dict) else False
+                fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
+                fields["network_submit_request_status"] = last_network_evidence.get("status") if isinstance(last_network_evidence, dict) else None
                 return {
                     **state,
                     **fields,
@@ -5901,6 +6267,9 @@ class ChatGPTBrowserClient:
                 fields["backend_task_message_found"] = False
                 fields["backend_task_message_seconds"] = round(backend_echo_seconds_total, 3)
                 fields["backend_task_message_status"] = last_backend_echo.get("status") if isinstance(last_backend_echo, dict) else None
+                fields["network_submit_request_observed"] = bool(last_network_evidence.get("visible")) if isinstance(last_network_evidence, dict) else False
+                fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
+                fields["network_submit_request_status"] = last_network_evidence.get("status") if isinstance(last_network_evidence, dict) else None
                 return {
                     **last_state,
                     **fields,
@@ -5909,6 +6278,7 @@ class ChatGPTBrowserClient:
                     "raw_confirmed_by": list(last_state.get("confirmed_by") or []) if isinstance(last_state, dict) else [],
                     "user_turn_evidence": last_user_echo,
                     "backend_task_message_evidence": last_backend_echo,
+                    "submit_network_evidence": last_network_evidence,
                     "status": "submit_confirmation_not_observed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -6236,12 +6606,16 @@ class ChatGPTBrowserClient:
                 dispatch_completed_at_monotonic=round(dispatch_completed, 6) if isinstance(dispatch_completed, (int, float)) else None,
             )
             confirmation_started = time.monotonic()
-            confirmation = await self._wait_for_submit_confirmation(
-                page,
-                before_assistant_count=before_assistant_count,
-                before_user_turn_state=before_user_turns,
-                prompt=prompt,
-            )
+            try:
+                confirmation = await self._wait_for_submit_confirmation(
+                    page,
+                    before_assistant_count=before_assistant_count,
+                    before_user_turn_state=before_user_turns,
+                    prompt=prompt,
+                    submit_network_observer=submit_network_observer,
+                )
+            finally:
+                self._stop_submit_network_observer(page, submit_network_observer)
             confirmation_completed = time.monotonic()
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
             after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
@@ -6313,9 +6687,19 @@ class ChatGPTBrowserClient:
                 "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
                 "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
                 "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
+                "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
+                "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
+                "submit_network_request_status": confirmation.get("network_submit_request_status"),
+                "submit_network_request_url": (confirmation.get("submit_network_evidence") or {}).get("request_url") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_request_method": (confirmation.get("submit_network_evidence") or {}).get("request_method") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_request_marker_found": (confirmation.get("submit_network_evidence") or {}).get("request_marker_found") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_response_observed": (confirmation.get("submit_network_evidence") or {}).get("response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_response_status": (confirmation.get("submit_network_evidence") or {}).get("response_status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_network_stream_started": (confirmation.get("submit_network_evidence") or {}).get("stream_started") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
                 "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
+                "submit_network_evidence": confirmation.get("submit_network_evidence"),
                 "duration_seconds": duration_seconds,
                 "submit_accounted_seconds": submit_accounted_seconds,
                 "submit_unaccounted_seconds": submit_unaccounted_seconds,
@@ -6340,6 +6724,8 @@ class ChatGPTBrowserClient:
                 submit_unaccounted_seconds=submit_unaccounted_seconds,
             )
             return evidence
+
+        submit_network_observer = self._start_submit_network_observer(page, prompt=prompt)
 
         send_wait_started = time.monotonic()
         deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
@@ -6398,12 +6784,16 @@ class ChatGPTBrowserClient:
         enter_completed = time.monotonic()
         enter_press_seconds = round(enter_completed - enter_started, 3)
         confirmation_started = time.monotonic()
-        confirmation = await self._wait_for_submit_confirmation(
-            page,
-            before_assistant_count=before_assistant_count,
-            before_user_turn_state=before_user_turns,
-            prompt=prompt,
-        )
+        try:
+            confirmation = await self._wait_for_submit_confirmation(
+                page,
+                before_assistant_count=before_assistant_count,
+                before_user_turn_state=before_user_turns,
+                prompt=prompt,
+                submit_network_observer=submit_network_observer,
+            )
+        finally:
+            self._stop_submit_network_observer(page, submit_network_observer)
         confirmation_completed = time.monotonic()
         confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
         after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
@@ -6469,8 +6859,18 @@ class ChatGPTBrowserClient:
             "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
             "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
             "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
+            "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
+            "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
+            "submit_network_request_status": confirmation.get("network_submit_request_status"),
+            "submit_network_request_url": (confirmation.get("submit_network_evidence") or {}).get("request_url") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_request_method": (confirmation.get("submit_network_evidence") or {}).get("request_method") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_request_marker_found": (confirmation.get("submit_network_evidence") or {}).get("request_marker_found") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_response_observed": (confirmation.get("submit_network_evidence") or {}).get("response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_response_status": (confirmation.get("submit_network_evidence") or {}).get("response_status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_network_stream_started": (confirmation.get("submit_network_evidence") or {}).get("stream_started") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
             "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
+            "submit_network_evidence": confirmation.get("submit_network_evidence"),
             "duration_seconds": duration_seconds,
             "submit_accounted_seconds": submit_accounted_seconds,
             "submit_unaccounted_seconds": submit_unaccounted_seconds,
