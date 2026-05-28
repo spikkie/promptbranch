@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.26" in out
+    assert "0.0.278.27" in out
     assert "promptbranch" in out
 
 

@@ -3122,3 +3122,133 @@ def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marke
     assert snapshot["message_request_count"] == 0
     assert snapshot["event_urls"] == ["https://chatgpt.com/backend-api/f/conversation/prepare"]
     assert snapshot["event_summaries"][0]["post_data_preview"] == "<redacted>"
+
+
+def test_submit_response_body_shape_reports_redacted_conduit_token_metadata(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    shape = client._submit_response_body_shape(
+        json.dumps({"status": "ok", "conduit_token": "secret-conduit-token"}),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+
+    assert shape["conduit_token_present"] is True
+    assert shape["conduit_token_sha256_12"]
+    assert "secret-conduit-token" not in json.dumps(shape)
+
+
+def test_submit_network_snapshot_classifies_prepare_conduit_token_not_consumed(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    prepare_shape = client._submit_response_body_shape(
+        json.dumps({"status": "ok", "conduit_token": "secret-conduit-token"}),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event],
+        "all_events": [prepare_event],
+        "responses": [],
+        "all_responses": [{
+            "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+            "status": 200,
+            "prepare_request": True,
+            "message_request_candidate": False,
+            "captured_at_monotonic": 100.30,
+            "body_shape": prepare_shape,
+        }],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["status"] == "submit_prepare_conduit_token_not_consumed"
+    assert snapshot["prepare_conduit_token_present"] is True
+    assert snapshot["prepare_conduit_token_sha256_12"] == prepare_shape["conduit_token_sha256_12"]
+    assert snapshot["conduit_transport_observed"] is False
+    assert snapshot["conduit_error_hint"] == "submit_prepare_conduit_token_not_consumed"
+    assert "secret-conduit-token" not in json.dumps(snapshot)
+
+
+def test_submit_network_snapshot_classifies_conduit_transport_without_commit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    token = "secret-conduit-token"
+    token_hash = client._submit_conduit_token_sha256_12(token)
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    conduit_event = {
+        "url": "https://chatgpt.com/backend-api/conduit/finalize",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": False,
+        "message_request_candidate": True,
+        "marker_found": False,
+        "post_data_length": 100,
+        "captured_at_monotonic": 100.45,
+        "_private_combined_text": f"token={token}",
+    }
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event, conduit_event],
+        "all_events": [prepare_event, conduit_event],
+        "responses": [],
+        "all_responses": [],
+        "websockets": [{
+            "url": "wss://chatgpt.com/backend-api/conduit",
+            "frames": [{
+                "direction": "sent",
+                "payload_length": len(token),
+                "captured_at_monotonic": 100.50,
+                "_private_payload_text": token,
+            }],
+            "frame_sent_count": 1,
+            "frame_received_count": 0,
+        }],
+        "prepare_conduit_tokens_private": [token],
+        "prepare_conduit_token_sha256_12": token_hash,
+        "prepare_conduit_token_sha256_12_values": [token_hash],
+        "prepare_conduit_token_present": True,
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["status"] == "submit_conduit_transport_observed_without_commit"
+    assert snapshot["conduit_transport_observed"] is True
+    assert snapshot["conduit_token_seen_in_request"] is True
+    assert snapshot["conduit_token_seen_in_websocket"] is True
+    assert snapshot["conduit_transport_kind"] == "mixed"
+    assert snapshot["conduit_websocket_frame_count"] == 1
+    assert snapshot["conduit_error_hint"] == "submit_conduit_transport_observed_without_commit"
+    assert snapshot["prepare_conduit_token_sha256_12"] == token_hash
+    assert token not in json.dumps(snapshot)
