@@ -1727,39 +1727,109 @@ def test_wait_for_submit_confirmation_accepts_stop_button_signal(tmp_path: Path)
     assert result["confirmed"] is True
     assert result["confirmed_by"] == ["stop_button"]
     assert result["attempt_count"] == 2
-    assert result["confirmation_mode"] == "legacy_probe"
+    assert result["confirmation_mode"] == "strict_causal_probe"
     assert result["fallback_used"] is True
+    assert result["causal_confirmation_verified"] is True
+    assert result["causal_confirmation_reason"] == "running_state"
 
 
 
-def test_wait_for_submit_confirmation_fast_path_avoids_historical_count(tmp_path: Path) -> None:
+def test_wait_for_submit_confirmation_rejects_url_only_fast_path_by_default(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
     class DummyPage:
         url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
 
         async def wait_for_timeout(self, ms: int):
-            raise AssertionError("fast submit confirmation should not poll")
+            return None
 
-    async def fail_legacy_state(page, *, before_assistant_count: int):
-        raise AssertionError("fast submit confirmation should not count historical assistant turns")
+    async def url_only_state(page, *, before_assistant_count: int):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["url_conversation"],
+            "stop_button_visible": False,
+            "conversation_url_visible": True,
+            "assistant_turn_count": before_assistant_count,
+            "assistant_turn_delta": 0,
+            "current_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            "probe_seconds": 0.0,
+            "historical_count_used": True,
+        }
 
-    client._capture_submit_confirmation_state = fail_legacy_state
+    async def no_user_echo(page, *, prompt=None):
+        return {"request_id_found": False, "prompt_prefix_found": False, "generic_turns": {}}
+
+    client._capture_submit_confirmation_state = url_only_state
+    client._capture_user_turn_state = no_user_echo
 
     import asyncio
 
-    result = asyncio.run(client._wait_for_submit_confirmation(DummyPage(), before_assistant_count=145))
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object",
+        timeout_ms=1,
+        poll_interval_ms=1,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["confirmed_by"] == []
+    assert result["causal_confirmation_required"] is True
+    assert result["causal_confirmation_verified"] is False
+    assert result["causal_confirmation_reason"] == "causal_signal_not_observed"
+    assert result["url_only_confirmation_rejected"] is True
+
+
+def test_wait_for_submit_confirmation_accepts_post_submit_user_turn_echo(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("user-turn echo should confirm without waiting")
+
+    async def url_only_state(page, *, before_assistant_count: int):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["url_conversation"],
+            "stop_button_visible": False,
+            "conversation_url_visible": True,
+            "assistant_turn_count": before_assistant_count,
+            "assistant_turn_delta": 0,
+            "current_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            "probe_seconds": 0.0,
+            "historical_count_used": True,
+        }
+
+    async def user_echo(page, *, prompt=None):
+        return {
+            "request_id_found": False,
+            "prompt_prefix_found": True,
+            "generic_turns": {"request_id_found": False, "prompt_prefix_found": False},
+        }
+
+    client._capture_submit_confirmation_state = url_only_state
+    client._capture_user_turn_state = user_echo
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object",
+    ))
 
     assert result["status"] == "submit_confirmed"
     assert result["confirmed"] is True
-    assert result["confirmed_by"] == ["url_conversation"]
-    assert result["confirmation_mode"] == "fast_url_after_dispatch"
-    assert result["fast_path_used"] is True
-    assert result["fallback_used"] is False
-    assert result["historical_count_used"] is False
-    assert result["poll_attempt_count"] == 1
-    assert result["to_url_conversation_seconds"] is not None
-    assert result["probe_seconds"] >= 0.0
+    assert result["confirmed_by"] == ["user_turn_echo"]
+    assert result["causal_confirmation_required"] is True
+    assert result["causal_confirmation_verified"] is True
+    assert result["causal_confirmation_reason"] == "user_turn_echo"
+    assert result["url_only_confirmation_rejected"] is True
+    assert result["user_turn_echo_found"] is True
+
 
 def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
@@ -1802,7 +1872,7 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     async def fake_count_assistant(page):
         return 0
 
-    async def fake_confirmation(page, *, before_assistant_count, timeout_ms=3000, poll_interval_ms=250):
+    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250):
         return {
             "status": "submit_confirmed",
             "confirmed": True,
