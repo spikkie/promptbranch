@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from promptbranch_automation import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_test_suite import run_test_suite_async
 from promptbranch_version import PACKAGE_VERSION as SERVICE_VERSION
+from promptbranch_browser_auth.client import get_latest_ask_progress
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     BotChallengeError,
@@ -108,6 +109,10 @@ class AskResponse(BaseModel):
     debug_artifacts: Optional[list[str]] = None
     backend_answer_diagnostics: Optional[dict] = None
     ask_phase_timings: Optional[dict] = None
+    service_timeout_seconds: Optional[float] = None
+    service_internal_timeout_seconds: Optional[float] = None
+    progress_status: Optional[str] = None
+    progress_updated_at_monotonic: Optional[float] = None
 
 
 class ProjectResolveRequest(BaseModel):
@@ -458,17 +463,32 @@ async def ask(
             try:
                 result = await asyncio.wait_for(service.ask_question_result(**ask_kwargs), timeout=internal_timeout)
             except asyncio.TimeoutError:
+                progress = get_latest_ask_progress()
+                submit_evidence = progress.get("submit_evidence") if isinstance(progress.get("submit_evidence"), dict) else None
+                ask_phase_timings = progress.get("ask_phase_timings") if isinstance(progress.get("ask_phase_timings"), dict) else None
+                status = "service_internal_deadline_timeout"
+                error = "browser service internal deadline reached before client timeout"
+                timeout_layer = "service"
+                if submit_evidence and submit_evidence.get("submit_backend_confirmed_but_user_turn_not_visible"):
+                    status = "submit_confirmed_backend_only_ui_not_hydrated"
+                    error = "submit was backend-confirmed but the submitted user turn was not visible before the service internal deadline"
+                    timeout_layer = "submit_visibility"
                 result = {
                     "ok": False,
                     "action": "ask",
-                    "status": "service_internal_deadline_timeout",
-                    "error": "browser service internal deadline reached before client timeout",
-                    "error_type": "ServiceInternalDeadlineTimeout",
-                    "timeout_layer": "service",
+                    "status": status,
+                    "error": error,
+                    "error_type": status if status != "service_internal_deadline_timeout" else "ServiceInternalDeadlineTimeout",
+                    "timeout_layer": timeout_layer,
                     "partial_result": True,
                     "service_timeout_seconds": outer_timeout,
                     "service_internal_timeout_seconds": internal_timeout,
-                    "operator_action": "inspect task/source state before retrying",
+                    "operator_action": "inspect preserved submit evidence before retrying",
+                    "conversation_url": progress.get("conversation_url"),
+                    "submit_evidence": submit_evidence,
+                    "ask_phase_timings": ask_phase_timings,
+                    "progress_status": progress.get("status"),
+                    "progress_updated_at_monotonic": progress.get("updated_at_monotonic"),
                 }
         else:
             result = await service.ask_question_result(**ask_kwargs)
@@ -486,6 +506,10 @@ async def ask(
             debug_artifacts=result.get("debug_artifacts") if isinstance(result, dict) and isinstance(result.get("debug_artifacts"), list) else None,
             backend_answer_diagnostics=result.get("backend_answer_diagnostics") if isinstance(result, dict) and isinstance(result.get("backend_answer_diagnostics"), dict) else None,
             ask_phase_timings=result.get("ask_phase_timings") if isinstance(result, dict) and isinstance(result.get("ask_phase_timings"), dict) else None,
+            service_timeout_seconds=result.get("service_timeout_seconds") if isinstance(result, dict) else None,
+            service_internal_timeout_seconds=result.get("service_internal_timeout_seconds") if isinstance(result, dict) else None,
+            progress_status=result.get("progress_status") if isinstance(result, dict) else None,
+            progress_updated_at_monotonic=result.get("progress_updated_at_monotonic") if isinstance(result, dict) else None,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)

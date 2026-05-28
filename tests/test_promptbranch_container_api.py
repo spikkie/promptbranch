@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.278.36"
+    assert payload["version"] == "0.0.278.37"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.278.36"
+    assert response.json()["version"] == "0.0.278.37"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -221,6 +221,50 @@ def test_ask_endpoint_preserves_partial_timeout_result(monkeypatch) -> None:
     assert payload["submit_evidence"] == {"clicked": True}
     assert payload["partial_result"] is True
     assert payload["debug_artifacts"] == ["debug_artifacts/response_wait.txt"]
+
+def test_ask_endpoint_internal_deadline_preserves_latest_submit_progress(monkeypatch) -> None:
+    class FakeService:
+        async def ask_question_result(self, **kwargs):
+            import asyncio
+            await asyncio.sleep(2.0)
+            return {"answer": "late"}
+
+    preserved_submit = {
+        "submit_confirmed": True,
+        "submit_confirmed_by": ["backend_task_message"],
+        "submit_backend_task_message_found": True,
+        "post_submit_user_turn_visible": False,
+        "submit_backend_confirmed_but_user_turn_not_visible": True,
+    }
+    preserved_timings = {
+        "submit_confirmed": True,
+        "submit_visibility_classification": "backend_confirmed_but_user_turn_not_visible",
+    }
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    monkeypatch.setattr(
+        "promptbranch_container_api.get_latest_ask_progress",
+        lambda: {
+            "status": "submit_confirmed",
+            "conversation_url": "https://chatgpt.com/g/demo/c/chat-1",
+            "submit_evidence": preserved_submit,
+            "ask_phase_timings": preserved_timings,
+            "updated_at_monotonic": 123.0,
+        },
+    )
+
+    client = TestClient(app)
+    response = client.post("/v1/ask", data={"prompt": "hello", "service_timeout_seconds": "1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["status"] == "submit_confirmed_backend_only_ui_not_hydrated"
+    assert payload["timeout_layer"] == "submit_visibility"
+    assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/chat-1"
+    assert payload["submit_evidence"] == preserved_submit
+    assert payload["ask_phase_timings"] == preserved_timings
+    assert payload["progress_status"] == "submit_confirmed"
 
 
 def test_container_service_does_not_clear_singleton_locks_by_default(monkeypatch, tmp_path) -> None:
