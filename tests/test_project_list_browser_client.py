@@ -1952,3 +1952,102 @@ def test_try_extract_json_payload_uses_latest_turn_text_before_historical_json_f
     assert selector == 'section[data-turn="assistant"]'
     assert context["last_response_extraction_mode"] == "latest_turn_text"
     assert context["last_response_historical_scan_used"] is False
+
+
+def test_response_wait_timing_fields_accounts_post_stabilization_tail(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    fields = client._response_wait_timing_fields(
+        {
+            "response_wait_breakdown": {
+                "response_wait_started_at_monotonic": 100.0,
+                "response_first_probe_at_monotonic": 101.0,
+                "response_first_parseable_json_at_monotonic": 104.0,
+                "response_payload_stabilized_at_monotonic": 105.0,
+                "response_wait_returned_at_monotonic": 119.5,
+                "response_probe_attempt_count": 3,
+            }
+        },
+        response_wait_started_at=100.0,
+        response_wait_returned_at=119.5,
+    )
+
+    assert fields["response_wait_seconds"] == 5.0
+    assert fields["response_post_stabilization_return_seconds"] == 14.5
+    assert fields["response_first_parseable_json_at_monotonic"] == 104.0
+    assert fields["response_probe_attempt_count"] == 3
+
+
+def test_wait_and_get_json_records_response_wait_breakdown_and_debug_tail(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def fake_open(*args, **kwargs):
+        return None
+
+    async def fake_extract(page, *, response_context=None):
+        return (
+            {"ok": True, "sentinel": "TIMING_OK"},
+            'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+            35,
+            [
+                {
+                    "selector": 'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+                    "count": 1,
+                    "visible": True,
+                    "text_length": 35,
+                    "parsed": True,
+                }
+            ],
+        )
+
+    async def fake_submit_state(page):
+        return {
+            "selector": 'button[aria-label="Start Voice"]',
+            "idle_visible": True,
+            "send_ready": False,
+            "aria_label": "Start Voice",
+            "data_testid": "",
+            "stop_visible": False,
+            "visible_enabled_count": 1,
+        }
+
+    async def fake_thinking_state(page):
+        return {"visible": False, "text": ""}
+
+    async def fake_safe_url(page):
+        return page.url
+
+    async def fake_save(*args, **kwargs):
+        import asyncio
+
+        await asyncio.sleep(0.02)
+
+    client._maybe_open_new_project_conversation = fake_open
+    client._try_extract_json_payload = fake_extract
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._safe_page_url = fake_safe_url
+    client._save_response_diagnostics = fake_save
+
+    import asyncio
+    import time
+
+    context = {"response_wait_started_at_monotonic": time.monotonic()}
+    payload = asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+
+    assert payload == {"ok": True, "sentinel": "TIMING_OK"}
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_probe_attempt_count"] == 1
+    assert breakdown["response_parseable_probe_attempt_count"] == 1
+    assert breakdown["response_wait_to_first_json_candidate_seconds"] is not None
+    assert breakdown["response_wait_to_first_parseable_json_seconds"] is not None
+    assert breakdown["response_json_stabilization_seconds"] is not None
+    assert breakdown["response_completion_signal_seconds"] is not None
+    assert breakdown["response_post_stabilization_return_seconds"] >= 0.015
