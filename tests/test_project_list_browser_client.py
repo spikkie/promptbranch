@@ -18,6 +18,10 @@ def _make_client(tmp_path: Path) -> ChatGPTBrowserClient:
     return ChatGPTBrowserClient(config)
 
 
+
+async def _async_tuple(value):
+    return value
+
 def test_list_projects_operation_normalizes_sidebar_projects(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -2063,6 +2067,121 @@ def test_wait_for_submit_confirmation_reports_prepare_without_backend_commit(tmp
     assert result["submit_network_evidence"]["prepare_first_observed_after_click_seconds"] == 0.25
 
 
+def test_backend_task_message_wait_retries_backend_detail_503_then_confirms(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    calls = {"count": 0}
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def backend_echo(page, *, prompt=None):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return {
+                "visible": False,
+                "status": "backend_task_message_echo_backend_detail_temporarily_unavailable",
+                "backend_detail_temporarily_unavailable": True,
+                "backend_detail_http_status": 503,
+                "http_status": 503,
+            }
+        return {
+            "visible": True,
+            "status": "backend_task_message_echo_visible",
+            "backend_detail_temporarily_unavailable": False,
+            "backend_detail_http_status": 200,
+            "http_status": 200,
+            "matched_user_turn_id": "user-node-1",
+            "matched_user_turn_index": 7,
+        }
+
+    client._capture_backend_task_message_echo_state = backend_echo
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_backend_task_message_echo_after_prepare(
+        DummyPage(),
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        timeout_ms=50,
+        poll_interval_ms=1,
+    ))
+
+    assert result["post_prepare_commit_found"] is True
+    assert result["post_prepare_commit_status"] == "backend_commit_after_prepare_found"
+    assert result["backend_detail_http_statuses"] == [503, 200]
+    assert result["backend_detail_transient_error_count"] == 1
+    assert result["backend_detail_retry_count"] == 1
+    assert result["matched_user_turn_id"] == "user-node-1"
+
+
+def test_wait_for_submit_confirmation_classifies_backend_detail_503_after_prepare(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "1")
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "method": "POST",
+                "backend_like": True,
+                "mutating": True,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "marker_found": False,
+                "post_data_length": 500,
+                "captured_at_monotonic": 100.25,
+            }
+        ],
+        "responses": [],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    async def backend_echo_after_prepare(page, *, prompt, timeout_ms=None, poll_interval_ms=500):
+        return {
+            "visible": False,
+            "status": "backend_task_message_echo_backend_detail_temporarily_unavailable",
+            "post_prepare_commit_window_used": True,
+            "post_prepare_commit_found": False,
+            "post_prepare_commit_status": "backend_detail_temporarily_unavailable",
+            "post_prepare_commit_seconds": 0.321,
+            "post_prepare_commit_attempt_count": 2,
+            "backend_detail_http_status": 503,
+            "backend_detail_http_statuses": [503, 503],
+            "backend_detail_transient_error_count": 2,
+            "backend_detail_retry_count": 1,
+            "backend_detail_temporarily_unavailable": True,
+        }
+
+    client._wait_for_backend_task_message_echo_after_prepare = backend_echo_after_prepare
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        submit_network_observer=observer,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["confirmation_mode"] == "submit_backend_detail_temporarily_unavailable_timeout"
+    assert result["causal_confirmation_reason"] == "backend_detail_temporarily_unavailable"
+    assert result["backend_task_message_status"] == "backend_detail_temporarily_unavailable"
+    assert result["backend_detail_http_statuses"] == [503, 503]
+    assert result["backend_detail_transient_error_count"] == 2
+    assert result["attempts"][-1]["backend_detail_temporarily_unavailable"] is True
+
+
 def test_wait_for_submit_confirmation_accepts_backend_commit_after_prepare(tmp_path: Path, monkeypatch) -> None:
     client = _make_client(tmp_path)
     monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "1")
@@ -3634,6 +3753,118 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
     assert result["submit_network_request_marker_found"] is True
     assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
 
+
+
+def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    observer = {"observer": "network"}
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            raise AssertionError("input probing is monkeypatched for this test")
+
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def first_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
+        return {
+            "status": "submit_confirmation_not_observed",
+            "confirmed": False,
+            "confirmed_by": [],
+            "confirmation_mode": "submit_prepare_only_then_idle_without_commit_timeout",
+            "network_submit_request_observed": False,
+            "network_submit_request_status": "prepare_only_then_idle_without_commit",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": False,
+            "causal_confirmation_reason": "prepare_only_then_idle_without_commit",
+            "duration_seconds": 0.1,
+            "submit_network_evidence": {
+                "status": "prepare_only_then_idle_without_commit",
+                "prepare_request_observed": True,
+                "prepare_request_count": 3,
+                "prepare_only": True,
+                "prepare_only_then_idle_without_commit": True,
+                "prepare_token_set_not_consumed": True,
+                "message_request_observed": False,
+                "message_request_count": 0,
+            },
+            "backend_task_message_evidence": {
+                "post_prepare_commit_found": False,
+                "post_prepare_commit_status": "backend_commit_after_prepare_not_found",
+            },
+        }
+
+    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
+        return {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "confirmed": True,
+            "network_status": "submit_network_request_observed",
+            "confirmation": {
+                "status": "submit_confirmed",
+                "confirmed": True,
+                "confirmed_by": ["backend_task_message"],
+                "confirmation_mode": "backend_commit_after_prepare",
+                "backend_task_message_found": True,
+                "backend_task_message_status": "backend_commit_after_prepare_found",
+                "causal_confirmation_required": True,
+                "causal_confirmation_verified": True,
+                "causal_confirmation_reason": "backend_commit_after_prepare",
+                "network_submit_request_observed": False,
+                "network_submit_request_status": "submit_network_request_observed",
+                "submit_network_evidence": {
+                    "status": "submit_network_request_observed",
+                    "request_marker_found": True,
+                    "message_request_observed": True,
+                    "message_request_count": 1,
+                },
+                "backend_task_message_evidence": {
+                    "post_prepare_commit_found": True,
+                    "post_prepare_commit_status": "backend_commit_after_prepare_found",
+                },
+            },
+        }
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = first_confirmation
+    client._run_keyboard_submit_variant = retry_variant
+    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((None, None))
+    client._start_submit_network_observer = lambda page, prompt=None: observer
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
+
+    assert page.keyboard.pressed == ["Enter"]
+    assert result["submit_method"] == "keyboard_enter"
+    assert result["submit_keyboard_enter_retry_used"] is True
+    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_retry"
+    assert result["submit_confirmed"] is True
+    assert result["submit_confirmed_by"] == ["backend_task_message"]
+    assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
 
 
 def test_configure_backend_answer_wait_context_keys_to_matched_user_turn(tmp_path: Path) -> None:
