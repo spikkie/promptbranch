@@ -6888,6 +6888,12 @@ class ChatGPTBrowserClient:
                 return snapshot
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
 
+    def _backend_detail_http_status_is_transient(self, status: Any) -> bool:
+        try:
+            return int(status) in {429, 500, 502, 503, 504}
+        except (TypeError, ValueError):
+            return False
+
     async def _capture_backend_task_message_echo_state(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
         if not self._submit_backend_causality_enabled():
@@ -6916,6 +6922,38 @@ class ChatGPTBrowserClient:
                 "error": str(exc),
                 "probe_seconds": round(time.monotonic() - started, 3),
             }
+        http_status = detail.get("status")
+        http_ok = bool(detail.get("ok"))
+        common = {
+            "visible": False,
+            "source": "backend_conversation_detail",
+            "current_url": current_url,
+            "conversation_id": conversation_id,
+            "http_ok": http_ok,
+            "http_status": http_status,
+            "backend_detail_http_status": http_status,
+            "used_authorization": bool(detail.get("used_authorization")),
+            "probe_seconds": round(time.monotonic() - started, 3),
+        }
+        if not http_ok:
+            transient = self._backend_detail_http_status_is_transient(http_status)
+            return {
+                **common,
+                "status": "backend_task_message_echo_backend_detail_temporarily_unavailable" if transient else "backend_task_message_echo_backend_detail_http_error",
+                "backend_detail_temporarily_unavailable": transient,
+                "backend_detail_retryable": transient,
+                "turn_count": 0,
+                "user_turn_count": 0,
+                "assistant_turn_count": 0,
+                "latest_user_turn_id": None,
+                "latest_user_turn_index": None,
+                "latest_user_text_length": 0,
+                "latest_user_text_preview": "",
+                "matched_user_turn_id": None,
+                "matched_user_turn_index": None,
+                "matched_by": [],
+                "matched_marker": None,
+            }
         payload = detail.get("payload")
         turns = self._extract_chat_turns_from_conversation_payload(payload)
         user_turns = [turn for turn in turns if str(turn.get("role") or "").lower() == "user"]
@@ -6933,14 +6971,11 @@ class ChatGPTBrowserClient:
         latest_user = user_turns[-1] if user_turns else {}
         visible = matched_turn is not None
         return {
+            **common,
             "visible": visible,
             "status": "backend_task_message_echo_visible" if visible else "backend_task_message_echo_not_visible",
-            "source": "backend_conversation_detail",
-            "current_url": current_url,
-            "conversation_id": conversation_id,
-            "http_ok": bool(detail.get("ok")),
-            "http_status": detail.get("status"),
-            "used_authorization": bool(detail.get("used_authorization")),
+            "backend_detail_temporarily_unavailable": False,
+            "backend_detail_retryable": False,
             "turn_count": len(turns),
             "user_turn_count": len(user_turns),
             "assistant_turn_count": len(assistant_turns),
@@ -6952,7 +6987,6 @@ class ChatGPTBrowserClient:
             "matched_user_turn_index": matched_turn.get("index") if matched_turn else None,
             "matched_by": matched_by,
             "matched_marker": matched_marker,
-            "probe_seconds": round(time.monotonic() - started, 3),
         }
 
     def _backend_task_message_echo_found(self, evidence: Any) -> bool:
@@ -6971,10 +7005,17 @@ class ChatGPTBrowserClient:
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         attempt_count = 0
         last_evidence: dict[str, Any] = {}
+        backend_detail_http_statuses: list[Any] = []
+        backend_detail_transient_error_count = 0
         while True:
             attempt_count += 1
             evidence = await self._capture_backend_task_message_echo_state(page, prompt=prompt)
             last_evidence = evidence
+            http_status = evidence.get("backend_detail_http_status", evidence.get("http_status")) if isinstance(evidence, dict) else None
+            if http_status is not None:
+                backend_detail_http_statuses.append(http_status)
+            if isinstance(evidence, dict) and evidence.get("backend_detail_temporarily_unavailable"):
+                backend_detail_transient_error_count += 1
             if self._backend_task_message_echo_found(evidence):
                 evidence = dict(evidence)
                 evidence.update({
@@ -6984,18 +7025,29 @@ class ChatGPTBrowserClient:
                     "post_prepare_commit_attempt_count": attempt_count,
                     "post_prepare_commit_seconds": round(time.monotonic() - started, 3),
                     "post_prepare_commit_timeout_ms": timeout_ms,
+                    "backend_detail_http_statuses": backend_detail_http_statuses,
+                    "backend_detail_transient_error_count": backend_detail_transient_error_count,
+                    "backend_detail_retry_count": max(0, attempt_count - 1),
                 })
                 return evidence
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 evidence = dict(last_evidence)
+                transient_unavailable = bool(evidence.get("backend_detail_temporarily_unavailable")) or bool(
+                    backend_detail_http_statuses
+                    and all(self._backend_detail_http_status_is_transient(status) for status in backend_detail_http_statuses)
+                )
                 evidence.update({
                     "post_prepare_commit_window_used": True,
                     "post_prepare_commit_found": False,
-                    "post_prepare_commit_status": "backend_commit_after_prepare_not_found",
+                    "post_prepare_commit_status": "backend_detail_temporarily_unavailable" if transient_unavailable else "backend_commit_after_prepare_not_found",
                     "post_prepare_commit_attempt_count": attempt_count,
                     "post_prepare_commit_seconds": round(time.monotonic() - started, 3),
                     "post_prepare_commit_timeout_ms": timeout_ms,
+                    "backend_detail_http_statuses": backend_detail_http_statuses,
+                    "backend_detail_transient_error_count": backend_detail_transient_error_count,
+                    "backend_detail_retry_count": max(0, attempt_count - 1),
+                    "backend_detail_temporarily_unavailable": transient_unavailable,
                 })
                 return evidence
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
@@ -7181,6 +7233,11 @@ class ChatGPTBrowserClient:
                     "backend_task_message_found": backend_found,
                     "backend_task_message_status": backend_echo.get("status"),
                     "post_prepare_commit_status": backend_echo.get("post_prepare_commit_status"),
+                    "backend_detail_http_status": backend_echo.get("backend_detail_http_status", backend_echo.get("http_status")),
+                    "backend_detail_http_statuses": backend_echo.get("backend_detail_http_statuses"),
+                    "backend_detail_transient_error_count": backend_echo.get("backend_detail_transient_error_count"),
+                    "backend_detail_retry_count": backend_echo.get("backend_detail_retry_count"),
+                    "backend_detail_temporarily_unavailable": backend_echo.get("backend_detail_temporarily_unavailable"),
                     "post_prepare_commit_seconds": backend_echo.get("post_prepare_commit_seconds"),
                     "post_prepare_commit_attempt_count": backend_echo.get("post_prepare_commit_attempt_count"),
                     "network_status_after_prepare_window": network_evidence.get("status"),
@@ -7288,7 +7345,17 @@ class ChatGPTBrowserClient:
             )
             backend_commit_window_used = bool(isinstance(last_backend_echo, dict) and last_backend_echo.get("post_prepare_commit_window_used"))
             conduit_error_hint = network_evidence.get("conduit_error_hint")
-            if prepare_only and backend_commit_window_used:
+            backend_detail_temporarily_unavailable = bool(
+                isinstance(last_backend_echo, dict)
+                and (
+                    last_backend_echo.get("post_prepare_commit_status") == "backend_detail_temporarily_unavailable"
+                    or last_backend_echo.get("backend_detail_temporarily_unavailable") is True
+                )
+            )
+            if prepare_only and backend_commit_window_used and backend_detail_temporarily_unavailable:
+                causal_reason = "backend_detail_temporarily_unavailable"
+                confirmation_mode = "submit_backend_detail_temporarily_unavailable_timeout"
+            elif prepare_only and backend_commit_window_used:
                 causal_reason = conduit_error_hint or "submit_prepare_without_backend_commit"
                 confirmation_mode = (
                     "submit_stream_started_without_user_message_commit_timeout"
@@ -7382,6 +7449,11 @@ class ChatGPTBrowserClient:
             fields["backend_task_message_found"] = self._backend_task_message_echo_found(last_backend_echo)
             fields["backend_task_message_seconds"] = last_backend_echo.get("post_prepare_commit_seconds") if isinstance(last_backend_echo, dict) else None
             fields["backend_task_message_status"] = last_backend_echo.get("post_prepare_commit_status") if isinstance(last_backend_echo, dict) else None
+            fields["backend_detail_http_status"] = last_backend_echo.get("backend_detail_http_status", last_backend_echo.get("http_status")) if isinstance(last_backend_echo, dict) else None
+            fields["backend_detail_http_statuses"] = last_backend_echo.get("backend_detail_http_statuses") if isinstance(last_backend_echo, dict) else None
+            fields["backend_detail_transient_error_count"] = last_backend_echo.get("backend_detail_transient_error_count") if isinstance(last_backend_echo, dict) else None
+            fields["backend_detail_retry_count"] = last_backend_echo.get("backend_detail_retry_count") if isinstance(last_backend_echo, dict) else None
+            fields["backend_detail_temporarily_unavailable"] = last_backend_echo.get("backend_detail_temporarily_unavailable") if isinstance(last_backend_echo, dict) else None
             return {
                 **fields,
                 "confirmed": False,
@@ -7770,6 +7842,31 @@ class ChatGPTBrowserClient:
         """
         value = (os.getenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled", "button"}
+
+    def _keyboard_enter_commit_retry_enabled(self) -> bool:
+        """Return whether a failed primary Enter dispatch may be retried once.
+
+        The retry is not a success shortcut.  It is allowed only after the
+        first Enter path fails closed as prepare-only/no-commit or backend
+        detail temporarily unavailable, and it must independently satisfy the
+        same backend commit/fresh-answer gates.
+        """
+        value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled"}
+
+    def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
+        if not isinstance(confirmation, dict) or confirmation.get("confirmed"):
+            return False
+        network = confirmation.get("submit_network_evidence") if isinstance(confirmation.get("submit_network_evidence"), dict) else {}
+        backend = confirmation.get("backend_task_message_evidence") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else {}
+        return bool(
+            network.get("prepare_only_then_idle_without_commit")
+            or network.get("prepare_token_set_not_consumed")
+            or confirmation.get("confirmation_mode") == "submit_backend_detail_temporarily_unavailable_timeout"
+            or confirmation.get("causal_confirmation_reason") == "backend_detail_temporarily_unavailable"
+            or backend.get("post_prepare_commit_status") == "backend_detail_temporarily_unavailable"
+            or backend.get("backend_detail_temporarily_unavailable") is True
+        )
 
     def _submit_variant_network_summary(self, confirmation: Any, *, variant: str, dispatch_key: str | None = None) -> dict[str, Any]:
         network = confirmation.get("submit_network_evidence") if isinstance(confirmation, dict) and isinstance(confirmation.get("submit_network_evidence"), dict) else {}
@@ -8308,6 +8405,11 @@ class ChatGPTBrowserClient:
                 "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
                 "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
                 "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
+                "submit_backend_detail_http_status": confirmation.get("backend_detail_http_status"),
+                "submit_backend_detail_http_statuses": confirmation.get("backend_detail_http_statuses"),
+                "submit_backend_detail_transient_error_count": confirmation.get("backend_detail_transient_error_count"),
+                "submit_backend_detail_retry_count": confirmation.get("backend_detail_retry_count"),
+                "submit_backend_detail_temporarily_unavailable": confirmation.get("backend_detail_temporarily_unavailable"),
                 "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
                 "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
                 "submit_network_request_status": confirmation.get("network_submit_request_status"),
@@ -8443,8 +8545,24 @@ class ChatGPTBrowserClient:
                 send_button_wait_seconds=send_button_wait_seconds,
             )
             enter_started = time.monotonic()
+            enter_dispatch_surface = "page_keyboard"
+            enter_input_selector = None
             try:
-                await page.keyboard.press("Enter")
+                input_locator, enter_input_selector = await self._find_visible_chat_input_for_submit_variant(page)
+                if input_locator is not None:
+                    try:
+                        await self._click_locator_with_fallback(input_locator, label="keyboard-primary-submit-composer-focus", timeout_ms=1_000)
+                        if hasattr(input_locator, "press"):
+                            await input_locator.press("Enter")
+                            enter_dispatch_surface = "focused_input_locator"
+                        else:
+                            await page.keyboard.press("Enter")
+                            enter_dispatch_surface = "focused_page_keyboard"
+                    except Exception:
+                        await page.keyboard.press("Enter")
+                        enter_dispatch_surface = "page_keyboard_after_focus_failure"
+                else:
+                    await page.keyboard.press("Enter")
             except Exception as exc:
                 self._stop_submit_network_observer(page, submit_network_observer)
                 evidence.update({
@@ -8453,6 +8571,8 @@ class ChatGPTBrowserClient:
                     "submit_keyboard_enter_primary_used": True,
                     "submit_keyboard_enter_dispatch_failed": True,
                     "submit_keyboard_enter_error": type(exc).__name__,
+                    "submit_keyboard_enter_input_selector": enter_input_selector,
+                    "submit_keyboard_enter_dispatch_surface": enter_dispatch_surface,
                     "enter_fallback_press_seconds": round(time.monotonic() - enter_started, 3),
                     "duration_seconds": round(time.monotonic() - submit_total_started, 3),
                 })
@@ -8472,6 +8592,32 @@ class ChatGPTBrowserClient:
                 self._stop_submit_network_observer(page, submit_network_observer)
             confirmation_completed = time.monotonic()
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
+            keyboard_enter_retry_result: dict[str, Any] | None = None
+            keyboard_enter_retry_seconds = 0.0
+            if self._keyboard_enter_commit_retry_enabled() and self._submit_confirmation_needs_keyboard_retry(confirmation):
+                retry_started = time.monotonic()
+                self._log(
+                    "submit",
+                    "primary keyboard Enter did not commit; retrying with trusted refill and Enter",
+                    confirmation_mode=confirmation.get("confirmation_mode"),
+                    causal_reason=confirmation.get("causal_confirmation_reason"),
+                    network_status=(confirmation.get("submit_network_evidence") or {}).get("status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                    backend_status=(confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_status") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
+                )
+                keyboard_enter_retry_result = await self._run_keyboard_submit_variant(
+                    page,
+                    prompt=prompt,
+                    before_assistant_count=before_assistant_count,
+                    before_user_turn_state=before_user_turns,
+                    variant="keyboard_enter_refill_retry",
+                    dispatch_key="Enter",
+                )
+                keyboard_enter_retry_seconds = round(time.monotonic() - retry_started, 3)
+                retry_confirmation = keyboard_enter_retry_result.get("confirmation") if isinstance(keyboard_enter_retry_result, dict) else None
+                if isinstance(retry_confirmation, dict) and retry_confirmation.get("confirmed"):
+                    confirmation = retry_confirmation
+                    confirmation_completed = time.monotonic()
+                    confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
             after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
                 confirmation=confirmation,
                 reason="keyboard_enter_submit_confirmed_without_deep_debug",
@@ -8529,6 +8675,9 @@ class ChatGPTBrowserClient:
                 "send_button_wait_seconds": send_button_wait_seconds,
                 "send_button_retry_seconds": send_button_retry_seconds,
                 "enter_fallback_press_seconds": enter_press_seconds,
+                "submit_keyboard_enter_retry_used": keyboard_enter_retry_result is not None,
+                "submit_keyboard_enter_retry_seconds": keyboard_enter_retry_seconds,
+                "submit_keyboard_enter_retry_result": keyboard_enter_retry_result,
                 "submit_wait_seconds": submit_wait_seconds,
                 "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
                 "after_submit_snapshot_mode": after_composer.get("snapshot_mode"),
@@ -8556,6 +8705,11 @@ class ChatGPTBrowserClient:
                 "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
                 "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
                 "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
+                "submit_backend_detail_http_status": confirmation.get("backend_detail_http_status"),
+                "submit_backend_detail_http_statuses": confirmation.get("backend_detail_http_statuses"),
+                "submit_backend_detail_transient_error_count": confirmation.get("backend_detail_transient_error_count"),
+                "submit_backend_detail_retry_count": confirmation.get("backend_detail_retry_count"),
+                "submit_backend_detail_temporarily_unavailable": confirmation.get("backend_detail_temporarily_unavailable"),
                 "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
                 "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
                 "submit_network_request_status": confirmation.get("network_submit_request_status"),
@@ -8636,6 +8790,8 @@ class ChatGPTBrowserClient:
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_keyboard_enter"),
                 "submit_keyboard_enter_primary_used": True,
                 "submit_keyboard_enter_dispatch_key": "Enter",
+                "submit_keyboard_enter_input_selector": enter_input_selector,
+                "submit_keyboard_enter_dispatch_surface": enter_dispatch_surface,
                 "submit_keyboard_enter_status": keyboard_status,
                 "submit_keyboard_enter_submit_confirmed": keyboard_submit_confirmed,
                 "submit_keyboard_enter_backend_commit_confirmed": keyboard_backend_commit_confirmed,
