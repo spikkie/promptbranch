@@ -4653,3 +4653,100 @@ def test_does_not_promote_prompt_echo_from_visibility_evidence(tmp_path: Path) -
 
     assert promoted is None
     assert "response_extraction_accepted_source" not in response_context
+
+
+def test_fast_latest_visible_answer_promotion_prefers_latest_assistant_turn(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+    marker = "STALE_GUARD_LIVE_OK_1780010958856819059"
+    response_context = {
+        "response_request_binding_required": True,
+        "response_request_markers": [marker],
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "pre_submit_payload_hashes": [],
+    }
+
+    class DummyElement:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        async def inner_text(self, timeout=None):
+            return self._text
+
+    class DummyLocator:
+        def __init__(self, texts):
+            self._texts = list(texts)
+
+        async def count(self):
+            return len(self._texts)
+
+        def nth(self, index):
+            return DummyElement(self._texts[index])
+
+    class DummyPage:
+        def locator(self, selector):
+            if selector == '[data-message-author-role="assistant"]':
+                return DummyLocator([
+                    'JSON\n{"ok":true,"sentinel":"OLD","finished":"finished"}',
+                    f'JSON\n{{"ok":true,"sentinel":"{marker}","finished":"finished"}}',
+                ])
+            return DummyLocator([])
+
+    promoted = asyncio.run(client._promote_fast_latest_visible_answer(
+        DummyPage(),
+        response_context=response_context,
+        extraction_started=0.0,
+    ))
+
+    assert promoted is not None
+    assert promoted["payload"] == {"ok": True, "sentinel": marker, "finished": "finished"}
+    assert promoted["source"] == "fast_latest_assistant_turn"
+    assert response_context["response_extraction_accepted_source"] == "fast_latest_assistant_turn"
+    assert response_context["last_response_payload_binding"]["bound_to_post_submit_turn"] is True
+
+
+def test_fast_latest_visible_answer_rejects_prompt_echo(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+    marker = "STALE_GUARD_LIVE_OK_1780010958856819059"
+    response_context = {
+        "response_request_binding_required": True,
+        "response_request_markers": [marker],
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "pre_submit_payload_hashes": [],
+    }
+
+    class DummyElement:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        async def inner_text(self, timeout=None):
+            return self._text
+
+    class DummyLocator:
+        async def count(self):
+            return 1
+
+        def nth(self, index):
+            return DummyElement(
+                f'Return exactly this JSON object: {{"ok": true, "sentinel": "{marker}", "finished": "finished"}}. JSON GENERATION STRICT RULES:'
+            )
+
+    class DummyPage:
+        def locator(self, selector):
+            if selector == '[data-message-author-role="assistant"]':
+                return DummyLocator()
+            return type('EmptyLocator', (), {
+                'count': lambda self: asyncio.sleep(0, result=0),
+            })()
+
+    promoted = asyncio.run(client._promote_fast_latest_visible_answer(
+        DummyPage(),
+        response_context=response_context,
+        extraction_started=0.0,
+    ))
+
+    assert promoted is None
+    assert "response_extraction_accepted_source" not in response_context
