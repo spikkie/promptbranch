@@ -2373,6 +2373,121 @@ def test_wait_and_get_json_rejects_stale_latest_turn_before_fast_return(tmp_path
     assert breakdown["response_completion_signal_skipped"] is True
 
 
+
+def test_wait_and_get_json_requires_request_marker_even_when_turn_binding_claims_fresh(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+
+    token = "STALE_GUARD_LIVE_OK_1234567890"
+    old_payload = {"ok": True, "sentinel": "SUBMIT_CONFIRMATION_FAST_PATH_OK", "finished": "finished"}
+    fresh_payload = {"ok": True, "sentinel": token, "finished": "finished"}
+    calls = {"extract": 0, "polls": 0}
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            calls["polls"] += 1
+            return None
+
+    async def fake_open(*args, **kwargs):
+        return None
+
+    async def fake_extract(page, *, response_context=None):
+        calls["extract"] += 1
+        payload = old_payload if calls["extract"] == 1 else fresh_payload
+        if isinstance(response_context, dict):
+            response_context["last_response_extraction_mode"] = "post_submit_turn_json"
+            response_context["last_response_payload_binding"] = {
+                "bound_to_post_submit_turn": True,
+                "payload_hash": client._stable_payload_hash(payload),
+                "payload_seen_before_submit": False,
+                "pre_submit_payload_hashes_count": 0,
+                "turn_index": 114,
+                "baseline_turn_index": 0,
+                "current_turn_count": 115,
+            }
+        return (
+            payload,
+            'section[data-turn="assistant"]:nth(114) >> div[data-message-author-role="assistant"] pre',
+            len(json.dumps(payload)),
+            [{"selector": "fake", "count": 1, "visible": True, "text_length": 42, "parsed": True}],
+        )
+
+    async def fake_submit_state(page):
+        return {
+            "selector": 'button[aria-label="Start Voice"]',
+            "idle_visible": True,
+            "send_ready": True,
+            "stop_visible": False,
+            "aria_label": "Start Voice",
+        }
+
+    async def fake_thinking_state(page):
+        return {"visible": False, "text": ""}
+
+    async def fake_safe_url(page):
+        return page.url
+
+    async def fake_save(*args, **kwargs):
+        return None
+
+    client._maybe_open_new_project_conversation = fake_open
+    client._try_extract_json_payload = fake_extract
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._safe_page_url = fake_safe_url
+    client._save_response_diagnostics = fake_save
+
+    import asyncio
+    import time
+
+    context = {
+        "response_wait_started_at_monotonic": time.monotonic(),
+        "assistant_count": 0,
+        "assistant_text": "",
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "prompt_marker",
+        "response_request_markers": [token],
+        "response_request_marker_count": 1,
+        "response_request_nonce_key": "promptbranch_request_nonce",
+    }
+    payload = asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+
+    assert payload == fresh_payload
+    assert calls["extract"] == 2
+    assert calls["polls"] >= 1
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_stale_candidate_detected"] is True
+    assert breakdown["response_freshness_verified"] is True
+    assert breakdown["response_freshness_reason"] == "request_marker_match"
+    assert breakdown["response_request_binding_required"] is True
+    assert breakdown["response_request_marker_verified"] is True
+    assert breakdown["response_json_fast_return_used"] is True
+    assert breakdown["response_json_fast_return_reason"] == "request_marker_match"
+
+
+def test_strip_injected_response_nonce_before_returning_answer(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "response_request_nonce_injected": True,
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "response_wait_breakdown": {},
+    }
+    answer = {
+        "ok": True,
+        "sentinel": "NONCE_STRIP_OK",
+        "promptbranch_request_nonce": "pb_req_abc123",
+        "finished": "finished",
+    }
+
+    stripped = client._strip_response_request_nonce(answer, context)
+
+    assert stripped == {"ok": True, "sentinel": "NONCE_STRIP_OK", "finished": "finished"}
+    assert context["response_request_nonce_stripped_from_answer"] is True
+    assert context["response_wait_breakdown"]["response_request_nonce_stripped_from_answer"] is True
+
+
 def test_wait_and_get_json_deep_debug_keeps_completion_probe_and_diagnostics(tmp_path: Path, monkeypatch) -> None:
     client = _make_client(tmp_path)
     client.config.debug = True
