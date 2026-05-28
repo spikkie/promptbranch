@@ -1650,6 +1650,16 @@ class ChatGPTBrowserClient:
         phase_timings["enter_fallback_decision_seconds"] = submit_evidence.get("enter_fallback_decision_seconds")
         phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
         phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
+        phase_timings["submit_confirmation_mode"] = submit_evidence.get("submit_confirmation_mode")
+        phase_timings["submit_confirmation_fast_path_used"] = submit_evidence.get("submit_confirmation_fast_path_used")
+        phase_timings["submit_confirmation_fast_path_reason"] = submit_evidence.get("submit_confirmation_fast_path_reason")
+        phase_timings["submit_confirmation_to_running_seconds"] = submit_evidence.get("submit_confirmation_to_running_seconds")
+        phase_timings["submit_confirmation_to_new_turn_seconds"] = submit_evidence.get("submit_confirmation_to_new_turn_seconds")
+        phase_timings["submit_confirmation_to_url_conversation_seconds"] = submit_evidence.get("submit_confirmation_to_url_conversation_seconds")
+        phase_timings["submit_confirmation_probe_seconds"] = submit_evidence.get("submit_confirmation_probe_seconds")
+        phase_timings["submit_confirmation_poll_attempt_count"] = submit_evidence.get("submit_confirmation_poll_attempt_count")
+        phase_timings["submit_confirmation_historical_count_used"] = submit_evidence.get("submit_confirmation_historical_count_used")
+        phase_timings["submit_confirmation_fallback_used"] = submit_evidence.get("submit_confirmation_fallback_used")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -5268,6 +5278,7 @@ class ChatGPTBrowserClient:
         *,
         before_assistant_count: int,
     ) -> dict[str, Any]:
+        started = time.monotonic()
         current_url = await self._safe_page_url(page)
         submit_button = await self._probe_submit_button_state(page)
         assistant_count = await self._count_assistant_turns(page)
@@ -5291,6 +5302,63 @@ class ChatGPTBrowserClient:
             "stop_button_visible": bool(submit_button.get("stop_visible")),
             "assistant_turn_count": assistant_count,
             "assistant_turn_delta": assistant_delta,
+            "probe_seconds": round(time.monotonic() - started, 3),
+            "historical_count_used": True,
+        }
+
+    def _submit_confirmation_fast_path_enabled(self) -> bool:
+        mode = (os.getenv("CHATGPT_SUBMIT_CONFIRMATION_MODE") or "fast").strip().lower()
+        if mode in {"0", "false", "no", "off", "legacy", "deep", "full"}:
+            return False
+        if (os.getenv("CHATGPT_DEEP_DEBUG") or "").strip().lower() in {"1", "true", "yes"}:
+            return False
+        return True
+
+    async def _capture_submit_confirmation_fast_state(self, page: Any) -> dict[str, Any]:
+        started = time.monotonic()
+        current_url = await self._safe_page_url(page)
+        conversation_url_visible = self._is_conversation_url(current_url)
+        confirmed_by = ["url_conversation"] if conversation_url_visible else []
+        return {
+            "confirmed": bool(confirmed_by),
+            "confirmed_by": confirmed_by,
+            "current_url": current_url,
+            "conversation_url_visible": conversation_url_visible,
+            "submit_button": None,
+            "stop_button_visible": None,
+            "assistant_turn_count": None,
+            "assistant_turn_delta": None,
+            "probe_seconds": round(time.monotonic() - started, 3),
+            "historical_count_used": False,
+        }
+
+    def _submit_confirmation_timing_fields(
+        self,
+        *,
+        mode: str,
+        fast_path_used: bool,
+        fallback_used: bool,
+        duration_seconds: float,
+        probe_seconds: float,
+        poll_attempt_count: int,
+        historical_count_used: bool,
+        confirmed_by: list[str],
+        fast_path_reason: str | None = None,
+    ) -> dict[str, Any]:
+        to_running = duration_seconds if any(signal in confirmed_by for signal in ("stop_button", "composer_running")) else None
+        to_new_turn = duration_seconds if "assistant_turn" in confirmed_by else None
+        to_url = duration_seconds if "url_conversation" in confirmed_by else None
+        return {
+            "confirmation_mode": mode,
+            "fast_path_used": fast_path_used,
+            "fast_path_reason": fast_path_reason,
+            "fallback_used": fallback_used,
+            "to_running_seconds": to_running,
+            "to_new_turn_seconds": to_new_turn,
+            "to_url_conversation_seconds": to_url,
+            "probe_seconds": round(probe_seconds, 3),
+            "poll_attempt_count": poll_attempt_count,
+            "historical_count_used": historical_count_used,
         }
 
     async def _wait_for_submit_confirmation(
@@ -5301,11 +5369,13 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 3_000,
         poll_interval_ms: int = 250,
     ) -> dict[str, Any]:
-        """Confirm submit using running/URL/assistant signals before slow user-turn scans.
+        """Confirm submit with a cheap success path before historical DOM probes.
 
-        v0.0.278.7 treats stop-button/running state, conversation URL visibility,
-        or a new assistant turn as sufficient evidence that submit happened.  This
-        avoids blocking ask on slow role-specific user-turn DOM materialization.
+        v0.0.278.15 avoids the old-chat cost of counting every assistant turn on
+        the common successful submit path.  A completed button/Enter dispatch plus
+        an already visible conversation URL is accepted as sufficient submit
+        confirmation unless deep/legacy confirmation mode is explicitly enabled.
+        The expensive stop-button/assistant-count probe remains as fallback.
         """
 
         started = time.monotonic()
@@ -5313,12 +5383,56 @@ class ChatGPTBrowserClient:
         attempts: list[dict[str, Any]] = []
         attempt = 0
         last_state: dict[str, Any] = {}
-        while True:
+        probe_seconds_total = 0.0
+        fast_enabled = self._submit_confirmation_fast_path_enabled()
+
+        if fast_enabled:
             attempt += 1
-            state = await self._capture_submit_confirmation_state(page, before_assistant_count=before_assistant_count)
+            state = await self._capture_submit_confirmation_fast_state(page)
+            probe_seconds_total += float(state.get("probe_seconds") or 0.0)
             last_state = state
             attempts.append({
                 "attempt": attempt,
+                "mode": "fast_url",
+                "confirmed": state.get("confirmed"),
+                "confirmed_by": state.get("confirmed_by"),
+                "conversation_url_visible": state.get("conversation_url_visible"),
+                "current_url": state.get("current_url"),
+                "probe_seconds": state.get("probe_seconds"),
+                "historical_count_used": False,
+            })
+            if state.get("confirmed"):
+                duration = round(time.monotonic() - started, 3)
+                fields = self._submit_confirmation_timing_fields(
+                    mode="fast_url_after_dispatch",
+                    fast_path_used=True,
+                    fallback_used=False,
+                    duration_seconds=duration,
+                    probe_seconds=probe_seconds_total,
+                    poll_attempt_count=attempt,
+                    historical_count_used=False,
+                    confirmed_by=list(state.get("confirmed_by") or []),
+                    fast_path_reason="button_or_enter_dispatch_completed_and_conversation_url_visible",
+                )
+                return {
+                    **state,
+                    **fields,
+                    "status": "submit_confirmed",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "duration_seconds": duration,
+                }
+
+        while True:
+            attempt += 1
+            state = await self._capture_submit_confirmation_state(page, before_assistant_count=before_assistant_count)
+            probe_seconds_total += float(state.get("probe_seconds") or 0.0)
+            last_state = state
+            attempts.append({
+                "attempt": attempt,
+                "mode": "legacy_probe",
                 "confirmed": state.get("confirmed"),
                 "confirmed_by": state.get("confirmed_by"),
                 "stop_button_visible": state.get("stop_button_visible"),
@@ -5326,21 +5440,47 @@ class ChatGPTBrowserClient:
                 "assistant_turn_count": state.get("assistant_turn_count"),
                 "assistant_turn_delta": state.get("assistant_turn_delta"),
                 "current_url": state.get("current_url"),
+                "probe_seconds": state.get("probe_seconds"),
+                "historical_count_used": state.get("historical_count_used"),
             })
             if state.get("confirmed"):
+                duration = round(time.monotonic() - started, 3)
+                fields = self._submit_confirmation_timing_fields(
+                    mode="legacy_probe",
+                    fast_path_used=False,
+                    fallback_used=fast_enabled,
+                    duration_seconds=duration,
+                    probe_seconds=probe_seconds_total,
+                    poll_attempt_count=attempt,
+                    historical_count_used=bool(state.get("historical_count_used", True)),
+                    confirmed_by=list(state.get("confirmed_by") or []),
+                )
                 return {
                     **state,
+                    **fields,
                     "status": "submit_confirmed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
                     "attempt_count": attempt,
                     "attempts": attempts,
-                    "duration_seconds": round(time.monotonic() - started, 3),
+                    "duration_seconds": duration,
                 }
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
+                duration = round(time.monotonic() - started, 3)
+                fields = self._submit_confirmation_timing_fields(
+                    mode="legacy_probe_timeout",
+                    fast_path_used=False,
+                    fallback_used=fast_enabled,
+                    duration_seconds=duration,
+                    probe_seconds=probe_seconds_total,
+                    poll_attempt_count=attempt,
+                    historical_count_used=True,
+                    confirmed_by=[],
+                )
                 return {
                     **last_state,
+                    **fields,
                     "confirmed": False,
                     "confirmed_by": [],
                     "status": "submit_confirmation_not_observed",
@@ -5348,7 +5488,7 @@ class ChatGPTBrowserClient:
                     "poll_interval_ms": poll_interval_ms,
                     "attempt_count": attempt,
                     "attempts": attempts,
-                    "duration_seconds": round(time.monotonic() - started, 3),
+                    "duration_seconds": duration,
                 }
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
 
@@ -5726,6 +5866,16 @@ class ChatGPTBrowserClient:
                 "submit_confirmed": bool(confirmation.get("confirmed")),
                 "submit_confirmed_by": confirmation.get("confirmed_by") or [],
                 "submit_confirmation_seconds": confirmation_seconds,
+                "submit_confirmation_mode": confirmation.get("confirmation_mode"),
+                "submit_confirmation_fast_path_used": confirmation.get("fast_path_used"),
+                "submit_confirmation_fast_path_reason": confirmation.get("fast_path_reason"),
+                "submit_confirmation_to_running_seconds": confirmation.get("to_running_seconds"),
+                "submit_confirmation_to_new_turn_seconds": confirmation.get("to_new_turn_seconds"),
+                "submit_confirmation_to_url_conversation_seconds": confirmation.get("to_url_conversation_seconds"),
+                "submit_confirmation_probe_seconds": confirmation.get("probe_seconds"),
+                "submit_confirmation_poll_attempt_count": confirmation.get("poll_attempt_count"),
+                "submit_confirmation_historical_count_used": confirmation.get("historical_count_used"),
+                "submit_confirmation_fallback_used": confirmation.get("fallback_used"),
                 "submit_to_turn_visible_seconds": None,
                 "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
                 "duration_seconds": duration_seconds,
