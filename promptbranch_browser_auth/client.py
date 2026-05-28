@@ -1797,6 +1797,12 @@ class ChatGPTBrowserClient:
         phase_timings["submit_confirmation_poll_attempt_count"] = submit_evidence.get("submit_confirmation_poll_attempt_count")
         phase_timings["submit_confirmation_historical_count_used"] = submit_evidence.get("submit_confirmation_historical_count_used")
         phase_timings["submit_confirmation_fallback_used"] = submit_evidence.get("submit_confirmation_fallback_used")
+        phase_timings["submit_causal_confirmation_required"] = submit_evidence.get("submit_causal_confirmation_required")
+        phase_timings["submit_causal_confirmation_verified"] = submit_evidence.get("submit_causal_confirmation_verified")
+        phase_timings["submit_causal_confirmation_reason"] = submit_evidence.get("submit_causal_confirmation_reason")
+        phase_timings["submit_url_only_confirmation_rejected"] = submit_evidence.get("submit_url_only_confirmation_rejected")
+        phase_timings["submit_user_turn_echo_found"] = submit_evidence.get("submit_user_turn_echo_found")
+        phase_timings["submit_user_turn_echo_seconds"] = submit_evidence.get("submit_user_turn_echo_seconds")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -1815,6 +1821,28 @@ class ChatGPTBrowserClient:
         phase_timings["submit_attempt_count"] = submit_evidence.get("attempt")
         phase_timings["enter_fallback_press_seconds"] = submit_evidence.get("enter_fallback_press_seconds")
         phase_timings["user_turn_dom_evidence_status"] = (submit_evidence.get("dom_user_turn_evidence") or {}).get("status") if isinstance(submit_evidence.get("dom_user_turn_evidence"), dict) else None
+        phase_timings["submit_causal_confirmation_required"] = submit_evidence.get("submit_causal_confirmation_required")
+        phase_timings["submit_causal_confirmation_verified"] = submit_evidence.get("submit_causal_confirmation_verified")
+        phase_timings["submit_causal_confirmation_reason"] = submit_evidence.get("submit_causal_confirmation_reason")
+        phase_timings["submit_url_only_confirmation_rejected"] = submit_evidence.get("submit_url_only_confirmation_rejected")
+        phase_timings["submit_user_turn_echo_found"] = submit_evidence.get("submit_user_turn_echo_found")
+        phase_timings["submit_user_turn_echo_seconds"] = submit_evidence.get("submit_user_turn_echo_seconds")
+
+        if not bool(submit_evidence.get("submit_confirmed")):
+            phase_timings["response_wait_skipped"] = True
+            phase_timings["response_wait_skipped_reason"] = "submit_causality_not_confirmed"
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            return {
+                "ok": False,
+                "action": "ask",
+                "status": "submit_causality_not_confirmed",
+                "error": "submit causality was not confirmed; refusing to wait for or return a response",
+                "error_type": "submit_causality_not_confirmed",
+                "conversation_url": target_url if self._is_conversation_url(target_url) else None,
+                "submit_evidence": submit_evidence,
+                "partial_result": True,
+                "ask_phase_timings": phase_timings,
+            }
 
         response_wait_started = time.monotonic()
         if isinstance(response_context, dict):
@@ -5453,6 +5481,49 @@ class ChatGPTBrowserClient:
             return False
         return True
 
+    def _submit_causal_confirmation_required(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_CONFIRMATION_CAUSAL_REQUIRED") or "1").strip().lower()
+        if value in {"0", "false", "no", "off", "legacy", "url"}:
+            return False
+        return True
+
+    def _user_turn_echo_found(self, evidence: Any) -> bool:
+        if not isinstance(evidence, dict):
+            return False
+        generic = evidence.get("generic_turns") if isinstance(evidence.get("generic_turns"), dict) else {}
+        return bool(
+            evidence.get("request_id_found")
+            or evidence.get("prompt_prefix_found")
+            or generic.get("request_id_found")
+            or generic.get("prompt_prefix_found")
+        )
+
+    async def _capture_submit_user_turn_echo_state(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
+        started = time.monotonic()
+        if not prompt:
+            return {
+                "visible": False,
+                "status": "user_turn_echo_not_checked",
+                "reason": "prompt_missing",
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        try:
+            state = await self._capture_user_turn_state(page, prompt=prompt)
+        except Exception as exc:
+            return {
+                "visible": False,
+                "status": "user_turn_echo_probe_failed",
+                "error": str(exc),
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        visible = self._user_turn_echo_found(state)
+        return {
+            "visible": visible,
+            "status": "user_turn_echo_visible" if visible else "user_turn_echo_not_visible",
+            "probe_seconds": round(time.monotonic() - started, 3),
+            "state": state,
+        }
+
     async def _capture_submit_confirmation_fast_state(self, page: Any) -> dict[str, Any]:
         started = time.monotonic()
         current_url = await self._safe_page_url(page)
@@ -5483,10 +5554,17 @@ class ChatGPTBrowserClient:
         historical_count_used: bool,
         confirmed_by: list[str],
         fast_path_reason: str | None = None,
+        causal_required: bool = True,
+        causal_verified: bool = False,
+        causal_reason: str | None = None,
+        url_only_rejected: bool = False,
+        user_turn_echo_found: bool = False,
+        user_turn_echo_seconds: float | None = None,
     ) -> dict[str, Any]:
         to_running = duration_seconds if any(signal in confirmed_by for signal in ("stop_button", "composer_running")) else None
         to_new_turn = duration_seconds if "assistant_turn" in confirmed_by else None
         to_url = duration_seconds if "url_conversation" in confirmed_by else None
+        to_user_turn_echo = duration_seconds if "user_turn_echo" in confirmed_by else None
         return {
             "confirmation_mode": mode,
             "fast_path_used": fast_path_used,
@@ -5495,9 +5573,16 @@ class ChatGPTBrowserClient:
             "to_running_seconds": to_running,
             "to_new_turn_seconds": to_new_turn,
             "to_url_conversation_seconds": to_url,
+            "to_user_turn_echo_seconds": to_user_turn_echo,
             "probe_seconds": round(probe_seconds, 3),
             "poll_attempt_count": poll_attempt_count,
             "historical_count_used": historical_count_used,
+            "causal_confirmation_required": causal_required,
+            "causal_confirmation_verified": causal_verified,
+            "causal_confirmation_reason": causal_reason,
+            "url_only_confirmation_rejected": url_only_rejected,
+            "user_turn_echo_found": user_turn_echo_found,
+            "user_turn_echo_seconds": round(user_turn_echo_seconds, 3) if isinstance(user_turn_echo_seconds, (int, float)) else None,
         }
 
     async def _wait_for_submit_confirmation(
@@ -5505,16 +5590,20 @@ class ChatGPTBrowserClient:
         page: Any,
         *,
         before_assistant_count: int,
+        before_user_turn_state: dict[str, Any] | None = None,
+        prompt: str | None = None,
         timeout_ms: int = 3_000,
         poll_interval_ms: int = 250,
     ) -> dict[str, Any]:
-        """Confirm submit with a cheap success path before historical DOM probes.
+        """Confirm submit causality before response extraction.
 
-        v0.0.278.15 avoids the old-chat cost of counting every assistant turn on
-        the common successful submit path.  A completed button/Enter dispatch plus
-        an already visible conversation URL is accepted as sufficient submit
-        confirmation unless deep/legacy confirmation mode is explicitly enabled.
-        The expensive stop-button/assistant-count probe remains as fallback.
+        v0.0.278.20 intentionally no longer accepts "same conversation URL" as
+        proof that a submit was accepted.  URL-only confirmation allowed .16-.18
+        to enter response extraction after a no-op/ignored dispatch and then race
+        against stale visible JSON from old turns.  The default confirmation now
+        requires either a running-state signal (stop button / composer running)
+        or a prompt-specific post-submit user-turn echo.  URL evidence remains
+        diagnostic only unless the legacy override is explicitly enabled.
         """
 
         started = time.monotonic()
@@ -5522,40 +5611,59 @@ class ChatGPTBrowserClient:
         attempts: list[dict[str, Any]] = []
         attempt = 0
         last_state: dict[str, Any] = {}
+        last_user_echo: dict[str, Any] = {}
         probe_seconds_total = 0.0
+        user_echo_seconds_total = 0.0
         fast_enabled = self._submit_confirmation_fast_path_enabled()
+        causal_required = self._submit_causal_confirmation_required()
+        url_only_rejected = False
+
+        def strict_signals(confirmed_by: list[str]) -> list[str]:
+            return [signal for signal in confirmed_by if signal in {"stop_button", "composer_running", "user_turn_echo"}]
 
         if fast_enabled:
             attempt += 1
             state = await self._capture_submit_confirmation_fast_state(page)
             probe_seconds_total += float(state.get("probe_seconds") or 0.0)
             last_state = state
+            confirmed_by = list(state.get("confirmed_by") or [])
+            causal_signals = strict_signals(confirmed_by)
+            if causal_required and confirmed_by == ["url_conversation"]:
+                url_only_rejected = True
             attempts.append({
                 "attempt": attempt,
                 "mode": "fast_url",
-                "confirmed": state.get("confirmed"),
-                "confirmed_by": state.get("confirmed_by"),
+                "confirmed": bool(confirmed_by) and (not causal_required or bool(causal_signals)),
+                "confirmed_by": confirmed_by,
+                "causal_signals": causal_signals,
                 "conversation_url_visible": state.get("conversation_url_visible"),
                 "current_url": state.get("current_url"),
                 "probe_seconds": state.get("probe_seconds"),
                 "historical_count_used": False,
+                "url_only_rejected": causal_required and confirmed_by == ["url_conversation"],
             })
-            if state.get("confirmed"):
+            if confirmed_by and not causal_required:
                 duration = round(time.monotonic() - started, 3)
                 fields = self._submit_confirmation_timing_fields(
-                    mode="fast_url_after_dispatch",
+                    mode="fast_url_after_dispatch_legacy",
                     fast_path_used=True,
                     fallback_used=False,
                     duration_seconds=duration,
                     probe_seconds=probe_seconds_total,
                     poll_attempt_count=attempt,
                     historical_count_used=False,
-                    confirmed_by=list(state.get("confirmed_by") or []),
-                    fast_path_reason="button_or_enter_dispatch_completed_and_conversation_url_visible",
+                    confirmed_by=confirmed_by,
+                    fast_path_reason="legacy_url_confirmation_allowed_by_override",
+                    causal_required=False,
+                    causal_verified=True,
+                    causal_reason="legacy_url_confirmation_override",
+                    url_only_rejected=False,
                 )
                 return {
                     **state,
                     **fields,
+                    "confirmed": True,
+                    "confirmed_by": confirmed_by,
                     "status": "submit_confirmed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -5569,11 +5677,26 @@ class ChatGPTBrowserClient:
             state = await self._capture_submit_confirmation_state(page, before_assistant_count=before_assistant_count)
             probe_seconds_total += float(state.get("probe_seconds") or 0.0)
             last_state = state
+            raw_confirmed_by = list(state.get("confirmed_by") or [])
+            causal_confirmed_by = strict_signals(raw_confirmed_by)
+            user_echo_found = False
+            if causal_required and prompt and not causal_confirmed_by:
+                user_echo = await self._capture_submit_user_turn_echo_state(page, prompt=prompt)
+                user_echo_seconds_total += float(user_echo.get("probe_seconds") or 0.0)
+                last_user_echo = user_echo
+                user_echo_found = bool(user_echo.get("visible"))
+                if user_echo_found:
+                    causal_confirmed_by.append("user_turn_echo")
+            if causal_required and raw_confirmed_by == ["url_conversation"] and not causal_confirmed_by:
+                url_only_rejected = True
+            confirmed = bool(causal_confirmed_by) if causal_required else bool(raw_confirmed_by)
+            effective_confirmed_by = causal_confirmed_by if causal_required else raw_confirmed_by
             attempts.append({
                 "attempt": attempt,
-                "mode": "legacy_probe",
-                "confirmed": state.get("confirmed"),
-                "confirmed_by": state.get("confirmed_by"),
+                "mode": "strict_causal_probe" if causal_required else "legacy_probe",
+                "confirmed": confirmed,
+                "confirmed_by": effective_confirmed_by,
+                "raw_confirmed_by": raw_confirmed_by,
                 "stop_button_visible": state.get("stop_button_visible"),
                 "conversation_url_visible": state.get("conversation_url_visible"),
                 "assistant_turn_count": state.get("assistant_turn_count"),
@@ -5581,22 +5704,36 @@ class ChatGPTBrowserClient:
                 "current_url": state.get("current_url"),
                 "probe_seconds": state.get("probe_seconds"),
                 "historical_count_used": state.get("historical_count_used"),
+                "user_turn_echo_found": user_echo_found,
+                "user_turn_echo_status": last_user_echo.get("status") if isinstance(last_user_echo, dict) else None,
+                "url_only_rejected": causal_required and raw_confirmed_by == ["url_conversation"] and not causal_confirmed_by,
             })
-            if state.get("confirmed"):
+            if confirmed:
                 duration = round(time.monotonic() - started, 3)
+                causal_reason = "running_state" if any(signal in effective_confirmed_by for signal in ("stop_button", "composer_running")) else "user_turn_echo"
                 fields = self._submit_confirmation_timing_fields(
-                    mode="legacy_probe",
+                    mode="strict_causal_probe" if causal_required else "legacy_probe",
                     fast_path_used=False,
                     fallback_used=fast_enabled,
                     duration_seconds=duration,
                     probe_seconds=probe_seconds_total,
                     poll_attempt_count=attempt,
                     historical_count_used=bool(state.get("historical_count_used", True)),
-                    confirmed_by=list(state.get("confirmed_by") or []),
+                    confirmed_by=effective_confirmed_by,
+                    causal_required=causal_required,
+                    causal_verified=True,
+                    causal_reason=causal_reason,
+                    url_only_rejected=url_only_rejected,
+                    user_turn_echo_found="user_turn_echo" in effective_confirmed_by,
+                    user_turn_echo_seconds=user_echo_seconds_total,
                 )
                 return {
                     **state,
                     **fields,
+                    "confirmed": True,
+                    "confirmed_by": effective_confirmed_by,
+                    "raw_confirmed_by": raw_confirmed_by,
+                    "user_turn_evidence": last_user_echo,
                     "status": "submit_confirmed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -5608,7 +5745,7 @@ class ChatGPTBrowserClient:
             if remaining <= 0:
                 duration = round(time.monotonic() - started, 3)
                 fields = self._submit_confirmation_timing_fields(
-                    mode="legacy_probe_timeout",
+                    mode="strict_causal_probe_timeout" if causal_required else "legacy_probe_timeout",
                     fast_path_used=False,
                     fallback_used=fast_enabled,
                     duration_seconds=duration,
@@ -5616,12 +5753,20 @@ class ChatGPTBrowserClient:
                     poll_attempt_count=attempt,
                     historical_count_used=True,
                     confirmed_by=[],
+                    causal_required=causal_required,
+                    causal_verified=False,
+                    causal_reason="causal_signal_not_observed" if causal_required else "legacy_signal_not_observed",
+                    url_only_rejected=url_only_rejected,
+                    user_turn_echo_found=False,
+                    user_turn_echo_seconds=user_echo_seconds_total,
                 )
                 return {
                     **last_state,
                     **fields,
                     "confirmed": False,
                     "confirmed_by": [],
+                    "raw_confirmed_by": list(last_state.get("confirmed_by") or []) if isinstance(last_state, dict) else [],
+                    "user_turn_evidence": last_user_echo,
                     "status": "submit_confirmation_not_observed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -5952,6 +6097,8 @@ class ChatGPTBrowserClient:
             confirmation = await self._wait_for_submit_confirmation(
                 page,
                 before_assistant_count=before_assistant_count,
+                before_user_turn_state=before_user_turns,
+                prompt=prompt,
             )
             confirmation_completed = time.monotonic()
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
@@ -6015,8 +6162,14 @@ class ChatGPTBrowserClient:
                 "submit_confirmation_poll_attempt_count": confirmation.get("poll_attempt_count"),
                 "submit_confirmation_historical_count_used": confirmation.get("historical_count_used"),
                 "submit_confirmation_fallback_used": confirmation.get("fallback_used"),
-                "submit_to_turn_visible_seconds": None,
-                "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
+                "submit_causal_confirmation_required": confirmation.get("causal_confirmation_required"),
+                "submit_causal_confirmation_verified": confirmation.get("causal_confirmation_verified"),
+                "submit_causal_confirmation_reason": confirmation.get("causal_confirmation_reason"),
+                "submit_url_only_confirmation_rejected": confirmation.get("url_only_confirmation_rejected"),
+                "submit_user_turn_echo_found": confirmation.get("user_turn_echo_found"),
+                "submit_user_turn_echo_seconds": confirmation.get("user_turn_echo_seconds"),
+                "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
+                "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
                 "duration_seconds": duration_seconds,
                 "submit_accounted_seconds": submit_accounted_seconds,
                 "submit_unaccounted_seconds": submit_unaccounted_seconds,
@@ -6102,6 +6255,8 @@ class ChatGPTBrowserClient:
         confirmation = await self._wait_for_submit_confirmation(
             page,
             before_assistant_count=before_assistant_count,
+            before_user_turn_state=before_user_turns,
+            prompt=prompt,
         )
         confirmation_completed = time.monotonic()
         confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
@@ -6149,7 +6304,23 @@ class ChatGPTBrowserClient:
             "submit_confirmed": bool(confirmation.get("confirmed")),
             "submit_confirmed_by": confirmation.get("confirmed_by") or [],
             "submit_confirmation_seconds": confirmation_seconds,
-            "submit_to_turn_visible_seconds": None,
+            "submit_confirmation_mode": confirmation.get("confirmation_mode"),
+            "submit_confirmation_fast_path_used": confirmation.get("fast_path_used"),
+            "submit_confirmation_fast_path_reason": confirmation.get("fast_path_reason"),
+            "submit_confirmation_to_running_seconds": confirmation.get("to_running_seconds"),
+            "submit_confirmation_to_new_turn_seconds": confirmation.get("to_new_turn_seconds"),
+            "submit_confirmation_to_url_conversation_seconds": confirmation.get("to_url_conversation_seconds"),
+            "submit_confirmation_probe_seconds": confirmation.get("probe_seconds"),
+            "submit_confirmation_poll_attempt_count": confirmation.get("poll_attempt_count"),
+            "submit_confirmation_historical_count_used": confirmation.get("historical_count_used"),
+            "submit_confirmation_fallback_used": confirmation.get("fallback_used"),
+            "submit_causal_confirmation_required": confirmation.get("causal_confirmation_required"),
+            "submit_causal_confirmation_verified": confirmation.get("causal_confirmation_verified"),
+            "submit_causal_confirmation_reason": confirmation.get("causal_confirmation_reason"),
+            "submit_url_only_confirmation_rejected": confirmation.get("url_only_confirmation_rejected"),
+            "submit_user_turn_echo_found": confirmation.get("user_turn_echo_found"),
+            "submit_user_turn_echo_seconds": confirmation.get("user_turn_echo_seconds"),
+            "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
             "duration_seconds": duration_seconds,
             "submit_accounted_seconds": submit_accounted_seconds,
             "submit_unaccounted_seconds": submit_unaccounted_seconds,
@@ -6165,7 +6336,7 @@ class ChatGPTBrowserClient:
                 else bool((after_composer.get("text_length") or 0) == 0)
             ),
             "after_submit_snapshot_skipped_reason": after_composer.get("skipped_reason"),
-            "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
+            "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
         })
         self._log(
             "submit",
