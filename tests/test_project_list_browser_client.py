@@ -3814,3 +3814,150 @@ def test_wait_and_get_json_fast_returns_backend_fresh_marker_payload(tmp_path: P
     assert breakdown["response_json_fast_return_used"] is True
     assert breakdown["response_json_fast_return_reason"] == "request_marker_match"
     assert context["last_response_extraction_mode"] == "backend_conversation_after_user_turn_json"
+
+
+def test_backend_answer_wait_timeout_is_bounded_by_service_client_budget(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "180")
+    monkeypatch.delenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_MS", raising=False)
+    monkeypatch.delenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_RESERVE_MS", raising=False)
+
+    submit_evidence = {
+        "backend_task_message_evidence": {
+            "conversation_id": "conv-123",
+            "matched_user_turn_id": "user-node-1",
+            "matched_user_turn_index": 42,
+        }
+    }
+    import time
+
+    context: dict[str, object] = {}
+    operation_started = time.monotonic() - 45.0
+    client._configure_backend_answer_wait_context(
+        context,
+        submit_evidence=submit_evidence,
+        operation_started=operation_started,
+    )
+
+    assert context["backend_answer_service_client_budget_ms"] == 180_000
+    assert context["backend_answer_timeout_reserve_ms"] == 30_000
+    assert context["backend_answer_wait_timeout_ms"] <= 105_000
+    assert context["backend_answer_wait_timeout_ms"] >= 90_000
+    assert context["ask_operation_elapsed_before_answer_wait_ms"] >= 44_000
+
+
+def test_backend_answer_probe_records_assistant_turn_qualification_fields(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    payload = {"ok": True, "sentinel": "STALE_GUARD_LIVE_OK_qualification", "finished": "finished"}
+
+    class DummyPage:
+        def locator(self, selector):
+            raise AssertionError("backend-first extraction must not touch DOM before backend answer probe succeeds")
+
+    async def fake_fetch(page, *, conversation_id):
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "assistant-node-1",
+                "mapping": {
+                    "root": {"parent": None, "message": None},
+                    "user-node-1": {
+                        "parent": "root",
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["fresh prompt"]},
+                            "create_time": 100.0,
+                            "update_time": 101.0,
+                            "status": "finished_successfully",
+                        },
+                    },
+                    "assistant-node-1": {
+                        "parent": "user-node-1",
+                        "message": {
+                            "author": {"role": "assistant"},
+                            "content": {"parts": [json.dumps(payload)], "content_type": "text"},
+                            "create_time": 102.0,
+                            "update_time": 103.0,
+                            "status": "finished_successfully",
+                            "end_turn": True,
+                        },
+                    },
+                },
+            },
+        }
+
+    client._fetch_conversation_detail = fake_fetch
+    context = {
+        "assistant_count": 115,
+        "assistant_text": "old stale answer",
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "prompt_marker",
+        "response_request_markers": ["STALE_GUARD_LIVE_OK_qualification"],
+        "response_request_marker_count": 1,
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+    }
+
+    import asyncio
+
+    parsed, selector, text_length, probes = asyncio.run(
+        client._try_extract_json_payload(DummyPage(), response_context=context)
+    )
+
+    assert parsed == payload
+    assert selector == "backend_conversation_detail:assistant_after_user_commit"
+    assert text_length > 0
+    assert probes[0]["qualification_status"] == "backend_assistant_after_commit_parseable_json"
+    assert probes[0]["assistant_turn_create_time"] == 102.0
+    assert probes[0]["assistant_turn_update_time"] == 103.0
+    assert probes[0]["assistant_turn_status"] == "finished_successfully"
+    assert probes[0]["assistant_turn_end_turn"] is True
+    assert probes[0]["assistant_turn_content_type"] == "text"
+    assert probes[0]["text_sha256_12"]
+    assert context["backend_answer_qualification_status"] == "backend_assistant_after_commit_parseable_json"
+    assert context["backend_answer_assistant_turn_create_time"] == 102.0
+    assert context["backend_answer_text_sha256_12"] == probes[0]["text_sha256_12"]
+
+
+def test_response_wait_timing_fields_export_backend_qualification_context(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "response_wait_breakdown": {
+            "response_wait_started_at_monotonic": 10.0,
+            "response_wait_returned_at_monotonic": 15.0,
+            "response_effective_timeout_ms": 90_000,
+            "response_backend_first_answer_wait_enabled": True,
+        },
+        "backend_answer_last_status": "backend_assistant_after_commit_marker_missing",
+        "backend_answer_qualification_status": "backend_assistant_after_commit_marker_missing",
+        "backend_answer_assistant_turn_id": "assistant-node-1",
+        "backend_answer_assistant_turn_index": 2,
+        "backend_answer_assistant_turn_create_time": 102.0,
+        "backend_answer_assistant_turn_update_time": 103.0,
+        "backend_answer_assistant_turn_status": "finished_successfully",
+        "backend_answer_text_length": 98,
+        "backend_answer_text_sha256_12": "abc123def456",
+        "backend_answer_freshness_verified": False,
+        "backend_answer_freshness_reason": "request_marker_missing",
+        "backend_answer_wait_timeout_ms": 90_000,
+        "backend_answer_service_client_budget_ms": 180_000,
+        "backend_answer_timeout_reserve_ms": 30_000,
+    }
+
+    fields = client._response_wait_timing_fields(
+        context,
+        response_wait_started_at=10.0,
+        response_wait_returned_at=15.0,
+    )
+
+    assert fields["response_effective_timeout_ms"] == 90_000
+    assert fields["backend_answer_last_status"] == "backend_assistant_after_commit_marker_missing"
+    assert fields["backend_answer_qualification_status"] == "backend_assistant_after_commit_marker_missing"
+    assert fields["backend_answer_assistant_turn_id"] == "assistant-node-1"
+    assert fields["backend_answer_assistant_turn_status"] == "finished_successfully"
+    assert fields["backend_answer_freshness_reason"] == "request_marker_missing"
+    assert fields["backend_answer_service_client_budget_ms"] == 180_000
