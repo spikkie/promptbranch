@@ -3867,7 +3867,31 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
 
 
-def test_configure_backend_answer_wait_context_keys_to_matched_user_turn(tmp_path: Path) -> None:
+def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._ask_retrieval_mode() == "legacy_dom_first"
+    assert client._backend_answer_wait_enabled() is False
+
+    context: dict[str, object] = {}
+    client._configure_backend_answer_wait_context(
+        context,
+        submit_evidence={
+            "submit_confirmed": True,
+            "backend_task_message_evidence": {
+                "conversation_id": "conv-123",
+                "matched_user_turn_id": "user-node-1",
+                "matched_user_turn_index": 1,
+            },
+        },
+    )
+
+    assert context["ask_retrieval_mode"] == "legacy_dom_first"
+    assert context["backend_answer_wait_enabled"] is False
+
+
+def test_configure_backend_answer_wait_context_keys_to_matched_user_turn(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
     context: dict[str, object] = {}
     submit_evidence = {
@@ -3889,7 +3913,8 @@ def test_configure_backend_answer_wait_context_keys_to_matched_user_turn(tmp_pat
     assert context["backend_answer_wait_timeout_ms"] == 120_000
 
 
-def test_try_extract_json_payload_uses_backend_assistant_after_committed_user_turn_first(tmp_path: Path) -> None:
+def test_try_extract_json_payload_uses_backend_assistant_after_committed_user_turn_first(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
     token = "STALE_GUARD_LIVE_OK_1234567890"
     payload = {"ok": True, "sentinel": token, "finished": "finished"}
@@ -3958,7 +3983,8 @@ def test_try_extract_json_payload_uses_backend_assistant_after_committed_user_tu
     assert context["backend_answer_last_status"] == "backend_assistant_turn_after_commit_found"
 
 
-def test_wait_and_get_json_fast_returns_backend_fresh_marker_payload(tmp_path: Path) -> None:
+def test_wait_and_get_json_fast_returns_backend_fresh_marker_payload(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
     token = "STALE_GUARD_LIVE_OK_9999999999"
     payload = {"ok": True, "sentinel": token, "finished": "finished"}
@@ -4077,7 +4103,8 @@ def test_backend_answer_wait_timeout_is_bounded_by_service_client_budget(tmp_pat
     assert context["ask_operation_elapsed_before_answer_wait_ms"] >= 44_000
 
 
-def test_backend_answer_probe_records_assistant_turn_qualification_fields(tmp_path: Path) -> None:
+def test_backend_answer_probe_records_assistant_turn_qualification_fields(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
     payload = {"ok": True, "sentinel": "STALE_GUARD_LIVE_OK_qualification", "finished": "finished"}
 
@@ -4249,7 +4276,8 @@ def test_response_effective_timeout_is_capped_by_absolute_ask_deadline(tmp_path:
     assert context["ask_operation_deadline_remaining_ms_at_json_wait_start"] <= 42_000
 
 
-def test_backend_marker_missing_candidate_falls_through_to_dom_visible_answer(tmp_path: Path) -> None:
+def test_backend_marker_missing_candidate_falls_through_to_dom_visible_answer(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
     fresh_token = "STALE_GUARD_LIVE_OK_dom_compare"
     backend_payload = {"ok": True, "sentinel": "OLD_BACKEND_CANDIDATE", "finished": "finished"}
@@ -4419,6 +4447,7 @@ def test_wait_and_get_json_skips_final_debug_when_hard_deadline_exhausted(tmp_pa
         "backend_answer_conversation_id": "conv-123",
         "backend_answer_user_turn_id": "user-node-1",
         "backend_answer_user_turn_index": 1,
+        "submit_confirmed": True,
     }
 
     try:

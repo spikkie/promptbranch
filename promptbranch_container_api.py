@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -439,7 +440,38 @@ async def ask(
         elif temp_paths:
             ask_kwargs["attachment_paths"] = [str(path) for path in temp_paths]
 
-        result = await _service_for(project_url).ask_question_result(**ask_kwargs)
+        service = _service_for(project_url)
+        if service_timeout_seconds is not None:
+            try:
+                outer_timeout = max(1.0, float(service_timeout_seconds))
+            except (TypeError, ValueError):
+                outer_timeout = 0.0
+        else:
+            outer_timeout = 0.0
+        if outer_timeout > 0:
+            # Keep the HTTP handler inside the client contract even if the
+            # browser operation wedges in a slow DOM/backend probe.  The browser
+            # client still owns richer submit/answer timeout evidence when it
+            # returns normally; this endpoint guard is the final fail-closed
+            # boundary that prevents service_client_read_timeout.
+            internal_timeout = max(1.0, outer_timeout - 8.0)
+            try:
+                result = await asyncio.wait_for(service.ask_question_result(**ask_kwargs), timeout=internal_timeout)
+            except asyncio.TimeoutError:
+                result = {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "service_internal_deadline_timeout",
+                    "error": "browser service internal deadline reached before client timeout",
+                    "error_type": "ServiceInternalDeadlineTimeout",
+                    "timeout_layer": "service",
+                    "partial_result": True,
+                    "service_timeout_seconds": outer_timeout,
+                    "service_internal_timeout_seconds": internal_timeout,
+                    "operator_action": "inspect task/source state before retrying",
+                }
+        else:
+            result = await service.ask_question_result(**ask_kwargs)
         return AskResponse(
             ok=bool(result.get("ok", True)) if isinstance(result, dict) else True,
             answer=result.get("answer") if isinstance(result, dict) else None,
