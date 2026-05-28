@@ -4247,3 +4247,188 @@ def test_response_effective_timeout_is_capped_by_absolute_ask_deadline(tmp_path:
 
     assert 35_000 <= effective_timeout_ms <= 42_000
     assert context["ask_operation_deadline_remaining_ms_at_json_wait_start"] <= 42_000
+
+
+def test_backend_marker_missing_candidate_falls_through_to_dom_visible_answer(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    fresh_token = "STALE_GUARD_LIVE_OK_dom_compare"
+    backend_payload = {"ok": True, "sentinel": "OLD_BACKEND_CANDIDATE", "finished": "finished"}
+    dom_payload = {"ok": True, "sentinel": fresh_token, "finished": "finished"}
+
+    async def fake_fetch(page, *, conversation_id):
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "assistant-node-1",
+                "mapping": {
+                    "root": {"parent": None, "message": None},
+                    "user-node-1": {
+                        "parent": "root",
+                        "message": {"author": {"role": "user"}, "content": {"parts": ["fresh prompt"]}},
+                    },
+                    "assistant-node-1": {
+                        "parent": "user-node-1",
+                        "message": {"author": {"role": "assistant"}, "content": {"parts": [json.dumps(backend_payload)]}},
+                    },
+                }
+            },
+        }
+
+    class DummyJsonItem:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def inner_text(self, timeout=None):
+            return self.text
+
+        async def text_content(self, timeout=None):
+            return ""
+
+    class ScopedJsonLocator:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        @property
+        def last(self):
+            return DummyJsonItem(self.text)
+
+        async def count(self):
+            return 1
+
+    class AssistantTurn:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def locator(self, selector):
+            return ScopedJsonLocator(self.text)
+
+        async def inner_text(self, timeout=None):
+            return self.text
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class AssistantLocator:
+        def __init__(self) -> None:
+            self.turns = [
+                AssistantTurn('{"ok": true, "sentinel": "OLD_PRE_SUBMIT"}'),
+                AssistantTurn(json.dumps(dom_payload)),
+            ]
+
+        async def count(self):
+            return len(self.turns)
+
+        def nth(self, index: int):
+            return self.turns[index]
+
+        @property
+        def last(self):
+            return self.turns[-1]
+
+    class EmptyLocator:
+        async def count(self):
+            return 0
+
+        def nth(self, index: int):
+            raise AssertionError("empty selector should not be indexed")
+
+    class DummyPage:
+        def locator(self, selector):
+            if selector == 'section[data-turn="assistant"]':
+                return AssistantLocator()
+            return EmptyLocator()
+
+    client._fetch_conversation_detail = fake_fetch
+    context = {
+        "assistant_selector": 'section[data-turn="assistant"]',
+        "assistant_count": 1,
+        "assistant_text": '{"ok": true, "sentinel": "OLD_PRE_SUBMIT"}',
+        "assistant_turn_baseline_counts": {'section[data-turn="assistant"]': 1},
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "prompt_marker",
+        "response_request_markers": [fresh_token],
+        "response_request_marker_count": 1,
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+    }
+
+    import asyncio
+
+    parsed, selector, text_length, probes = asyncio.run(
+        client._try_extract_json_payload(DummyPage(), response_context=context)
+    )
+
+    assert parsed == dom_payload
+    assert selector == 'section[data-turn="assistant"]:nth(1) >> #code-block-viewer .cm-content'
+    assert text_length > 0
+    assert context["backend_answer_marker_missing_fell_through_to_dom"] is True
+    assert context["response_extraction_accepted_source"] == "dom_post_submit_code"
+    candidates = context["response_extraction_candidates"]
+    assert [candidate["source"] for candidate in candidates] == ["backend_conversation_detail", "dom_post_submit_code"]
+    assert candidates[0]["accepted"] is False
+    assert candidates[0]["rejected_reason"] == "request_marker_missing"
+    assert candidates[1]["accepted"] is True
+    assert candidates[1]["contains_request_marker"] is True
+
+
+def test_wait_and_get_json_skips_final_debug_when_hard_deadline_exhausted(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("hard deadline should stop before sleeping")
+
+    async def forbidden_open(*args, **kwargs):
+        raise AssertionError("hard deadline should skip project conversation opening")
+
+    async def forbidden_extract(*args, **kwargs):
+        raise AssertionError("hard deadline should skip extraction")
+
+    async def forbidden_submit_state(*args, **kwargs):
+        raise AssertionError("hard deadline should skip submit-state probing")
+
+    async def forbidden_debug(*args, **kwargs):
+        raise AssertionError("hard deadline should skip debug artifacts")
+
+    client._maybe_open_new_project_conversation = forbidden_open
+    client._try_extract_json_payload = forbidden_extract
+    client._probe_submit_button_state = forbidden_submit_state
+    client._save_response_diagnostics = forbidden_debug
+
+    import asyncio
+    import time
+    from promptbranch_browser_auth.exceptions import ResponseTimeoutError
+
+    context = {
+        "response_wait_started_at_monotonic": time.monotonic(),
+        "ask_operation_deadline_monotonic": time.monotonic() + 0.001,
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+    }
+
+    try:
+        asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+    except ResponseTimeoutError as exc:
+        assert "submit_confirmed_answer_timeout" in str(exc)
+    else:
+        raise AssertionError("expected response timeout")
+
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_deadline_hard_stop"] is True
+    assert breakdown["response_final_probe_skipped_due_to_deadline"] is True
+    assert breakdown["response_timeout_debug_artifact_skipped_due_to_deadline"] is True
