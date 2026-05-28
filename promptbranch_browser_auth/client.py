@@ -11263,6 +11263,314 @@ class ChatGPTBrowserClient:
         mode = (os.getenv("CHATGPT_RESPONSE_FRESHNESS_GUARD") or "").strip().lower()
         return mode not in {"0", "false", "no", "off", "disabled"}
 
+    async def _assistant_turn_counts_by_scope(self, page: Any) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for selector in ASSISTANT_TURN_SCOPE_SELECTORS:
+            try:
+                counts[selector] = int(await page.locator(selector).count() or 0)
+            except Exception:
+                counts[selector] = 0
+        return counts
+
+    def _response_post_submit_binding_required(self, response_context: Optional[dict[str, Any]]) -> bool:
+        if not isinstance(response_context, dict):
+            return False
+        if not self._response_freshness_guard_enabled():
+            return False
+        baseline_counts = response_context.get("assistant_turn_baseline_counts")
+        if isinstance(baseline_counts, dict) and baseline_counts:
+            return True
+        return response_context.get("assistant_count") is not None
+
+    def _baseline_assistant_count_for_selector(
+        self,
+        response_context: Optional[dict[str, Any]],
+        selector: Optional[str],
+    ) -> int:
+        if not isinstance(response_context, dict) or not selector:
+            return 0
+        baseline_counts = response_context.get("assistant_turn_baseline_counts")
+        if isinstance(baseline_counts, dict) and selector in baseline_counts:
+            try:
+                return int(baseline_counts.get(selector) or 0)
+            except (TypeError, ValueError):
+                return 0
+        if selector == response_context.get("assistant_selector"):
+            try:
+                return int(response_context.get("assistant_count") or 0)
+            except (TypeError, ValueError):
+                return 0
+        return 0
+
+    async def _capture_pre_submit_payload_hashes(
+        self,
+        page: Any,
+        *,
+        assistant_text: str = "",
+    ) -> list[str]:
+        hashes: list[str] = []
+
+        def add_payload(value: Any) -> None:
+            if value is None:
+                return
+            digest = self._stable_payload_hash(value)
+            if digest and digest not in hashes:
+                hashes.append(digest)
+
+        add_payload(self._extract_json_from_text(assistant_text) if assistant_text else None)
+
+        # Capture only the latest visible global JSON blocks as a diagnostic/stale
+        # guard.  This must remain capped so old conversations do not regress to
+        # historical full-DOM scans during response-context capture.
+        for selector in JSON_BLOCK_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = int(await locator.count() or 0)
+            except Exception:
+                continue
+            if count <= 0:
+                continue
+            try:
+                item = locator.last
+            except Exception:
+                continue
+            text = await self._extract_text_from_locator(item, timeout_ms=300)
+            add_payload(self._extract_json_from_text(text) if text else None)
+            if len(hashes) >= 8:
+                break
+        return hashes
+
+    def _record_post_submit_payload_binding(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        bound: bool,
+        selector: Optional[str] = None,
+        turn_selector: Optional[str] = None,
+        turn_index: Optional[int] = None,
+        baseline_turn_index: Optional[int] = None,
+        current_turn_count: Optional[int] = None,
+        payload: Any = None,
+        text_length: int = 0,
+        mode: str = "unknown",
+    ) -> None:
+        if not isinstance(response_context, dict):
+            return
+        payload_hash = self._stable_payload_hash(payload) if payload is not None else ""
+        pre_hashes = response_context.get("pre_submit_payload_hashes")
+        if not isinstance(pre_hashes, list):
+            pre_hashes = []
+        response_context["last_response_payload_binding"] = {
+            "bound_to_post_submit_turn": bool(bound),
+            "selector": selector,
+            "turn_selector": turn_selector,
+            "turn_index": turn_index,
+            "baseline_turn_index": baseline_turn_index,
+            "current_turn_count": current_turn_count,
+            "payload_hash": payload_hash,
+            "payload_seen_before_submit": bool(payload_hash and payload_hash in pre_hashes),
+            "pre_submit_payload_hashes_count": len(pre_hashes),
+            "text_length": text_length,
+            "mode": mode,
+        }
+
+    async def _try_extract_post_submit_json_payload(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]],
+        extraction_started: float,
+    ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
+        probes: list[dict[str, Any]] = []
+        if not isinstance(response_context, dict):
+            return None, None, 0, probes
+
+        # Freshness is enforced at the extraction boundary: only assistant turns
+        # that were not present in the pre-submit baseline may contribute a
+        # returned payload.  This prevents warm-task reuse from returning an old
+        # parseable JSON block that remains visible in the page.
+        selectors: list[str] = []
+        baseline_selector = response_context.get("assistant_selector")
+        if isinstance(baseline_selector, str) and baseline_selector:
+            selectors.append(baseline_selector)
+        for selector in ASSISTANT_TURN_SCOPE_SELECTORS:
+            if selector not in selectors:
+                selectors.append(selector)
+
+        for turn_selector in selectors:
+            try:
+                locator = page.locator(turn_selector)
+                current_count = int(await locator.count() or 0)
+            except Exception as exc:
+                probes.append({
+                    "selector": turn_selector,
+                    "count": 0,
+                    "visible": False,
+                    "text_length": 0,
+                    "parsed": False,
+                    "post_submit_only": True,
+                    "error": str(exc),
+                })
+                continue
+
+            baseline_count = self._baseline_assistant_count_for_selector(response_context, turn_selector)
+            if current_count <= baseline_count:
+                probes.append({
+                    "selector": turn_selector,
+                    "count": current_count,
+                    "visible": False,
+                    "text_length": 0,
+                    "parsed": False,
+                    "post_submit_only": True,
+                    "baseline_turn_index": baseline_count,
+                    "current_turn_count": current_count,
+                    "post_submit_turn_count": 0,
+                })
+                continue
+
+            if not hasattr(locator, "nth"):
+                probes.append({
+                    "selector": turn_selector,
+                    "count": current_count,
+                    "visible": False,
+                    "text_length": 0,
+                    "parsed": False,
+                    "post_submit_only": True,
+                    "baseline_turn_index": baseline_count,
+                    "current_turn_count": current_count,
+                    "error": "locator_nth_unavailable_for_post_submit_binding",
+                })
+                continue
+
+            for turn_index in range(current_count - 1, max(baseline_count - 1, -1), -1):
+                try:
+                    assistant_turn = locator.nth(turn_index)
+                except Exception as exc:
+                    probes.append({
+                        "selector": turn_selector,
+                        "count": current_count,
+                        "visible": False,
+                        "text_length": 0,
+                        "parsed": False,
+                        "post_submit_only": True,
+                        "baseline_turn_index": baseline_count,
+                        "turn_index": turn_index,
+                        "error": str(exc),
+                    })
+                    continue
+
+                for json_selector in JSON_BLOCK_SELECTORS:
+                    scoped_selector = f"{turn_selector}:nth({turn_index}) >> {json_selector}"
+                    try:
+                        json_locator = assistant_turn.locator(json_selector)
+                        json_count = int(await json_locator.count() or 0)
+                    except Exception as exc:
+                        probes.append({
+                            "selector": scoped_selector,
+                            "count": 0,
+                            "visible": False,
+                            "text_length": 0,
+                            "parsed": False,
+                            "post_submit_only": True,
+                            "turn_index": turn_index,
+                            "baseline_turn_index": baseline_count,
+                            "error": str(exc),
+                        })
+                        continue
+                    visible = False
+                    payload_text = ""
+                    if json_count:
+                        try:
+                            last = json_locator.last
+                            visible = await last.is_visible(timeout=500)
+                        except Exception:
+                            visible = False
+                        try:
+                            payload_text = await self._extract_text_from_locator(json_locator.last, timeout_ms=500)
+                        except Exception:
+                            payload_text = ""
+                    parsed = self._extract_json_from_text(payload_text) if payload_text else None
+                    probes.append({
+                        "selector": scoped_selector,
+                        "count": json_count,
+                        "visible": visible,
+                        "text_length": len(payload_text),
+                        "parsed": parsed is not None,
+                        "preview": self._preview_text(payload_text, 220),
+                        "scoped_latest_turn": turn_index == current_count - 1,
+                        "post_submit_only": True,
+                        "turn_selector": turn_selector,
+                        "turn_index": turn_index,
+                        "baseline_turn_index": baseline_count,
+                        "current_turn_count": current_count,
+                    })
+                    if parsed is not None:
+                        self._record_post_submit_payload_binding(
+                            response_context,
+                            bound=True,
+                            selector=scoped_selector,
+                            turn_selector=turn_selector,
+                            turn_index=turn_index,
+                            baseline_turn_index=baseline_count,
+                            current_turn_count=current_count,
+                            payload=parsed,
+                            text_length=len(payload_text),
+                            mode="post_submit_turn_json",
+                        )
+                        self._record_response_extraction_context(
+                            response_context,
+                            mode="post_submit_turn_json",
+                            historical_scan_used=False,
+                            started_at=extraction_started,
+                        )
+                        return parsed, scoped_selector, len(payload_text), probes
+
+                turn_text = await self._extract_text_from_locator(assistant_turn, timeout_ms=500)
+                parsed = self._extract_json_from_text(turn_text) if turn_text else None
+                probes.append({
+                    "selector": turn_selector,
+                    "count": current_count,
+                    "visible": True,
+                    "text_length": len(turn_text),
+                    "parsed": parsed is not None,
+                    "preview": self._preview_text(turn_text, 220),
+                    "scoped_latest_turn": turn_index == current_count - 1,
+                    "post_submit_only": True,
+                    "turn_selector": turn_selector,
+                    "turn_index": turn_index,
+                    "baseline_turn_index": baseline_count,
+                    "current_turn_count": current_count,
+                })
+                if parsed is not None:
+                    self._record_post_submit_payload_binding(
+                        response_context,
+                        bound=True,
+                        selector=turn_selector,
+                        turn_selector=turn_selector,
+                        turn_index=turn_index,
+                        baseline_turn_index=baseline_count,
+                        current_turn_count=current_count,
+                        payload=parsed,
+                        text_length=len(turn_text),
+                        mode="post_submit_turn_text",
+                    )
+                    self._record_response_extraction_context(
+                        response_context,
+                        mode="post_submit_turn_text",
+                        historical_scan_used=False,
+                        started_at=extraction_started,
+                    )
+                    return parsed, turn_selector, len(turn_text), probes
+
+        self._record_post_submit_payload_binding(response_context, bound=False, mode="post_submit_turn_not_found")
+        self._record_response_extraction_context(
+            response_context,
+            mode="post_submit_turn_not_found",
+            historical_scan_used=False,
+            started_at=extraction_started,
+        )
+        return None, None, 0, probes
+
     async def _verify_response_freshness(
         self,
         page: Any,
@@ -11274,10 +11582,9 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Return whether a parseable response belongs to the current ask.
 
-        Warm-task reuse can leave a previous assistant answer visible while the
-        new prompt is still being submitted or generated.  The response path must
-        therefore prove that the latest assistant surface changed after the
-        pre-submit baseline before it may return any parseable latest-turn JSON.
+        v0.0.278.18 makes freshness a payload-provenance check.  It is
+        insufficient for the page or assistant-count to change if the extracted
+        JSON payload still came from a pre-submit assistant turn.
         """
 
         payload_hash = self._stable_payload_hash(payload)
@@ -11296,12 +11603,20 @@ class ChatGPTBrowserClient:
             "payload_hash": payload_hash,
             "stale_candidate_detected": False,
             "probe_seconds": 0.0,
+            "payload_bound_to_post_submit_turn": False,
+            "payload_turn_index": None,
+            "payload_baseline_turn_index": None,
+            "payload_current_turn_count": None,
+            "payload_seen_before_submit": None,
+            "pre_submit_payload_hashes_count": 0,
         }
         if not isinstance(response_context, dict):
             return result
 
         baseline_count_raw = response_context.get("assistant_count")
         baseline_text = response_context.get("assistant_text") or ""
+        result["baseline_assistant_count"] = baseline_count_raw
+        result["baseline_answer_hash"] = self._stable_text_hash(baseline_text)
         if baseline_count_raw is None and not str(baseline_text).strip():
             result.update({"mode": "not_required", "reason": "missing_baseline_assistant_state"})
             return result
@@ -11313,40 +11628,43 @@ class ChatGPTBrowserClient:
         result.update({
             "required": True,
             "verified": False,
-            "mode": "assistant_baseline_delta",
-            "reason": "unchanged_assistant_baseline",
-            "baseline_assistant_count": baseline_count_raw,
-            "baseline_answer_hash": self._stable_text_hash(baseline_text),
+            "mode": "post_submit_payload_binding",
+            "reason": "payload_not_bound_to_post_submit_turn",
         })
-        started = time.monotonic()
-        assistant_selector, assistant_count, assistant_text, _ = await self._extract_last_text_from_selectors(
-            page,
-            ASSISTANT_MESSAGE_SELECTORS,
-        )
-        result["probe_seconds"] = round(time.monotonic() - started, 3)
-        result["current_assistant_count"] = assistant_count
-        result["current_assistant_selector"] = assistant_selector
-        result["returned_answer_hash"] = self._stable_text_hash(assistant_text)
-        try:
-            baseline_count = int(baseline_count_raw or 0)
-        except (TypeError, ValueError):
-            baseline_count = 0
-        try:
-            current_count = int(assistant_count or 0)
-        except (TypeError, ValueError):
-            current_count = 0
-        result["assistant_count_delta"] = current_count - baseline_count
 
-        baseline_hash = result.get("baseline_answer_hash") or ""
-        current_hash = result.get("returned_answer_hash") or ""
-        count_increased = current_count > baseline_count
-        text_changed = bool(current_hash and current_hash != baseline_hash)
-        if count_increased:
-            result.update({"verified": True, "reason": "assistant_count_increased"})
-        elif text_changed:
-            result.update({"verified": True, "reason": "assistant_text_changed"})
-        else:
-            result["stale_candidate_detected"] = True
+        binding = response_context.get("last_response_payload_binding")
+        if isinstance(binding, dict):
+            result["payload_bound_to_post_submit_turn"] = bool(binding.get("bound_to_post_submit_turn"))
+            result["payload_turn_index"] = binding.get("turn_index")
+            result["payload_baseline_turn_index"] = binding.get("baseline_turn_index")
+            result["payload_current_turn_count"] = binding.get("current_turn_count")
+            result["payload_seen_before_submit"] = bool(binding.get("payload_seen_before_submit"))
+            result["pre_submit_payload_hashes_count"] = int(binding.get("pre_submit_payload_hashes_count") or 0)
+            if binding.get("payload_hash"):
+                result["payload_hash"] = binding.get("payload_hash")
+            result["returned_answer_hash"] = binding.get("payload_hash")
+            result["current_assistant_count"] = binding.get("current_turn_count")
+            try:
+                baseline_count = int(binding.get("baseline_turn_index") or 0)
+                current_count = int(binding.get("current_turn_count") or 0)
+                result["assistant_count_delta"] = current_count - baseline_count
+            except (TypeError, ValueError):
+                pass
+
+            # The decisive proof is that the returned payload came from an
+            # assistant turn after the pre-submit baseline.  Payload hashes are
+            # recorded as evidence, but are not the authority: repeated answers
+            # may legitimately have the same payload if they were generated in a
+            # new post-submit assistant turn.
+            if result["payload_bound_to_post_submit_turn"]:
+                result.update({
+                    "verified": True,
+                    "reason": "post_submit_turn_payload",
+                    "stale_candidate_detected": False,
+                })
+                return result
+
+        result["stale_candidate_detected"] = True
         return result
 
     def _record_response_freshness(
@@ -11368,6 +11686,12 @@ class ChatGPTBrowserClient:
         breakdown["response_freshness_baseline_assistant_count"] = freshness.get("baseline_assistant_count")
         breakdown["response_freshness_current_assistant_count"] = freshness.get("current_assistant_count")
         breakdown["response_freshness_assistant_count_delta"] = freshness.get("assistant_count_delta")
+        breakdown["response_payload_bound_to_post_submit_turn"] = bool(freshness.get("payload_bound_to_post_submit_turn"))
+        breakdown["response_payload_turn_index"] = freshness.get("payload_turn_index")
+        breakdown["response_payload_baseline_turn_index"] = freshness.get("payload_baseline_turn_index")
+        breakdown["response_payload_current_turn_count"] = freshness.get("payload_current_turn_count")
+        breakdown["response_pre_submit_payload_hashes_count"] = freshness.get("pre_submit_payload_hashes_count")
+        breakdown["response_payload_seen_before_submit"] = bool(freshness.get("payload_seen_before_submit"))
 
     def _latest_turn_json_fast_return_enabled(self, response_context: Optional[dict[str, Any]]) -> tuple[bool, str]:
         """Return whether parseable latest-turn JSON may bypass global completion probes."""
@@ -11464,6 +11788,12 @@ class ChatGPTBrowserClient:
             "response_freshness_baseline_assistant_count",
             "response_freshness_current_assistant_count",
             "response_freshness_assistant_count_delta",
+            "response_payload_bound_to_post_submit_turn",
+            "response_payload_turn_index",
+            "response_payload_baseline_turn_index",
+            "response_payload_current_turn_count",
+            "response_pre_submit_payload_hashes_count",
+            "response_payload_seen_before_submit",
         ]
         for key in timing_keys:
             if key in breakdown:
@@ -11494,12 +11824,19 @@ class ChatGPTBrowserClient:
             ASSISTANT_MESSAGE_SELECTORS,
         )
         project_conversation_links = await self._extract_project_conversation_links(page)
+        assistant_turn_baseline_counts = await self._assistant_turn_counts_by_scope(page)
+        pre_submit_payload_hashes = await self._capture_pre_submit_payload_hashes(
+            page,
+            assistant_text=assistant_text,
+        )
         context = {
             "url": await self._safe_page_url(page),
             "assistant_selector": assistant_selector,
             "assistant_count": assistant_count,
             "assistant_text": assistant_text,
             "assistant_probes": assistant_probes,
+            "assistant_turn_baseline_counts": assistant_turn_baseline_counts,
+            "pre_submit_payload_hashes": pre_submit_payload_hashes,
             "project_conversation_links": project_conversation_links,
             "dom_weight": dom_weight,
         }
@@ -11511,6 +11848,8 @@ class ChatGPTBrowserClient:
             assistant_count=assistant_count,
             assistant_text_length=len(assistant_text),
             assistant_preview=self._preview_text(assistant_text, 160),
+            assistant_turn_baseline_counts=assistant_turn_baseline_counts,
+            pre_submit_payload_hashes_count=len(pre_submit_payload_hashes),
             project_conversation_link_count=len(project_conversation_links),
             conversation_assistant_turn_count=dom_weight.get("assistant_turn_count"),
             conversation_user_turn_count=dom_weight.get("user_turn_count"),
@@ -11725,6 +12064,13 @@ class ChatGPTBrowserClient:
     ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
         probes: list[dict[str, Any]] = []
         extraction_started = time.monotonic()
+
+        if self._response_post_submit_binding_required(response_context):
+            return await self._try_extract_post_submit_json_payload(
+                page,
+                response_context=response_context,
+                extraction_started=extraction_started,
+            )
 
         assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
         if assistant_turn is not None:

@@ -1936,6 +1936,105 @@ def test_try_extract_json_payload_prefers_latest_assistant_turn_scope(tmp_path: 
     assert probes[0]["scoped_latest_turn"] is True
 
 
+
+def test_try_extract_json_payload_with_freshness_context_ignores_pre_submit_turns(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyJsonItem:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        async def inner_text(self, timeout=None):
+            return self.text
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class ScopedJsonLocator:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        @property
+        def last(self):
+            return DummyJsonItem(self.text)
+
+        async def count(self):
+            return 1
+
+    class AssistantTurn:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def locator(self, selector):
+            return ScopedJsonLocator(self.text)
+
+        async def inner_text(self, timeout=None):
+            return self.text
+
+        async def text_content(self, timeout=None):
+            return ""
+
+        async def is_visible(self, timeout=None):
+            return True
+
+    class AssistantLocator:
+        def __init__(self) -> None:
+            self.turns = [
+                AssistantTurn('{"ok": true, "sentinel": "OLD_PRE_SUBMIT"}'),
+                AssistantTurn('{"ok": true, "sentinel": "NEW_POST_SUBMIT"}'),
+            ]
+
+        async def count(self):
+            return len(self.turns)
+
+        def nth(self, index: int):
+            return self.turns[index]
+
+        @property
+        def last(self):
+            return self.turns[-1]
+
+    class EmptyLocator:
+        async def count(self):
+            return 0
+
+        def nth(self, index: int):
+            raise AssertionError("empty selector should not be indexed")
+
+    class DummyPage:
+        def locator(self, selector):
+            if selector == 'section[data-turn="assistant"]':
+                return AssistantLocator()
+            return EmptyLocator()
+
+    context = {
+        "assistant_selector": 'section[data-turn="assistant"]',
+        "assistant_count": 1,
+        "assistant_text": '{"ok": true, "sentinel": "OLD_PRE_SUBMIT"}',
+        "assistant_turn_baseline_counts": {'section[data-turn="assistant"]': 1},
+        "pre_submit_payload_hashes": [client._stable_payload_hash({"ok": True, "sentinel": "OLD_PRE_SUBMIT"})],
+    }
+
+    import asyncio
+
+    payload, selector, text_length, probes = asyncio.run(
+        client._try_extract_json_payload(DummyPage(), response_context=context)
+    )
+
+    assert payload == {"ok": True, "sentinel": "NEW_POST_SUBMIT"}
+    assert selector == 'section[data-turn="assistant"]:nth(1) >> #code-block-viewer .cm-content'
+    assert text_length > 0
+    assert all(probe.get("post_submit_only") for probe in probes)
+    binding = context["last_response_payload_binding"]
+    assert binding["bound_to_post_submit_turn"] is True
+    assert binding["turn_index"] == 1
+    assert binding["baseline_turn_index"] == 1
+    assert binding["payload_seen_before_submit"] is False
+
+
 def test_capture_conversation_dom_weight_light_mode_skips_historical_code_blocks(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -2180,6 +2279,27 @@ def test_wait_and_get_json_rejects_stale_latest_turn_before_fast_return(tmp_path
             response_context["last_response_extraction_mode"] = "latest_turn_json"
         payload = old_payload if calls["extract"] == 1 else new_payload
         text = old_text if calls["extract"] == 1 else new_text
+        if isinstance(response_context, dict):
+            if calls["extract"] == 1:
+                response_context["last_response_payload_binding"] = {
+                    "bound_to_post_submit_turn": False,
+                    "payload_hash": client._stable_payload_hash(payload),
+                    "payload_seen_before_submit": True,
+                    "pre_submit_payload_hashes_count": 1,
+                    "turn_index": 0,
+                    "baseline_turn_index": 1,
+                    "current_turn_count": 1,
+                }
+            else:
+                response_context["last_response_payload_binding"] = {
+                    "bound_to_post_submit_turn": True,
+                    "payload_hash": client._stable_payload_hash(payload),
+                    "payload_seen_before_submit": False,
+                    "pre_submit_payload_hashes_count": 1,
+                    "turn_index": 1,
+                    "baseline_turn_index": 1,
+                    "current_turn_count": 2,
+                }
         return (
             payload,
             'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
@@ -2192,6 +2312,7 @@ def test_wait_and_get_json_rejects_stale_latest_turn_before_fast_return(tmp_path
                     "text_length": len(text),
                     "parsed": True,
                     "scoped_latest_turn": True,
+                    "post_submit_only": calls["extract"] > 1,
                 }
             ],
         )
@@ -2244,8 +2365,10 @@ def test_wait_and_get_json_rejects_stale_latest_turn_before_fast_return(tmp_path
     breakdown = context["response_wait_breakdown"]
     assert breakdown["response_freshness_required"] is True
     assert breakdown["response_freshness_verified"] is True
-    assert breakdown["response_freshness_reason"] == "assistant_count_increased"
+    assert breakdown["response_freshness_reason"] == "post_submit_turn_payload"
     assert breakdown["response_stale_candidate_detected"] is True
+    assert breakdown["response_payload_bound_to_post_submit_turn"] is True
+    assert breakdown["response_payload_seen_before_submit"] is False
     assert breakdown["response_json_fast_return_used"] is True
     assert breakdown["response_completion_signal_skipped"] is True
 
