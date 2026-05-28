@@ -1462,7 +1462,7 @@ def test_fetch_project_conversations_page_clamps_limit_to_50(tmp_path: Path) -> 
     assert result["payload"] == {}
 
 
-def test_goto_does_not_skip_conversation_ask_navigation(tmp_path: Path) -> None:
+def test_goto_skips_same_conversation_ask_navigation_by_default(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
     class DummyPage:
@@ -1487,10 +1487,12 @@ def test_goto_does_not_skip_conversation_ask_navigation(tmp_path: Path) -> None:
 
     import asyncio
 
-    asyncio.run(client._goto(page, "https://chatgpt.com/g/g-p-current-demo/c/chat-1", label="chat-home-after-login"))
+    result = asyncio.run(client._goto(page, "https://chatgpt.com/g/g-p-current-demo/c/chat-1", label="chat-home-after-login"))
 
-    assert page.goto_calls == [("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded")]
-    assert client._rate_limit_telemetry_snapshot()["navigation_noop_skip_count"] == 0
+    assert page.goto_calls == []
+    assert result["mode"] == "same_url_skip"
+    assert result["skipped"] is True
+    assert client._rate_limit_telemetry_snapshot()["navigation_noop_skip_count"] == 1
 
 
 def test_ensure_target_conversation_hydrated_forces_reload_before_failure(tmp_path: Path) -> None:
@@ -1518,8 +1520,12 @@ def test_ensure_target_conversation_hydrated_forces_reload_before_failure(tmp_pa
     async def fake_wait_rate_limit(page, *, label: str, timeout_ms: int | None = None):
         return False
 
+    async def fake_has_chat_input(page):
+        return False
+
     client._capture_user_turn_state = fake_turn_state
     client._wait_for_rate_limit_modal_to_clear = fake_wait_rate_limit
+    client._has_chat_input = fake_has_chat_input
 
     import asyncio
 
@@ -1575,8 +1581,12 @@ def test_ensure_target_conversation_hydrated_accepts_after_second_reload(tmp_pat
     async def fake_wait_rate_limit(page, *, label: str, timeout_ms: int | None = None):
         return False
 
+    async def fake_has_chat_input(page):
+        return False
+
     client._capture_user_turn_state = fake_turn_state
     client._wait_for_rate_limit_modal_to_clear = fake_wait_rate_limit
+    client._has_chat_input = fake_has_chat_input
 
     import asyncio
 
@@ -1597,6 +1607,67 @@ def test_ensure_target_conversation_hydrated_accepts_after_second_reload(tmp_pat
         ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
         ("https://chatgpt.com/g/g-p-current-demo/c/chat-1", "domcontentloaded"),
     ]
+
+
+
+def test_navigation_does_not_force_same_conversation_reload_by_default(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    current_url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+    monkeypatch.delenv("CHATGPT_HYDRATION_MODE", raising=False)
+    assert client._navigation_requires_refresh(
+        label="chat-home-after-login",
+        current_url=current_url,
+        target_url=current_url,
+    ) is False
+
+    monkeypatch.setenv("CHATGPT_HYDRATION_MODE", "legacy")
+    assert client._navigation_requires_refresh(
+        label="chat-home-after-login",
+        current_url=current_url,
+        target_url=current_url,
+    ) is True
+
+
+def test_ensure_target_conversation_hydrated_reuses_warm_task_when_composer_ready(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("warm task reuse should not wait for transcript hydration")
+
+        async def goto(self, *args, **kwargs):
+            raise AssertionError("warm task reuse should not reload the task")
+
+    async def fake_has_chat_input(page):
+        return True
+
+    async def fail_turn_state(page, *, prompt=None):
+        raise AssertionError("warm task reuse should not count historical conversation turns")
+
+    client._has_chat_input = fake_has_chat_input
+    client._capture_user_turn_state = fail_turn_state
+
+    import asyncio
+
+    result = asyncio.run(
+        client._ensure_target_conversation_hydrated(
+            DummyPage(),
+            target_url="https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            label="chat-home-after-login",
+            navigation_evidence={"mode": "same_url_skip", "skipped": True},
+        )
+    )
+
+    assert result["status"] == "target_conversation_hydrated_warm_task_reuse"
+    assert result["hydration_mode"] == "warm_task_reuse"
+    assert result["hydration_reuse_candidate"] is True
+    assert result["hydration_reuse_used"] is True
+    assert result["hydration_fallback_used"] is False
+    assert result["hydration_conversation_surface_seconds"] == 0.0
+    assert result["hydration_navigation_skipped"] is True
 
 
 def test_ensure_target_conversation_hydrated_accepts_existing_turns(tmp_path: Path) -> None:
