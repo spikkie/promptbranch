@@ -1972,6 +1972,73 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
 
+        fast_latest_visible_answer = None
+        if expect_json and bool(submit_evidence.get("submit_confirmed")):
+            fast_latest_visible_answer = await self._promote_fast_latest_visible_answer(
+                page,
+                response_context=response_context,
+                extraction_started=time.monotonic(),
+            )
+        if fast_latest_visible_answer is not None:
+            promoted_payload = fast_latest_visible_answer.get("payload")
+            if expect_json:
+                promoted_payload = self._strip_response_request_nonce(promoted_payload, response_context)
+            current_url = await self._safe_page_url(page)
+            conversation_url = current_url if self._is_conversation_url(current_url) else (target_url if self._is_conversation_url(target_url) else None)
+            submit_evidence.update({
+                "post_submit_user_turn_visibility_checked": False,
+                "post_submit_user_turn_visible": None,
+                "post_submit_user_turn_visibility_status": "skipped_fast_latest_answer_promoted",
+                "post_submit_user_turn_visibility_skipped_reason": "fast_latest_visible_answer_promoted",
+                "post_submit_fast_latest_answer_promoted": True,
+            })
+            phase_timings["post_submit_user_turn_visibility_checked"] = False
+            phase_timings["post_submit_user_turn_visibility_status"] = "skipped_fast_latest_answer_promoted"
+            phase_timings["post_submit_user_turn_visibility_skipped_reason"] = "fast_latest_visible_answer_promoted"
+            phase_timings["response_wait_skipped"] = True
+            phase_timings["response_wait_skipped_reason"] = "fast_latest_answer_promoted"
+            phase_timings["response_accepted_source"] = fast_latest_visible_answer.get("source")
+            phase_timings["response_accepted_selector"] = fast_latest_visible_answer.get("selector")
+            phase_timings["response_accepted_text_length"] = fast_latest_visible_answer.get("text_length")
+            phase_timings["response_extraction_mode"] = fast_latest_visible_answer.get("source")
+            phase_timings["response_freshness_verified"] = True
+            phase_timings["response_visibility_promotion_used"] = True
+            phase_timings["response_fast_latest_turn_promotion_used"] = True
+            if isinstance(response_context, dict):
+                phase_timings.update(self._response_wait_timing_fields(
+                    response_context,
+                    response_wait_started_at=time.monotonic(),
+                    response_wait_returned_at=time.monotonic(),
+                ))
+                for key in [
+                    "response_extraction_candidates",
+                    "response_extraction_candidate_count",
+                    "response_extraction_accepted_source",
+                    "response_extraction_accepted_selector",
+                ]:
+                    if key in response_context:
+                        phase_timings[key] = response_context.get(key)
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            result = {
+                "answer": promoted_payload,
+                "conversation_url": conversation_url,
+                "submit_evidence": submit_evidence,
+                "ask_phase_timings": phase_timings,
+                "status": "completed",
+                "response_accepted_source": fast_latest_visible_answer.get("source"),
+                "response_freshness_verified": True,
+            }
+            self._record_ask_progress(**result)
+            self._log(
+                "response",
+                "fresh visible JSON answer promoted from fast latest-turn evidence",
+                source=fast_latest_visible_answer.get("source"),
+                selector=fast_latest_visible_answer.get("selector"),
+                text_length=fast_latest_visible_answer.get("text_length"),
+                total_seconds=phase_timings.get("total_seconds"),
+            )
+            return result
+
         post_submit_user_turn_visibility = await self._capture_submit_user_turn_echo_state(page, prompt=prompt)
         backend_task_message_evidence = (
             submit_evidence.get("backend_task_message_evidence")
@@ -7468,6 +7535,147 @@ class ChatGPTBrowserClient:
             for index, item in enumerate(value):
                 candidates.extend(self._iter_visibility_evidence_text_candidates(item, path=f"{path}[{index}]"))
         return candidates
+
+    async def _promote_fast_latest_visible_answer(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]],
+        extraction_started: float,
+    ) -> Optional[dict[str, Any]]:
+        """Return a fresh JSON answer from only the newest visible assistant/generic turns.
+
+        This is the fast path before the full post-submit visibility probe.  It
+        intentionally inspects only a tiny suffix of stable turn selectors and
+        accepts only parseable JSON containing the exact current request marker.
+        Prompt echoes are skipped because they can contain the requested JSON.
+        """
+
+        selectors = [
+            '[data-message-author-role="assistant"]',
+            'section[data-turn="assistant"]',
+            '[data-testid*="conversation-turn"][data-turn="assistant"]',
+            '[data-message-author-role]',
+        ]
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                count = int(await locator.count() or 0)
+            except Exception as exc:
+                self._append_response_extraction_candidate(
+                    response_context,
+                    source="fast_latest_visible_answer",
+                    selector=selector,
+                    parsed=False,
+                    payload=None,
+                    text="",
+                    probe={"selector": selector, "error": str(exc), "fast_latest_turn_probe": True},
+                    accepted=False,
+                    rejected_reason="selector_probe_failed",
+                )
+                continue
+            if count <= 0:
+                continue
+            source = "fast_latest_assistant_turn" if "assistant" in selector else "fast_latest_generic_turn"
+            start = max(0, count - 3)
+            for index in range(count - 1, start - 1, -1):
+                try:
+                    text = await self._extract_text_from_locator(locator.nth(index), timeout_ms=250)
+                except Exception:
+                    text = ""
+                text = str(text or "").strip()
+                if not text:
+                    continue
+                if self._text_looks_like_prompt_request(text):
+                    self._append_response_extraction_candidate(
+                        response_context,
+                        source=source,
+                        selector=selector,
+                        parsed=False,
+                        payload=None,
+                        text=text,
+                        probe={
+                            "selector": selector,
+                            "turn_index": index,
+                            "count": count,
+                            "fast_latest_turn_probe": True,
+                        },
+                        accepted=False,
+                        rejected_reason="prompt_echo_rejected",
+                    )
+                    continue
+                parsed = self._extract_json_from_text(text)
+                if parsed is None:
+                    self._append_response_extraction_candidate(
+                        response_context,
+                        source=source,
+                        selector=selector,
+                        parsed=False,
+                        payload=None,
+                        text=text,
+                        probe={
+                            "selector": selector,
+                            "turn_index": index,
+                            "count": count,
+                            "fast_latest_turn_probe": True,
+                            "preview": self._preview_text(text, 220),
+                        },
+                        accepted=False,
+                        rejected_reason="json_parse_failed",
+                    )
+                    continue
+                marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                    response_context,
+                    parsed,
+                    text=text,
+                )
+                probe = {
+                    "selector": selector,
+                    "turn_index": index,
+                    "count": count,
+                    "visible": True,
+                    "text_length": len(text),
+                    "parsed": True,
+                    "preview": self._preview_text(text, 220),
+                    "fast_latest_turn_probe": True,
+                }
+                self._append_response_extraction_candidate(
+                    response_context,
+                    source=source,
+                    selector=selector,
+                    parsed=True,
+                    payload=parsed,
+                    text=text,
+                    probe=probe,
+                    accepted=marker_ok,
+                    rejected_reason=None if marker_ok else marker_reason,
+                )
+                if not marker_ok:
+                    continue
+                self._record_post_submit_payload_binding(
+                    response_context,
+                    bound=True,
+                    selector=selector,
+                    turn_selector=selector,
+                    turn_index=index,
+                    payload=parsed,
+                    text_length=len(text),
+                    mode=source,
+                )
+                self._record_response_extraction_context(
+                    response_context,
+                    mode=source,
+                    historical_scan_used=False,
+                    started_at=extraction_started,
+                )
+                return {
+                    "payload": parsed,
+                    "selector": selector,
+                    "source": source,
+                    "text_length": len(text),
+                    "text_preview": self._preview_text(text, 220),
+                }
+        return None
 
     def _promote_visible_answer_from_submit_evidence(
         self,
