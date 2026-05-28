@@ -1775,7 +1775,7 @@ def test_wait_for_submit_confirmation_rejects_url_only_fast_path_by_default(tmp_
     result = asyncio.run(client._wait_for_submit_confirmation(
         DummyPage(),
         before_assistant_count=145,
-        prompt="Return exactly this JSON object",
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
         timeout_ms=1,
         poll_interval_ms=1,
     ))
@@ -1814,8 +1814,11 @@ def test_wait_for_submit_confirmation_accepts_post_submit_user_turn_echo(tmp_pat
     async def user_echo(page, *, prompt=None):
         return {
             "request_id_found": False,
-            "prompt_prefix_found": True,
-            "generic_turns": {"request_id_found": False, "prompt_prefix_found": False},
+            "response_marker_found": True,
+            "exact_marker_found": True,
+            "exact_matched_marker": "STALE_GUARD_LIVE_OK_1234567890",
+            "prompt_prefix_found": False,
+            "generic_turns": {"request_id_found": False, "response_marker_found": False, "exact_marker_found": False},
         }
 
     async def no_backend_echo(page, *, prompt=None):
@@ -1830,7 +1833,7 @@ def test_wait_for_submit_confirmation_accepts_post_submit_user_turn_echo(tmp_pat
     result = asyncio.run(client._wait_for_submit_confirmation(
         DummyPage(),
         before_assistant_count=145,
-        prompt="Return exactly this JSON object",
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
     ))
 
     assert result["status"] == "submit_confirmed"
@@ -1916,6 +1919,131 @@ def test_wait_for_submit_confirmation_accepts_backend_task_message_echo(tmp_path
     assert evidence["matched_user_turn_id"] == "user-node"
     assert "response_marker" in evidence["matched_by"]
 
+
+
+def test_backend_task_message_echo_rejects_prompt_short_prefix_without_exact_marker(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+    current_prompt = (
+        "Return exactly this JSON object after reading these strict rules. "
+        "Use one JSON object only, no markdown, no prose, no comments, and preserve all fields. "
+        'The payload is: {"ok": true, "sentinel": "STALE_GUARD_LIVE_OK_2222222222", "finished": "finished"}.'
+    )
+    stale_prompt = current_prompt.replace("2222222222", "1111111111")
+
+    async def fake_conversation_detail(page, *, conversation_id: str):
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "user-node",
+                "mapping": {
+                    "root": {"id": "root", "parent": None, "message": None},
+                    "user-node": {
+                        "id": "user-node",
+                        "parent": "root",
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": [stale_prompt]},
+                        },
+                    },
+                },
+            },
+        }
+
+    client._fetch_conversation_detail = fake_conversation_detail
+
+    import asyncio
+
+    evidence = asyncio.run(client._capture_backend_task_message_echo_state(DummyPage(), prompt=current_prompt))
+
+    assert evidence["visible"] is False
+    assert evidence["status"] == "backend_stale_user_turn_prefix_match_rejected"
+    assert evidence["backend_stale_user_turn_prefix_match_rejected"] is True
+    assert evidence["marker_present_in_matched_user_text"] is False
+    assert evidence["matched_marker"] is None
+    assert "STALE_GUARD_LIVE_OK_1111111111" in evidence["stale_marker_values_detected"]
+
+
+def test_wait_for_submit_confirmation_rejects_backend_prefix_match_after_prepare(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "1")
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "events": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "method": "POST",
+                "backend_like": True,
+                "mutating": True,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "marker_found": False,
+                "post_data_length": 500,
+                "captured_at_monotonic": 100.25,
+            }
+        ],
+        "responses": [],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    async def backend_echo_after_prepare(page, *, prompt, timeout_ms=None, poll_interval_ms=500):
+        return {
+            "visible": False,
+            "status": "backend_stale_user_turn_prefix_match_rejected",
+            "post_prepare_commit_window_used": True,
+            "post_prepare_commit_found": False,
+            "post_prepare_commit_status": "backend_stale_user_turn_prefix_match_rejected",
+            "backend_stale_user_turn_prefix_match_rejected": True,
+            "marker_present_in_matched_user_text": False,
+            "matched_marker": None,
+            "stale_marker_values_detected": ["STALE_GUARD_LIVE_OK_1111111111"],
+        }
+
+    async def prepare_only_network(page, observer):
+        return {
+            "visible": False,
+            "status": "submit_prepare_without_message_commit",
+            "prepare_request_observed": True,
+            "prepare_request_count": 1,
+            "prepare_only": True,
+            "request_marker_found": False,
+            "message_request_observed": False,
+            "message_request_count": 0,
+            "conduit_error_hint": "prepare_token_set_not_consumed",
+            "probe_seconds": 0.001,
+        }
+
+    client._wait_for_submit_network_evidence = prepare_only_network
+    client._wait_for_backend_task_message_echo_after_prepare = backend_echo_after_prepare
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt='Return exactly this JSON object with STALE_GUARD_LIVE_OK_2222222222',
+        submit_network_observer=observer,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["confirmation_mode"] == "prepare_only_without_exact_marker_commit"
+    assert result["causal_confirmation_reason"] == "backend_stale_user_turn_prefix_match_rejected"
+    assert result["backend_stale_user_turn_prefix_match_rejected"] is True
+    assert result["matched_marker"] is None
 
 def test_wait_for_submit_confirmation_accepts_network_submit_marker(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
@@ -2093,6 +2221,8 @@ def test_backend_task_message_wait_retries_backend_detail_503_then_confirms(tmp_
             "http_status": 200,
             "matched_user_turn_id": "user-node-1",
             "matched_user_turn_index": 7,
+            "matched_marker": "STALE_GUARD_LIVE_OK_1234567890",
+            "marker_present_in_matched_user_text": True,
         }
 
     client._capture_backend_task_message_echo_state = backend_echo
@@ -2222,6 +2352,8 @@ def test_wait_for_submit_confirmation_accepts_backend_commit_after_prepare(tmp_p
             "post_prepare_commit_status": "backend_commit_after_prepare_found",
             "post_prepare_commit_seconds": 0.123,
             "post_prepare_commit_attempt_count": 1,
+            "matched_marker": "STALE_GUARD_LIVE_OK_1234567890",
+            "marker_present_in_matched_user_text": True,
         }
 
     client._wait_for_backend_task_message_echo_after_prepare = backend_echo_after_prepare

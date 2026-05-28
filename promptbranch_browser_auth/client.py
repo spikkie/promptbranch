@@ -5506,14 +5506,24 @@ class ChatGPTBrowserClient:
         best_count = 0
         best_last_text = ""
         best_request_id_found = False
+        best_response_marker_found = False
+        best_exact_marker_found = False
+        best_exact_matched_marker: str | None = None
         best_prompt_prefix_found = False
+        best_prompt_short_prefix_found = False
+        best_stale_marker_values: list[str] = []
         for selector in GENERIC_CONVERSATION_TURN_SELECTORS:
             try:
                 locator = page.locator(selector)
                 count = await locator.count()
                 snippets: list[dict[str, Any]] = []
                 selector_request_id_found = False
+                selector_response_marker_found = False
+                selector_exact_marker_found = False
+                selector_exact_matched_marker: str | None = None
                 selector_prompt_prefix_found = False
+                selector_prompt_short_prefix_found = False
+                selector_stale_values: list[str] = []
                 last_text = ""
                 if count:
                     start = max(0, count - 5)
@@ -5524,16 +5534,31 @@ class ChatGPTBrowserClient:
                             text = ""
                         if text:
                             last_text = text
-                        item_request_id_found = bool(request_id and request_id in text)
-                        item_prompt_prefix_found = bool(prompt_prefix and prompt_prefix in text)
+                        details = self._submit_prompt_match_details(text, prompt=prompt)
+                        item_request_id_found = "request_id" in (details.get("exact_matched_by") or [])
+                        item_response_marker_found = "response_marker" in (details.get("exact_matched_by") or [])
+                        item_exact_marker_found = bool(details.get("exact_marker_found"))
+                        item_prompt_prefix_found = bool(details.get("prompt_prefix_found"))
+                        item_prompt_short_prefix_found = bool(details.get("prompt_short_prefix_found"))
                         selector_request_id_found = selector_request_id_found or item_request_id_found
+                        selector_response_marker_found = selector_response_marker_found or item_response_marker_found
+                        selector_exact_marker_found = selector_exact_marker_found or item_exact_marker_found
                         selector_prompt_prefix_found = selector_prompt_prefix_found or item_prompt_prefix_found
+                        selector_prompt_short_prefix_found = selector_prompt_short_prefix_found or item_prompt_short_prefix_found
+                        selector_stale_values.extend(value for value in (details.get("stale_marker_values_detected") or []) if value not in selector_stale_values)
+                        if item_exact_marker_found and not selector_exact_matched_marker:
+                            selector_exact_matched_marker = details.get("exact_matched_marker")
                         snippets.append({
                             "index": index,
                             "text_length": len(text),
                             "text_preview": text[:240],
                             "request_id_found": item_request_id_found,
+                            "response_marker_found": item_response_marker_found,
+                            "exact_marker_found": item_exact_marker_found,
+                            "exact_matched_marker": details.get("exact_matched_marker"),
                             "prompt_prefix_found": item_prompt_prefix_found,
+                            "prompt_short_prefix_found": item_prompt_short_prefix_found,
+                            "stale_marker_values_detected": details.get("stale_marker_values_detected") or [],
                         })
                 probe = {
                     "selector": selector,
@@ -5541,16 +5566,26 @@ class ChatGPTBrowserClient:
                     "last_text_length": len(last_text),
                     "last_text_preview": last_text[:240],
                     "request_id_found": selector_request_id_found,
+                    "response_marker_found": selector_response_marker_found,
+                    "exact_marker_found": selector_exact_marker_found,
+                    "exact_matched_marker": selector_exact_matched_marker,
                     "prompt_prefix_found": selector_prompt_prefix_found,
+                    "prompt_short_prefix_found": selector_prompt_short_prefix_found,
+                    "stale_marker_values_detected": selector_stale_values[:8],
                     "snippets": snippets,
                 }
                 probes.append(probe)
-                if (selector_request_id_found or selector_prompt_prefix_found) or count > best_count:
+                if (selector_exact_marker_found or selector_request_id_found or selector_response_marker_found) or count > best_count:
                     best_selector = selector
                     best_count = count
                     best_last_text = last_text
                     best_request_id_found = selector_request_id_found
+                    best_response_marker_found = selector_response_marker_found
+                    best_exact_marker_found = selector_exact_marker_found
+                    best_exact_matched_marker = selector_exact_matched_marker
                     best_prompt_prefix_found = selector_prompt_prefix_found
+                    best_prompt_short_prefix_found = selector_prompt_short_prefix_found
+                    best_stale_marker_values = selector_stale_values[:8]
             except Exception as exc:
                 probes.append({"selector": selector, "error": str(exc), "count": 0})
         return {
@@ -5560,19 +5595,29 @@ class ChatGPTBrowserClient:
             "last_text_preview": best_last_text[:240],
             "request_id": request_id,
             "request_id_found": best_request_id_found,
+            "response_marker_found": best_response_marker_found,
+            "exact_marker_found": best_exact_marker_found,
+            "exact_matched_marker": best_exact_matched_marker,
             "prompt_prefix_found": best_prompt_prefix_found,
+            "prompt_short_prefix_found": best_prompt_short_prefix_found,
+            "prompt_prefix_only_found": bool((best_prompt_prefix_found or best_prompt_short_prefix_found) and not best_exact_marker_found),
+            "stale_marker_values_detected": best_stale_marker_values,
             "probes": probes,
         }
 
     async def _capture_user_turn_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
-        prompt_prefix = (prompt or "")[:120]
         request_id = self._protocol_request_id_from_prompt(prompt)
         probes: list[dict[str, Any]] = []
         best_selector: str | None = None
         best_count = 0
         best_last_text = ""
         best_request_id_found = False
+        best_response_marker_found = False
+        best_exact_marker_found = False
+        best_exact_matched_marker: str | None = None
         best_prompt_prefix_found = False
+        best_prompt_short_prefix_found = False
+        best_stale_marker_values: list[str] = []
         for selector in USER_MESSAGE_SELECTORS:
             try:
                 locator = page.locator(selector)
@@ -5583,28 +5628,51 @@ class ChatGPTBrowserClient:
                         last_text = await self._extract_text_from_locator(locator.nth(count - 1), timeout_ms=750)
                     except Exception:
                         last_text = ""
-                selector_request_id_found = bool(request_id and request_id in last_text)
-                selector_prompt_prefix_found = bool(prompt_prefix and prompt_prefix in last_text)
+                details = self._submit_prompt_match_details(last_text, prompt=prompt)
+                selector_request_id_found = "request_id" in (details.get("exact_matched_by") or [])
+                selector_response_marker_found = "response_marker" in (details.get("exact_matched_by") or [])
+                selector_exact_marker_found = bool(details.get("exact_marker_found"))
+                selector_prompt_prefix_found = bool(details.get("prompt_prefix_found"))
+                selector_prompt_short_prefix_found = bool(details.get("prompt_short_prefix_found"))
+                selector_stale_values = list(details.get("stale_marker_values_detected") or [])
                 probe = {
                     "selector": selector,
                     "count": count,
                     "last_text_length": len(last_text),
                     "last_text_preview": last_text[:240],
                     "request_id_found": selector_request_id_found,
+                    "response_marker_found": selector_response_marker_found,
+                    "exact_marker_found": selector_exact_marker_found,
+                    "exact_matched_marker": details.get("exact_matched_marker"),
                     "prompt_prefix_found": selector_prompt_prefix_found,
+                    "prompt_short_prefix_found": selector_prompt_short_prefix_found,
+                    "stale_marker_values_detected": selector_stale_values,
                 }
                 probes.append(probe)
-                if (selector_request_id_found or selector_prompt_prefix_found) or count > best_count:
+                if (selector_exact_marker_found or selector_request_id_found or selector_response_marker_found) or count > best_count:
                     best_selector = selector
                     best_count = count
                     best_last_text = last_text
                     best_request_id_found = selector_request_id_found
+                    best_response_marker_found = selector_response_marker_found
+                    best_exact_marker_found = selector_exact_marker_found
+                    best_exact_matched_marker = details.get("exact_matched_marker")
                     best_prompt_prefix_found = selector_prompt_prefix_found
+                    best_prompt_short_prefix_found = selector_prompt_short_prefix_found
+                    best_stale_marker_values = selector_stale_values[:8]
             except Exception as exc:
                 probes.append({"selector": selector, "error": str(exc), "count": 0})
         generic_turns = await self._capture_generic_conversation_turn_state(page, prompt=prompt)
         request_id_found = best_request_id_found or bool(generic_turns.get("request_id_found"))
+        response_marker_found = best_response_marker_found or bool(generic_turns.get("response_marker_found"))
+        exact_marker_found = best_exact_marker_found or bool(generic_turns.get("exact_marker_found"))
+        exact_matched_marker = best_exact_matched_marker or generic_turns.get("exact_matched_marker")
         prompt_prefix_found = best_prompt_prefix_found or bool(generic_turns.get("prompt_prefix_found"))
+        prompt_short_prefix_found = best_prompt_short_prefix_found or bool(generic_turns.get("prompt_short_prefix_found"))
+        stale_values = list(best_stale_marker_values)
+        for value in generic_turns.get("stale_marker_values_detected") or []:
+            if value not in stale_values:
+                stale_values.append(value)
         return {
             "selector": best_selector,
             "count": best_count,
@@ -5612,7 +5680,13 @@ class ChatGPTBrowserClient:
             "last_text_preview": best_last_text[:240],
             "request_id": request_id,
             "request_id_found": request_id_found,
+            "response_marker_found": response_marker_found,
+            "exact_marker_found": exact_marker_found,
+            "exact_matched_marker": exact_matched_marker,
             "prompt_prefix_found": prompt_prefix_found,
+            "prompt_short_prefix_found": prompt_short_prefix_found,
+            "prompt_prefix_only_found": bool((prompt_prefix_found or prompt_short_prefix_found) and not exact_marker_found),
+            "stale_marker_values_detected": stale_values[:8],
             "generic_turns": generic_turns,
             "probes": probes,
         }
@@ -5641,12 +5715,12 @@ class ChatGPTBrowserClient:
             generic_count = int(generic_turns.get("count") or 0)
             generic_count_delta = generic_count - before_generic_count
             visible = bool(
-                int(state.get("count") or 0) > before_count
+                state.get("exact_marker_found")
                 or state.get("request_id_found")
-                or state.get("prompt_prefix_found")
-                or generic_count_delta > 0
+                or state.get("response_marker_found")
+                or generic_turns.get("exact_marker_found")
                 or generic_turns.get("request_id_found")
-                or generic_turns.get("prompt_prefix_found")
+                or generic_turns.get("response_marker_found")
             )
             attempts.append({
                 "attempt": attempt,
@@ -5655,9 +5729,16 @@ class ChatGPTBrowserClient:
                 "generic_count": generic_count,
                 "generic_count_delta": generic_count_delta,
                 "request_id_found": state.get("request_id_found"),
+                "response_marker_found": state.get("response_marker_found"),
+                "exact_marker_found": state.get("exact_marker_found"),
+                "exact_matched_marker": state.get("exact_matched_marker"),
                 "prompt_prefix_found": state.get("prompt_prefix_found"),
+                "prompt_short_prefix_found": state.get("prompt_short_prefix_found"),
                 "generic_request_id_found": generic_turns.get("request_id_found"),
+                "generic_response_marker_found": generic_turns.get("response_marker_found"),
+                "generic_exact_marker_found": generic_turns.get("exact_marker_found"),
                 "generic_prompt_prefix_found": generic_turns.get("prompt_prefix_found"),
+                "generic_prompt_short_prefix_found": generic_turns.get("prompt_short_prefix_found"),
                 "last_text_length": state.get("last_text_length"),
             })
             if visible:
@@ -5760,10 +5841,12 @@ class ChatGPTBrowserClient:
             return False
         generic = evidence.get("generic_turns") if isinstance(evidence.get("generic_turns"), dict) else {}
         return bool(
-            evidence.get("request_id_found")
-            or evidence.get("prompt_prefix_found")
+            evidence.get("exact_marker_found")
+            or evidence.get("request_id_found")
+            or evidence.get("response_marker_found")
+            or generic.get("exact_marker_found")
             or generic.get("request_id_found")
-            or generic.get("prompt_prefix_found")
+            or generic.get("response_marker_found")
         )
 
     def _submit_backend_causality_enabled(self) -> bool:
@@ -5776,49 +5859,87 @@ class ChatGPTBrowserClient:
         prompt_prefix = text[:120]
         prompt_short_prefix = text[:80]
         response_markers = self._extract_prompt_response_markers(text)
-        markers: list[str] = []
-        for marker in [request_id, *response_markers, prompt_prefix, prompt_short_prefix]:
+        exact_markers: list[str] = []
+        for marker in [request_id, *response_markers]:
             marker_text = str(marker or "").strip()
-            if marker_text and marker_text not in markers:
-                markers.append(marker_text)
+            if marker_text and marker_text not in exact_markers:
+                exact_markers.append(marker_text)
+        diagnostic_markers: list[str] = []
+        for marker in [*exact_markers, prompt_prefix, prompt_short_prefix]:
+            marker_text = str(marker or "").strip()
+            if marker_text and marker_text not in diagnostic_markers:
+                diagnostic_markers.append(marker_text)
         return {
             "request_id": request_id,
             "response_markers": response_markers,
+            "exact_markers": exact_markers,
             "prompt_prefix": prompt_prefix,
             "prompt_short_prefix": prompt_short_prefix,
-            "markers": markers,
+            "markers": diagnostic_markers,
+        }
+
+    def _text_contains_submit_marker(self, text: str, marker: Any) -> bool:
+        body = str(text or "")
+        marker_text = str(marker or "")
+        if not marker_text:
+            return False
+        if marker_text in body:
+            return True
+        try:
+            escaped = json.dumps(marker_text, ensure_ascii=False)[1:-1]
+        except Exception:
+            escaped = marker_text
+        return bool(escaped and escaped in body)
+
+    def _stale_guard_values_in_text(self, text: str, *, excluding: list[str] | None = None) -> list[str]:
+        excluded = {str(item or "") for item in (excluding or []) if str(item or "")}
+        values: list[str] = []
+        for match in re.finditer(r"\bSTALE_GUARD_[A-Z0-9_]*_[0-9]{8,}\b", str(text or "")):
+            value = match.group(0)
+            if value not in excluded and value not in values:
+                values.append(value)
+        return values[:8]
+
+    def _submit_prompt_match_details(self, text: str, *, prompt: str | None) -> dict[str, Any]:
+        markers = self._prompt_submit_markers(prompt)
+        body = str(text or "")
+        exact_matched_by: list[str] = []
+        exact_matched_marker: str | None = None
+        request_id = markers.get("request_id")
+        if request_id and self._text_contains_submit_marker(body, request_id):
+            exact_matched_by.append("request_id")
+            exact_matched_marker = str(request_id)
+        for marker in markers.get("response_markers") or []:
+            if marker and self._text_contains_submit_marker(body, marker):
+                exact_matched_by.append("response_marker")
+                exact_matched_marker = str(marker)
+                break
+        prompt_prefix = markers.get("prompt_prefix")
+        prompt_short_prefix = markers.get("prompt_short_prefix")
+        prompt_prefix_found = bool(prompt_prefix and self._text_contains_submit_marker(body, prompt_prefix))
+        prompt_short_prefix_found = bool(prompt_short_prefix and self._text_contains_submit_marker(body, prompt_short_prefix))
+        exact_markers = [str(marker) for marker in (markers.get("exact_markers") or []) if str(marker)]
+        return {
+            "exact_marker_found": bool(exact_matched_by),
+            "exact_matched_by": exact_matched_by,
+            "exact_matched_marker": exact_matched_marker,
+            "requested_exact_markers": exact_markers,
+            "requested_exact_marker_count": len(exact_markers),
+            "prompt_prefix_found": prompt_prefix_found,
+            "prompt_short_prefix_found": prompt_short_prefix_found,
+            "prompt_prefix_only_found": bool((prompt_prefix_found or prompt_short_prefix_found) and not exact_matched_by),
+            "stale_marker_values_detected": self._stale_guard_values_in_text(body, excluding=exact_markers),
         }
 
     def _turn_text_matches_submit_prompt(self, text: str, *, prompt: str | None) -> tuple[bool, list[str], str | None]:
-        markers = self._prompt_submit_markers(prompt)
-        body = str(text or "")
-        matched_by: list[str] = []
-        request_id = markers.get("request_id")
-        def contains_marker(marker: Any) -> bool:
-            marker_text = str(marker or "")
-            if not marker_text:
-                return False
-            if marker_text in body:
-                return True
-            try:
-                escaped = json.dumps(marker_text, ensure_ascii=False)[1:-1]
-            except Exception:
-                escaped = marker_text
-            return bool(escaped and escaped in body)
+        """Return only exact request-marker matches suitable for submit confirmation.
 
-        if request_id and contains_marker(request_id):
-            matched_by.append("request_id")
-        for marker in markers.get("response_markers") or []:
-            if marker and contains_marker(marker):
-                matched_by.append("response_marker")
-                break
-        prompt_prefix = markers.get("prompt_prefix")
-        if prompt_prefix and contains_marker(prompt_prefix):
-            matched_by.append("prompt_prefix")
-        prompt_short_prefix = markers.get("prompt_short_prefix")
-        if prompt_short_prefix and contains_marker(prompt_short_prefix):
-            matched_by.append("prompt_short_prefix")
-        return bool(matched_by), matched_by, (markers.get("response_markers") or [None])[0]
+        Prefix matches are retained as diagnostics in _submit_prompt_match_details, but
+        they are never sufficient proof that the current prompt was committed.  This
+        prevents stale-prefix matches from confirming a submit.
+        """
+        details = self._submit_prompt_match_details(text, prompt=prompt)
+        return bool(details.get("exact_marker_found")), list(details.get("exact_matched_by") or []), details.get("exact_matched_marker")
 
     def _submit_network_causality_enabled(self) -> bool:
         value = (os.getenv("CHATGPT_SUBMIT_NETWORK_CAUSALITY") or "1").strip().lower()
@@ -7094,36 +7215,78 @@ class ChatGPTBrowserClient:
         matched_turn: dict[str, Any] | None = None
         matched_by: list[str] = []
         matched_marker: str | None = None
+        prefix_only_turn: dict[str, Any] | None = None
+        prefix_only_details: dict[str, Any] = {}
+        stale_marker_values: list[str] = []
+        requested_exact_markers = self._prompt_submit_markers(prompt).get("exact_markers") or []
         for turn in reversed(user_turns[-12:]):
-            matched, reasons, marker = self._turn_text_matches_submit_prompt(str(turn.get("text") or ""), prompt=prompt)
-            if matched:
+            turn_text = str(turn.get("text") or "")
+            details = self._submit_prompt_match_details(turn_text, prompt=prompt)
+            for value in details.get("stale_marker_values_detected") or []:
+                if value not in stale_marker_values:
+                    stale_marker_values.append(value)
+            if details.get("exact_marker_found"):
                 matched_turn = turn
-                matched_by = reasons
-                matched_marker = marker
+                matched_by = list(details.get("exact_matched_by") or [])
+                matched_marker = details.get("exact_matched_marker")
                 break
+            if details.get("prompt_prefix_only_found") and prefix_only_turn is None:
+                prefix_only_turn = turn
+                prefix_only_details = details
         latest_user = user_turns[-1] if user_turns else {}
+        latest_text = str(latest_user.get("text") or "")
+        latest_details = self._submit_prompt_match_details(latest_text, prompt=prompt)
+        for value in latest_details.get("stale_marker_values_detected") or []:
+            if value not in stale_marker_values:
+                stale_marker_values.append(value)
         visible = matched_turn is not None
+        diagnostic_turn = matched_turn or prefix_only_turn
+        diagnostic_text = str(diagnostic_turn.get("text") or "") if diagnostic_turn else ""
+        status = "backend_task_message_echo_visible" if visible else "backend_task_message_echo_not_visible"
+        if not visible and prefix_only_turn is not None:
+            status = "backend_stale_user_turn_prefix_match_rejected"
+        matched_text_sha = hashlib.sha256(diagnostic_text.encode("utf-8", errors="replace")).hexdigest()[:12] if diagnostic_text else None
         return {
             **common,
             "visible": visible,
-            "status": "backend_task_message_echo_visible" if visible else "backend_task_message_echo_not_visible",
+            "status": status,
             "backend_detail_temporarily_unavailable": False,
             "backend_detail_retryable": False,
             "turn_count": len(turns),
             "user_turn_count": len(user_turns),
             "assistant_turn_count": len(assistant_turns),
+            "requested_exact_markers": requested_exact_markers,
+            "requested_exact_marker_count": len(requested_exact_markers),
             "latest_user_turn_id": latest_user.get("id"),
             "latest_user_turn_index": latest_user.get("index"),
-            "latest_user_text_length": len(str(latest_user.get("text") or "")),
-            "latest_user_text_preview": str(latest_user.get("text") or "")[:240],
+            "latest_user_text_length": len(latest_text),
+            "latest_user_text_preview": latest_text[:240],
+            "latest_user_exact_marker_found": bool(latest_details.get("exact_marker_found")),
+            "latest_user_exact_matched_marker": latest_details.get("exact_matched_marker"),
+            "latest_user_prompt_prefix_only_found": bool(latest_details.get("prompt_prefix_only_found")),
             "matched_user_turn_id": matched_turn.get("id") if matched_turn else None,
             "matched_user_turn_index": matched_turn.get("index") if matched_turn else None,
             "matched_by": matched_by,
             "matched_marker": matched_marker,
+            "matched_user_text_sha256_12": matched_text_sha,
+            "matched_user_text_preview": diagnostic_text[:240],
+            "marker_present_in_matched_user_text": bool(visible and matched_marker and self._text_contains_submit_marker(diagnostic_text, matched_marker)),
+            "prefix_only_user_turn_id": prefix_only_turn.get("id") if prefix_only_turn else None,
+            "prefix_only_user_turn_index": prefix_only_turn.get("index") if prefix_only_turn else None,
+            "prefix_only_prompt_prefix_found": bool(prefix_only_details.get("prompt_prefix_found")),
+            "prefix_only_prompt_short_prefix_found": bool(prefix_only_details.get("prompt_short_prefix_found")),
+            "backend_stale_user_turn_prefix_match_rejected": bool(prefix_only_turn is not None and not visible),
+            "stale_marker_values_detected": stale_marker_values[:8],
         }
 
     def _backend_task_message_echo_found(self, evidence: Any) -> bool:
-        return bool(isinstance(evidence, dict) and evidence.get("visible") and evidence.get("status") == "backend_task_message_echo_visible")
+        return bool(
+            isinstance(evidence, dict)
+            and evidence.get("visible")
+            and evidence.get("status") == "backend_task_message_echo_visible"
+            and evidence.get("marker_present_in_matched_user_text")
+            and evidence.get("matched_marker")
+        )
 
     async def _wait_for_backend_task_message_echo_after_prepare(
         self,
@@ -7170,10 +7333,11 @@ class ChatGPTBrowserClient:
                     backend_detail_http_statuses
                     and all(self._backend_detail_http_status_is_transient(status) for status in backend_detail_http_statuses)
                 )
+                prefix_rejected = evidence.get("status") == "backend_stale_user_turn_prefix_match_rejected"
                 evidence.update({
                     "post_prepare_commit_window_used": True,
                     "post_prepare_commit_found": False,
-                    "post_prepare_commit_status": "backend_detail_temporarily_unavailable" if transient_unavailable else "backend_commit_after_prepare_not_found",
+                    "post_prepare_commit_status": "backend_detail_temporarily_unavailable" if transient_unavailable else "backend_stale_user_turn_prefix_match_rejected" if prefix_rejected else "backend_commit_after_prepare_not_found",
                     "post_prepare_commit_attempt_count": attempt_count,
                     "post_prepare_commit_seconds": round(time.monotonic() - started, 3),
                     "post_prepare_commit_timeout_ms": timeout_ms,
@@ -7365,6 +7529,10 @@ class ChatGPTBrowserClient:
                     "confirmed_by": ["backend_task_message"] if backend_found else [],
                     "backend_task_message_found": backend_found,
                     "backend_task_message_status": backend_echo.get("status"),
+                    "backend_stale_user_turn_prefix_match_rejected": backend_echo.get("backend_stale_user_turn_prefix_match_rejected"),
+                    "marker_present_in_matched_user_text": backend_echo.get("marker_present_in_matched_user_text"),
+                    "matched_marker": backend_echo.get("matched_marker"),
+                    "stale_marker_values_detected": backend_echo.get("stale_marker_values_detected"),
                     "post_prepare_commit_status": backend_echo.get("post_prepare_commit_status"),
                     "backend_detail_http_status": backend_echo.get("backend_detail_http_status", backend_echo.get("http_status")),
                     "backend_detail_http_statuses": backend_echo.get("backend_detail_http_statuses"),
@@ -7485,9 +7653,16 @@ class ChatGPTBrowserClient:
                     or last_backend_echo.get("backend_detail_temporarily_unavailable") is True
                 )
             )
+            backend_prefix_rejected = bool(
+                isinstance(last_backend_echo, dict)
+                and last_backend_echo.get("backend_stale_user_turn_prefix_match_rejected")
+            )
             if prepare_only and backend_commit_window_used and backend_detail_temporarily_unavailable:
                 causal_reason = "backend_detail_temporarily_unavailable"
                 confirmation_mode = "submit_backend_detail_temporarily_unavailable_timeout"
+            elif prepare_only and backend_commit_window_used and backend_prefix_rejected:
+                causal_reason = "backend_stale_user_turn_prefix_match_rejected"
+                confirmation_mode = "prepare_only_without_exact_marker_commit"
             elif prepare_only and backend_commit_window_used:
                 causal_reason = conduit_error_hint or "submit_prepare_without_backend_commit"
                 confirmation_mode = (
@@ -7587,6 +7762,10 @@ class ChatGPTBrowserClient:
             fields["backend_detail_transient_error_count"] = last_backend_echo.get("backend_detail_transient_error_count") if isinstance(last_backend_echo, dict) else None
             fields["backend_detail_retry_count"] = last_backend_echo.get("backend_detail_retry_count") if isinstance(last_backend_echo, dict) else None
             fields["backend_detail_temporarily_unavailable"] = last_backend_echo.get("backend_detail_temporarily_unavailable") if isinstance(last_backend_echo, dict) else None
+            fields["backend_stale_user_turn_prefix_match_rejected"] = last_backend_echo.get("backend_stale_user_turn_prefix_match_rejected") if isinstance(last_backend_echo, dict) else None
+            fields["marker_present_in_matched_user_text"] = last_backend_echo.get("marker_present_in_matched_user_text") if isinstance(last_backend_echo, dict) else None
+            fields["matched_marker"] = last_backend_echo.get("matched_marker") if isinstance(last_backend_echo, dict) else None
+            fields["stale_marker_values_detected"] = last_backend_echo.get("stale_marker_values_detected") if isinstance(last_backend_echo, dict) else None
             return {
                 **fields,
                 "confirmed": False,
@@ -8473,6 +8652,7 @@ class ChatGPTBrowserClient:
                 confirmation=confirmation,
                 reason="submit_confirmed_without_deep_debug",
             )
+            backend_evidence = confirmation.get("backend_task_message_evidence") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else {}
             snapshot_completed = time.monotonic()
             submit_wait_seconds = round(send_button_wait_seconds + confirmation_seconds + after_submit_composer_snapshot_seconds, 3)
             submit_dispatch_to_confirmation_seconds = (
@@ -8543,6 +8723,10 @@ class ChatGPTBrowserClient:
                 "submit_backend_detail_transient_error_count": confirmation.get("backend_detail_transient_error_count"),
                 "submit_backend_detail_retry_count": confirmation.get("backend_detail_retry_count"),
                 "submit_backend_detail_temporarily_unavailable": confirmation.get("backend_detail_temporarily_unavailable"),
+                "submit_backend_stale_user_turn_prefix_match_rejected": confirmation.get("backend_stale_user_turn_prefix_match_rejected") or backend_evidence.get("backend_stale_user_turn_prefix_match_rejected"),
+                "submit_marker_present_in_matched_user_text": confirmation.get("marker_present_in_matched_user_text") or backend_evidence.get("marker_present_in_matched_user_text"),
+                "submit_matched_marker": confirmation.get("matched_marker") or backend_evidence.get("matched_marker"),
+                "submit_stale_marker_values_detected": confirmation.get("stale_marker_values_detected") or backend_evidence.get("stale_marker_values_detected"),
                 "submit_network_request_observed": confirmation.get("network_submit_request_observed"),
                 "submit_network_request_seconds": confirmation.get("network_submit_request_seconds"),
                 "submit_network_request_status": confirmation.get("network_submit_request_status"),
