@@ -1803,6 +1803,9 @@ class ChatGPTBrowserClient:
         phase_timings["submit_url_only_confirmation_rejected"] = submit_evidence.get("submit_url_only_confirmation_rejected")
         phase_timings["submit_user_turn_echo_found"] = submit_evidence.get("submit_user_turn_echo_found")
         phase_timings["submit_user_turn_echo_seconds"] = submit_evidence.get("submit_user_turn_echo_seconds")
+        phase_timings["submit_backend_task_message_found"] = submit_evidence.get("submit_backend_task_message_found")
+        phase_timings["submit_backend_task_message_seconds"] = submit_evidence.get("submit_backend_task_message_seconds")
+        phase_timings["submit_backend_task_message_status"] = submit_evidence.get("submit_backend_task_message_status")
         phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
         phase_timings["after_submit_snapshot_mode"] = submit_evidence.get("after_submit_snapshot_mode")
         phase_timings["after_submit_snapshot_skipped_reason"] = submit_evidence.get("after_submit_snapshot_skipped_reason")
@@ -1827,6 +1830,9 @@ class ChatGPTBrowserClient:
         phase_timings["submit_url_only_confirmation_rejected"] = submit_evidence.get("submit_url_only_confirmation_rejected")
         phase_timings["submit_user_turn_echo_found"] = submit_evidence.get("submit_user_turn_echo_found")
         phase_timings["submit_user_turn_echo_seconds"] = submit_evidence.get("submit_user_turn_echo_seconds")
+        phase_timings["submit_backend_task_message_found"] = submit_evidence.get("submit_backend_task_message_found")
+        phase_timings["submit_backend_task_message_seconds"] = submit_evidence.get("submit_backend_task_message_seconds")
+        phase_timings["submit_backend_task_message_status"] = submit_evidence.get("submit_backend_task_message_status")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             phase_timings["response_wait_skipped"] = True
@@ -5498,6 +5504,118 @@ class ChatGPTBrowserClient:
             or generic.get("prompt_prefix_found")
         )
 
+    def _submit_backend_causality_enabled(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_BACKEND_CAUSALITY") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled", "dom-only"}
+
+    def _prompt_submit_markers(self, prompt: str | None) -> dict[str, Any]:
+        text = str(prompt or "")
+        request_id = self._protocol_request_id_from_prompt(text)
+        prompt_prefix = text[:120]
+        prompt_short_prefix = text[:80]
+        response_markers = self._extract_prompt_response_markers(text)
+        markers: list[str] = []
+        for marker in [request_id, *response_markers, prompt_prefix, prompt_short_prefix]:
+            marker_text = str(marker or "").strip()
+            if marker_text and marker_text not in markers:
+                markers.append(marker_text)
+        return {
+            "request_id": request_id,
+            "response_markers": response_markers,
+            "prompt_prefix": prompt_prefix,
+            "prompt_short_prefix": prompt_short_prefix,
+            "markers": markers,
+        }
+
+    def _turn_text_matches_submit_prompt(self, text: str, *, prompt: str | None) -> tuple[bool, list[str], str | None]:
+        markers = self._prompt_submit_markers(prompt)
+        body = str(text or "")
+        matched_by: list[str] = []
+        request_id = markers.get("request_id")
+        if request_id and str(request_id) in body:
+            matched_by.append("request_id")
+        for marker in markers.get("response_markers") or []:
+            if marker and str(marker) in body:
+                matched_by.append("response_marker")
+                break
+        prompt_prefix = markers.get("prompt_prefix")
+        if prompt_prefix and str(prompt_prefix) in body:
+            matched_by.append("prompt_prefix")
+        prompt_short_prefix = markers.get("prompt_short_prefix")
+        if prompt_short_prefix and str(prompt_short_prefix) in body:
+            matched_by.append("prompt_short_prefix")
+        return bool(matched_by), matched_by, (markers.get("response_markers") or [None])[0]
+
+    async def _capture_backend_task_message_echo_state(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
+        started = time.monotonic()
+        if not self._submit_backend_causality_enabled():
+            return {
+                "visible": False,
+                "status": "backend_task_message_echo_disabled",
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        current_url = await self._safe_page_url(page)
+        conversation_id = self._conversation_id_from_url(current_url)
+        if not conversation_id:
+            return {
+                "visible": False,
+                "status": "backend_task_message_echo_no_conversation_id",
+                "current_url": current_url,
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        try:
+            detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+        except Exception as exc:
+            return {
+                "visible": False,
+                "status": "backend_task_message_echo_fetch_failed",
+                "current_url": current_url,
+                "conversation_id": conversation_id,
+                "error": str(exc),
+                "probe_seconds": round(time.monotonic() - started, 3),
+            }
+        payload = detail.get("payload")
+        turns = self._extract_chat_turns_from_conversation_payload(payload)
+        user_turns = [turn for turn in turns if str(turn.get("role") or "").lower() == "user"]
+        assistant_turns = [turn for turn in turns if str(turn.get("role") or "").lower() == "assistant"]
+        matched_turn: dict[str, Any] | None = None
+        matched_by: list[str] = []
+        matched_marker: str | None = None
+        for turn in reversed(user_turns[-12:]):
+            matched, reasons, marker = self._turn_text_matches_submit_prompt(str(turn.get("text") or ""), prompt=prompt)
+            if matched:
+                matched_turn = turn
+                matched_by = reasons
+                matched_marker = marker
+                break
+        latest_user = user_turns[-1] if user_turns else {}
+        visible = matched_turn is not None
+        return {
+            "visible": visible,
+            "status": "backend_task_message_echo_visible" if visible else "backend_task_message_echo_not_visible",
+            "source": "backend_conversation_detail",
+            "current_url": current_url,
+            "conversation_id": conversation_id,
+            "http_ok": bool(detail.get("ok")),
+            "http_status": detail.get("status"),
+            "used_authorization": bool(detail.get("used_authorization")),
+            "turn_count": len(turns),
+            "user_turn_count": len(user_turns),
+            "assistant_turn_count": len(assistant_turns),
+            "latest_user_turn_id": latest_user.get("id"),
+            "latest_user_turn_index": latest_user.get("index"),
+            "latest_user_text_length": len(str(latest_user.get("text") or "")),
+            "latest_user_text_preview": str(latest_user.get("text") or "")[:240],
+            "matched_user_turn_id": matched_turn.get("id") if matched_turn else None,
+            "matched_user_turn_index": matched_turn.get("index") if matched_turn else None,
+            "matched_by": matched_by,
+            "matched_marker": matched_marker,
+            "probe_seconds": round(time.monotonic() - started, 3),
+        }
+
+    def _backend_task_message_echo_found(self, evidence: Any) -> bool:
+        return bool(isinstance(evidence, dict) and evidence.get("visible") and evidence.get("status") == "backend_task_message_echo_visible")
+
     async def _capture_submit_user_turn_echo_state(self, page: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
         if not prompt:
@@ -5597,13 +5715,12 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.20 intentionally no longer accepts "same conversation URL" as
-        proof that a submit was accepted.  URL-only confirmation allowed .16-.18
-        to enter response extraction after a no-op/ignored dispatch and then race
-        against stale visible JSON from old turns.  The default confirmation now
-        requires either a running-state signal (stop button / composer running)
-        or a prompt-specific post-submit user-turn echo.  URL evidence remains
-        diagnostic only unless the legacy override is explicitly enabled.
+        v0.0.278.21 keeps URL-only confirmation rejected, but adds a
+        backend-first causality proof.  Warm/virtualized old task DOM can report
+        zero user/assistant turns even after the composer is cleared.  Before
+        relying on DOM echo, probe /backend-api/conversation/<id> and accept the
+        submit only when the backend transcript contains the current prompt
+        marker in a user message.
         """
 
         started = time.monotonic()
@@ -5612,14 +5729,16 @@ class ChatGPTBrowserClient:
         attempt = 0
         last_state: dict[str, Any] = {}
         last_user_echo: dict[str, Any] = {}
+        last_backend_echo: dict[str, Any] = {}
         probe_seconds_total = 0.0
         user_echo_seconds_total = 0.0
+        backend_echo_seconds_total = 0.0
         fast_enabled = self._submit_confirmation_fast_path_enabled()
         causal_required = self._submit_causal_confirmation_required()
         url_only_rejected = False
 
         def strict_signals(confirmed_by: list[str]) -> list[str]:
-            return [signal for signal in confirmed_by if signal in {"stop_button", "composer_running", "user_turn_echo"}]
+            return [signal for signal in confirmed_by if signal in {"stop_button", "composer_running", "user_turn_echo", "backend_task_message"}]
 
         if fast_enabled:
             attempt += 1
@@ -5680,6 +5799,14 @@ class ChatGPTBrowserClient:
             raw_confirmed_by = list(state.get("confirmed_by") or [])
             causal_confirmed_by = strict_signals(raw_confirmed_by)
             user_echo_found = False
+            backend_echo_found = False
+            if causal_required and prompt and not causal_confirmed_by:
+                backend_echo = await self._capture_backend_task_message_echo_state(page, prompt=prompt)
+                backend_echo_seconds_total += float(backend_echo.get("probe_seconds") or 0.0)
+                last_backend_echo = backend_echo
+                backend_echo_found = self._backend_task_message_echo_found(backend_echo)
+                if backend_echo_found:
+                    causal_confirmed_by.append("backend_task_message")
             if causal_required and prompt and not causal_confirmed_by:
                 user_echo = await self._capture_submit_user_turn_echo_state(page, prompt=prompt)
                 user_echo_seconds_total += float(user_echo.get("probe_seconds") or 0.0)
@@ -5706,11 +5833,18 @@ class ChatGPTBrowserClient:
                 "historical_count_used": state.get("historical_count_used"),
                 "user_turn_echo_found": user_echo_found,
                 "user_turn_echo_status": last_user_echo.get("status") if isinstance(last_user_echo, dict) else None,
+                "backend_task_message_found": backend_echo_found,
+                "backend_task_message_status": last_backend_echo.get("status") if isinstance(last_backend_echo, dict) else None,
                 "url_only_rejected": causal_required and raw_confirmed_by == ["url_conversation"] and not causal_confirmed_by,
             })
             if confirmed:
                 duration = round(time.monotonic() - started, 3)
-                causal_reason = "running_state" if any(signal in effective_confirmed_by for signal in ("stop_button", "composer_running")) else "user_turn_echo"
+                if any(signal in effective_confirmed_by for signal in ("stop_button", "composer_running")):
+                    causal_reason = "running_state"
+                elif "backend_task_message" in effective_confirmed_by:
+                    causal_reason = "backend_task_message"
+                else:
+                    causal_reason = "user_turn_echo"
                 fields = self._submit_confirmation_timing_fields(
                     mode="strict_causal_probe" if causal_required else "legacy_probe",
                     fast_path_used=False,
@@ -5727,6 +5861,9 @@ class ChatGPTBrowserClient:
                     user_turn_echo_found="user_turn_echo" in effective_confirmed_by,
                     user_turn_echo_seconds=user_echo_seconds_total,
                 )
+                fields["backend_task_message_found"] = "backend_task_message" in effective_confirmed_by
+                fields["backend_task_message_seconds"] = round(backend_echo_seconds_total, 3)
+                fields["backend_task_message_status"] = last_backend_echo.get("status") if isinstance(last_backend_echo, dict) else None
                 return {
                     **state,
                     **fields,
@@ -5734,6 +5871,7 @@ class ChatGPTBrowserClient:
                     "confirmed_by": effective_confirmed_by,
                     "raw_confirmed_by": raw_confirmed_by,
                     "user_turn_evidence": last_user_echo,
+                    "backend_task_message_evidence": last_backend_echo,
                     "status": "submit_confirmed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -5760,6 +5898,9 @@ class ChatGPTBrowserClient:
                     user_turn_echo_found=False,
                     user_turn_echo_seconds=user_echo_seconds_total,
                 )
+                fields["backend_task_message_found"] = False
+                fields["backend_task_message_seconds"] = round(backend_echo_seconds_total, 3)
+                fields["backend_task_message_status"] = last_backend_echo.get("status") if isinstance(last_backend_echo, dict) else None
                 return {
                     **last_state,
                     **fields,
@@ -5767,6 +5908,7 @@ class ChatGPTBrowserClient:
                     "confirmed_by": [],
                     "raw_confirmed_by": list(last_state.get("confirmed_by") or []) if isinstance(last_state, dict) else [],
                     "user_turn_evidence": last_user_echo,
+                    "backend_task_message_evidence": last_backend_echo,
                     "status": "submit_confirmation_not_observed",
                     "timeout_ms": timeout_ms,
                     "poll_interval_ms": poll_interval_ms,
@@ -6168,8 +6310,12 @@ class ChatGPTBrowserClient:
                 "submit_url_only_confirmation_rejected": confirmation.get("url_only_confirmation_rejected"),
                 "submit_user_turn_echo_found": confirmation.get("user_turn_echo_found"),
                 "submit_user_turn_echo_seconds": confirmation.get("user_turn_echo_seconds"),
+                "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
+                "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
+                "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
+                "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
                 "duration_seconds": duration_seconds,
                 "submit_accounted_seconds": submit_accounted_seconds,
                 "submit_unaccounted_seconds": submit_unaccounted_seconds,
@@ -6320,7 +6466,11 @@ class ChatGPTBrowserClient:
             "submit_url_only_confirmation_rejected": confirmation.get("url_only_confirmation_rejected"),
             "submit_user_turn_echo_found": confirmation.get("user_turn_echo_found"),
             "submit_user_turn_echo_seconds": confirmation.get("user_turn_echo_seconds"),
+            "submit_backend_task_message_found": confirmation.get("backend_task_message_found"),
+            "submit_backend_task_message_seconds": confirmation.get("backend_task_message_seconds"),
+            "submit_backend_task_message_status": confirmation.get("backend_task_message_status"),
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
+            "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
             "duration_seconds": duration_seconds,
             "submit_accounted_seconds": submit_accounted_seconds,
             "submit_unaccounted_seconds": submit_unaccounted_seconds,
