@@ -3634,3 +3634,183 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
     assert result["submit_network_request_marker_found"] is True
     assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
 
+
+
+def test_configure_backend_answer_wait_context_keys_to_matched_user_turn(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context: dict[str, object] = {}
+    submit_evidence = {
+        "submit_confirmed": True,
+        "backend_task_message_evidence": {
+            "conversation_id": "conv-123",
+            "matched_user_turn_id": "user-node-1",
+            "matched_user_turn_index": 42,
+        },
+    }
+
+    client._configure_backend_answer_wait_context(context, submit_evidence=submit_evidence)
+
+    assert context["backend_answer_wait_enabled"] is True
+    assert context["backend_answer_wait_keyed_to_user_commit"] is True
+    assert context["backend_answer_conversation_id"] == "conv-123"
+    assert context["backend_answer_user_turn_id"] == "user-node-1"
+    assert context["backend_answer_user_turn_index"] == 42
+    assert context["backend_answer_wait_timeout_ms"] == 120_000
+
+
+def test_try_extract_json_payload_uses_backend_assistant_after_committed_user_turn_first(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    token = "STALE_GUARD_LIVE_OK_1234567890"
+    payload = {"ok": True, "sentinel": token, "finished": "finished"}
+
+    class DummyPage:
+        def locator(self, selector):
+            raise AssertionError("backend-first extraction must not touch DOM before backend answer probe succeeds")
+
+    async def fake_fetch(page, *, conversation_id):
+        assert conversation_id == "conv-123"
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "assistant-node-1",
+                "mapping": {
+                    "root": {"parent": None, "message": None},
+                    "user-node-1": {
+                        "parent": "root",
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Return JSON with sentinel"]},
+                        },
+                    },
+                    "assistant-node-1": {
+                        "parent": "user-node-1",
+                        "message": {
+                            "author": {"role": "assistant"},
+                            "content": {"parts": [json.dumps(payload)]},
+                        },
+                    },
+                },
+            },
+        }
+
+    client._fetch_conversation_detail = fake_fetch
+    context = {
+        "assistant_count": 115,
+        "assistant_text": "old stale answer",
+        "assistant_turn_baseline_counts": {'section[data-turn="assistant"]': 115},
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "prompt_marker",
+        "response_request_markers": [token],
+        "response_request_marker_count": 1,
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+    }
+
+    import asyncio
+
+    parsed, selector, text_length, probes = asyncio.run(
+        client._try_extract_json_payload(DummyPage(), response_context=context)
+    )
+
+    assert parsed == payload
+    assert selector == "backend_conversation_detail:assistant_after_user_commit"
+    assert text_length > 0
+    assert probes[0]["backend_first"] is True
+    assert context["last_response_extraction_mode"] == "backend_conversation_after_user_turn_json"
+    binding = context["last_response_payload_binding"]
+    assert binding["bound_to_post_submit_turn"] is True
+    assert binding["turn_selector"] == "backend_conversation_detail"
+    assert context["backend_answer_last_status"] == "backend_assistant_turn_after_commit_found"
+
+
+def test_wait_and_get_json_fast_returns_backend_fresh_marker_payload(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    token = "STALE_GUARD_LIVE_OK_9999999999"
+    payload = {"ok": True, "sentinel": token, "finished": "finished"}
+    calls = {"extract": 0}
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/conv-123"
+
+        def locator(self, selector):
+            raise AssertionError("backend-first success should not require DOM locator polling")
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("backend-first fresh JSON should fast-return without polling")
+
+    async def fake_open(*args, **kwargs):
+        return None
+
+    async def fake_fetch(page, *, conversation_id):
+        calls["extract"] += 1
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "assistant-node-1",
+                "mapping": {
+                    "root": {"parent": None, "message": None},
+                    "user-node-1": {
+                        "parent": "root",
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["fresh prompt"]},
+                        },
+                    },
+                    "assistant-node-1": {
+                        "parent": "user-node-1",
+                        "message": {
+                            "author": {"role": "assistant"},
+                            "content": {"parts": [json.dumps(payload)]},
+                        },
+                    },
+                },
+            },
+        }
+
+    async def forbidden_submit_state(page):
+        raise AssertionError("fresh backend marker fast-return should skip completion submit-state probe")
+
+    async def forbidden_thinking_state(page):
+        raise AssertionError("fresh backend marker fast-return should skip thinking-state probe")
+
+    client._maybe_open_new_project_conversation = fake_open
+    client._fetch_conversation_detail = fake_fetch
+    client._probe_submit_button_state = forbidden_submit_state
+    client._probe_thinking_state = forbidden_thinking_state
+
+    import asyncio
+    import time
+
+    context = {
+        "response_wait_started_at_monotonic": time.monotonic(),
+        "assistant_count": 115,
+        "assistant_text": "old stale answer",
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "prompt_marker",
+        "response_request_markers": [token],
+        "response_request_marker_count": 1,
+        "response_request_nonce_key": "promptbranch_request_nonce",
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+        "backend_answer_wait_timeout_ms": 120_000,
+    }
+
+    answer = asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+
+    assert answer == payload
+    assert calls["extract"] == 1
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_backend_first_answer_wait_enabled"] is True
+    assert breakdown["response_freshness_verified"] is True
+    assert breakdown["response_freshness_reason"] == "request_marker_match"
+    assert breakdown["response_json_fast_return_used"] is True
+    assert breakdown["response_json_fast_return_reason"] == "request_marker_match"
+    assert context["last_response_extraction_mode"] == "backend_conversation_after_user_turn_json"

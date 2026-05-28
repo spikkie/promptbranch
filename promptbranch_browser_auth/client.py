@@ -1923,6 +1923,14 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_backend_commit_confirmed"] = submit_evidence.get("submit_keyboard_enter_backend_commit_confirmed")
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
+        if isinstance(response_context, dict):
+            self._configure_backend_answer_wait_context(response_context, submit_evidence=submit_evidence)
+            phase_timings["backend_first_answer_wait_enabled"] = response_context.get("backend_answer_wait_enabled")
+            phase_timings["backend_first_answer_wait_keyed_to_user_commit"] = response_context.get("backend_answer_wait_keyed_to_user_commit")
+            phase_timings["backend_first_answer_conversation_id"] = response_context.get("backend_answer_conversation_id")
+            phase_timings["backend_first_answer_user_turn_id"] = response_context.get("backend_answer_user_turn_id")
+            phase_timings["backend_first_answer_user_turn_index"] = response_context.get("backend_answer_user_turn_index")
+            phase_timings["backend_first_answer_wait_timeout_ms"] = response_context.get("backend_answer_wait_timeout_ms")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
@@ -14202,6 +14210,227 @@ class ChatGPTBrowserClient:
             "mode": mode,
         }
 
+
+    def _backend_answer_wait_enabled(self) -> bool:
+        mode = (os.getenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT") or "").strip().lower()
+        return mode not in {"0", "false", "no", "off", "disabled"}
+
+    def _submit_confirmed_answer_timeout_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_MS") or "").strip()
+        try:
+            value = int(raw) if raw else 120_000
+        except ValueError:
+            value = 120_000
+        return max(10_000, min(value, 300_000))
+
+    def _backend_user_turn_binding_from_submit_evidence(self, submit_evidence: Any) -> dict[str, Any]:
+        if not isinstance(submit_evidence, dict):
+            return {}
+        backend_evidence = submit_evidence.get("backend_task_message_evidence")
+        if not isinstance(backend_evidence, dict):
+            backend_evidence = {}
+        user_turn_id = backend_evidence.get("matched_user_turn_id") or submit_evidence.get("submit_backend_user_turn_id")
+        user_turn_index = backend_evidence.get("matched_user_turn_index") or submit_evidence.get("submit_backend_user_turn_index")
+        conversation_id = backend_evidence.get("conversation_id") or submit_evidence.get("submit_backend_conversation_id")
+        try:
+            user_turn_index_int = int(user_turn_index) if user_turn_index is not None else None
+        except (TypeError, ValueError):
+            user_turn_index_int = None
+        return {
+            "conversation_id": str(conversation_id or "").strip(),
+            "user_turn_id": str(user_turn_id or "").strip(),
+            "user_turn_index": user_turn_index_int,
+            "backend_task_message_evidence": backend_evidence,
+        }
+
+    def _configure_backend_answer_wait_context(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        submit_evidence: Any,
+    ) -> None:
+        if not isinstance(response_context, dict):
+            return
+        binding = self._backend_user_turn_binding_from_submit_evidence(submit_evidence)
+        if not binding.get("conversation_id"):
+            return
+        if not (binding.get("user_turn_id") or binding.get("user_turn_index") is not None):
+            return
+        response_context["backend_answer_wait_enabled"] = self._backend_answer_wait_enabled()
+        response_context["backend_answer_conversation_id"] = binding.get("conversation_id")
+        response_context["backend_answer_user_turn_id"] = binding.get("user_turn_id")
+        response_context["backend_answer_user_turn_index"] = binding.get("user_turn_index")
+        response_context["backend_answer_commit_evidence"] = binding.get("backend_task_message_evidence")
+        response_context["backend_answer_wait_timeout_ms"] = self._submit_confirmed_answer_timeout_ms()
+        response_context["backend_answer_wait_keyed_to_user_commit"] = True
+
+    def _backend_answer_wait_context_available(self, response_context: Optional[dict[str, Any]]) -> bool:
+        if not isinstance(response_context, dict):
+            return False
+        if not self._backend_answer_wait_enabled():
+            return False
+        if response_context.get("backend_answer_wait_enabled") is False:
+            return False
+        conversation_id = str(response_context.get("backend_answer_conversation_id") or "").strip()
+        if not conversation_id:
+            return False
+        return bool(
+            str(response_context.get("backend_answer_user_turn_id") or "").strip()
+            or response_context.get("backend_answer_user_turn_index") is not None
+        )
+
+    def _find_backend_assistant_turn_after_user_commit(
+        self,
+        turns: list[dict[str, Any]],
+        *,
+        user_turn_id: str | None,
+        user_turn_index: int | None,
+    ) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]], Optional[int], str]:
+        matched_index: Optional[int] = None
+        user_turn_id = str(user_turn_id or "").strip()
+        if user_turn_id:
+            for index, turn in enumerate(turns):
+                if str(turn.get("id") or "") == user_turn_id:
+                    matched_index = index
+                    break
+        if matched_index is None and user_turn_index is not None:
+            for index, turn in enumerate(turns):
+                try:
+                    turn_index = int(turn.get("index") or 0)
+                except (TypeError, ValueError):
+                    turn_index = -1
+                if turn_index == int(user_turn_index):
+                    matched_index = index
+                    break
+        if matched_index is None:
+            return None, [], None, "backend_user_turn_commit_not_found"
+        following_assistant_turns = [
+            turn for turn in turns[matched_index + 1:]
+            if str(turn.get("role") or "").lower() == "assistant"
+        ]
+        if not following_assistant_turns:
+            return None, [], matched_index, "backend_assistant_turn_after_commit_not_found"
+        return following_assistant_turns[-1], following_assistant_turns, matched_index, "backend_assistant_turn_after_commit_found"
+
+    async def _try_extract_backend_json_payload(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]],
+        extraction_started: float,
+    ) -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
+        probes: list[dict[str, Any]] = []
+        if not self._backend_answer_wait_context_available(response_context):
+            return None, None, 0, probes
+        assert isinstance(response_context, dict)
+        conversation_id = str(response_context.get("backend_answer_conversation_id") or "").strip()
+        user_turn_id = str(response_context.get("backend_answer_user_turn_id") or "").strip()
+        user_turn_index_raw = response_context.get("backend_answer_user_turn_index")
+        try:
+            user_turn_index = int(user_turn_index_raw) if user_turn_index_raw is not None else None
+        except (TypeError, ValueError):
+            user_turn_index = None
+        fetch_started = time.monotonic()
+        try:
+            detail = await self._fetch_conversation_detail(page, conversation_id=conversation_id)
+        except Exception as exc:
+            probe = {
+                "selector": "backend_conversation_detail",
+                "source": "backend_conversation_detail",
+                "backend_first": True,
+                "parsed": False,
+                "visible": False,
+                "error": str(exc),
+                "conversation_id": conversation_id,
+                "probe_seconds": round(time.monotonic() - fetch_started, 3),
+            }
+            probes.append(probe)
+            response_context["last_backend_answer_probe"] = probe
+            return None, None, 0, probes
+
+        payload = detail.get("payload")
+        turns = self._extract_chat_turns_from_conversation_payload(payload)
+        assistant_turn, following_assistant_turns, matched_backend_index, status = self._find_backend_assistant_turn_after_user_commit(
+            turns,
+            user_turn_id=user_turn_id,
+            user_turn_index=user_turn_index,
+        )
+        assistant_text = str(assistant_turn.get("text") or "") if isinstance(assistant_turn, dict) else ""
+        parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
+        selector = "backend_conversation_detail:assistant_after_user_commit"
+        probe = {
+            "selector": selector,
+            "source": "backend_conversation_detail",
+            "backend_first": True,
+            "status": status,
+            "http_ok": bool(detail.get("ok")),
+            "http_status": detail.get("status"),
+            "used_authorization": bool(detail.get("used_authorization")),
+            "conversation_id": conversation_id,
+            "target_user_turn_id": user_turn_id or None,
+            "target_user_turn_index": user_turn_index,
+            "matched_backend_turn_list_index": matched_backend_index,
+            "turn_count": len(turns),
+            "assistant_after_commit_count": len(following_assistant_turns),
+            "assistant_turn_id": assistant_turn.get("id") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_index": assistant_turn.get("index") if isinstance(assistant_turn, dict) else None,
+            "text_length": len(assistant_text),
+            "text_preview": self._preview_text(assistant_text, 220),
+            "parsed": parsed is not None,
+            "visible": bool(assistant_text),
+            "post_submit_only": True,
+            "probe_seconds": round(time.monotonic() - fetch_started, 3),
+        }
+        probes.append(probe)
+        response_context["last_backend_answer_probe"] = probe
+        response_context["backend_answer_last_status"] = status
+        response_context["backend_answer_http_status"] = detail.get("status")
+        response_context["backend_answer_turn_count"] = len(turns)
+        response_context["backend_answer_assistant_after_commit_count"] = len(following_assistant_turns)
+        response_context["backend_answer_assistant_turn_id"] = probe.get("assistant_turn_id")
+        response_context["backend_answer_assistant_turn_index"] = probe.get("assistant_turn_index")
+        response_context["backend_answer_probe_seconds"] = probe.get("probe_seconds")
+        if parsed is None:
+            self._record_post_submit_payload_binding(
+                response_context,
+                bound=False,
+                selector=selector,
+                turn_selector="backend_conversation_detail",
+                turn_index=probe.get("assistant_turn_index"),
+                baseline_turn_index=user_turn_index,
+                current_turn_count=len(turns),
+                payload=None,
+                text_length=len(assistant_text),
+                mode="backend_conversation_after_user_turn_not_parseable" if assistant_text else status,
+            )
+            self._record_response_extraction_context(
+                response_context,
+                mode="backend_conversation_after_user_turn_not_parseable" if assistant_text else status,
+                historical_scan_used=False,
+                started_at=extraction_started,
+            )
+            return None, None, len(assistant_text), probes
+
+        self._record_post_submit_payload_binding(
+            response_context,
+            bound=True,
+            selector=selector,
+            turn_selector="backend_conversation_detail",
+            turn_index=probe.get("assistant_turn_index"),
+            baseline_turn_index=user_turn_index,
+            current_turn_count=len(turns),
+            payload=parsed,
+            text_length=len(assistant_text),
+            mode="backend_conversation_after_user_turn_json",
+        )
+        self._record_response_extraction_context(
+            response_context,
+            mode="backend_conversation_after_user_turn_json",
+            historical_scan_used=False,
+            started_at=extraction_started,
+        )
+        return parsed, selector, len(assistant_text), probes
+
     async def _try_extract_post_submit_json_payload(
         self,
         page: Any,
@@ -14681,6 +14910,16 @@ class ChatGPTBrowserClient:
             "response_request_nonce_key",
             "response_request_nonce_injected",
             "response_request_nonce_stripped_from_answer",
+            "response_effective_timeout_ms",
+            "response_backend_first_answer_wait_enabled",
+            "response_wait_timeout_status",
+            "backend_answer_last_status",
+            "backend_answer_http_status",
+            "backend_answer_turn_count",
+            "backend_answer_assistant_after_commit_count",
+            "backend_answer_assistant_turn_id",
+            "backend_answer_assistant_turn_index",
+            "backend_answer_probe_seconds",
         ]
         for key in timing_keys:
             if key in breakdown:
@@ -14904,11 +15143,13 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         current_url = await self._safe_page_url(page)
         conversation_url = current_url if self._is_conversation_url(current_url) else None
+        error_text = str(exc)
+        timeout_status = "submit_confirmed_answer_timeout" if "submit_confirmed_answer_timeout" in error_text else "assistant_response_timeout"
         result = {
             "ok": False,
-            "status": "assistant_response_timeout",
-            "error": str(exc),
-            "error_type": exc.__class__.__name__,
+            "status": timeout_status,
+            "error": error_text,
+            "error_type": timeout_status if timeout_status != "assistant_response_timeout" else exc.__class__.__name__,
             "timeout_layer": "assistant_response",
             "answer": None,
             "conversation_url": conversation_url,
@@ -14953,11 +15194,19 @@ class ChatGPTBrowserClient:
         extraction_started = time.monotonic()
 
         if self._response_post_submit_binding_required(response_context):
-            return await self._try_extract_post_submit_json_payload(
+            backend_payload, backend_selector, backend_text_length, backend_probes = await self._try_extract_backend_json_payload(
                 page,
                 response_context=response_context,
                 extraction_started=extraction_started,
             )
+            if backend_payload is not None:
+                return backend_payload, backend_selector, backend_text_length, backend_probes
+            dom_payload, dom_selector, dom_text_length, dom_probes = await self._try_extract_post_submit_json_payload(
+                page,
+                response_context=response_context,
+                extraction_started=extraction_started,
+            )
+            return dom_payload, dom_selector, dom_text_length, [*backend_probes, *dom_probes]
 
         assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
         if assistant_turn is not None:
@@ -15366,7 +15615,16 @@ class ChatGPTBrowserClient:
             timeout_ms=self.config.response_timeout_ms,
         )
         start = asyncio.get_running_loop().time()
-        deadline = start + (self.config.response_timeout_ms / 1000)
+        effective_timeout_ms = int(self.config.response_timeout_ms)
+        if self._backend_answer_wait_context_available(response_context):
+            backend_timeout = None
+            if isinstance(response_context, dict):
+                backend_timeout = response_context.get("backend_answer_wait_timeout_ms")
+            try:
+                effective_timeout_ms = min(effective_timeout_ms, int(backend_timeout or self._submit_confirmed_answer_timeout_ms()))
+            except (TypeError, ValueError):
+                effective_timeout_ms = min(effective_timeout_ms, self._submit_confirmed_answer_timeout_ms())
+        deadline = start + (effective_timeout_ms / 1000)
         wait_started_monotonic = time.monotonic()
         if isinstance(response_context, dict):
             wait_started_monotonic = float(response_context.get("response_wait_started_at_monotonic") or wait_started_monotonic)
@@ -15381,6 +15639,8 @@ class ChatGPTBrowserClient:
         breakdown.setdefault("response_probe_attempt_count", 0)
         breakdown.setdefault("response_parseable_probe_attempt_count", 0)
         breakdown.setdefault("response_stable_poll_count", 0)
+        breakdown["response_effective_timeout_ms"] = effective_timeout_ms
+        breakdown["response_backend_first_answer_wait_enabled"] = bool(self._backend_answer_wait_context_available(response_context))
 
         attempt = 0
         last_diagnostic_dump = -30.0
@@ -15724,8 +15984,11 @@ class ChatGPTBrowserClient:
                 include_page_artifacts=True,
             )
         breakdown["response_wait_returned_at_monotonic"] = time.monotonic()
+        timeout_status = "submit_confirmed_answer_timeout" if self._backend_answer_wait_context_available(response_context) else "assistant_response_timeout"
+        if isinstance(response_context, dict):
+            response_context["response_wait_timeout_status"] = timeout_status
         raise ResponseTimeoutError(
-            f"Timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
+            f"{timeout_status}: timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
         )
 
     async def _goto(self, page: Any, url: str, *, label: str) -> dict[str, Any]:
