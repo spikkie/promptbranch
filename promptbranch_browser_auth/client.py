@@ -1902,12 +1902,21 @@ class ChatGPTBrowserClient:
         phase_timings["submit_post_prepare_observation_seconds"] = submit_evidence.get("submit_post_prepare_observation_seconds")
         phase_timings["submit_post_prepare_stream_observed"] = submit_evidence.get("submit_post_prepare_stream_observed")
         phase_timings["submit_stream_started_without_user_message_commit"] = submit_evidence.get("submit_stream_started_without_user_message_commit")
+        phase_timings["submit_prepare_token_set_not_consumed"] = submit_evidence.get("submit_prepare_token_set_not_consumed")
+        phase_timings["submit_prepare_only_then_idle_without_commit"] = submit_evidence.get("submit_prepare_only_then_idle_without_commit")
         phase_timings["submit_stream_status_streaming_observed"] = submit_evidence.get("submit_stream_status_streaming_observed")
         phase_timings["submit_post_prepare_stream_status_streaming_observed"] = submit_evidence.get("submit_post_prepare_stream_status_streaming_observed")
+        phase_timings["submit_stream_status_complete_observed"] = submit_evidence.get("submit_stream_status_complete_observed")
+        phase_timings["submit_post_prepare_stream_status_complete_observed"] = submit_evidence.get("submit_post_prepare_stream_status_complete_observed")
         phase_timings["submit_post_prepare_request_resource_types"] = submit_evidence.get("submit_post_prepare_request_resource_types")
         phase_timings["submit_post_prepare_request_initiators"] = submit_evidence.get("submit_post_prepare_request_initiators")
         phase_timings["submit_backend_commit_after_prepare_found"] = submit_evidence.get("submit_backend_commit_after_prepare_found")
         phase_timings["submit_backend_commit_after_prepare_seconds"] = submit_evidence.get("submit_backend_commit_after_prepare_seconds")
+        phase_timings["submit_composer_cleared_idle_without_backend_commit"] = submit_evidence.get("submit_composer_cleared_idle_without_backend_commit")
+        phase_timings["submit_variant_comparison_status"] = submit_evidence.get("submit_variant_comparison_status")
+        phase_timings["submit_variant_comparison_result"] = submit_evidence.get("submit_variant_comparison_result")
+        phase_timings["submit_variant_keyboard_enter_status"] = submit_evidence.get("submit_variant_keyboard_enter_status")
+        phase_timings["submit_variant_keyboard_enter_confirmed"] = submit_evidence.get("submit_variant_keyboard_enter_confirmed")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
@@ -1915,6 +1924,8 @@ class ChatGPTBrowserClient:
                 "submit_prepare_without_message_commit",
                 "submit_prepare_without_backend_commit",
                 "submit_prepare_conduit_token_not_consumed",
+                "prepare_token_set_not_consumed",
+                "prepare_only_then_idle_without_commit",
                 "submit_conduit_transport_observed_without_commit",
                 "stream_started_without_user_message_commit",
             }
@@ -1926,6 +1937,10 @@ class ChatGPTBrowserClient:
                 if failure_reason == "submit_prepare_without_backend_commit"
                 else "prepare returned a conduit token, but no post-prepare transport consumed it"
                 if failure_reason == "submit_prepare_conduit_token_not_consumed"
+                else "all prepare conduit tokens were tracked, but none were consumed after prepare"
+                if failure_reason == "prepare_token_set_not_consumed"
+                else "prepare returned conduit tokens, the UI returned idle/complete, and no backend message commit appeared"
+                if failure_reason == "prepare_only_then_idle_without_commit"
                 else "conduit transport was observed after prepare, but no backend message commit appeared"
                 if failure_reason == "submit_conduit_transport_observed_without_commit"
                 else "stream status entered streaming after prepare, but no user message commit appeared"
@@ -6036,27 +6051,61 @@ class ChatGPTBrowserClient:
             "captured_at_monotonic": round(time.monotonic(), 6),
         }
 
+    def _post_prepare_ui_error_text_is_strict(self, text: Any, *, selector: str = "") -> bool:
+        text_value = str(text or "").strip()
+        if not text_value:
+            return False
+        lowered = " ".join(text_value.lower().split())
+        strict_terms = (
+            "something went wrong",
+            "try again",
+            "unable to",
+            "failed to send",
+            "error sending",
+            "there was an error",
+            "network error",
+            "message failed",
+            "couldn't submit",
+            "could not submit",
+        )
+        noisy_footer_fragments = (
+            "chatgpt can make mistakes",
+            "use voice",
+            "start voice",
+            "stop answering",
+            "ctrl shift v",
+            "instant",
+            "extended",
+        )
+        if any(fragment in lowered for fragment in noisy_footer_fragments):
+            return any(term in lowered for term in strict_terms)
+        if any(term in lowered for term in strict_terms):
+            return True
+        return selector in {'[role="alert"]', '[role="alertdialog"]', '[aria-live="assertive"]'}
+
     async def _capture_post_prepare_ui_error_state(self, page: Any) -> dict[str, Any]:
         started = time.monotonic()
         selectors = [
             '[role="alert"]',
             '[role="alertdialog"]',
+            '[aria-live="assertive"]',
             '[data-testid*="toast"]',
-            '[class*="toast"]',
-            '[class*="error"]',
+            '[data-testid*="error"]',
             'text=Something went wrong',
             'text=Try again',
             'text=Unable to',
-            'text=failed',
-            'text=error',
+            'text=Failed to send',
+            'text=There was an error',
         ]
         matches: list[dict[str, Any]] = []
+        ignored_matches: list[dict[str, Any]] = []
         for selector in selectors:
             try:
                 loc = page.locator(selector)
                 count = await loc.count()
                 visible = False
                 preview = ""
+                strict_match = False
                 if count:
                     first = loc.first
                     first_loc = first() if callable(first) else first
@@ -6071,22 +6120,30 @@ class ChatGPTBrowserClient:
                             preview = str(await first_loc.inner_text(timeout=300))[:240]
                         except Exception:
                             preview = ""
-                if count or visible:
-                    matches.append({
-                        "selector": selector,
-                        "count": count,
-                        "visible": visible,
-                        "text_preview": preview,
-                    })
+                        strict_match = self._post_prepare_ui_error_text_is_strict(preview, selector=selector)
+                record = {
+                    "selector": selector,
+                    "count": count,
+                    "visible": visible,
+                    "text_preview": preview,
+                    "strict_match": strict_match,
+                }
+                if visible and strict_match:
+                    matches.append(record)
+                elif count or visible:
+                    ignored_matches.append(record)
             except Exception as exc:
-                matches.append({"selector": selector, "error": type(exc).__name__})
-        visible_matches = [match for match in matches if match.get("visible")]
+                ignored_matches.append({"selector": selector, "error": type(exc).__name__, "strict_match": False})
+        visible_matches = [match for match in matches if match.get("visible") and match.get("strict_match")]
         return {
             "visible": bool(visible_matches),
-            "status": "post_prepare_ui_error_visible" if visible_matches else "post_prepare_ui_error_not_visible",
+            "status": "post_prepare_ui_error_visible_strict" if visible_matches else "post_prepare_ui_error_not_visible",
+            "strict_mode": True,
             "match_count": len(matches),
             "visible_match_count": len(visible_matches),
+            "ignored_match_count": len(ignored_matches),
             "matches": matches[:20],
+            "ignored_matches": ignored_matches[:20],
             "probe_seconds": round(time.monotonic() - started, 3),
         }
 
@@ -6600,6 +6657,22 @@ class ChatGPTBrowserClient:
             conduit_transport_kinds.append("websocket")
         conduit_transport_observed = bool(conduit_transport_kinds)
         prepare_conduit_token_present = bool(tokens or observer.get("prepare_conduit_token_present") or any(bool(shape.get("conduit_token_present")) for shape in prepare_response_shapes if isinstance(shape, dict)))
+        stream_status_complete_observed = any(value.upper() == "COMPLETE" for value in stream_status_values)
+        post_prepare_stream_status_complete_observed = any(value.upper() == "COMPLETE" for value in post_prepare_stream_status_values)
+        prepare_token_set_not_consumed = bool(
+            prepare_conduit_token_present
+            and prepare_only
+            and not found
+            and not conduit_transport_observed
+            and not token_seen_in_request
+            and not token_seen_in_response
+            and not token_seen_in_websocket
+        )
+        prepare_only_then_idle_without_commit = bool(
+            prepare_token_set_not_consumed
+            and not post_prepare_stream_status_streaming_observed
+            and (post_prepare_stream_status_complete_observed or stream_status_complete_observed)
+        )
         conduit_error_hint = None
         stream_started_without_commit = bool(
             not found
@@ -6612,6 +6685,10 @@ class ChatGPTBrowserClient:
         elif prepare_conduit_token_present and not found:
             if conduit_transport_observed:
                 conduit_error_hint = "submit_conduit_transport_observed_without_commit"
+            elif prepare_only_then_idle_without_commit:
+                conduit_error_hint = "prepare_only_then_idle_without_commit"
+            elif prepare_token_set_not_consumed:
+                conduit_error_hint = "prepare_token_set_not_consumed"
             elif prepare_only:
                 conduit_error_hint = "submit_prepare_conduit_token_not_consumed"
         if conduit_error_hint:
@@ -6696,8 +6773,12 @@ class ChatGPTBrowserClient:
             "conduit_websocket_token_frame_count": len(token_websocket_frames),
             "conduit_error_hint": conduit_error_hint,
             "stream_started_without_user_message_commit": stream_started_without_commit,
+            "prepare_token_set_not_consumed": prepare_token_set_not_consumed,
+            "prepare_only_then_idle_without_commit": prepare_only_then_idle_without_commit,
             "stream_status_streaming_observed": stream_status_streaming_observed,
             "post_prepare_stream_status_streaming_observed": post_prepare_stream_status_streaming_observed,
+            "stream_status_complete_observed": stream_status_complete_observed,
+            "post_prepare_stream_status_complete_observed": post_prepare_stream_status_complete_observed,
             "stream_status_values": stream_status_values[:10],
             "post_prepare_stream_status_values": post_prepare_stream_status_values[:10],
             "stream_status_summary": {
@@ -6708,6 +6789,8 @@ class ChatGPTBrowserClient:
                 "status_values": stream_status_values[:10],
                 "streaming_observed": stream_status_streaming_observed,
                 "post_prepare_streaming_observed": post_prepare_stream_status_streaming_observed,
+                "complete_observed": stream_status_complete_observed,
+                "post_prepare_complete_observed": post_prepare_stream_status_complete_observed,
             },
             "conversation_init_summary": {
                 "observed": bool(conversation_init_events),
@@ -7195,6 +7278,10 @@ class ChatGPTBrowserClient:
                     if conduit_error_hint == "stream_started_without_user_message_commit"
                     else "submit_conduit_transport_without_commit_timeout"
                     if conduit_error_hint == "submit_conduit_transport_observed_without_commit"
+                    else "submit_prepare_only_then_idle_without_commit_timeout"
+                    if conduit_error_hint == "prepare_only_then_idle_without_commit"
+                    else "submit_prepare_token_set_not_consumed_timeout"
+                    if conduit_error_hint == "prepare_token_set_not_consumed"
                     else "submit_prepare_conduit_token_timeout"
                     if conduit_error_hint == "submit_prepare_conduit_token_not_consumed"
                     else "submit_prepare_backend_commit_timeout"
@@ -7204,6 +7291,10 @@ class ChatGPTBrowserClient:
                 confirmation_mode = (
                     "submit_stream_started_without_user_message_commit_timeout"
                     if conduit_error_hint == "stream_started_without_user_message_commit"
+                    else "submit_prepare_only_then_idle_without_commit_timeout"
+                    if conduit_error_hint == "prepare_only_then_idle_without_commit"
+                    else "submit_prepare_token_set_not_consumed_timeout"
+                    if conduit_error_hint == "prepare_token_set_not_consumed"
                     else "submit_prepare_conduit_token_timeout"
                     if conduit_error_hint == "submit_prepare_conduit_token_not_consumed"
                     else "submit_prepare_only_timeout"
@@ -7259,8 +7350,12 @@ class ChatGPTBrowserClient:
             fields["conduit_error_hint"] = network_evidence.get("conduit_error_hint")
             fields["stream_status_summary"] = network_evidence.get("stream_status_summary")
             fields["stream_started_without_user_message_commit"] = network_evidence.get("stream_started_without_user_message_commit")
+            fields["prepare_token_set_not_consumed"] = network_evidence.get("prepare_token_set_not_consumed")
+            fields["prepare_only_then_idle_without_commit"] = network_evidence.get("prepare_only_then_idle_without_commit")
             fields["stream_status_streaming_observed"] = network_evidence.get("stream_status_streaming_observed")
             fields["post_prepare_stream_status_streaming_observed"] = network_evidence.get("post_prepare_stream_status_streaming_observed")
+            fields["stream_status_complete_observed"] = network_evidence.get("stream_status_complete_observed")
+            fields["post_prepare_stream_status_complete_observed"] = network_evidence.get("post_prepare_stream_status_complete_observed")
             fields["post_prepare_request_resource_types"] = network_evidence.get("post_prepare_request_resource_types")
             fields["post_prepare_request_initiators"] = network_evidence.get("post_prepare_request_initiators")
             fields["conversation_init_summary"] = network_evidence.get("conversation_init_summary")
@@ -7642,6 +7737,195 @@ class ChatGPTBrowserClient:
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
         self._log("composer", "prompt fill completed after fallback chain", **evidence)
         return evidence
+
+    def _submit_variant_comparison_enabled(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_VARIANT_COMPARISON") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled"}
+
+    def _submit_variant_network_summary(self, confirmation: Any, *, variant: str, dispatch_key: str | None = None) -> dict[str, Any]:
+        network = confirmation.get("submit_network_evidence") if isinstance(confirmation, dict) and isinstance(confirmation.get("submit_network_evidence"), dict) else {}
+        return {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "confirmed": bool(confirmation.get("confirmed")) if isinstance(confirmation, dict) else False,
+            "confirmation_mode": confirmation.get("confirmation_mode") if isinstance(confirmation, dict) else None,
+            "causal_confirmation_reason": confirmation.get("causal_confirmation_reason") if isinstance(confirmation, dict) else None,
+            "network_status": network.get("status"),
+            "prepare_request_observed": network.get("prepare_request_observed"),
+            "prepare_request_count": network.get("prepare_request_count"),
+            "prepare_only": network.get("prepare_only"),
+            "prepare_only_then_idle_without_commit": network.get("prepare_only_then_idle_without_commit"),
+            "prepare_token_set_not_consumed": network.get("prepare_token_set_not_consumed"),
+            "message_request_observed": network.get("message_request_observed"),
+            "message_request_count": network.get("message_request_count"),
+            "conduit_transport_observed": network.get("conduit_transport_observed"),
+            "conduit_error_hint": network.get("conduit_error_hint"),
+            "stream_started_without_user_message_commit": network.get("stream_started_without_user_message_commit"),
+            "stream_status_values": network.get("stream_status_values"),
+            "post_prepare_stream_status_values": network.get("post_prepare_stream_status_values"),
+        }
+
+    async def _find_visible_chat_input_for_submit_variant(self, page: Any) -> tuple[Any | None, str | None]:
+        for selector in CHAT_INPUT_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                if not count:
+                    continue
+                item = locator.first
+                if await item.is_visible(timeout=500):
+                    return item, selector
+            except Exception:
+                continue
+        return None, None
+
+    async def _run_keyboard_submit_variant(
+        self,
+        page: Any,
+        *,
+        prompt: str | None,
+        before_assistant_count: int,
+        before_user_turn_state: dict[str, Any] | None,
+        variant: str,
+        dispatch_key: str,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        result: dict[str, Any] = {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "attempted": False,
+            "fill_attempted": False,
+            "fill_verified": False,
+            "confirmed": False,
+            "status": "not_attempted",
+        }
+        if not prompt:
+            result.update({"status": "skipped_no_prompt", "duration_seconds": round(time.monotonic() - started, 3)})
+            return result
+        input_locator, selector = await self._find_visible_chat_input_for_submit_variant(page)
+        result["input_selector"] = selector
+        if input_locator is None:
+            result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
+            return result
+        fill_started = time.monotonic()
+        try:
+            result["fill_attempted"] = True
+            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+            result["fill_evidence"] = {
+                "method": fill_evidence.get("method"),
+                "requested_method": fill_evidence.get("requested_method"),
+                "verification_passed": fill_evidence.get("verification_passed"),
+                "trusted_input_used": fill_evidence.get("trusted_input_used"),
+                "duration_seconds": fill_evidence.get("duration_seconds"),
+            }
+            result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
+        except Exception as exc:
+            result.update({
+                "status": "fill_failed",
+                "error": type(exc).__name__,
+                "fill_seconds": round(time.monotonic() - fill_started, 3),
+                "duration_seconds": round(time.monotonic() - started, 3),
+            })
+            return result
+        result["fill_seconds"] = round(time.monotonic() - fill_started, 3)
+        if not result["fill_verified"]:
+            result.update({"status": "fill_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
+            return result
+        observer = self._start_submit_network_observer(page, prompt=prompt)
+        dispatch_started = time.monotonic()
+        result["attempted"] = True
+        try:
+            await page.keyboard.press(dispatch_key)
+        except Exception as exc:
+            self._stop_submit_network_observer(page, observer)
+            result.update({
+                "status": "keyboard_dispatch_failed",
+                "error": type(exc).__name__,
+                "dispatch_seconds": round(time.monotonic() - dispatch_started, 3),
+                "duration_seconds": round(time.monotonic() - started, 3),
+            })
+            return result
+        dispatch_completed = time.monotonic()
+        result["dispatch_seconds"] = round(dispatch_completed - dispatch_started, 3)
+        try:
+            confirmation = await self._wait_for_submit_confirmation(
+                page,
+                before_assistant_count=before_assistant_count,
+                before_user_turn_state=before_user_turn_state,
+                prompt=prompt,
+                submit_network_observer=observer,
+            )
+        finally:
+            self._stop_submit_network_observer(page, observer)
+        result["confirmation"] = confirmation
+        result.update(self._submit_variant_network_summary(confirmation, variant=variant, dispatch_key=dispatch_key))
+        try:
+            after_state = await self._capture_post_submit_composer_state(page, prompt=prompt)
+            result["after_composer"] = after_state
+            result["composer_cleared"] = bool((after_state.get("text_length") or 0) == 0) if not after_state.get("skipped") else None
+        except Exception as exc:
+            result["after_composer_error"] = type(exc).__name__
+        result["status"] = result.get("network_status") or result.get("confirmation_mode") or "completed"
+        result["duration_seconds"] = round(time.monotonic() - started, 3)
+        return result
+
+    async def _compare_keyboard_submit_after_prepare_failure(
+        self,
+        page: Any,
+        *,
+        prompt: str | None,
+        before_assistant_count: int,
+        before_user_turn_state: dict[str, Any] | None,
+        primary_confirmation: dict[str, Any],
+        primary_after_composer: dict[str, Any],
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        primary_summary = self._submit_variant_network_summary(primary_confirmation, variant="button_click", dispatch_key=None)
+        result: dict[str, Any] = {
+            "enabled": self._submit_variant_comparison_enabled(),
+            "attempted": False,
+            "primary": primary_summary,
+            "keyboard_enter": None,
+            "comparison": None,
+        }
+        if not result["enabled"]:
+            result.update({"status": "disabled", "duration_seconds": round(time.monotonic() - started, 3)})
+            return result
+        network = primary_confirmation.get("submit_network_evidence") if isinstance(primary_confirmation.get("submit_network_evidence"), dict) else {}
+        if not bool(network.get("prepare_only_then_idle_without_commit") or network.get("prepare_token_set_not_consumed")):
+            result.update({"status": "skipped_primary_not_prepare_only_idle", "duration_seconds": round(time.monotonic() - started, 3)})
+            return result
+        after_button = primary_after_composer.get("submit_button") if isinstance(primary_after_composer, dict) else {}
+        result["primary_after_button_state"] = after_button
+        result["attempted"] = True
+        keyboard_result = await self._run_keyboard_submit_variant(
+            page,
+            prompt=prompt,
+            before_assistant_count=before_assistant_count,
+            before_user_turn_state=before_user_turn_state,
+            variant="keyboard_enter",
+            dispatch_key="Enter",
+        )
+        result["keyboard_enter"] = keyboard_result
+        primary_status = primary_summary.get("network_status") or primary_summary.get("confirmation_mode")
+        keyboard_status = keyboard_result.get("network_status") or keyboard_result.get("confirmation_mode") or keyboard_result.get("status")
+        if keyboard_result.get("confirmed"):
+            comparison = "keyboard_enter_finalized_after_button_prepare_only"
+        elif primary_status == keyboard_status:
+            comparison = "button_and_keyboard_same_result"
+        elif keyboard_result.get("prepare_only_then_idle_without_commit") or keyboard_result.get("prepare_token_set_not_consumed"):
+            comparison = "keyboard_enter_prepare_only_without_commit"
+        else:
+            comparison = "button_and_keyboard_differ"
+        result.update({
+            "status": "completed",
+            "comparison": comparison,
+            "primary_status": primary_status,
+            "keyboard_enter_status": keyboard_status,
+            "keyboard_enter_confirmed": bool(keyboard_result.get("confirmed")),
+            "duration_seconds": round(time.monotonic() - started, 3),
+        })
+        return result
 
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
@@ -8043,8 +8327,12 @@ class ChatGPTBrowserClient:
                 "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_stream_started_without_user_message_commit": (confirmation.get("submit_network_evidence") or {}).get("stream_started_without_user_message_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_token_set_not_consumed": (confirmation.get("submit_network_evidence") or {}).get("prepare_token_set_not_consumed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_only_then_idle_without_commit": (confirmation.get("submit_network_evidence") or {}).get("prepare_only_then_idle_without_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_stream_status_complete_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_complete_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_stream_status_complete_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_complete_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_request_resource_types": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_resource_types") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_request_initiators": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_initiators") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
@@ -8063,6 +8351,37 @@ class ChatGPTBrowserClient:
                 "submit_confirmation_started_at_monotonic": round(confirmation_started, 6),
                 "submit_confirmed_at_monotonic": round(confirmation_completed, 6),
             })
+            primary_network = confirmation.get("submit_network_evidence") if isinstance(confirmation.get("submit_network_evidence"), dict) else {}
+            after_submit_button = after_composer.get("submit_button") if isinstance(after_composer, dict) else {}
+            composer_cleared_idle_without_commit = bool(
+                primary_network.get("prepare_only_then_idle_without_commit")
+                and evidence.get("composer_cleared") is True
+                and isinstance(after_submit_button, dict)
+                and bool(after_submit_button.get("idle_visible"))
+                and not bool(evidence.get("submit_confirmed"))
+            )
+            evidence["submit_composer_cleared_idle_without_backend_commit"] = composer_cleared_idle_without_commit
+            evidence["submit_button_state_transition_summary"] = {
+                "before": before_composer.get("submit_button") if isinstance(before_composer, dict) else None,
+                "after": after_submit_button,
+                "classification": "composer_cleared_idle_without_backend_commit" if composer_cleared_idle_without_commit else None,
+            }
+            if method == "button" and not evidence.get("submit_confirmed") and bool(primary_network.get("prepare_only_then_idle_without_commit") or primary_network.get("prepare_token_set_not_consumed")):
+                variant_comparison = await self._compare_keyboard_submit_after_prepare_failure(
+                    page,
+                    prompt=prompt,
+                    before_assistant_count=before_assistant_count,
+                    before_user_turn_state=before_user_turns,
+                    primary_confirmation=confirmation,
+                    primary_after_composer=after_composer,
+                )
+                evidence["submit_variant_comparison"] = variant_comparison
+                evidence["submit_variant_comparison_status"] = variant_comparison.get("status")
+                evidence["submit_variant_comparison_result"] = variant_comparison.get("comparison")
+                keyboard_enter = variant_comparison.get("keyboard_enter") if isinstance(variant_comparison, dict) else None
+                if isinstance(keyboard_enter, dict):
+                    evidence["submit_variant_keyboard_enter_status"] = keyboard_enter.get("network_status") or keyboard_enter.get("confirmation_mode") or keyboard_enter.get("status")
+                    evidence["submit_variant_keyboard_enter_confirmed"] = bool(keyboard_enter.get("confirmed"))
             self._log(
                 "submit",
                 "submit confirmed without waiting for user-turn DOM",
@@ -8261,8 +8580,12 @@ class ChatGPTBrowserClient:
             "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_stream_started_without_user_message_commit": (confirmation.get("submit_network_evidence") or {}).get("stream_started_without_user_message_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_token_set_not_consumed": (confirmation.get("submit_network_evidence") or {}).get("prepare_token_set_not_consumed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_only_then_idle_without_commit": (confirmation.get("submit_network_evidence") or {}).get("prepare_only_then_idle_without_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_stream_status_complete_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_complete_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_stream_status_complete_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_complete_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_request_resource_types": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_resource_types") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_request_initiators": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_initiators") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
