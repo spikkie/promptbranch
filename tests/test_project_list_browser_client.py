@@ -1725,3 +1725,9 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["stop_button"]
     assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
+    assert "after_submit_composer_snapshot_seconds" in result
+    assert "submit_dispatch_to_confirmation_seconds" in result
+    assert "submit_accounted_seconds" in result
+    assert "submit_unaccounted_seconds" in result
+    assert abs(result["submit_unaccounted_seconds"]) < 0.1
+    assert result["submit_wait_seconds"] >= result["submit_confirmation_seconds"]

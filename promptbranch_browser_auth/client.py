@@ -1615,10 +1615,11 @@ class ChatGPTBrowserClient:
         mark_phase("response_context_seconds", phase_started)
 
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
-        # v0.0.278.8 exposes the narrow submit subphases instead of using
-        # broad submit duration as the only latency signal.  The legacy
-        # submit_wait_seconds field now reflects the bounded interactive submit
-        # phase reported by _submit_prompt, not pre-submit DOM/context capture.
+        # v0.0.278.9 keeps submit timing narrow and reconciliable with
+        # service-log timestamps.  submit_wait_seconds now includes the
+        # button/Enter dispatch, post-dispatch composer snapshot, and
+        # confirmation poll loop; submit_total_seconds remains full
+        # _submit_prompt wall clock.
         phase_timings["submit_wait_seconds"] = submit_evidence.get("submit_wait_seconds", submit_evidence.get("duration_seconds"))
         phase_timings["submit_total_seconds"] = submit_evidence.get("duration_seconds")
         phase_timings["composer_state_capture_seconds"] = submit_evidence.get("composer_state_capture_seconds")
@@ -1633,6 +1634,15 @@ class ChatGPTBrowserClient:
         phase_timings["enter_fallback_decision_seconds"] = submit_evidence.get("enter_fallback_decision_seconds")
         phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
         phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
+        phase_timings["after_submit_composer_snapshot_seconds"] = submit_evidence.get("after_submit_composer_snapshot_seconds")
+        phase_timings["submit_dispatch_to_confirmation_seconds"] = submit_evidence.get("submit_dispatch_to_confirmation_seconds")
+        phase_timings["submit_accounted_seconds"] = submit_evidence.get("submit_accounted_seconds")
+        phase_timings["submit_unaccounted_seconds"] = submit_evidence.get("submit_unaccounted_seconds")
+        phase_timings["submit_started_at_monotonic"] = submit_evidence.get("submit_started_at_monotonic")
+        phase_timings["submit_click_started_at_monotonic"] = submit_evidence.get("submit_click_started_at_monotonic")
+        phase_timings["submit_click_completed_at_monotonic"] = submit_evidence.get("submit_click_completed_at_monotonic")
+        phase_timings["submit_confirmation_started_at_monotonic"] = submit_evidence.get("submit_confirmation_started_at_monotonic")
+        phase_timings["submit_confirmed_at_monotonic"] = submit_evidence.get("submit_confirmed_at_monotonic")
         phase_timings["submit_confirmed"] = submit_evidence.get("submit_confirmed")
         phase_timings["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by")
         phase_timings["submit_method"] = submit_evidence.get("submit_method") or submit_evidence.get("status")
@@ -5169,11 +5179,12 @@ class ChatGPTBrowserClient:
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
-        v0.0.278.8 keeps the v0.0.278.7 early submit-confirmation model,
-        but narrows the measured submit phase and repairs the send-button path
-        before falling back to Enter.  The previous implementation measured
-        broad pre-submit DOM scans as submit_wait_seconds and clicked only the
-        first matching button for each selector.  In long conversations that can
+        v0.0.278.9 keeps the v0.0.278.8 send-button repair,
+        but makes submit timing mathematically reconcilable with service-log
+        timestamps by accounting for post-dispatch snapshots and confirmation
+        polling separately.  The previous implementation omitted the
+        after-submit composer snapshot from submit_wait_seconds, so long
+        Playwright/DOM delays could appear only in submit_total_seconds.  In long conversations that can
         hide the real failure mode and incorrectly choose Enter fallback even
         when a later matching send button is visible/enabled.
         """
@@ -5232,6 +5243,15 @@ class ChatGPTBrowserClient:
             "send_button_retry_reason": None,
             "enter_fallback_decision_seconds": None,
             "enter_fallback_press_seconds": None,
+            "after_submit_composer_snapshot_seconds": None,
+            "submit_dispatch_to_confirmation_seconds": None,
+            "submit_accounted_seconds": None,
+            "submit_unaccounted_seconds": None,
+            "submit_started_at_monotonic": round(submit_total_started, 6),
+            "submit_click_started_at_monotonic": None,
+            "submit_click_completed_at_monotonic": None,
+            "submit_confirmation_started_at_monotonic": None,
+            "submit_confirmed_at_monotonic": None,
         }
         self._log(
             "submit",
@@ -5335,9 +5355,12 @@ class ChatGPTBrowserClient:
                         if visible and enabled:
                             click_started = time.monotonic()
                             await item.click()
-                            send_button_click_seconds += time.monotonic() - click_started
+                            click_completed = time.monotonic()
+                            send_button_click_seconds += click_completed - click_started
                             return {
                                 "clicked": True,
+                                "dispatch_started_at_monotonic": click_started,
+                                "dispatch_completed_at_monotonic": click_completed,
                                 "selector": selector,
                                 "index": index,
                                 "attempt": attempt_number,
@@ -5380,6 +5403,8 @@ class ChatGPTBrowserClient:
         async def finalize_clicked_submit(click_result: dict[str, Any], *, method: str = "button") -> dict[str, Any]:
             nonlocal send_button_probe_seconds, send_button_click_seconds
             send_button_wait_seconds = round(time.monotonic() - send_wait_started, 3)
+            dispatch_started = click_result.get("dispatch_started_at_monotonic")
+            dispatch_completed = click_result.get("dispatch_completed_at_monotonic")
             self._log(
                 "submit",
                 "clicked submit button",
@@ -5390,15 +5415,37 @@ class ChatGPTBrowserClient:
                 send_button_probe_seconds=round(send_button_probe_seconds, 3),
                 send_button_click_seconds=round(send_button_click_seconds, 3),
                 send_button_wait_seconds=send_button_wait_seconds,
+                dispatch_started_at_monotonic=round(dispatch_started, 6) if isinstance(dispatch_started, (int, float)) else None,
+                dispatch_completed_at_monotonic=round(dispatch_completed, 6) if isinstance(dispatch_completed, (int, float)) else None,
             )
+            snapshot_started = time.monotonic()
             after_composer = await self._capture_composer_state(page, prompt=prompt)
+            snapshot_completed = time.monotonic()
+            after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
             confirmation_started = time.monotonic()
             confirmation = await self._wait_for_submit_confirmation(
                 page,
                 before_assistant_count=before_assistant_count,
             )
-            confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
-            submit_wait_seconds = round(send_button_wait_seconds + confirmation_seconds, 3)
+            confirmation_completed = time.monotonic()
+            confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
+            submit_wait_seconds = round(send_button_wait_seconds + after_submit_composer_snapshot_seconds + confirmation_seconds, 3)
+            submit_dispatch_to_confirmation_seconds = (
+                round(confirmation_completed - dispatch_completed, 3)
+                if isinstance(dispatch_completed, (int, float))
+                else None
+            )
+            duration_seconds = round(confirmation_completed - submit_total_started, 3)
+            submit_accounted_seconds = round(
+                composer_state_capture_seconds
+                + user_turn_state_capture_seconds
+                + assistant_turn_count_seconds
+                + send_button_wait_seconds
+                + after_submit_composer_snapshot_seconds
+                + confirmation_seconds,
+                3,
+            )
+            submit_unaccounted_seconds = round(duration_seconds - submit_accounted_seconds, 3)
             evidence.update({
                 "status": "clicked_submit_button",
                 "clicked": True,
@@ -5413,6 +5460,8 @@ class ChatGPTBrowserClient:
                 "send_button_click_seconds": round(send_button_click_seconds, 3),
                 "send_button_wait_seconds": send_button_wait_seconds,
                 "submit_wait_seconds": submit_wait_seconds,
+                "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
+                "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
                 "after_composer": after_composer,
                 "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
                 "submit_confirmation": confirmation,
@@ -5421,7 +5470,14 @@ class ChatGPTBrowserClient:
                 "submit_confirmation_seconds": confirmation_seconds,
                 "submit_to_turn_visible_seconds": None,
                 "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
-                "duration_seconds": round(time.monotonic() - submit_total_started, 3),
+                "duration_seconds": duration_seconds,
+                "submit_accounted_seconds": submit_accounted_seconds,
+                "submit_unaccounted_seconds": submit_unaccounted_seconds,
+                "submit_started_at_monotonic": round(submit_total_started, 6),
+                "submit_click_started_at_monotonic": round(dispatch_started, 6) if isinstance(dispatch_started, (int, float)) else None,
+                "submit_click_completed_at_monotonic": round(dispatch_completed, 6) if isinstance(dispatch_completed, (int, float)) else None,
+                "submit_confirmation_started_at_monotonic": round(confirmation_started, 6),
+                "submit_confirmed_at_monotonic": round(confirmation_completed, 6),
             })
             self._log(
                 "submit",
@@ -5430,8 +5486,12 @@ class ChatGPTBrowserClient:
                 submit_confirmed=evidence.get("submit_confirmed"),
                 submit_confirmed_by=evidence.get("submit_confirmed_by"),
                 submit_confirmation_seconds=confirmation_seconds,
+                after_submit_composer_snapshot_seconds=after_submit_composer_snapshot_seconds,
+                submit_dispatch_to_confirmation_seconds=submit_dispatch_to_confirmation_seconds,
                 send_button_wait_seconds=send_button_wait_seconds,
                 submit_wait_seconds=submit_wait_seconds,
+                submit_accounted_seconds=submit_accounted_seconds,
+                submit_unaccounted_seconds=submit_unaccounted_seconds,
             )
             return evidence
 
@@ -5489,21 +5549,41 @@ class ChatGPTBrowserClient:
         send_button_wait_seconds = round(time.monotonic() - send_wait_started, 3)
         enter_started = time.monotonic()
         await page.keyboard.press("Enter")
-        enter_press_seconds = round(time.monotonic() - enter_started, 3)
+        enter_completed = time.monotonic()
+        enter_press_seconds = round(enter_completed - enter_started, 3)
+        snapshot_started = time.monotonic()
         after_composer = await self._capture_composer_state(page, prompt=prompt)
+        snapshot_completed = time.monotonic()
+        after_submit_composer_snapshot_seconds = round(snapshot_completed - snapshot_started, 3)
         confirmation_started = time.monotonic()
         confirmation = await self._wait_for_submit_confirmation(
             page,
             before_assistant_count=before_assistant_count,
         )
-        confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
+        confirmation_completed = time.monotonic()
+        confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
         submit_wait_seconds = round(
             send_button_wait_seconds
             + enter_fallback_decision_seconds
             + (enter_press_seconds or 0.0)
+            + after_submit_composer_snapshot_seconds
             + confirmation_seconds,
             3,
         )
+        submit_dispatch_to_confirmation_seconds = round(confirmation_completed - enter_completed, 3)
+        duration_seconds = round(confirmation_completed - submit_total_started, 3)
+        submit_accounted_seconds = round(
+            composer_state_capture_seconds
+            + user_turn_state_capture_seconds
+            + assistant_turn_count_seconds
+            + send_button_wait_seconds
+            + enter_fallback_decision_seconds
+            + (enter_press_seconds or 0.0)
+            + after_submit_composer_snapshot_seconds
+            + confirmation_seconds,
+            3,
+        )
+        submit_unaccounted_seconds = round(duration_seconds - submit_accounted_seconds, 3)
         evidence.update({
             "status": "enter_fallback_used",
             "enter_fallback_used": True,
@@ -5514,12 +5594,21 @@ class ChatGPTBrowserClient:
             "send_button_retry_seconds": send_button_retry_seconds,
             "enter_fallback_press_seconds": enter_press_seconds,
             "submit_wait_seconds": submit_wait_seconds,
+            "after_submit_composer_snapshot_seconds": after_submit_composer_snapshot_seconds,
+            "submit_dispatch_to_confirmation_seconds": submit_dispatch_to_confirmation_seconds,
             "submit_confirmation": confirmation,
             "submit_confirmed": bool(confirmation.get("confirmed")),
             "submit_confirmed_by": confirmation.get("confirmed_by") or [],
             "submit_confirmation_seconds": confirmation_seconds,
             "submit_to_turn_visible_seconds": None,
-            "duration_seconds": round(time.monotonic() - submit_total_started, 3),
+            "duration_seconds": duration_seconds,
+            "submit_accounted_seconds": submit_accounted_seconds,
+            "submit_unaccounted_seconds": submit_unaccounted_seconds,
+            "submit_started_at_monotonic": round(submit_total_started, 6),
+            "submit_click_started_at_monotonic": round(enter_started, 6),
+            "submit_click_completed_at_monotonic": round(enter_completed, 6),
+            "submit_confirmation_started_at_monotonic": round(confirmation_started, 6),
+            "submit_confirmed_at_monotonic": round(confirmation_completed, 6),
             "after_composer": after_composer,
             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
             "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
@@ -5534,7 +5623,11 @@ class ChatGPTBrowserClient:
             enter_fallback_decision_seconds=enter_fallback_decision_seconds,
             enter_fallback_press_seconds=enter_press_seconds,
             submit_confirmation_seconds=confirmation_seconds,
+            after_submit_composer_snapshot_seconds=after_submit_composer_snapshot_seconds,
+            submit_dispatch_to_confirmation_seconds=submit_dispatch_to_confirmation_seconds,
             submit_wait_seconds=submit_wait_seconds,
+            submit_accounted_seconds=submit_accounted_seconds,
+            submit_unaccounted_seconds=submit_unaccounted_seconds,
         )
         return evidence
 
