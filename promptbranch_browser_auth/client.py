@@ -1617,9 +1617,14 @@ class ChatGPTBrowserClient:
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
         phase_timings["submit_wait_seconds"] = submit_evidence.get("duration_seconds")
         phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
+        phase_timings["submit_confirmation_seconds"] = submit_evidence.get("submit_confirmation_seconds")
+        phase_timings["submit_confirmed"] = submit_evidence.get("submit_confirmed")
+        phase_timings["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by")
         phase_timings["submit_method"] = submit_evidence.get("submit_method") or submit_evidence.get("status")
         phase_timings["submit_button_unavailable_reason"] = submit_evidence.get("button_unavailable_reason")
         phase_timings["submit_attempt_count"] = submit_evidence.get("attempt")
+        phase_timings["enter_fallback_press_seconds"] = submit_evidence.get("enter_fallback_press_seconds")
+        phase_timings["user_turn_dom_evidence_status"] = (submit_evidence.get("dom_user_turn_evidence") or {}).get("status") if isinstance(submit_evidence.get("dom_user_turn_evidence"), dict) else None
 
         response_wait_started = time.monotonic()
         try:
@@ -4997,6 +5002,115 @@ class ChatGPTBrowserClient:
                 }
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
 
+    async def _count_assistant_turns(self, page: Any) -> int:
+        """Return a cheap assistant-turn count without extracting message text."""
+
+        best_count = 0
+        for selector in ASSISTANT_MESSAGE_SELECTORS:
+            try:
+                count = await page.locator(selector).count()
+            except Exception:
+                continue
+            best_count = max(best_count, int(count or 0))
+        return best_count
+
+    async def _capture_submit_confirmation_state(
+        self,
+        page: Any,
+        *,
+        before_assistant_count: int,
+    ) -> dict[str, Any]:
+        current_url = await self._safe_page_url(page)
+        submit_button = await self._probe_submit_button_state(page)
+        assistant_count = await self._count_assistant_turns(page)
+        assistant_delta = assistant_count - int(before_assistant_count or 0)
+        confirmed_by: list[str] = []
+        if submit_button.get("stop_visible"):
+            confirmed_by.append("stop_button")
+        if assistant_delta > 0:
+            confirmed_by.append("assistant_turn")
+        if self._is_conversation_url(current_url):
+            confirmed_by.append("url_conversation")
+        send_state = submit_button.get("send_ready")
+        if send_state is False and submit_button.get("stop_visible"):
+            confirmed_by.append("composer_running")
+        return {
+            "confirmed": bool(confirmed_by),
+            "confirmed_by": confirmed_by,
+            "current_url": current_url,
+            "conversation_url_visible": self._is_conversation_url(current_url),
+            "submit_button": submit_button,
+            "stop_button_visible": bool(submit_button.get("stop_visible")),
+            "assistant_turn_count": assistant_count,
+            "assistant_turn_delta": assistant_delta,
+        }
+
+    async def _wait_for_submit_confirmation(
+        self,
+        page: Any,
+        *,
+        before_assistant_count: int,
+        timeout_ms: int = 3_000,
+        poll_interval_ms: int = 250,
+    ) -> dict[str, Any]:
+        """Confirm submit using running/URL/assistant signals before slow user-turn scans.
+
+        v0.0.278.7 treats stop-button/running state, conversation URL visibility,
+        or a new assistant turn as sufficient evidence that submit happened.  This
+        avoids blocking ask on slow role-specific user-turn DOM materialization.
+        """
+
+        started = time.monotonic()
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        attempts: list[dict[str, Any]] = []
+        attempt = 0
+        last_state: dict[str, Any] = {}
+        while True:
+            attempt += 1
+            state = await self._capture_submit_confirmation_state(page, before_assistant_count=before_assistant_count)
+            last_state = state
+            attempts.append({
+                "attempt": attempt,
+                "confirmed": state.get("confirmed"),
+                "confirmed_by": state.get("confirmed_by"),
+                "stop_button_visible": state.get("stop_button_visible"),
+                "conversation_url_visible": state.get("conversation_url_visible"),
+                "assistant_turn_count": state.get("assistant_turn_count"),
+                "assistant_turn_delta": state.get("assistant_turn_delta"),
+                "current_url": state.get("current_url"),
+            })
+            if state.get("confirmed"):
+                return {
+                    **state,
+                    "status": "submit_confirmed",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return {
+                    **last_state,
+                    "confirmed": False,
+                    "confirmed_by": [],
+                    "status": "submit_confirmation_not_observed",
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempt_count": attempt,
+                    "attempts": attempts,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
+            await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
+
+    def _skipped_user_turn_dom_evidence(self, *, reason: str) -> dict[str, Any]:
+        return {
+            "visible": False,
+            "status": "user_turn_dom_evidence_skipped",
+            "reason": reason,
+        }
+
     async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         """Fill the ChatGPT composer with bounded fallback instrumentation.
 
@@ -5046,6 +5160,7 @@ class ChatGPTBrowserClient:
         probe_history: list[dict[str, Any]] = []
         before_composer = await self._capture_composer_state(page, prompt=prompt)
         before_user_turns = await self._capture_user_turn_state(page, prompt=prompt)
+        before_assistant_count = await self._count_assistant_turns(page)
         prompt_present = bool(before_composer.get("contains_prompt") or (before_composer.get("text_length") or 0) > 0)
         evidence: dict[str, Any] = {
             "status": "submit_not_attempted",
@@ -5058,6 +5173,7 @@ class ChatGPTBrowserClient:
             "probe_history": probe_history,
             "before_composer": before_composer,
             "before_user_turns": before_user_turns,
+            "before_assistant_count": before_assistant_count,
         }
         self._log(
             "submit",
@@ -5066,6 +5182,7 @@ class ChatGPTBrowserClient:
             selectors=COMPOSER_SUBMIT_BUTTON_SELECTORS,
             before_composer=before_composer,
             before_user_turns=before_user_turns,
+            before_assistant_count=before_assistant_count,
         )
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
@@ -5112,15 +5229,31 @@ class ChatGPTBrowserClient:
                         })
                         self._log("submit", "clicked submit button", attempt=attempt, selector=selector, click_seconds=evidence.get("click_seconds"))
                         after_composer = await self._capture_composer_state(page, prompt=prompt)
-                        dom_started = time.monotonic()
-                        dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
+                        confirmation_started = time.monotonic()
+                        confirmation = await self._wait_for_submit_confirmation(
+                            page,
+                            before_assistant_count=before_assistant_count,
+                        )
+                        confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
                         evidence.update({
                             "after_composer": after_composer,
                             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
-                            "dom_user_turn_evidence": dom_evidence,
-                            "submit_to_turn_visible_seconds": round(time.monotonic() - dom_started, 3),
+                            "submit_confirmation": confirmation,
+                            "submit_confirmed": bool(confirmation.get("confirmed")),
+                            "submit_confirmed_by": confirmation.get("confirmed_by") or [],
+                            "submit_confirmation_seconds": confirmation_seconds,
+                            "submit_to_turn_visible_seconds": None,
+                            "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
                             "duration_seconds": round(time.monotonic() - submit_started, 3),
                         })
+                        self._log(
+                            "submit",
+                            "submit confirmed without waiting for user-turn DOM",
+                            submit_method="button",
+                            submit_confirmed=evidence.get("submit_confirmed"),
+                            submit_confirmed_by=evidence.get("submit_confirmed_by"),
+                            submit_confirmation_seconds=confirmation_seconds,
+                        )
                         return evidence
                 except Exception as exc:
                     self._log("submit", "submit selector failed", attempt=attempt, selector=selector, error=str(exc))
@@ -5136,20 +5269,39 @@ class ChatGPTBrowserClient:
             prompt_present=prompt_present,
             button_unavailable_reason=unavailable_reason,
         )
+        enter_started = time.monotonic()
         await page.keyboard.press("Enter")
+        enter_press_seconds = round(time.monotonic() - enter_started, 3)
         after_composer = await self._capture_composer_state(page, prompt=prompt)
-        dom_started = time.monotonic()
-        dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
+        confirmation_started = time.monotonic()
+        confirmation = await self._wait_for_submit_confirmation(
+            page,
+            before_assistant_count=before_assistant_count,
+        )
+        confirmation_seconds = round(time.monotonic() - confirmation_started, 3)
         evidence.update({
             "status": "enter_fallback_used",
             "enter_fallback_used": True,
             "submit_method": "enter_fallback",
-            "submit_to_turn_visible_seconds": round(time.monotonic() - dom_started, 3),
+            "enter_fallback_press_seconds": enter_press_seconds,
+            "submit_confirmation": confirmation,
+            "submit_confirmed": bool(confirmation.get("confirmed")),
+            "submit_confirmed_by": confirmation.get("confirmed_by") or [],
+            "submit_confirmation_seconds": confirmation_seconds,
+            "submit_to_turn_visible_seconds": None,
             "duration_seconds": round(time.monotonic() - submit_started, 3),
             "after_composer": after_composer,
             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
-            "dom_user_turn_evidence": dom_evidence,
+            "dom_user_turn_evidence": self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_or_url_signal"),
         })
+        self._log(
+            "submit",
+            "enter fallback submitted and confirmed without waiting for user-turn DOM",
+            submit_confirmed=evidence.get("submit_confirmed"),
+            submit_confirmed_by=evidence.get("submit_confirmed_by"),
+            enter_fallback_press_seconds=enter_press_seconds,
+            submit_confirmation_seconds=confirmation_seconds,
+        )
         return evidence
 
     def _extract_json_from_text(self, text: Optional[str]) -> Optional[Any]:
