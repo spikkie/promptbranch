@@ -64,6 +64,7 @@ class _SharedProfileAsyncLock:
         self._lock_file = None
         self._operation_name = "browser_operation"
         self._acquired_at = None
+        self.last_waited_seconds = 0.0
 
     @classmethod
     def _lock_for_profile(cls, profile_dir: str) -> threading.Lock:
@@ -135,7 +136,13 @@ class _SharedProfileAsyncLock:
         started_at = active.get("started_at")
         elapsed = round(time.time() - float(started_at), 3) if started_at else None
         owner_active = bool(active) or external_lock_held
-        active_operation = active.get("operation_name") or lock_file_payload.get("operation")
+        active_operation = active.get("operation_name") if owner_active else None
+        active_pid = active.get("pid") if owner_active else None
+        if owner_active and not active_operation:
+            active_operation = lock_file_payload.get("operation")
+        if owner_active and not active_pid:
+            active_pid = lock_file_payload.get("pid")
+        stale_lock_file = bool(lock_file_payload and not owner_active)
         return {
             "ok": True,
             "action": "browser_status",
@@ -144,8 +151,12 @@ class _SharedProfileAsyncLock:
             "lock_path": str(lock_path),
             "owner_active": owner_active,
             "active_operation": active_operation,
-            "active_pid": active.get("pid") or lock_file_payload.get("pid"),
-            "active_elapsed_seconds": elapsed,
+            "active_pid": active_pid,
+            "active_elapsed_seconds": elapsed if owner_active else None,
+            "last_operation": lock_file_payload.get("operation") if stale_lock_file else None,
+            "last_pid": lock_file_payload.get("pid") if stale_lock_file else None,
+            "last_acquired_at": lock_file_payload.get("acquired_at") if stale_lock_file else None,
+            "stale_lock_file": stale_lock_file,
             "lock_file_exists": lock_file_exists,
             "external_lock_held": external_lock_held,
             "lock_file": lock_file_payload,
@@ -165,6 +176,7 @@ class _SharedProfileAsyncLock:
         started = time.monotonic()
         acquired = await asyncio.to_thread(self._thread_lock.acquire, True, wait_timeout)
         waited = time.monotonic() - started
+        self.last_waited_seconds = round(waited, 3)
         if not acquired:
             active = self._active_operation_for_profile(self.profile_dir)
             active_operation = active.get("operation_name") or "unknown_browser_operation"
@@ -1030,7 +1042,7 @@ class ChatGPTAutomationService:
     ) -> dict[str, Any]:
         max_retries = self.settings.max_retries if retries is None else max(0, retries)
 
-        async with self._lock.operation("ask_question"):
+        async with self._lock.operation("ask_question") as profile_lock:
             last_error: Optional[Exception] = None
             for attempt in range(1, max_retries + 2):
                 try:
@@ -1052,6 +1064,9 @@ class ChatGPTAutomationService:
                         keep_open=keep_open,
                     )
                     if isinstance(result, dict):
+                        timings = result.setdefault("ask_phase_timings", {})
+                        if isinstance(timings, dict):
+                            timings.setdefault("lock_wait_seconds", getattr(profile_lock, "last_waited_seconds", 0.0))
                         self._remember_recent_project_chat(result.get("conversation_url"))
                     return result
                 except (ResponseTimeoutError, BotChallengeError) as exc:

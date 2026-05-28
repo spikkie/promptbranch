@@ -1539,11 +1539,29 @@ class ChatGPTBrowserClient:
         expect_json: bool,
         keep_open: bool = False,
     ) -> dict[str, Any]:
+        operation_started = time.monotonic()
+        phase_timings: dict[str, Any] = {
+            "submit_method": None,
+            "slow_phase_warnings": [],
+        }
+
+        def mark_phase(name: str, started: float) -> None:
+            phase_timings[name] = round(time.monotonic() - started, 3)
+
+        phase_started = time.monotonic()
         await self.ensure_logged_in(page, context)
+        mark_phase("auth_check_seconds", phase_started)
+
         target_url = conversation_url or self.config.project_url
+        phase_started = time.monotonic()
         await self._goto(page, target_url, label="chat-home-after-login")
+        mark_phase("navigation_seconds", phase_started)
+
+        phase_started = time.monotonic()
         hydration = await self._ensure_target_conversation_hydrated(page, target_url=target_url, label="chat-home-after-login")
+        mark_phase("hydration_seconds", phase_started)
         if isinstance(hydration, dict) and hydration.get("status") == "target_conversation_not_hydrated_before_submit":
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             return {
                 "ok": False,
                 "status": "target_conversation_not_hydrated_before_submit",
@@ -1552,16 +1570,30 @@ class ChatGPTBrowserClient:
                 "conversation_url": target_url if self._is_conversation_url(target_url) else None,
                 "hydration_evidence": hydration,
                 "partial_result": True,
+                "ask_phase_timings": phase_timings,
             }
-        input_locator = await self._wait_for_chat_input(page)
-        await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
-        self._log("composer", "chat input resolved; clicking")
-        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
-        self._log("composer", "filling prompt", prompt_length=len(prompt))
-        await input_locator.fill(prompt)
 
+        phase_started = time.monotonic()
+        input_locator = await self._wait_for_chat_input(page)
+        mark_phase("input_wait_seconds", phase_started)
+
+        phase_started = time.monotonic()
+        await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
+        mark_phase("rate_limit_wait_seconds", phase_started)
+
+        self._log("composer", "chat input resolved; clicking")
+        phase_started = time.monotonic()
+        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
+        mark_phase("composer_click_seconds", phase_started)
+
+        phase_started = time.monotonic()
+        fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+        mark_phase("prompt_fill_seconds", phase_started)
+        phase_timings["prompt_fill_method"] = fill_evidence.get("method")
+        phase_timings["prompt_fill_fallback_used"] = bool(fill_evidence.get("fallback_used"))
 
         upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
+        phase_started = time.monotonic()
         if upload_paths:
             await self._upload_chat_attachments(page, upload_paths)
 
@@ -1576,9 +1608,20 @@ class ChatGPTBrowserClient:
                 raise ResponseTimeoutError("File upload input was not found")
             await file_input.first.set_input_files(file_path)
             self._log("upload", "file uploaded to browser input", file_path=file_path)
+        mark_phase("attachment_upload_seconds", phase_started)
 
+        phase_started = time.monotonic()
         response_context = await self._capture_response_context(page)
+        mark_phase("response_context_seconds", phase_started)
+
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
+        phase_timings["submit_wait_seconds"] = submit_evidence.get("duration_seconds")
+        phase_timings["submit_to_turn_visible_seconds"] = submit_evidence.get("submit_to_turn_visible_seconds")
+        phase_timings["submit_method"] = submit_evidence.get("submit_method") or submit_evidence.get("status")
+        phase_timings["submit_button_unavailable_reason"] = submit_evidence.get("button_unavailable_reason")
+        phase_timings["submit_attempt_count"] = submit_evidence.get("attempt")
+
+        response_wait_started = time.monotonic()
         try:
             answer = (
                 await self._wait_and_get_json(page, response_context=response_context)
@@ -1586,22 +1629,45 @@ class ChatGPTBrowserClient:
                 else await self._wait_and_get_response(page, response_context=response_context)
             )
         except ResponseTimeoutError as exc:
-            return await self._build_ask_response_timeout_result(page, exc=exc, submit_evidence=submit_evidence)
+            timeout_result = await self._build_ask_response_timeout_result(page, exc=exc, submit_evidence=submit_evidence)
+            phase_timings["response_wait_seconds"] = round(time.monotonic() - response_wait_started, 3)
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            timeout_result["ask_phase_timings"] = phase_timings
+            return timeout_result
+        phase_timings["response_wait_seconds"] = round(time.monotonic() - response_wait_started, 3)
+
+        finalize_started = time.monotonic()
         current_url = await self._safe_page_url(page)
         conversation_url = current_url if self._is_conversation_url(current_url) else None
+        phase_timings["completion_to_return_seconds"] = round(time.monotonic() - finalize_started, 3)
+        phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+        slow_warnings: list[str] = []
+        if (phase_timings.get("prompt_fill_seconds") or 0) > 10:
+            slow_warnings.append("prompt_fill_seconds")
+        if (phase_timings.get("submit_wait_seconds") or 0) > 10:
+            slow_warnings.append("submit_wait_seconds")
+        if (phase_timings.get("response_wait_seconds") or 0) > 30:
+            slow_warnings.append("response_wait_seconds")
+        if (phase_timings.get("completion_to_return_seconds") or 0) > 10:
+            slow_warnings.append("completion_to_return_seconds")
+        phase_timings["slow_phase_warnings"] = slow_warnings
         self._log(
             "ask",
             "ask_question completed",
             current_url=current_url,
             conversation_url=conversation_url,
             expect_json=expect_json,
+            ask_phase_timings=phase_timings,
         )
+        if slow_warnings:
+            self._log("ask", "slow ask phases observed", slow_phase_warnings=slow_warnings, ask_phase_timings=phase_timings)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Question completed. Press Enter to close the browser... ")
         return {
             "answer": answer,
             "conversation_url": conversation_url,
             "submit_evidence": submit_evidence,
+            "ask_phase_timings": phase_timings,
         }
 
     async def _list_projects_operation(
@@ -4931,19 +4997,65 @@ class ChatGPTBrowserClient:
                 }
             await page.wait_for_timeout(min(poll_interval_ms, int(max(1, remaining * 1000))))
 
+    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+        """Fill the ChatGPT composer with bounded fallback instrumentation.
+
+        Playwright's normal fill path is preferred because it exercises the same
+        UI events as a user paste.  In long or hydrated conversations, however,
+        selector/actionability checks can consume a large hidden delay.  v0.0.278.6
+        bounds that delay and falls back to keyboard insertion while recording the
+        fill method for ask latency diagnosis.
+        """
+        started = time.monotonic()
+        evidence: dict[str, Any] = {
+            "method": "locator_fill",
+            "fallback_used": False,
+            "prompt_length": len(prompt),
+        }
+        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_timeout_ms=10_000)
+        try:
+            await input_locator.fill(prompt, timeout=10_000)
+            evidence["duration_seconds"] = round(time.monotonic() - started, 3)
+            self._log("composer", "prompt filled", **evidence)
+            return evidence
+        except Exception as exc:
+            evidence.update({
+                "method": "keyboard_insert_text",
+                "fallback_used": True,
+                "fill_error": str(exc),
+            })
+            self._log("composer", "prompt fill timed out or failed; using keyboard fallback", error=str(exc), prompt_length=len(prompt))
+
+        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-refill", timeout_ms=5_000)
+        try:
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+        except Exception as exc:
+            self._log("composer", "composer clear fallback failed before insert_text", error=str(exc))
+        await page.keyboard.insert_text(prompt)
+        evidence["duration_seconds"] = round(time.monotonic() - started, 3)
+        self._log("composer", "prompt filled by keyboard fallback", **evidence)
+        return evidence
+
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
-        submit_wait_timeout_s = 20.0
-        poll_interval_ms = 500
+        submit_started = time.monotonic()
+        submit_wait_timeout_s = 5.0
+        poll_interval_ms = 250
         deadline = asyncio.get_running_loop().time() + submit_wait_timeout_s
         attempt = 0
+        probe_history: list[dict[str, Any]] = []
         before_composer = await self._capture_composer_state(page, prompt=prompt)
         before_user_turns = await self._capture_user_turn_state(page, prompt=prompt)
+        prompt_present = bool(before_composer.get("contains_prompt") or (before_composer.get("text_length") or 0) > 0)
         evidence: dict[str, Any] = {
             "status": "submit_not_attempted",
             "clicked": False,
             "enter_fallback_used": False,
+            "submit_method": None,
             "selector": None,
             "attempt": None,
+            "button_unavailable_reason": None,
+            "probe_history": probe_history,
             "before_composer": before_composer,
             "before_user_turns": before_user_turns,
         }
@@ -4972,14 +5084,19 @@ class ChatGPTBrowserClient:
                             enabled = await button.is_enabled(timeout=1_500)
                         except Exception:
                             enabled = False
+                    probe = {
+                        "attempt": attempt,
+                        "selector": selector,
+                        "count": count,
+                        "visible": visible,
+                        "enabled": enabled,
+                    }
+                    if len(probe_history) < 20:
+                        probe_history.append(probe)
                     self._log(
                         "submit",
                         "submit selector probe",
-                        attempt=attempt,
-                        selector=selector,
-                        count=count,
-                        visible=visible,
-                        enabled=enabled,
+                        **probe,
                     )
                     if count and enabled:
                         await button.click()
@@ -4990,14 +5107,19 @@ class ChatGPTBrowserClient:
                             "attempt": attempt,
                             "button_visible": visible,
                             "button_enabled": enabled,
+                            "submit_method": "button",
+                            "click_seconds": round(time.monotonic() - submit_started, 3),
                         })
-                        self._log("submit", "clicked submit button", attempt=attempt, selector=selector)
+                        self._log("submit", "clicked submit button", attempt=attempt, selector=selector, click_seconds=evidence.get("click_seconds"))
                         after_composer = await self._capture_composer_state(page, prompt=prompt)
+                        dom_started = time.monotonic()
                         dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
                         evidence.update({
                             "after_composer": after_composer,
                             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
                             "dom_user_turn_evidence": dom_evidence,
+                            "submit_to_turn_visible_seconds": round(time.monotonic() - dom_started, 3),
+                            "duration_seconds": round(time.monotonic() - submit_started, 3),
                         })
                         return evidence
                 except Exception as exc:
@@ -5005,17 +5127,25 @@ class ChatGPTBrowserClient:
                     continue
             await page.wait_for_timeout(poll_interval_ms)
 
+        unavailable_reason = "send_button_not_enabled" if prompt_present else "composer_prompt_not_detected"
+        evidence["button_unavailable_reason"] = unavailable_reason
         self._log(
             "submit",
-            "no enabled submit button found after wait; pressing Enter as fallback",
+            "no enabled submit button found after bounded wait; pressing Enter as fallback",
             wait_timeout_s=submit_wait_timeout_s,
+            prompt_present=prompt_present,
+            button_unavailable_reason=unavailable_reason,
         )
         await page.keyboard.press("Enter")
         after_composer = await self._capture_composer_state(page, prompt=prompt)
+        dom_started = time.monotonic()
         dom_evidence = await self._wait_for_user_turn_dom_evidence(page, before_state=before_user_turns, prompt=prompt)
         evidence.update({
             "status": "enter_fallback_used",
             "enter_fallback_used": True,
+            "submit_method": "enter_fallback",
+            "submit_to_turn_visible_seconds": round(time.monotonic() - dom_started, 3),
+            "duration_seconds": round(time.monotonic() - submit_started, 3),
             "after_composer": after_composer,
             "composer_cleared": bool((after_composer.get("text_length") or 0) == 0),
             "dom_user_turn_evidence": dom_evidence,
