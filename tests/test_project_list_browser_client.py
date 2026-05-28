@@ -1759,7 +1759,11 @@ def test_wait_for_submit_confirmation_rejects_url_only_fast_path_by_default(tmp_
     async def no_user_echo(page, *, prompt=None):
         return {"request_id_found": False, "prompt_prefix_found": False, "generic_turns": {}}
 
+    async def no_backend_echo(page, *, prompt=None):
+        return {"visible": False, "status": "backend_task_message_echo_not_visible", "probe_seconds": 0.0}
+
     client._capture_submit_confirmation_state = url_only_state
+    client._capture_backend_task_message_echo_state = no_backend_echo
     client._capture_user_turn_state = no_user_echo
 
     import asyncio
@@ -1810,7 +1814,11 @@ def test_wait_for_submit_confirmation_accepts_post_submit_user_turn_echo(tmp_pat
             "generic_turns": {"request_id_found": False, "prompt_prefix_found": False},
         }
 
+    async def no_backend_echo(page, *, prompt=None):
+        return {"visible": False, "status": "backend_task_message_echo_not_visible", "probe_seconds": 0.0}
+
     client._capture_submit_confirmation_state = url_only_state
+    client._capture_backend_task_message_echo_state = no_backend_echo
     client._capture_user_turn_state = user_echo
 
     import asyncio
@@ -1830,6 +1838,79 @@ def test_wait_for_submit_confirmation_accepts_post_submit_user_turn_echo(tmp_pat
     assert result["url_only_confirmation_rejected"] is True
     assert result["user_turn_echo_found"] is True
 
+
+
+def test_wait_for_submit_confirmation_accepts_backend_task_message_echo(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/chat-1"
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("backend task-message echo should confirm without DOM polling")
+
+    async def url_only_state(page, *, before_assistant_count: int):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["url_conversation"],
+            "stop_button_visible": False,
+            "conversation_url_visible": True,
+            "assistant_turn_count": before_assistant_count,
+            "assistant_turn_delta": 0,
+            "current_url": "https://chatgpt.com/g/g-p-current-demo/c/chat-1",
+            "probe_seconds": 0.0,
+            "historical_count_used": True,
+        }
+
+    async def fail_dom_echo(page, *, prompt=None):
+        raise AssertionError("DOM user-turn echo should not be needed when backend confirms")
+
+    async def fake_conversation_detail(page, *, conversation_id: str):
+        assert conversation_id == "chat-1"
+        return {
+            "ok": True,
+            "status": 200,
+            "used_authorization": True,
+            "payload": {
+                "current_node": "user-node",
+                "mapping": {
+                    "root": {"id": "root", "parent": None, "message": None},
+                    "user-node": {
+                        "id": "user-node",
+                        "parent": "root",
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890"]},
+                        },
+                    },
+                },
+            },
+        }
+
+    client._capture_submit_confirmation_state = url_only_state
+    client._capture_user_turn_state = fail_dom_echo
+    client._fetch_conversation_detail = fake_conversation_detail
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+    ))
+
+    assert result["status"] == "submit_confirmed"
+    assert result["confirmed"] is True
+    assert result["confirmed_by"] == ["backend_task_message"]
+    assert result["causal_confirmation_verified"] is True
+    assert result["causal_confirmation_reason"] == "backend_task_message"
+    assert result["backend_task_message_found"] is True
+    assert result["backend_task_message_status"] == "backend_task_message_echo_visible"
+    assert result["url_only_confirmation_rejected"] is True
+    evidence = result["backend_task_message_evidence"]
+    assert evidence["source"] == "backend_conversation_detail"
+    assert evidence["matched_user_turn_id"] == "user-node"
+    assert "response_marker" in evidence["matched_by"]
 
 def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
