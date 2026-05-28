@@ -1883,6 +1883,10 @@ class ChatGPTBrowserClient:
         phase_timings["submit_prepare_response_finalization_token_present"] = submit_evidence.get("submit_prepare_response_finalization_token_present")
         phase_timings["submit_prepare_conduit_token_present"] = submit_evidence.get("submit_prepare_conduit_token_present")
         phase_timings["submit_prepare_conduit_token_sha256_12"] = submit_evidence.get("submit_prepare_conduit_token_sha256_12")
+        phase_timings["submit_prepare_conduit_token_latest_sha256_12"] = submit_evidence.get("submit_prepare_conduit_token_latest_sha256_12")
+        phase_timings["submit_prepare_conduit_token_sha256_12_values"] = submit_evidence.get("submit_prepare_conduit_token_sha256_12_values")
+        phase_timings["submit_prepare_conduit_token_count"] = submit_evidence.get("submit_prepare_conduit_token_count")
+        phase_timings["submit_prepare_conduit_token_active_policy"] = submit_evidence.get("submit_prepare_conduit_token_active_policy")
         phase_timings["submit_conduit_transport_observed"] = submit_evidence.get("submit_conduit_transport_observed")
         phase_timings["submit_conduit_transport_kind"] = submit_evidence.get("submit_conduit_transport_kind")
         phase_timings["submit_conduit_token_seen_in_request"] = submit_evidence.get("submit_conduit_token_seen_in_request")
@@ -1897,6 +1901,11 @@ class ChatGPTBrowserClient:
         phase_timings["submit_post_prepare_ui_error_status"] = submit_evidence.get("submit_post_prepare_ui_error_status")
         phase_timings["submit_post_prepare_observation_seconds"] = submit_evidence.get("submit_post_prepare_observation_seconds")
         phase_timings["submit_post_prepare_stream_observed"] = submit_evidence.get("submit_post_prepare_stream_observed")
+        phase_timings["submit_stream_started_without_user_message_commit"] = submit_evidence.get("submit_stream_started_without_user_message_commit")
+        phase_timings["submit_stream_status_streaming_observed"] = submit_evidence.get("submit_stream_status_streaming_observed")
+        phase_timings["submit_post_prepare_stream_status_streaming_observed"] = submit_evidence.get("submit_post_prepare_stream_status_streaming_observed")
+        phase_timings["submit_post_prepare_request_resource_types"] = submit_evidence.get("submit_post_prepare_request_resource_types")
+        phase_timings["submit_post_prepare_request_initiators"] = submit_evidence.get("submit_post_prepare_request_initiators")
         phase_timings["submit_backend_commit_after_prepare_found"] = submit_evidence.get("submit_backend_commit_after_prepare_found")
         phase_timings["submit_backend_commit_after_prepare_seconds"] = submit_evidence.get("submit_backend_commit_after_prepare_seconds")
 
@@ -1907,6 +1916,7 @@ class ChatGPTBrowserClient:
                 "submit_prepare_without_backend_commit",
                 "submit_prepare_conduit_token_not_consumed",
                 "submit_conduit_transport_observed_without_commit",
+                "stream_started_without_user_message_commit",
             }
             failure_status = failure_reason if failure_reason in prepare_failures else "submit_causality_not_confirmed"
             failure_error = (
@@ -1918,6 +1928,8 @@ class ChatGPTBrowserClient:
                 if failure_reason == "submit_prepare_conduit_token_not_consumed"
                 else "conduit transport was observed after prepare, but no backend message commit appeared"
                 if failure_reason == "submit_conduit_transport_observed_without_commit"
+                else "stream status entered streaming after prepare, but no user message commit appeared"
+                if failure_reason == "stream_started_without_user_message_commit"
                 else "submit causality was not confirmed; refusing to wait for or return a response"
             )
             phase_timings["response_wait_skipped"] = True
@@ -5700,16 +5712,23 @@ class ChatGPTBrowserClient:
             return ""
         return hashlib.sha256(token_text.encode("utf-8", "replace")).hexdigest()[:12]
 
-    def _find_conduit_token_value(self, value: Any, *, max_depth: int = 6) -> str | None:
-        """Return a raw conduit token for private in-memory tracing only.
+    def _find_conduit_token_values(self, value: Any, *, max_depth: int = 6, limit: int = 20) -> list[str]:
+        """Return raw conduit tokens for private in-memory tracing only.
 
-        Callers must never put the returned value into structured output or logs.
-        Public diagnostics expose only the sha256_12 fingerprint.
+        Callers must never put returned values into structured output or logs.
+        Public diagnostics expose only sha256_12 fingerprints and counts.
         """
 
-        def walk(node: Any, depth: int) -> str | None:
-            if depth > max_depth:
-                return None
+        found: list[str] = []
+
+        def add_token(candidate: Any) -> None:
+            token_text = str(candidate or "")
+            if token_text and token_text not in found and len(found) < limit:
+                found.append(token_text)
+
+        def walk(node: Any, depth: int) -> None:
+            if depth > max_depth or len(found) >= limit:
+                return
             if isinstance(node, dict):
                 for key, child in node.items():
                     key_text = str(key).lower().replace("-", "_")
@@ -5718,28 +5737,37 @@ class ChatGPTBrowserClient:
                         or ("conduit" in key_text and "token" in key_text)
                     )
                     if key_is_conduit_token and isinstance(child, str) and child:
-                        return child
-                    nested = walk(child, depth + 1)
-                    if nested:
-                        return nested
+                        add_token(child)
+                    else:
+                        walk(child, depth + 1)
+                    if len(found) >= limit:
+                        return
             elif isinstance(node, list):
-                for child in node[:20]:
-                    nested = walk(child, depth + 1)
-                    if nested:
-                        return nested
-            return None
+                for child in node[:40]:
+                    walk(child, depth + 1)
+                    if len(found) >= limit:
+                        return
 
-        return walk(value, 0)
+        walk(value, 0)
+        return found
 
-    def _extract_conduit_token_from_text(self, text: str) -> str | None:
+    def _find_conduit_token_value(self, value: Any, *, max_depth: int = 6) -> str | None:
+        values = self._find_conduit_token_values(value, max_depth=max_depth, limit=1)
+        return values[0] if values else None
+
+    def _extract_conduit_tokens_from_text(self, text: str) -> list[str]:
         body_text = text or ""
         if not body_text:
-            return None
+            return []
         try:
             parsed = json.loads(body_text)
         except Exception:
-            return None
-        return self._find_conduit_token_value(parsed)
+            return []
+        return self._find_conduit_token_values(parsed)
+
+    def _extract_conduit_token_from_text(self, text: str) -> str | None:
+        tokens = self._extract_conduit_tokens_from_text(text)
+        return tokens[0] if tokens else None
 
     def _conduit_tokens_private(self, observer: Any) -> list[str]:
         if not isinstance(observer, dict):
@@ -5751,11 +5779,20 @@ class ChatGPTBrowserClient:
                 tokens.append(token_text)
         return tokens
 
-    def _text_contains_private_conduit_token(self, text: Any, tokens: list[str]) -> bool:
+    def _private_conduit_token_hashes_in_text(self, text: Any, tokens: list[str]) -> list[str]:
         body = str(text or "")
         if not body or not tokens:
-            return False
-        return any(token and token in body for token in tokens)
+            return []
+        hashes: list[str] = []
+        for token in tokens:
+            if token and token in body:
+                sha = self._submit_conduit_token_sha256_12(token)
+                if sha and sha not in hashes:
+                    hashes.append(sha)
+        return hashes
+
+    def _text_contains_private_conduit_token(self, text: Any, tokens: list[str]) -> bool:
+        return bool(self._private_conduit_token_hashes_in_text(text, tokens))
 
     def _register_private_conduit_token(self, observer: Any, token: str) -> None:
         if not isinstance(observer, dict) or not token:
@@ -5768,8 +5805,12 @@ class ChatGPTBrowserClient:
         if sha and sha not in hashes:
             hashes.append(sha)
         observer["prepare_conduit_token_present"] = True
-        observer["prepare_conduit_token_sha256_12"] = sha or observer.get("prepare_conduit_token_sha256_12")
+        if sha and not observer.get("prepare_conduit_token_sha256_12"):
+            observer["prepare_conduit_token_sha256_12"] = sha
+        if sha:
+            observer["prepare_conduit_token_latest_sha256_12"] = sha
         observer["prepare_conduit_token_count"] = len(tokens)
+        observer["prepare_conduit_token_active_policy"] = "all_tokens"
 
     def _record_submit_websocket_frame(self, observer: Any, socket_record: dict[str, Any], *, direction: str, payload: Any) -> None:
         if not isinstance(observer, dict):
@@ -5789,9 +5830,11 @@ class ChatGPTBrowserClient:
             "_private_payload_text": text[:100_000],
         }
         tokens = self._conduit_tokens_private(observer)
-        if self._text_contains_private_conduit_token(text, tokens):
+        matched_hashes = self._private_conduit_token_hashes_in_text(text, tokens)
+        if matched_hashes:
             frame["conduit_token_seen"] = True
-            frame["conduit_token_sha256_12"] = observer.get("prepare_conduit_token_sha256_12")
+            frame["conduit_token_sha256_12"] = matched_hashes[0]
+            frame["conduit_token_sha256_12_values"] = matched_hashes[:10]
         if len(socket_record.setdefault("frames", [])) < 80:
             socket_record["frames"].append(frame)
         if direction == "sent":
@@ -5885,6 +5928,8 @@ class ChatGPTBrowserClient:
             "finalization_token_present": False,
             "conduit_token_present": False,
             "conduit_token_sha256_12": None,
+            "conduit_token_sha256_12_values": [],
+            "conduit_token_count": 0,
         }
         if not body_text:
             return shape
@@ -5914,9 +5959,16 @@ class ChatGPTBrowserClient:
         shape["conversation_id_present"] = self._json_has_key_token(parsed, ("conversation_id", "conversationid"))
         shape["message_id_present"] = self._json_has_key_token(parsed, ("message_id", "messageid", "parent_message_id", "parentmessageid"))
         shape["finalization_token_present"] = self._json_has_key_token(parsed, ("token", "final", "finaliz", "arkose", "proof", "turnstile"))
-        conduit_token = self._find_conduit_token_value(parsed)
-        shape["conduit_token_present"] = bool(conduit_token)
-        shape["conduit_token_sha256_12"] = self._submit_conduit_token_sha256_12(conduit_token) if conduit_token else None
+        conduit_tokens = self._find_conduit_token_values(parsed)
+        conduit_hashes = [
+            self._submit_conduit_token_sha256_12(token)
+            for token in conduit_tokens
+            if self._submit_conduit_token_sha256_12(token)
+        ]
+        shape["conduit_token_present"] = bool(conduit_tokens)
+        shape["conduit_token_sha256_12"] = conduit_hashes[0] if conduit_hashes else None
+        shape["conduit_token_sha256_12_values"] = conduit_hashes[:10]
+        shape["conduit_token_count"] = len(conduit_tokens)
         return shape
 
     async def _capture_submit_response_body_shape(self, response: Any, record: dict[str, Any], observer: Any | None = None) -> None:
@@ -5930,13 +5982,16 @@ class ChatGPTBrowserClient:
                 status=record.get("status"),
             )
             record["_private_body_text"] = text[:100_000]
-            token = self._extract_conduit_token_from_text(text)
-            if token and record.get("summary_kind") == "prepare":
-                self._register_private_conduit_token(observer, token)
+            body_tokens = self._extract_conduit_tokens_from_text(text)
+            if body_tokens and record.get("summary_kind") == "prepare":
+                for token in body_tokens:
+                    self._register_private_conduit_token(observer, token)
             tokens = self._conduit_tokens_private(observer)
-            if tokens and record.get("summary_kind") != "prepare" and self._text_contains_private_conduit_token(text, tokens):
+            matched_hashes = self._private_conduit_token_hashes_in_text(text, tokens)
+            if matched_hashes and record.get("summary_kind") != "prepare":
                 record["conduit_token_seen_in_response"] = True
-                record["conduit_token_sha256_12"] = observer.get("prepare_conduit_token_sha256_12") if isinstance(observer, dict) else None
+                record["conduit_token_sha256_12"] = matched_hashes[0]
+                record["conduit_token_sha256_12_values"] = matched_hashes[:10]
             record["body_shape_capture_seconds"] = round(time.monotonic() - started, 3)
         except Exception as exc:
             record["body_shape_error"] = type(exc).__name__
@@ -6035,6 +6090,80 @@ class ChatGPTBrowserClient:
             "probe_seconds": round(time.monotonic() - started, 3),
         }
 
+
+    def _submit_request_resource_type(self, request: Any) -> str | None:
+        try:
+            value = getattr(request, "resource_type", None)
+            if callable(value):
+                value = value()
+            return str(value or "")[:80] or None
+        except Exception:
+            return None
+
+    def _submit_request_initiator_summary(self, request: Any) -> dict[str, Any]:
+        summary: dict[str, Any] = {
+            "available": False,
+            "type": None,
+            "url": None,
+            "line_number": None,
+            "column_number": None,
+            "source": None,
+        }
+        try:
+            initiator = getattr(request, "initiator", None)
+            if callable(initiator):
+                initiator = initiator()
+        except Exception:
+            initiator = None
+        if isinstance(initiator, dict):
+            summary["available"] = True
+            summary["source"] = "request.initiator"
+            summary["type"] = str(initiator.get("type") or "")[:80] or None
+            summary["url"] = str(initiator.get("url") or "")[:240] or None
+            summary["line_number"] = initiator.get("lineNumber") or initiator.get("line_number")
+            summary["column_number"] = initiator.get("columnNumber") or initiator.get("column_number")
+            return summary
+        try:
+            frame = getattr(request, "frame", None)
+            frame_url = getattr(frame, "url", None) if frame is not None else None
+            if callable(frame_url):
+                frame_url = frame_url()
+        except Exception:
+            frame_url = None
+        if frame_url:
+            summary["available"] = True
+            summary["source"] = "request.frame"
+            summary["type"] = "frame"
+            summary["url"] = str(frame_url)[:240]
+        return summary
+
+    def _submit_request_navigation_flag(self, request: Any) -> bool | None:
+        try:
+            value = getattr(request, "is_navigation_request", None)
+            if callable(value):
+                return bool(value())
+            if value is not None:
+                return bool(value)
+        except Exception:
+            return None
+        return None
+
+    def _submit_request_redirect_summary(self, request: Any) -> dict[str, Any]:
+        summary: dict[str, Any] = {"redirected_from_url": None, "redirected_to_url": None}
+        for attr_name, key in (("redirected_from", "redirected_from_url"), ("redirected_to", "redirected_to_url")):
+            try:
+                redirected = getattr(request, attr_name, None)
+                if callable(redirected):
+                    redirected = redirected()
+                url = getattr(redirected, "url", None) if redirected is not None else None
+                if callable(url):
+                    url = url()
+                if url:
+                    summary[key] = str(url)[:240]
+            except Exception:
+                pass
+        return summary
+
     def _submit_network_request_record(self, request: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
         try:
@@ -6046,6 +6175,10 @@ class ChatGPTBrowserClient:
         except Exception:
             method = ""
         post_data = self._request_post_data_text(request)
+        resource_type = self._submit_request_resource_type(request)
+        initiator = self._submit_request_initiator_summary(request)
+        navigation_request = self._submit_request_navigation_flag(request)
+        redirects = self._submit_request_redirect_summary(request)
         combined = "\n".join(part for part in [url, post_data] if part)
         marker_found, matched_by, matched_marker = self._turn_text_matches_submit_prompt(combined, prompt=prompt)
         parsed = urlparse(url) if url else None
@@ -6075,6 +6208,10 @@ class ChatGPTBrowserClient:
             "post_data_length": len(post_data),
             "post_data_preview": "<redacted>" if post_data else "",
             "post_data_contains_marker": bool(marker_found and post_data),
+            "resource_type": resource_type,
+            "initiator": initiator,
+            "navigation_request": navigation_request,
+            **redirects,
             "captured_at_monotonic": round(started, 6),
             "_private_combined_text": combined[:100_000],
         }
@@ -6116,9 +6253,11 @@ class ChatGPTBrowserClient:
             try:
                 record = self._submit_network_request_record(request, prompt=prompt)
                 tokens = self._conduit_tokens_private(observer)
-                if tokens and self._text_contains_private_conduit_token(record.get("_private_combined_text"), tokens):
+                matched_hashes = self._private_conduit_token_hashes_in_text(record.get("_private_combined_text"), tokens)
+                if matched_hashes:
                     record["conduit_token_seen_in_request"] = True
-                    record["conduit_token_sha256_12"] = observer.get("prepare_conduit_token_sha256_12")
+                    record["conduit_token_sha256_12"] = matched_hashes[0]
+                    record["conduit_token_sha256_12_values"] = matched_hashes[:10]
                 if len(observer.get("all_events") or []) < 120:
                     observer.setdefault("all_events", []).append(record)
                 if record.get("interesting") and len(observer["events"]) < 40:
@@ -6157,6 +6296,11 @@ class ChatGPTBrowserClient:
                     "message_request_candidate": bool(request_record.get("message_request_candidate")),
                     "marker_found": bool(request_record.get("marker_found")),
                     "post_data_length": request_record.get("post_data_length"),
+                    "resource_type": request_record.get("resource_type"),
+                    "initiator": request_record.get("initiator"),
+                    "navigation_request": request_record.get("navigation_request"),
+                    "redirected_from_url": request_record.get("redirected_from_url"),
+                    "redirected_to_url": request_record.get("redirected_to_url"),
                     "observed_after_click_seconds": round(time.monotonic() - started, 3),
                     "captured_at_monotonic": round(time.monotonic(), 6),
                     "summary_kind": self._submit_response_summary_kind(url),
@@ -6341,6 +6485,29 @@ class ChatGPTBrowserClient:
         conversation_init_events = [event for event in all_responses if self._submit_response_summary_kind(str(event.get("url") or "")) == "conversation_init"]
         stream_status_shapes = [event.get("body_shape") for event in stream_status_events if isinstance(event.get("body_shape"), dict)]
         conversation_init_shapes = [event.get("body_shape") for event in conversation_init_events if isinstance(event.get("body_shape"), dict)]
+        post_prepare_stream_status_events = [
+            event for event in stream_status_events
+            if prepare_first_captured_at is not None
+            and isinstance(event.get("captured_at_monotonic"), (int, float))
+            and float(event.get("captured_at_monotonic")) >= prepare_first_captured_at
+        ]
+        post_prepare_stream_status_shapes = [
+            event.get("body_shape")
+            for event in post_prepare_stream_status_events
+            if isinstance(event.get("body_shape"), dict)
+        ]
+        stream_status_values = [
+            str(shape.get("status_value") or "")
+            for shape in stream_status_shapes
+            if isinstance(shape, dict) and shape.get("status_value") not in (None, "")
+        ]
+        post_prepare_stream_status_values = [
+            str(shape.get("status_value") or "")
+            for shape in post_prepare_stream_status_shapes
+            if isinstance(shape, dict) and shape.get("status_value") not in (None, "")
+        ]
+        stream_status_streaming_observed = any(value.upper() == "IS_STREAMING" for value in stream_status_values)
+        post_prepare_stream_status_streaming_observed = any(value.upper() == "IS_STREAMING" for value in post_prepare_stream_status_values)
 
         def combine_keys(shapes: list[Any]) -> list[str]:
             keys: list[str] = []
@@ -6384,10 +6551,18 @@ class ChatGPTBrowserClient:
             conduit_hashes = [str(observer.get("prepare_conduit_token_sha256_12"))]
         if not conduit_hashes:
             for shape in prepare_response_shapes:
-                if isinstance(shape, dict) and shape.get("conduit_token_sha256_12"):
-                    conduit_hashes.append(str(shape.get("conduit_token_sha256_12")))
-                    break
+                if not isinstance(shape, dict):
+                    continue
+                for value in (shape.get("conduit_token_sha256_12_values") or []):
+                    value_text = str(value or "")
+                    if value_text and value_text not in conduit_hashes:
+                        conduit_hashes.append(value_text)
+                if shape.get("conduit_token_sha256_12"):
+                    value_text = str(shape.get("conduit_token_sha256_12") or "")
+                    if value_text and value_text not in conduit_hashes:
+                        conduit_hashes.append(value_text)
         primary_conduit_hash = (conduit_hashes or [None])[0]
+        latest_conduit_hash = (conduit_hashes or [None])[-1]
 
         def event_has_private_token(event: Any, key: str) -> bool:
             return bool(isinstance(event, dict) and self._text_contains_private_conduit_token(event.get(key), tokens))
@@ -6426,7 +6601,15 @@ class ChatGPTBrowserClient:
         conduit_transport_observed = bool(conduit_transport_kinds)
         prepare_conduit_token_present = bool(tokens or observer.get("prepare_conduit_token_present") or any(bool(shape.get("conduit_token_present")) for shape in prepare_response_shapes if isinstance(shape, dict)))
         conduit_error_hint = None
-        if prepare_conduit_token_present and not found:
+        stream_started_without_commit = bool(
+            not found
+            and prepare_only
+            and post_prepare_stream_status_streaming_observed
+            and not message_events
+        )
+        if stream_started_without_commit:
+            conduit_error_hint = "stream_started_without_user_message_commit"
+        elif prepare_conduit_token_present and not found:
             if conduit_transport_observed:
                 conduit_error_hint = "submit_conduit_transport_observed_without_commit"
             elif prepare_only:
@@ -6446,6 +6629,9 @@ class ChatGPTBrowserClient:
                 "matched_by": event.get("matched_by") or [],
                 "post_data_length": event.get("post_data_length"),
                 "post_data_preview": event.get("post_data_preview"),
+                "resource_type": event.get("resource_type"),
+                "initiator": event.get("initiator"),
+                "navigation_request": event.get("navigation_request"),
             }
             for event in events[:20]
         ]
@@ -6493,7 +6679,10 @@ class ChatGPTBrowserClient:
             "prepare_response_finalization_token_present": any(bool(shape.get("finalization_token_present")) for shape in prepare_response_shapes if isinstance(shape, dict)),
             "prepare_conduit_token_present": prepare_conduit_token_present,
             "prepare_conduit_token_sha256_12": primary_conduit_hash,
+            "prepare_conduit_token_latest_sha256_12": latest_conduit_hash,
             "prepare_conduit_token_sha256_12_values": conduit_hashes[:10],
+            "prepare_conduit_token_count": len(conduit_hashes),
+            "prepare_conduit_token_active_policy": "all_tokens" if conduit_hashes else None,
             "conduit_transport_observed": conduit_transport_observed,
             "conduit_transport_kind": conduit_transport_kinds[0] if len(conduit_transport_kinds) == 1 else ("mixed" if conduit_transport_kinds else None),
             "conduit_transport_kinds": conduit_transport_kinds,
@@ -6506,11 +6695,19 @@ class ChatGPTBrowserClient:
             "conduit_websocket_frame_count": len(websocket_frames),
             "conduit_websocket_token_frame_count": len(token_websocket_frames),
             "conduit_error_hint": conduit_error_hint,
+            "stream_started_without_user_message_commit": stream_started_without_commit,
+            "stream_status_streaming_observed": stream_status_streaming_observed,
+            "post_prepare_stream_status_streaming_observed": post_prepare_stream_status_streaming_observed,
+            "stream_status_values": stream_status_values[:10],
+            "post_prepare_stream_status_values": post_prepare_stream_status_values[:10],
             "stream_status_summary": {
                 "observed": bool(stream_status_events),
                 "status_codes": [event.get("status") for event in stream_status_events[:10]],
                 "body_shapes": stream_status_shapes[:3],
                 "keys": combine_keys(stream_status_shapes),
+                "status_values": stream_status_values[:10],
+                "streaming_observed": stream_status_streaming_observed,
+                "post_prepare_streaming_observed": post_prepare_stream_status_streaming_observed,
             },
             "conversation_init_summary": {
                 "observed": bool(conversation_init_events),
@@ -6528,9 +6725,13 @@ class ChatGPTBrowserClient:
             "post_prepare_observation_seconds": post_prepare_observation_seconds,
             "post_prepare_request_count": len(post_prepare_events),
             "post_prepare_request_urls": [event.get("url") for event in post_prepare_events[:30]],
+            "post_prepare_request_resource_types": [event.get("resource_type") for event in post_prepare_events[:30]],
+            "post_prepare_request_initiators": [event.get("initiator") for event in post_prepare_events[:20]],
             "post_prepare_response_count": len(post_prepare_responses),
             "post_prepare_response_urls": [event.get("url") for event in post_prepare_responses[:30]],
-            "post_prepare_stream_observed": bool(message_response_events or matched_response is not None),
+            "post_prepare_response_resource_types": [event.get("resource_type") for event in post_prepare_responses[:30]],
+            "post_prepare_response_initiators": [event.get("initiator") for event in post_prepare_responses[:20]],
+            "post_prepare_stream_observed": bool(message_response_events or matched_response is not None or post_prepare_stream_status_streaming_observed),
             "message_request_observed": bool(message_events),
             "message_request_count": len(message_events),
             "message_request_urls": [event.get("url") for event in message_events[:20]],
@@ -6990,7 +7191,9 @@ class ChatGPTBrowserClient:
             if prepare_only and backend_commit_window_used:
                 causal_reason = conduit_error_hint or "submit_prepare_without_backend_commit"
                 confirmation_mode = (
-                    "submit_conduit_transport_without_commit_timeout"
+                    "submit_stream_started_without_user_message_commit_timeout"
+                    if conduit_error_hint == "stream_started_without_user_message_commit"
+                    else "submit_conduit_transport_without_commit_timeout"
                     if conduit_error_hint == "submit_conduit_transport_observed_without_commit"
                     else "submit_prepare_conduit_token_timeout"
                     if conduit_error_hint == "submit_prepare_conduit_token_not_consumed"
@@ -6999,7 +7202,9 @@ class ChatGPTBrowserClient:
             elif prepare_only:
                 causal_reason = conduit_error_hint or "submit_prepare_without_message_commit"
                 confirmation_mode = (
-                    "submit_prepare_conduit_token_timeout"
+                    "submit_stream_started_without_user_message_commit_timeout"
+                    if conduit_error_hint == "stream_started_without_user_message_commit"
+                    else "submit_prepare_conduit_token_timeout"
                     if conduit_error_hint == "submit_prepare_conduit_token_not_consumed"
                     else "submit_prepare_only_timeout"
                 )
@@ -7041,6 +7246,10 @@ class ChatGPTBrowserClient:
             fields["prepare_response_message_id_present"] = network_evidence.get("prepare_response_message_id_present")
             fields["prepare_conduit_token_present"] = network_evidence.get("prepare_conduit_token_present")
             fields["prepare_conduit_token_sha256_12"] = network_evidence.get("prepare_conduit_token_sha256_12")
+            fields["prepare_conduit_token_latest_sha256_12"] = network_evidence.get("prepare_conduit_token_latest_sha256_12")
+            fields["prepare_conduit_token_sha256_12_values"] = network_evidence.get("prepare_conduit_token_sha256_12_values")
+            fields["prepare_conduit_token_count"] = network_evidence.get("prepare_conduit_token_count")
+            fields["prepare_conduit_token_active_policy"] = network_evidence.get("prepare_conduit_token_active_policy")
             fields["conduit_transport_observed"] = network_evidence.get("conduit_transport_observed")
             fields["conduit_transport_kind"] = network_evidence.get("conduit_transport_kind")
             fields["conduit_token_seen_in_request"] = network_evidence.get("conduit_token_seen_in_request")
@@ -7049,6 +7258,11 @@ class ChatGPTBrowserClient:
             fields["conduit_websocket_frame_count"] = network_evidence.get("conduit_websocket_frame_count")
             fields["conduit_error_hint"] = network_evidence.get("conduit_error_hint")
             fields["stream_status_summary"] = network_evidence.get("stream_status_summary")
+            fields["stream_started_without_user_message_commit"] = network_evidence.get("stream_started_without_user_message_commit")
+            fields["stream_status_streaming_observed"] = network_evidence.get("stream_status_streaming_observed")
+            fields["post_prepare_stream_status_streaming_observed"] = network_evidence.get("post_prepare_stream_status_streaming_observed")
+            fields["post_prepare_request_resource_types"] = network_evidence.get("post_prepare_request_resource_types")
+            fields["post_prepare_request_initiators"] = network_evidence.get("post_prepare_request_initiators")
             fields["conversation_init_summary"] = network_evidence.get("conversation_init_summary")
             fields["post_prepare_console_error_count"] = network_evidence.get("post_prepare_console_error_count")
             fields["post_prepare_ui_error_visible"] = bool(last_post_prepare_ui_error.get("visible")) if isinstance(last_post_prepare_ui_error, dict) else None
@@ -7810,6 +8024,10 @@ class ChatGPTBrowserClient:
                 "submit_prepare_response_finalization_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_finalization_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_prepare_conduit_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_prepare_conduit_token_sha256_12": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_sha256_12") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_conduit_token_latest_sha256_12": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_latest_sha256_12") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_conduit_token_sha256_12_values": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_sha256_12_values") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_conduit_token_count": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_conduit_token_active_policy": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_active_policy") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_conduit_transport_observed": (confirmation.get("submit_network_evidence") or {}).get("conduit_transport_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_conduit_transport_kind": (confirmation.get("submit_network_evidence") or {}).get("conduit_transport_kind") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_conduit_token_seen_in_request": (confirmation.get("submit_network_evidence") or {}).get("conduit_token_seen_in_request") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
@@ -7824,6 +8042,11 @@ class ChatGPTBrowserClient:
                 "submit_post_prepare_ui_error_status": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("status") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
                 "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_stream_started_without_user_message_commit": (confirmation.get("submit_network_evidence") or {}).get("stream_started_without_user_message_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_request_resource_types": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_resource_types") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_request_initiators": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_initiators") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
                 "submit_backend_commit_after_prepare_seconds": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_seconds") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
@@ -8019,6 +8242,10 @@ class ChatGPTBrowserClient:
             "submit_prepare_response_finalization_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_finalization_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_prepare_conduit_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_prepare_conduit_token_sha256_12": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_sha256_12") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_conduit_token_latest_sha256_12": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_latest_sha256_12") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_conduit_token_sha256_12_values": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_sha256_12_values") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_conduit_token_count": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_conduit_token_active_policy": (confirmation.get("submit_network_evidence") or {}).get("prepare_conduit_token_active_policy") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_conduit_transport_observed": (confirmation.get("submit_network_evidence") or {}).get("conduit_transport_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_conduit_transport_kind": (confirmation.get("submit_network_evidence") or {}).get("conduit_transport_kind") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_conduit_token_seen_in_request": (confirmation.get("submit_network_evidence") or {}).get("conduit_token_seen_in_request") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
@@ -8033,6 +8260,11 @@ class ChatGPTBrowserClient:
             "submit_post_prepare_ui_error_status": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("status") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
             "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_stream_started_without_user_message_commit": (confirmation.get("submit_network_evidence") or {}).get("stream_started_without_user_message_commit") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_stream_status_streaming_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_status_streaming_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_request_resource_types": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_resource_types") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_request_initiators": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_request_initiators") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
             "submit_backend_commit_after_prepare_seconds": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_seconds") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),

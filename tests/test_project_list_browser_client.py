@@ -3252,3 +3252,171 @@ def test_submit_network_snapshot_classifies_conduit_transport_without_commit(tmp
     assert snapshot["conduit_error_hint"] == "submit_conduit_transport_observed_without_commit"
     assert snapshot["prepare_conduit_token_sha256_12"] == token_hash
     assert token not in json.dumps(snapshot)
+
+
+
+def test_submit_response_body_shape_reports_all_redacted_conduit_token_metadata(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    shape = client._submit_response_body_shape(
+        json.dumps({
+            "status": "ok",
+            "items": [
+                {"conduit_token": "secret-conduit-token-one"},
+                {"conduitToken": "secret-conduit-token-two"},
+            ],
+        }),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+
+    assert shape["conduit_token_present"] is True
+    assert shape["conduit_token_count"] == 2
+    assert len(shape["conduit_token_sha256_12_values"]) == 2
+    assert "secret-conduit-token-one" not in json.dumps(shape)
+    assert "secret-conduit-token-two" not in json.dumps(shape)
+
+
+def test_submit_network_request_record_captures_resource_type_and_initiator(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyFrame:
+        url = "https://chatgpt.com/g/example/c/abc"
+
+    class DummyRequest:
+        url = "https://chatgpt.com/backend-api/conversation/abc/stream_status"
+        method = "GET"
+        resource_type = "fetch"
+        frame = DummyFrame()
+
+        def post_data(self) -> str:
+            return ""
+
+        def is_navigation_request(self) -> bool:
+            return False
+
+    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_999")
+
+    assert record["resource_type"] == "fetch"
+    assert record["navigation_request"] is False
+    assert record["initiator"]["available"] is True
+    assert record["initiator"]["source"] == "request.frame"
+    assert record["initiator"]["url"] == "https://chatgpt.com/g/example/c/abc"
+
+
+def test_submit_network_snapshot_tracks_all_prepare_conduit_tokens(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    token_one = "secret-conduit-token-one"
+    token_two = "secret-conduit-token-two"
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    shape_one = client._submit_response_body_shape(
+        json.dumps({"status": "ok", "conduit_token": token_one}),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+    shape_two = client._submit_response_body_shape(
+        json.dumps({"status": "ok", "conduit_token": token_two}),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event],
+        "all_events": [prepare_event],
+        "responses": [],
+        "all_responses": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "status": 200,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.30,
+                "body_shape": shape_one,
+            },
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "status": 200,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.35,
+                "body_shape": shape_two,
+            },
+        ],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["prepare_conduit_token_count"] == 2
+    assert snapshot["prepare_conduit_token_active_policy"] == "all_tokens"
+    assert snapshot["prepare_conduit_token_sha256_12"] == shape_one["conduit_token_sha256_12"]
+    assert snapshot["prepare_conduit_token_latest_sha256_12"] == shape_two["conduit_token_sha256_12"]
+    assert snapshot["prepare_conduit_token_sha256_12_values"] == [
+        shape_one["conduit_token_sha256_12"],
+        shape_two["conduit_token_sha256_12"],
+    ]
+    assert token_one not in json.dumps(snapshot)
+    assert token_two not in json.dumps(snapshot)
+
+
+def test_submit_network_snapshot_classifies_stream_started_without_user_message_commit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    stream_shape = client._submit_response_body_shape(
+        json.dumps({"status": "IS_STREAMING"}),
+        url="https://chatgpt.com/backend-api/conversation/abc/stream_status",
+        status=200,
+    )
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event],
+        "all_events": [prepare_event],
+        "responses": [],
+        "all_responses": [
+            {
+                "url": "https://chatgpt.com/backend-api/conversation/abc/stream_status",
+                "status": 200,
+                "prepare_request": False,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.40,
+                "body_shape": stream_shape,
+            },
+        ],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["status"] == "stream_started_without_user_message_commit"
+    assert snapshot["conduit_error_hint"] == "stream_started_without_user_message_commit"
+    assert snapshot["stream_started_without_user_message_commit"] is True
+    assert snapshot["post_prepare_stream_status_streaming_observed"] is True
+    assert snapshot["post_prepare_stream_observed"] is True
