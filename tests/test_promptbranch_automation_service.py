@@ -559,6 +559,33 @@ def test_browser_status_reports_active_operation_and_profile_available(monkeypat
     assert busy["active_operation"] == "ask_question"
     assert busy["queue_enabled"] is False
     assert available["status"] == "available"
+    assert available["active_operation"] is None
+    assert available["active_pid"] is None
+    assert available["stale_lock_file"] is True
+    assert available["last_operation"] == "ask_question"
+
+
+def test_ask_result_exposes_lock_wait_phase_timing(monkeypatch, tmp_path):
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        return {"answer": "done", "conversation_url": "https://chatgpt.com/g/g-p-one/c/a", "ask_phase_timings": {"total_seconds": 1.0}}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+    ))
+
+    result = asyncio.run(svc.ask_question_result(prompt="hello", retries=0))
+
+    assert result["ask_phase_timings"]["total_seconds"] == 1.0
+    assert result["ask_phase_timings"]["lock_wait_seconds"] >= 0
 
 
 def test_profile_lock_wait_override_allows_waiting_operation(monkeypatch, tmp_path):
