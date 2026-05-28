@@ -1912,6 +1912,99 @@ def test_wait_for_submit_confirmation_accepts_backend_task_message_echo(tmp_path
     assert evidence["matched_user_turn_id"] == "user-node"
     assert "response_marker" in evidence["matched_by"]
 
+
+def test_wait_for_submit_confirmation_accepts_network_submit_marker(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("network submit evidence should confirm without DOM/backend polling")
+
+    observer = {
+        "enabled": True,
+        "markers_count": 1,
+        "events": [],
+        "responses": [],
+        "matched_request": {
+            "url": "https://chatgpt.com/backend-api/conversation",
+            "method": "POST",
+            "marker_found": True,
+            "matched_by": ["response_marker"],
+            "matched_marker": "STALE_GUARD_LIVE_OK_1234567890",
+            "post_data_length": 128,
+            "observed_after_click_seconds": 0.025,
+        },
+        "matched_response": {
+            "url": "https://chatgpt.com/backend-api/conversation",
+            "method": "POST",
+            "status": 200,
+            "observed_after_click_seconds": 0.05,
+        },
+        "status": "submit_network_observer_started",
+    }
+
+    async def fail_state(page, *, before_assistant_count: int):
+        raise AssertionError("DOM/backend submit confirmation should not run after network evidence")
+
+    client._capture_submit_confirmation_state = fail_state
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        submit_network_observer=observer,
+    ))
+
+    assert result["status"] == "submit_confirmed"
+    assert result["confirmed"] is True
+    assert result["confirmed_by"] == ["network_submit_request"]
+    assert result["causal_confirmation_verified"] is True
+    assert result["causal_confirmation_reason"] == "network_submit_request"
+    assert result["network_submit_request_observed"] is True
+    assert result["submit_network_evidence"]["request_marker_found"] is True
+
+
+def test_wait_for_submit_confirmation_fails_fast_when_network_submit_missing(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "1")
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    observer = {
+        "enabled": True,
+        "markers_count": 1,
+        "events": [],
+        "responses": [],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    async def fail_state(page, *, before_assistant_count: int):
+        raise AssertionError("backend/DOM causality should not run when required network proof is missing")
+
+    client._capture_submit_confirmation_state = fail_state
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        submit_network_observer=observer,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["causal_confirmation_verified"] is False
+    assert result["causal_confirmation_reason"] == "network_submit_request_not_observed"
+    assert result["network_submit_request_observed"] is False
+    assert result["attempts"][0]["mode"] == "network_submit"
+
 def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -1953,7 +2046,7 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     async def fake_count_assistant(page):
         return 0
 
-    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250):
+    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
         return {
             "status": "submit_confirmed",
             "confirmed": True,
