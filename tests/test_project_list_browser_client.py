@@ -4192,3 +4192,58 @@ def test_response_wait_timing_fields_export_backend_qualification_context(tmp_pa
     assert fields["backend_answer_assistant_turn_status"] == "finished_successfully"
     assert fields["backend_answer_freshness_reason"] == "request_marker_missing"
     assert fields["backend_answer_service_client_budget_ms"] == 180_000
+
+
+def test_backend_answer_wait_budget_prefers_explicit_client_timeout_over_environment(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "900")
+    monkeypatch.delenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_MS", raising=False)
+    monkeypatch.delenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_RESERVE_MS", raising=False)
+
+    submit_evidence = {
+        "backend_task_message_evidence": {
+            "conversation_id": "conv-123",
+            "matched_user_turn_id": "user-node-1",
+            "matched_user_turn_index": 42,
+        }
+    }
+    import time
+
+    context: dict[str, object] = {}
+    operation_started = time.monotonic() - 45.0
+    ask_deadline = client._ask_operation_deadline_monotonic(
+        operation_started=operation_started,
+        service_timeout_seconds=180.0,
+    )
+    client._configure_backend_answer_wait_context(
+        context,
+        submit_evidence=submit_evidence,
+        operation_started=operation_started,
+        service_timeout_seconds=180.0,
+        ask_deadline_monotonic=ask_deadline,
+    )
+
+    assert context["backend_answer_service_client_budget_ms"] == 180_000
+    assert context["service_timeout_seconds"] == 180.0
+    assert context["backend_answer_wait_timeout_ms"] <= 105_000
+    assert context["backend_answer_wait_timeout_ms"] >= 90_000
+    assert context["ask_operation_deadline_remaining_ms_at_answer_wait_config"] <= 105_000
+
+
+def test_response_effective_timeout_is_capped_by_absolute_ask_deadline(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    import time
+
+    context: dict[str, object] = {
+        "backend_answer_wait_enabled": True,
+        "backend_answer_conversation_id": "conv-123",
+        "backend_answer_user_turn_id": "user-node-1",
+        "backend_answer_user_turn_index": 1,
+        "backend_answer_wait_timeout_ms": 120_000,
+        "ask_operation_deadline_monotonic": time.monotonic() + 42.0,
+    }
+
+    effective_timeout_ms = client._response_effective_timeout_ms(context)
+
+    assert 35_000 <= effective_timeout_ms <= 42_000
+    assert context["ask_operation_deadline_remaining_ms_at_json_wait_start"] <= 42_000

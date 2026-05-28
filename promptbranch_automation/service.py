@@ -1018,6 +1018,7 @@ class ChatGPTAutomationService:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
@@ -1026,6 +1027,7 @@ class ChatGPTAutomationService:
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
+            service_timeout_seconds=service_timeout_seconds,
         )
         return result["answer"]
 
@@ -1039,6 +1041,7 @@ class ChatGPTAutomationService:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         max_retries = self.settings.max_retries if retries is None else max(0, retries)
 
@@ -1062,6 +1065,7 @@ class ChatGPTAutomationService:
                         conversation_url=conversation_url,
                         expect_json=expect_json,
                         keep_open=keep_open,
+                        service_timeout_seconds=service_timeout_seconds,
                     )
                     if isinstance(result, dict):
                         timings = result.setdefault("ask_phase_timings", {})

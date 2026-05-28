@@ -246,6 +246,7 @@ class ChatGPTAutomation:
         attachment_paths: Optional[list[str]] = None,
         expect_json: bool = False,
         keep_open: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
@@ -253,6 +254,7 @@ class ChatGPTAutomation:
             attachment_paths=attachment_paths,
             expect_json=expect_json,
             keep_open=keep_open,
+            service_timeout_seconds=service_timeout_seconds,
         )
         return result["answer"]
 
@@ -264,6 +266,7 @@ class ChatGPTAutomation:
         conversation_url: str | None = None,
         expect_json: bool = False,
         keep_open: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         if expect_json:
             prompt = prompt + _JSON_PROMPT_DEFAULT_RULES + _JSON_PROMPT_END_STATEMENT
@@ -275,6 +278,7 @@ class ChatGPTAutomation:
             conversation_url=conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
+            service_timeout_seconds=service_timeout_seconds,
         )
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:

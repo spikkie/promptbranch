@@ -543,6 +543,7 @@ class ServiceBackend:
         conversation_state: ConversationStateStore,
     ) -> None:
         self._client = ChatGPTServiceClient(base_url, token=token, timeout=timeout)
+        self._service_timeout_seconds = float(timeout)
         self._project_url = project_url
         self._conversation_state = conversation_state
 
@@ -763,6 +764,7 @@ class ServiceBackend:
             keep_open=keep_open,
             retries=retries,
             project_url=effective_project_url,
+            service_timeout_seconds=self._service_timeout_seconds,
         )
         _, conversation_url = _split_ask_response(result)
         self._conversation_state.remember(self._project_url, conversation_url)
