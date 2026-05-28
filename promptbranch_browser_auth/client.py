@@ -1936,6 +1936,8 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
         if isinstance(response_context, dict):
+            response_context["submit_confirmed"] = bool(submit_evidence.get("submit_confirmed")) if isinstance(submit_evidence, dict) else False
+            response_context["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by") if isinstance(submit_evidence, dict) else []
             self._configure_backend_answer_wait_context(
                 response_context,
                 submit_evidence=submit_evidence,
@@ -14508,9 +14510,36 @@ class ChatGPTBrowserClient:
         }
 
 
+    def _ask_retrieval_mode(self) -> str:
+        """Return the post-submit answer retrieval strategy.
+
+        v0.0.278.36 restores the v0.0.278.15-style DOM/latest-turn path as
+        the default because live regression runs showed backend-first answer
+        probing could block or choose a marker-missing backend candidate while
+        the ChatGPT UI had already rendered the fresh JSON answer.
+        """
+        mode = (os.getenv("CHATGPT_ASK_RETRIEVAL_MODE") or "").strip().lower()
+        if not mode:
+            backend_mode = (os.getenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT") or "").strip().lower()
+            if backend_mode in {"1", "true", "yes", "on", "enabled", "backend", "backend_first"}:
+                return "backend_first"
+            return "legacy_dom_first"
+        aliases = {
+            "legacy": "legacy_dom_first",
+            "legacy_dom": "legacy_dom_first",
+            "dom": "legacy_dom_first",
+            "dom_first": "legacy_dom_first",
+            "backend": "backend_first",
+            "backend-first": "backend_first",
+            "backend_first_with_dom_fallback": "backend_first",
+        }
+        return aliases.get(mode, mode)
+
     def _backend_answer_wait_enabled(self) -> bool:
         mode = (os.getenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT") or "").strip().lower()
-        return mode not in {"0", "false", "no", "off", "disabled"}
+        if mode:
+            return mode in {"1", "true", "yes", "on", "enabled", "backend", "backend_first"}
+        return self._ask_retrieval_mode() in {"backend_first", "backend_only"}
 
     def _service_client_timeout_budget_ms(self, *, service_timeout_seconds: Optional[float] = None) -> int:
         if service_timeout_seconds is not None:
@@ -14678,6 +14707,7 @@ class ChatGPTBrowserClient:
     ) -> None:
         if not isinstance(response_context, dict):
             return
+        response_context["ask_retrieval_mode"] = self._ask_retrieval_mode()
         binding = self._backend_user_turn_binding_from_submit_evidence(submit_evidence)
         if not binding.get("conversation_id"):
             return
@@ -16031,37 +16061,59 @@ class ChatGPTBrowserClient:
         extraction_started = time.monotonic()
 
         if self._response_post_submit_binding_required(response_context):
-            backend_payload, backend_selector, backend_text_length, backend_probes = await self._try_extract_backend_json_payload(
-                page,
-                response_context=response_context,
-                extraction_started=extraction_started,
-            )
-            if backend_payload is not None:
-                marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
-                    response_context,
-                    backend_payload,
+            retrieval_mode = self._ask_retrieval_mode()
+            if isinstance(response_context, dict):
+                response_context["ask_retrieval_mode"] = retrieval_mode
+                response_context["backend_first_answer_wait_enabled"] = self._backend_answer_wait_enabled()
+
+            async def try_dom_then_visible() -> tuple[Optional[Any], Optional[str], int, list[dict[str, Any]]]:
+                dom_payload, dom_selector, dom_text_length, dom_probes = await self._try_extract_post_submit_json_payload(
+                    page,
+                    response_context=response_context,
+                    extraction_started=extraction_started,
                 )
-                if marker_ok:
-                    return backend_payload, backend_selector, backend_text_length, backend_probes
-                if isinstance(response_context, dict):
-                    response_context["backend_answer_freshness_verified"] = False
-                    response_context["backend_answer_freshness_reason"] = marker_reason
-                    response_context["backend_answer_qualification_status"] = "backend_assistant_after_commit_marker_missing" if marker_reason == "request_marker_missing" else f"backend_assistant_after_commit_{marker_reason}"
-                    response_context["backend_answer_last_status"] = response_context["backend_answer_qualification_status"]
-                    response_context["backend_answer_marker_missing_fell_through_to_dom"] = True
-            dom_payload, dom_selector, dom_text_length, dom_probes = await self._try_extract_post_submit_json_payload(
-                page,
-                response_context=response_context,
-                extraction_started=extraction_started,
-            )
-            if dom_payload is not None:
-                return dom_payload, dom_selector, dom_text_length, [*backend_probes, *dom_probes]
-            visible_payload, visible_selector, visible_text_length, visible_probes = await self._try_extract_visible_answer_json_payload(
-                page,
-                response_context=response_context,
-                extraction_started=extraction_started,
-            )
-            return visible_payload, visible_selector, visible_text_length, [*backend_probes, *dom_probes, *visible_probes]
+                if dom_payload is not None:
+                    return dom_payload, dom_selector, dom_text_length, dom_probes
+                visible_payload, visible_selector, visible_text_length, visible_probes = await self._try_extract_visible_answer_json_payload(
+                    page,
+                    response_context=response_context,
+                    extraction_started=extraction_started,
+                )
+                return visible_payload, visible_selector, visible_text_length, [*dom_probes, *visible_probes]
+
+            if retrieval_mode in {"legacy_dom_first", "dom_first", "dom_only"}:
+                dom_payload, dom_selector, dom_text_length, dom_probes = await try_dom_then_visible()
+                if dom_payload is not None or retrieval_mode in {"dom_only"} or not self._backend_answer_wait_enabled():
+                    return dom_payload, dom_selector, dom_text_length, dom_probes
+                backend_payload, backend_selector, backend_text_length, backend_probes = await self._try_extract_backend_json_payload(
+                    page,
+                    response_context=response_context,
+                    extraction_started=extraction_started,
+                )
+                return backend_payload, backend_selector, backend_text_length, [*dom_probes, *backend_probes]
+
+            backend_probes: list[dict[str, Any]] = []
+            if self._backend_answer_wait_enabled():
+                backend_payload, backend_selector, backend_text_length, backend_probes = await self._try_extract_backend_json_payload(
+                    page,
+                    response_context=response_context,
+                    extraction_started=extraction_started,
+                )
+                if backend_payload is not None:
+                    marker_ok, marker_reason, _marker = self._parsed_payload_has_required_marker(
+                        response_context,
+                        backend_payload,
+                    )
+                    if marker_ok:
+                        return backend_payload, backend_selector, backend_text_length, backend_probes
+                    if isinstance(response_context, dict):
+                        response_context["backend_answer_freshness_verified"] = False
+                        response_context["backend_answer_freshness_reason"] = marker_reason
+                        response_context["backend_answer_qualification_status"] = "backend_assistant_after_commit_marker_missing" if marker_reason == "request_marker_missing" else f"backend_assistant_after_commit_{marker_reason}"
+                        response_context["backend_answer_last_status"] = response_context["backend_answer_qualification_status"]
+                        response_context["backend_answer_marker_missing_fell_through_to_dom"] = True
+            dom_payload, dom_selector, dom_text_length, dom_probes = await try_dom_then_visible()
+            return dom_payload, dom_selector, dom_text_length, [*backend_probes, *dom_probes]
 
         assistant_turn, assistant_selector = await self._get_last_assistant_turn_locator(page)
         if assistant_turn is not None:
@@ -16918,7 +16970,8 @@ class ChatGPTBrowserClient:
             else:
                 breakdown["response_timeout_debug_artifact_skipped_due_to_deadline"] = True
         breakdown["response_wait_returned_at_monotonic"] = time.monotonic()
-        timeout_status = "submit_confirmed_answer_timeout" if self._backend_answer_wait_context_available(response_context) else "assistant_response_timeout"
+        submit_confirmed_context = bool(isinstance(response_context, dict) and response_context.get("submit_confirmed"))
+        timeout_status = "submit_confirmed_answer_timeout" if (submit_confirmed_context or self._backend_answer_wait_context_available(response_context)) else "assistant_response_timeout"
         if isinstance(response_context, dict):
             response_context["response_wait_timeout_status"] = timeout_status
         backend_status = None
