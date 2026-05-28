@@ -538,14 +538,24 @@ class ChatGPTBrowserClient:
         if 'reload' in normalized_label:
             return True
         if normalized_label == "chat-home-after-login" and self._is_conversation_url(target_url):
-            # Protocol ask correctness depends on the target conversation being
-            # fully hydrated before we fill and submit. A same-URL skip can
-            # leave a zero-turn transient DOM in place after prior reloads or
-            # history throttling, making the composer clear without the user
-            # turn persisting. Keep the v0.0.220 no-op optimization for other
-            # paths, but force this navigation/reload for conversation asks.
-            return True
+            hydration_mode = (os.getenv("CHATGPT_HYDRATION_MODE") or "").strip().lower()
+            if hydration_mode in {"legacy", "strict", "full", "reload", "force_reload"}:
+                return True
+            # v0.0.278.16: do not force a same-conversation reload by default.
+            # The warm-task hydration gate below verifies same URL + usable
+            # composer before skipping transcript-turn hydration. If the page is
+            # not warm/usable it falls back to the older fail-closed transcript
+            # hydration path.
+            return False
         return False
+
+    def _warm_task_hydration_reuse_enabled(self) -> bool:
+        mode = (os.getenv("CHATGPT_HYDRATION_MODE") or "auto").strip().lower()
+        if mode in {"legacy", "strict", "full", "reload", "force_reload", "off", "disabled", "false", "0", "no"}:
+            return False
+        if (os.getenv("CHATGPT_DEEP_DEBUG") or "").strip().lower() in {"1", "true", "yes"}:
+            return mode in {"warm", "warm_task_reuse", "reuse", "auto_warm"}
+        return True
 
     def _record_conversation_history_skip(self, *, reason: str, label: str | None = None, url: str | None = None) -> None:
         self._conversation_history_fetch_skipped_count += 1
@@ -1405,27 +1415,88 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 20_000,
         poll_interval_ms: int = 500,
         max_reload_attempts: int = 2,
+        navigation_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Block protocol submits when an existing conversation has not hydrated.
+        """Block unsafe submits, but reuse an already-warm target task.
 
-        v0.0.220 reduced same-URL navigations. That exposed a correctness
-        hazard: a conversation URL may be current while the DOM still has zero
-        conversation turns. Submitting from that transient state can clear the
-        composer without the backend persisting the new user turn.
-
-        v0.0.226.2 keeps that fail-closed invariant but makes recovery less
-        brittle for large/slow conversations: wait longer, perform bounded
-        recovery reloads, and return richer diagnostics instead of submitting
-        against an unhydrated target.
+        v0.0.278.16 adds a warm-task bypass for the dominant old-chat cost:
+        when the browser is already on the target conversation and the composer
+        is usable, do not force full historical transcript hydration. If that
+        cheap proof fails, fall back to the older fail-closed turn-hydration path.
         """
 
+        decomposition: dict[str, Any] = {
+            "hydration_mode": "not_required",
+            "hydration_reuse_candidate": False,
+            "hydration_reuse_used": False,
+            "hydration_current_url_check_seconds": 0.0,
+            "hydration_navigation_seconds": 0.0,
+            "hydration_load_state_seconds": 0.0,
+            "hydration_composer_ready_seconds": 0.0,
+            "hydration_conversation_surface_seconds": 0.0,
+            "hydration_sidebar_or_project_probe_seconds": 0.0,
+            "hydration_fallback_used": False,
+            "hydration_fallback_reason": None,
+        }
+
         if not self._is_conversation_url(target_url):
-            return {"status": "not_required", "target_url": target_url, "label": label}
+            return {"status": "not_required", "target_url": target_url, "label": label, **decomposition}
+
+        current_check_started = time.monotonic()
+        current_url = await self._safe_page_url(page)
+        current_norm = self._normalize_navigation_url(current_url)
+        target_norm = self._normalize_navigation_url(target_url)
+        same_target_conversation = bool(current_norm and target_norm and current_norm == target_norm)
+        decomposition["hydration_current_url_check_seconds"] = round(time.monotonic() - current_check_started, 3)
+        decomposition["hydration_reuse_candidate"] = same_target_conversation
+        decomposition["hydration_navigation_skipped"] = bool(
+            isinstance(navigation_evidence, dict) and navigation_evidence.get("skipped")
+        )
+        decomposition["hydration_navigation_mode"] = (
+            navigation_evidence.get("mode") if isinstance(navigation_evidence, dict) else None
+        )
+
+        if same_target_conversation and self._warm_task_hydration_reuse_enabled():
+            composer_started = time.monotonic()
+            composer_ready = await self._has_chat_input(page)
+            decomposition["hydration_composer_ready_seconds"] = round(time.monotonic() - composer_started, 3)
+            if composer_ready:
+                result = {
+                    "status": "target_conversation_hydrated_warm_task_reuse",
+                    "target_url": target_url,
+                    "current_url": current_url,
+                    "label": label,
+                    "attempt_count": 0,
+                    "reload_performed": False,
+                    "reload_count": 0,
+                    "timeout_ms": timeout_ms,
+                    "poll_interval_ms": poll_interval_ms,
+                    "attempts": [],
+                    "state": None,
+                    **decomposition,
+                }
+                result["hydration_mode"] = "warm_task_reuse"
+                result["hydration_reuse_used"] = True
+                self._log(
+                    "hydration",
+                    "warm target conversation reused without full transcript hydration",
+                    **{k: v for k, v in result.items() if k != "state"},
+                )
+                return result
+            decomposition["hydration_fallback_used"] = True
+            decomposition["hydration_fallback_reason"] = "composer_not_ready_for_warm_task_reuse"
+        elif same_target_conversation:
+            decomposition["hydration_fallback_used"] = True
+            decomposition["hydration_fallback_reason"] = "warm_task_reuse_disabled"
+        else:
+            decomposition["hydration_fallback_used"] = True
+            decomposition["hydration_fallback_reason"] = "current_url_not_target_conversation"
 
         attempts: list[dict[str, Any]] = []
         reload_count = 0
         last_presence: dict[str, Any] = {}
 
+        surface_started = time.monotonic()
         presence, last_presence = await self._wait_for_conversation_hydration_phase(
             page,
             phase="initial_wait",
@@ -1433,10 +1504,15 @@ class ChatGPTBrowserClient:
             timeout_ms=timeout_ms,
             poll_interval_ms=poll_interval_ms,
         )
+        decomposition["hydration_conversation_surface_seconds"] = round(
+            decomposition.get("hydration_conversation_surface_seconds", 0.0) + (time.monotonic() - surface_started),
+            3,
+        )
         if presence is not None:
             result = {
                 "status": "target_conversation_hydrated",
                 "target_url": target_url,
+                "current_url": current_url,
                 "label": label,
                 "attempt_count": len(attempts),
                 "reload_performed": False,
@@ -1445,7 +1521,9 @@ class ChatGPTBrowserClient:
                 "poll_interval_ms": poll_interval_ms,
                 "attempts": attempts,
                 "state": presence.get("state"),
+                **decomposition,
             }
+            result["hydration_mode"] = "conversation_turns"
             self._log("hydration", "target conversation hydrated before submit", **{k: v for k, v in result.items() if k != "state"})
             return result
 
@@ -1461,8 +1539,19 @@ class ChatGPTBrowserClient:
                 max_reload_attempts=max_reload_attempts,
                 previous_attempts=attempts,
             )
+            navigation_started = time.monotonic()
             await page.goto(target_url, wait_until="domcontentloaded")
+            decomposition["hydration_navigation_seconds"] = round(
+                decomposition.get("hydration_navigation_seconds", 0.0) + (time.monotonic() - navigation_started),
+                3,
+            )
+            load_started = time.monotonic()
             await self._post_reload_hydration_settle(page, label=f"{label}-hydration-reload-{reload_count}", timeout_ms=timeout_ms)
+            decomposition["hydration_load_state_seconds"] = round(
+                decomposition.get("hydration_load_state_seconds", 0.0) + (time.monotonic() - load_started),
+                3,
+            )
+            surface_started = time.monotonic()
             presence, last_presence = await self._wait_for_conversation_hydration_phase(
                 page,
                 phase=phase,
@@ -1470,10 +1559,15 @@ class ChatGPTBrowserClient:
                 timeout_ms=timeout_ms,
                 poll_interval_ms=poll_interval_ms,
             )
+            decomposition["hydration_conversation_surface_seconds"] = round(
+                decomposition.get("hydration_conversation_surface_seconds", 0.0) + (time.monotonic() - surface_started),
+                3,
+            )
             if presence is not None:
                 result = {
                     "status": "target_conversation_hydrated_after_reload",
                     "target_url": target_url,
+                    "current_url": current_url,
                     "label": label,
                     "attempt_count": len(attempts),
                     "reload_performed": True,
@@ -1482,7 +1576,9 @@ class ChatGPTBrowserClient:
                     "poll_interval_ms": poll_interval_ms,
                     "attempts": attempts,
                     "state": presence.get("state"),
+                    **decomposition,
                 }
+                result["hydration_mode"] = "reload_then_conversation_turns"
                 self._log("hydration", "target conversation hydrated after bounded reload", **{k: v for k, v in result.items() if k != "state"})
                 return result
 
@@ -1490,6 +1586,7 @@ class ChatGPTBrowserClient:
         result = {
             "status": "target_conversation_not_hydrated_before_submit",
             "target_url": target_url,
+            "current_url": current_url,
             "label": label,
             "attempt_count": len(attempts),
             "reload_performed": reload_count > 0,
@@ -1501,7 +1598,9 @@ class ChatGPTBrowserClient:
             "final_generic_turn_count": last_presence.get("generic_turn_count") if isinstance(last_presence, dict) else None,
             "attempts": attempts,
             "state": state,
+            **decomposition,
         }
+        result["hydration_mode"] = "failed_conversation_turns"
         self._log("hydration", "target conversation not hydrated before submit; refusing to submit", **{k: v for k, v in result.items() if k != "state"})
         return result
 
@@ -1554,12 +1653,38 @@ class ChatGPTBrowserClient:
 
         target_url = conversation_url or self.config.project_url
         phase_started = time.monotonic()
-        await self._goto(page, target_url, label="chat-home-after-login")
+        navigation_evidence = await self._goto(page, target_url, label="chat-home-after-login")
         mark_phase("navigation_seconds", phase_started)
+        if isinstance(navigation_evidence, dict):
+            phase_timings["navigation_mode"] = navigation_evidence.get("mode")
+            phase_timings["navigation_skipped"] = navigation_evidence.get("skipped")
+            phase_timings["navigation_refresh_required"] = navigation_evidence.get("refresh_required")
 
         phase_started = time.monotonic()
-        hydration = await self._ensure_target_conversation_hydrated(page, target_url=target_url, label="chat-home-after-login")
+        hydration = await self._ensure_target_conversation_hydrated(
+            page,
+            target_url=target_url,
+            label="chat-home-after-login",
+            navigation_evidence=navigation_evidence if isinstance(navigation_evidence, dict) else None,
+        )
         mark_phase("hydration_seconds", phase_started)
+        if isinstance(hydration, dict):
+            for hydration_key in [
+                "hydration_mode",
+                "hydration_reuse_candidate",
+                "hydration_reuse_used",
+                "hydration_current_url_check_seconds",
+                "hydration_navigation_seconds",
+                "hydration_load_state_seconds",
+                "hydration_composer_ready_seconds",
+                "hydration_conversation_surface_seconds",
+                "hydration_sidebar_or_project_probe_seconds",
+                "hydration_fallback_used",
+                "hydration_fallback_reason",
+                "hydration_navigation_skipped",
+                "hydration_navigation_mode",
+            ]:
+                phase_timings[hydration_key] = hydration.get(hydration_key)
         if isinstance(hydration, dict) and hydration.get("status") == "target_conversation_not_hydrated_before_submit":
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             return {
@@ -12208,11 +12333,13 @@ class ChatGPTBrowserClient:
             f"Timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
         )
 
-    async def _goto(self, page: Any, url: str, *, label: str) -> None:
+    async def _goto(self, page: Any, url: str, *, label: str) -> dict[str, Any]:
         current_url = await self._safe_page_url(page)
         current_norm = self._normalize_navigation_url(current_url)
         target_norm = self._normalize_navigation_url(url)
-        if current_norm and target_norm and current_norm == target_norm and not self._navigation_requires_refresh(label=label, current_url=current_url, target_url=url):
+        same_url = bool(current_norm and target_norm and current_norm == target_norm)
+        refresh_required = self._navigation_requires_refresh(label=label, current_url=current_url, target_url=url)
+        if same_url and not refresh_required:
             self._navigation_noop_skip_count += 1
             self._log(
                 "nav",
@@ -12222,11 +12349,28 @@ class ChatGPTBrowserClient:
                 to_url=url,
             )
             await self._wait_for_rate_limit_modal_to_clear(page, label=label, timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 5_000))
-            return
+            return {
+                "mode": "same_url_skip",
+                "skipped": True,
+                "same_url": True,
+                "refresh_required": False,
+                "from_url": current_url,
+                "to_url": url,
+            }
         self._log("nav", "navigating", label=label, from_url=current_url, to_url=url)
         await page.goto(url, wait_until="domcontentloaded")
-        self._log("nav", "domcontentloaded reached", label=label, current_url=await self._safe_page_url(page), title=await self._safe_page_title(page))
+        final_url = await self._safe_page_url(page)
+        self._log("nav", "domcontentloaded reached", label=label, current_url=final_url, title=await self._safe_page_title(page))
         await self._wait_for_rate_limit_modal_to_clear(page, label=label)
+        return {
+            "mode": "goto_domcontentloaded",
+            "skipped": False,
+            "same_url": same_url,
+            "refresh_required": refresh_required,
+            "from_url": current_url,
+            "to_url": url,
+            "final_url": final_url,
+        }
 
     async def _wait_for_challenge_resolution(self, page: Any, *, label: str) -> None:
         current_url = await self._safe_page_url(page)
