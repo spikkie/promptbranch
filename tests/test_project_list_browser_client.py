@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from promptbranch_browser_auth.client import ChatGPTBrowserClient
@@ -2150,6 +2151,103 @@ def test_wait_and_get_json_fast_returns_latest_turn_json_without_completion_prob
     assert breakdown["response_debug_artifact_saved"] is False
     assert breakdown["response_debug_artifact_seconds"] == 0.0
     assert breakdown["response_post_stabilization_return_seconds"] == 0.0
+
+
+
+def test_wait_and_get_json_rejects_stale_latest_turn_before_fast_return(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+
+    old_payload = {"ok": True, "sentinel": "OLD_STALE"}
+    new_payload = {"ok": True, "sentinel": "NEW_FRESH"}
+    old_text = json.dumps(old_payload)
+    new_text = json.dumps(new_payload)
+    calls = {"extract": 0, "assistant_text": 0, "polls": 0}
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            calls["polls"] += 1
+            return None
+
+    async def fake_open(*args, **kwargs):
+        return None
+
+    async def fake_extract(page, *, response_context=None):
+        calls["extract"] += 1
+        if isinstance(response_context, dict):
+            response_context["last_response_extraction_mode"] = "latest_turn_json"
+        payload = old_payload if calls["extract"] == 1 else new_payload
+        text = old_text if calls["extract"] == 1 else new_text
+        return (
+            payload,
+            'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+            len(text),
+            [
+                {
+                    "selector": 'section[data-turn="assistant"] >> div[data-message-author-role="assistant"] pre',
+                    "count": 1,
+                    "visible": True,
+                    "text_length": len(text),
+                    "parsed": True,
+                    "scoped_latest_turn": True,
+                }
+            ],
+        )
+
+    async def fake_extract_last_text(page, selectors):
+        calls["assistant_text"] += 1
+        if calls["assistant_text"] == 1:
+            return '[data-message-author-role="assistant"]', 1, old_text, []
+        return '[data-message-author-role="assistant"]', 2, new_text, []
+
+    async def fake_submit_state(page):
+        return {
+            "selector": 'button[aria-label="Start Voice"]',
+            "idle_visible": True,
+            "send_ready": True,
+            "stop_visible": False,
+            "aria_label": "Start Voice",
+        }
+
+    async def fake_thinking_state(page):
+        return {"visible": False, "text": ""}
+
+    async def fake_safe_url(page):
+        return page.url
+
+    async def fake_save(*args, **kwargs):
+        return None
+
+    client._maybe_open_new_project_conversation = fake_open
+    client._try_extract_json_payload = fake_extract
+    client._extract_last_text_from_selectors = fake_extract_last_text
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._safe_page_url = fake_safe_url
+    client._save_response_diagnostics = fake_save
+
+    import asyncio
+    import time
+
+    context = {
+        "response_wait_started_at_monotonic": time.monotonic(),
+        "assistant_count": 1,
+        "assistant_text": old_text,
+    }
+    payload = asyncio.run(client._wait_and_get_json(DummyPage(), response_context=context))
+
+    assert payload == new_payload
+    assert calls["extract"] == 2
+    assert calls["polls"] >= 1
+    breakdown = context["response_wait_breakdown"]
+    assert breakdown["response_freshness_required"] is True
+    assert breakdown["response_freshness_verified"] is True
+    assert breakdown["response_freshness_reason"] == "assistant_count_increased"
+    assert breakdown["response_stale_candidate_detected"] is True
+    assert breakdown["response_json_fast_return_used"] is True
+    assert breakdown["response_completion_signal_skipped"] is True
 
 
 def test_wait_and_get_json_deep_debug_keeps_completion_probe_and_diagnostics(tmp_path: Path, monkeypatch) -> None:

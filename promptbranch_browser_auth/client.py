@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import re
@@ -11243,6 +11244,131 @@ class ChatGPTBrowserClient:
             or (os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE") or "").strip().lower() == "deep"
         )
 
+    @staticmethod
+    def _stable_text_hash(value: Any) -> str:
+        text = str(value or "").replace("\r\n", "\n").strip()
+        if not text:
+            return ""
+        return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+    @staticmethod
+    def _stable_payload_hash(value: Any) -> str:
+        try:
+            text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        except TypeError:
+            text = str(value)
+        return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+    def _response_freshness_guard_enabled(self) -> bool:
+        mode = (os.getenv("CHATGPT_RESPONSE_FRESHNESS_GUARD") or "").strip().lower()
+        return mode not in {"0", "false", "no", "off", "disabled"}
+
+    async def _verify_response_freshness(
+        self,
+        page: Any,
+        *,
+        response_context: Optional[dict[str, Any]],
+        payload: Any,
+        selector: Optional[str],
+        text_length: int,
+    ) -> dict[str, Any]:
+        """Return whether a parseable response belongs to the current ask.
+
+        Warm-task reuse can leave a previous assistant answer visible while the
+        new prompt is still being submitted or generated.  The response path must
+        therefore prove that the latest assistant surface changed after the
+        pre-submit baseline before it may return any parseable latest-turn JSON.
+        """
+
+        payload_hash = self._stable_payload_hash(payload)
+        result: dict[str, Any] = {
+            "required": False,
+            "verified": True,
+            "mode": "not_required",
+            "reason": "no_response_context",
+            "selector": selector,
+            "text_length": text_length,
+            "baseline_answer_hash": None,
+            "returned_answer_hash": None,
+            "baseline_assistant_count": None,
+            "current_assistant_count": None,
+            "assistant_count_delta": None,
+            "payload_hash": payload_hash,
+            "stale_candidate_detected": False,
+            "probe_seconds": 0.0,
+        }
+        if not isinstance(response_context, dict):
+            return result
+
+        baseline_count_raw = response_context.get("assistant_count")
+        baseline_text = response_context.get("assistant_text") or ""
+        if baseline_count_raw is None and not str(baseline_text).strip():
+            result.update({"mode": "not_required", "reason": "missing_baseline_assistant_state"})
+            return result
+
+        if not self._response_freshness_guard_enabled():
+            result.update({"mode": "disabled", "reason": "disabled_by_env"})
+            return result
+
+        result.update({
+            "required": True,
+            "verified": False,
+            "mode": "assistant_baseline_delta",
+            "reason": "unchanged_assistant_baseline",
+            "baseline_assistant_count": baseline_count_raw,
+            "baseline_answer_hash": self._stable_text_hash(baseline_text),
+        })
+        started = time.monotonic()
+        assistant_selector, assistant_count, assistant_text, _ = await self._extract_last_text_from_selectors(
+            page,
+            ASSISTANT_MESSAGE_SELECTORS,
+        )
+        result["probe_seconds"] = round(time.monotonic() - started, 3)
+        result["current_assistant_count"] = assistant_count
+        result["current_assistant_selector"] = assistant_selector
+        result["returned_answer_hash"] = self._stable_text_hash(assistant_text)
+        try:
+            baseline_count = int(baseline_count_raw or 0)
+        except (TypeError, ValueError):
+            baseline_count = 0
+        try:
+            current_count = int(assistant_count or 0)
+        except (TypeError, ValueError):
+            current_count = 0
+        result["assistant_count_delta"] = current_count - baseline_count
+
+        baseline_hash = result.get("baseline_answer_hash") or ""
+        current_hash = result.get("returned_answer_hash") or ""
+        count_increased = current_count > baseline_count
+        text_changed = bool(current_hash and current_hash != baseline_hash)
+        if count_increased:
+            result.update({"verified": True, "reason": "assistant_count_increased"})
+        elif text_changed:
+            result.update({"verified": True, "reason": "assistant_text_changed"})
+        else:
+            result["stale_candidate_detected"] = True
+        return result
+
+    def _record_response_freshness(
+        self,
+        breakdown: dict[str, Any],
+        freshness: dict[str, Any],
+    ) -> None:
+        breakdown["response_freshness_required"] = bool(freshness.get("required"))
+        breakdown["response_freshness_verified"] = bool(freshness.get("verified"))
+        breakdown["response_freshness_mode"] = freshness.get("mode")
+        breakdown["response_freshness_reason"] = freshness.get("reason")
+        breakdown["response_baseline_answer_hash"] = freshness.get("baseline_answer_hash")
+        breakdown["response_returned_answer_hash"] = freshness.get("returned_answer_hash")
+        breakdown["response_payload_hash"] = freshness.get("payload_hash")
+        breakdown["response_stale_candidate_detected"] = bool(
+            breakdown.get("response_stale_candidate_detected") or freshness.get("stale_candidate_detected")
+        )
+        breakdown["response_freshness_probe_seconds"] = freshness.get("probe_seconds")
+        breakdown["response_freshness_baseline_assistant_count"] = freshness.get("baseline_assistant_count")
+        breakdown["response_freshness_current_assistant_count"] = freshness.get("current_assistant_count")
+        breakdown["response_freshness_assistant_count_delta"] = freshness.get("assistant_count_delta")
+
     def _latest_turn_json_fast_return_enabled(self, response_context: Optional[dict[str, Any]]) -> tuple[bool, str]:
         """Return whether parseable latest-turn JSON may bypass global completion probes."""
         mode = (os.getenv("CHATGPT_RESPONSE_JSON_FAST_RETURN") or "").strip().lower()
@@ -11326,6 +11452,18 @@ class ChatGPTBrowserClient:
             "response_completion_signal_skipped_reason",
             "response_debug_artifact_saved",
             "response_debug_artifact_seconds",
+            "response_freshness_required",
+            "response_freshness_verified",
+            "response_freshness_mode",
+            "response_freshness_reason",
+            "response_baseline_answer_hash",
+            "response_returned_answer_hash",
+            "response_payload_hash",
+            "response_stale_candidate_detected",
+            "response_freshness_probe_seconds",
+            "response_freshness_baseline_assistant_count",
+            "response_freshness_current_assistant_count",
+            "response_freshness_assistant_count_delta",
         ]
         for key in timing_keys:
             if key in breakdown:
@@ -12068,6 +12206,30 @@ class ChatGPTBrowserClient:
             if first_probe_text_length(probes) > 0 and "response_first_json_candidate_at_monotonic" not in breakdown:
                 candidate_at = mark_once("response_first_json_candidate_at_monotonic", extract_finished)
                 breakdown["response_wait_to_first_json_candidate_seconds"] = self._duration_between(wait_started_monotonic, candidate_at)
+            if payload is not None:
+                freshness = await self._verify_response_freshness(
+                    page,
+                    response_context=response_context,
+                    payload=payload,
+                    selector=selector,
+                    text_length=text_length,
+                )
+                self._record_response_freshness(breakdown, freshness)
+                if not freshness.get("verified"):
+                    self._log(
+                        "response",
+                        "parseable json candidate rejected as stale pre-submit answer",
+                        selector=selector,
+                        attempt=attempt,
+                        freshness_reason=freshness.get("reason"),
+                        baseline_answer_hash=freshness.get("baseline_answer_hash"),
+                        returned_answer_hash=freshness.get("returned_answer_hash"),
+                        baseline_assistant_count=freshness.get("baseline_assistant_count"),
+                        current_assistant_count=freshness.get("current_assistant_count"),
+                    )
+                    payload = None
+                    selector = None
+                    text_length = 0
             if payload is not None and "response_first_parseable_json_at_monotonic" not in breakdown:
                 parseable_at = mark_once("response_first_parseable_json_at_monotonic", extract_finished)
                 breakdown["response_wait_to_first_parseable_json_seconds"] = self._duration_between(wait_started_monotonic, parseable_at)
