@@ -2005,6 +2005,61 @@ def test_wait_for_submit_confirmation_fails_fast_when_network_submit_missing(tmp
     assert result["network_submit_request_observed"] is False
     assert result["attempts"][0]["mode"] == "network_submit"
 
+
+def test_wait_for_submit_confirmation_reports_prepare_only_without_message_commit(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "1")
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "method": "POST",
+                "backend_like": True,
+                "mutating": True,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "marker_found": False,
+                "post_data_length": 500,
+                "captured_at_monotonic": 100.25,
+            }
+        ],
+        "responses": [],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        submit_network_observer=observer,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["causal_confirmation_verified"] is False
+    assert result["causal_confirmation_reason"] == "submit_prepare_without_message_commit"
+    assert result["confirmation_mode"] == "submit_prepare_only_timeout"
+    assert result["network_submit_request_status"] == "submit_prepare_without_message_commit"
+    assert result["prepare_request_observed"] is True
+    assert result["prepare_request_count"] == 1
+    assert result["prepare_only"] is True
+    assert result["message_request_observed"] is False
+    assert result["message_request_count"] == 0
+    assert result["submit_network_evidence"]["status"] == "submit_prepare_without_message_commit"
+    assert result["submit_network_evidence"]["prepare_first_observed_after_click_seconds"] == 0.25
+
 def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -2891,10 +2946,13 @@ def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marke
     snapshot = client._submit_network_evidence_snapshot(observer)
 
     assert snapshot["visible"] is False
-    assert snapshot["status"] == "submit_network_marker_not_observed"
+    assert snapshot["status"] == "submit_prepare_without_message_commit"
     assert snapshot["backend_write_event_count"] == 1
     assert snapshot["marker_event_count"] == 0
     assert snapshot["prepare_request_observed"] is True
+    assert snapshot["prepare_request_count"] == 1
+    assert snapshot["prepare_only"] is True
     assert snapshot["message_request_observed"] is False
+    assert snapshot["message_request_count"] == 0
     assert snapshot["event_urls"] == ["https://chatgpt.com/backend-api/f/conversation/prepare"]
     assert snapshot["event_summaries"][0]["post_data_preview"] == "<redacted>"
