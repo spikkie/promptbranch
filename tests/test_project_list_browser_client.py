@@ -3532,3 +3532,105 @@ def test_submit_variant_network_summary_reports_keyboard_prepare_only(tmp_path: 
     assert summary["network_status"] == "prepare_only_then_idle_without_commit"
     assert summary["prepare_only_then_idle_without_commit"] is True
     assert summary["prepare_token_set_not_consumed"] is True
+
+def test_keyboard_enter_primary_submit_enabled_defaults_on_and_has_escape_hatch(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    monkeypatch.delenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", raising=False)
+    assert client._keyboard_enter_primary_submit_enabled() is True
+
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "0")
+    assert client._keyboard_enter_primary_submit_enabled() is False
+
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "button")
+    assert client._keyboard_enter_primary_submit_enabled() is False
+
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "1")
+    assert client._keyboard_enter_primary_submit_enabled() is True
+
+def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    observer = {"observer": "network"}
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            raise AssertionError("keyboard-primary submit must not probe the button")
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("keyboard-primary submit must not wait for button fallback")
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
+        assert submit_network_observer is observer
+        return {
+            "status": "submit_confirmed",
+            "confirmed": True,
+            "confirmed_by": ["network_submit_request"],
+            "confirmation_mode": "network_submit_request",
+            "network_submit_request_observed": True,
+            "network_submit_request_status": "submit_network_request_observed",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": True,
+            "causal_confirmation_reason": "network_submit_request",
+            "duration_seconds": 0.05,
+            "submit_network_evidence": {
+                "status": "submit_network_request_observed",
+                "request_marker_found": True,
+                "message_request_observed": True,
+                "message_request_count": 1,
+                "prepare_request_observed": False,
+                "prepare_only": False,
+                "backend_write_event_count": 1,
+                "marker_event_count": 1,
+                "event_urls": ["https://chatgpt.com/backend-api/f/conversation"],
+            },
+            "backend_task_message_evidence": {
+                "post_prepare_commit_found": False,
+            },
+        }
+
+    async def fail_post_submit_snapshot(*args, **kwargs):
+        raise AssertionError("successful keyboard-primary path should skip deep snapshot by default")
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = fake_confirmation
+    client._capture_post_submit_composer_state = fail_post_submit_snapshot
+    client._start_submit_network_observer = lambda page, prompt=None: observer
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
+
+    assert page.keyboard.pressed == ["Enter"]
+    assert result["submit_method"] == "keyboard_enter"
+    assert result["clicked"] is False
+    assert result["enter_fallback_used"] is False
+    assert result["submit_keyboard_enter_primary_used"] is True
+    assert result["submit_keyboard_enter_submit_confirmed"] is True
+    assert result["submit_keyboard_enter_fresh_answer_gate_required"] is True
+    assert result["submit_confirmed"] is True
+    assert result["submit_network_request_marker_found"] is True
+    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
+

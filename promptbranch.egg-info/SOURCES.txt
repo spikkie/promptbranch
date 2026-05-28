@@ -135,3 +135,4 @@ docs/repair-v0.0.278.5.md
 docs/repair-v0.0.278.6.md
 docs/release-v0.0.278.27.md
 docs/release-v0.0.278.29.md
+docs/release-v0.0.278.30.md
