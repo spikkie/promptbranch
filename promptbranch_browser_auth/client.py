@@ -1924,13 +1924,16 @@ class ChatGPTBrowserClient:
         phase_timings["submit_keyboard_enter_fresh_answer_gate_required"] = submit_evidence.get("submit_keyboard_enter_fresh_answer_gate_required")
         phase_timings["submit_keyboard_enter_classification"] = submit_evidence.get("submit_keyboard_enter_classification")
         if isinstance(response_context, dict):
-            self._configure_backend_answer_wait_context(response_context, submit_evidence=submit_evidence)
+            self._configure_backend_answer_wait_context(response_context, submit_evidence=submit_evidence, operation_started=operation_started)
             phase_timings["backend_first_answer_wait_enabled"] = response_context.get("backend_answer_wait_enabled")
             phase_timings["backend_first_answer_wait_keyed_to_user_commit"] = response_context.get("backend_answer_wait_keyed_to_user_commit")
             phase_timings["backend_first_answer_conversation_id"] = response_context.get("backend_answer_conversation_id")
             phase_timings["backend_first_answer_user_turn_id"] = response_context.get("backend_answer_user_turn_id")
             phase_timings["backend_first_answer_user_turn_index"] = response_context.get("backend_answer_user_turn_index")
             phase_timings["backend_first_answer_wait_timeout_ms"] = response_context.get("backend_answer_wait_timeout_ms")
+            phase_timings["backend_first_answer_service_client_budget_ms"] = response_context.get("backend_answer_service_client_budget_ms")
+            phase_timings["backend_first_answer_timeout_reserve_ms"] = response_context.get("backend_answer_timeout_reserve_ms")
+            phase_timings["backend_first_answer_budget_elapsed_before_wait_ms"] = response_context.get("ask_operation_elapsed_before_answer_wait_ms")
 
         if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
@@ -10345,12 +10348,19 @@ class ChatGPTBrowserClient:
             if not text:
                 continue
             turn_index += 1
+            content = message.get('content') if isinstance(message.get('content'), dict) else {}
+            metadata = message.get('metadata') if isinstance(message.get('metadata'), dict) else {}
             turns.append({
                 'index': turn_index,
                 'id': node_id,
                 'role': role,
                 'text': text,
                 'create_time': message.get('create_time') or message.get('createTime') or node.get('create_time') or node.get('createTime'),
+                'update_time': message.get('update_time') or message.get('updateTime') or node.get('update_time') or node.get('updateTime'),
+                'status': message.get('status') or node.get('status') or metadata.get('status'),
+                'end_turn': message.get('end_turn') or message.get('endTurn'),
+                'content_type': content.get('content_type') or content.get('type'),
+                'metadata_status': metadata.get('status'),
             })
         return turns
 
@@ -14215,13 +14225,53 @@ class ChatGPTBrowserClient:
         mode = (os.getenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT") or "").strip().lower()
         return mode not in {"0", "false", "no", "off", "disabled"}
 
-    def _submit_confirmed_answer_timeout_ms(self) -> int:
+    def _service_client_timeout_budget_ms(self) -> int:
+        for env_name in (
+            "CHATGPT_SERVICE_CLIENT_TIMEOUT_SECONDS",
+            "PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS",
+            "CHATGPT_SERVICE_TIMEOUT_SECONDS",
+        ):
+            raw = (os.getenv(env_name) or "").strip()
+            if not raw:
+                continue
+            try:
+                seconds = float(raw)
+            except ValueError:
+                continue
+            if seconds > 0:
+                return max(30_000, min(int(seconds * 1000), 3_600_000))
+        # The CLI default used by the stale-guard diagnostic is 180 seconds.
+        # Use it as the service-side safety budget unless the operator provides
+        # an explicit environment override.
+        return 180_000
+
+    def _submit_confirmed_answer_timeout_reserve_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_RESERVE_MS") or "").strip()
+        try:
+            value = int(raw) if raw else 30_000
+        except ValueError:
+            value = 30_000
+        return max(5_000, min(value, 120_000))
+
+    def _submit_confirmed_answer_timeout_ms(self, *, operation_started: Optional[float] = None) -> int:
         raw = (os.getenv("CHATGPT_SUBMIT_CONFIRMED_ANSWER_TIMEOUT_MS") or "").strip()
         try:
-            value = int(raw) if raw else 120_000
+            configured_value = int(raw) if raw else 120_000
         except ValueError:
-            value = 120_000
-        return max(10_000, min(value, 300_000))
+            configured_value = 120_000
+        configured_value = max(5_000, min(configured_value, 300_000))
+
+        service_budget_ms = self._service_client_timeout_budget_ms()
+        reserve_ms = self._submit_confirmed_answer_timeout_reserve_ms()
+        elapsed_ms = 0
+        if operation_started is not None:
+            try:
+                elapsed_ms = max(0, int((time.monotonic() - float(operation_started)) * 1000))
+            except (TypeError, ValueError):
+                elapsed_ms = 0
+        remaining_ms = service_budget_ms - elapsed_ms - reserve_ms
+        budgeted_value = max(1_000, remaining_ms)
+        return max(1_000, min(configured_value, budgeted_value))
 
     def _backend_user_turn_binding_from_submit_evidence(self, submit_evidence: Any) -> dict[str, Any]:
         if not isinstance(submit_evidence, dict):
@@ -14248,6 +14298,7 @@ class ChatGPTBrowserClient:
         response_context: Optional[dict[str, Any]],
         *,
         submit_evidence: Any,
+        operation_started: Optional[float] = None,
     ) -> None:
         if not isinstance(response_context, dict):
             return
@@ -14261,7 +14312,14 @@ class ChatGPTBrowserClient:
         response_context["backend_answer_user_turn_id"] = binding.get("user_turn_id")
         response_context["backend_answer_user_turn_index"] = binding.get("user_turn_index")
         response_context["backend_answer_commit_evidence"] = binding.get("backend_task_message_evidence")
-        response_context["backend_answer_wait_timeout_ms"] = self._submit_confirmed_answer_timeout_ms()
+        response_context["backend_answer_service_client_budget_ms"] = self._service_client_timeout_budget_ms()
+        response_context["backend_answer_timeout_reserve_ms"] = self._submit_confirmed_answer_timeout_reserve_ms()
+        if operation_started is not None:
+            try:
+                response_context["ask_operation_elapsed_before_answer_wait_ms"] = max(0, int((time.monotonic() - float(operation_started)) * 1000))
+            except (TypeError, ValueError):
+                response_context["ask_operation_elapsed_before_answer_wait_ms"] = None
+        response_context["backend_answer_wait_timeout_ms"] = self._submit_confirmed_answer_timeout_ms(operation_started=operation_started)
         response_context["backend_answer_wait_keyed_to_user_commit"] = True
 
     def _backend_answer_wait_context_available(self, response_context: Optional[dict[str, Any]]) -> bool:
@@ -14312,6 +14370,30 @@ class ChatGPTBrowserClient:
             return None, [], matched_index, "backend_assistant_turn_after_commit_not_found"
         return following_assistant_turns[-1], following_assistant_turns, matched_index, "backend_assistant_turn_after_commit_found"
 
+    def _backend_assistant_turn_qualification_status(
+        self,
+        *,
+        base_status: str,
+        assistant_turn: Optional[dict[str, Any]],
+        assistant_text: str,
+        parsed: Optional[Any],
+    ) -> str:
+        if base_status == "backend_user_turn_commit_not_found":
+            return base_status
+        if base_status == "backend_assistant_turn_after_commit_not_found":
+            return "backend_assistant_after_commit_missing"
+        if not isinstance(assistant_turn, dict):
+            return "backend_assistant_after_commit_missing"
+        normalized_text = (assistant_text or "").strip()
+        if not normalized_text:
+            return "backend_assistant_after_commit_empty_or_placeholder"
+        raw_status = str(assistant_turn.get("status") or "").strip().lower()
+        if raw_status in {"in_progress", "streaming", "pending"}:
+            return "backend_assistant_after_commit_in_progress"
+        if parsed is None:
+            return "backend_assistant_after_commit_not_parseable"
+        return "backend_assistant_after_commit_parseable_json"
+
     async def _try_extract_backend_json_payload(
         self,
         page: Any,
@@ -14358,11 +14440,19 @@ class ChatGPTBrowserClient:
         assistant_text = str(assistant_turn.get("text") or "") if isinstance(assistant_turn, dict) else ""
         parsed = self._extract_json_from_text(assistant_text) if assistant_text else None
         selector = "backend_conversation_detail:assistant_after_user_commit"
+        qualification_status = self._backend_assistant_turn_qualification_status(
+            base_status=status,
+            assistant_turn=assistant_turn,
+            assistant_text=assistant_text,
+            parsed=parsed,
+        )
+        text_hash = hashlib.sha256(assistant_text.encode("utf-8", "replace")).hexdigest()[:12] if assistant_text else None
         probe = {
             "selector": selector,
             "source": "backend_conversation_detail",
             "backend_first": True,
             "status": status,
+            "qualification_status": qualification_status,
             "http_ok": bool(detail.get("ok")),
             "http_status": detail.get("status"),
             "used_authorization": bool(detail.get("used_authorization")),
@@ -14374,7 +14464,13 @@ class ChatGPTBrowserClient:
             "assistant_after_commit_count": len(following_assistant_turns),
             "assistant_turn_id": assistant_turn.get("id") if isinstance(assistant_turn, dict) else None,
             "assistant_turn_index": assistant_turn.get("index") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_create_time": assistant_turn.get("create_time") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_update_time": assistant_turn.get("update_time") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_status": assistant_turn.get("status") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_end_turn": assistant_turn.get("end_turn") if isinstance(assistant_turn, dict) else None,
+            "assistant_turn_content_type": assistant_turn.get("content_type") if isinstance(assistant_turn, dict) else None,
             "text_length": len(assistant_text),
+            "text_sha256_12": text_hash,
             "text_preview": self._preview_text(assistant_text, 220),
             "parsed": parsed is not None,
             "visible": bool(assistant_text),
@@ -14389,6 +14485,15 @@ class ChatGPTBrowserClient:
         response_context["backend_answer_assistant_after_commit_count"] = len(following_assistant_turns)
         response_context["backend_answer_assistant_turn_id"] = probe.get("assistant_turn_id")
         response_context["backend_answer_assistant_turn_index"] = probe.get("assistant_turn_index")
+        response_context["backend_answer_assistant_turn_create_time"] = probe.get("assistant_turn_create_time")
+        response_context["backend_answer_assistant_turn_update_time"] = probe.get("assistant_turn_update_time")
+        response_context["backend_answer_assistant_turn_status"] = probe.get("assistant_turn_status")
+        response_context["backend_answer_assistant_turn_end_turn"] = probe.get("assistant_turn_end_turn")
+        response_context["backend_answer_assistant_turn_content_type"] = probe.get("assistant_turn_content_type")
+        response_context["backend_answer_text_length"] = probe.get("text_length")
+        response_context["backend_answer_text_sha256_12"] = probe.get("text_sha256_12")
+        response_context["backend_answer_text_preview"] = probe.get("text_preview")
+        response_context["backend_answer_qualification_status"] = probe.get("qualification_status")
         response_context["backend_answer_probe_seconds"] = probe.get("probe_seconds")
         if parsed is None:
             self._record_post_submit_payload_binding(
@@ -14925,6 +15030,35 @@ class ChatGPTBrowserClient:
             if key in breakdown:
                 fields[key] = breakdown.get(key)
 
+        if isinstance(response_context, dict):
+            for key in [
+                "backend_answer_last_status",
+                "backend_answer_http_status",
+                "backend_answer_turn_count",
+                "backend_answer_assistant_after_commit_count",
+                "backend_answer_assistant_turn_id",
+                "backend_answer_assistant_turn_index",
+                "backend_answer_assistant_turn_create_time",
+                "backend_answer_assistant_turn_update_time",
+                "backend_answer_assistant_turn_status",
+                "backend_answer_assistant_turn_end_turn",
+                "backend_answer_assistant_turn_content_type",
+                "backend_answer_text_length",
+                "backend_answer_text_sha256_12",
+                "backend_answer_text_preview",
+                "backend_answer_qualification_status",
+                "backend_answer_freshness_verified",
+                "backend_answer_freshness_reason",
+                "backend_answer_probe_seconds",
+                "backend_answer_wait_timeout_ms",
+                "backend_answer_service_client_budget_ms",
+                "backend_answer_timeout_reserve_ms",
+                "ask_operation_elapsed_before_answer_wait_ms",
+                "response_wait_timeout_status",
+            ]:
+                if key in response_context:
+                    fields[key] = response_context.get(key)
+
         wait_started = self._safe_timing_float(
             breakdown.get("response_wait_started_at_monotonic")
             or response_wait_started_at
@@ -15134,6 +15268,22 @@ class ChatGPTBrowserClient:
         artifacts.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0.0, reverse=True)
         return [str(path) for path in artifacts[: max(0, int(limit))]]
 
+    def _backend_answer_timeout_diagnostics(self, *, submit_evidence: Any) -> dict[str, Any]:
+        # The response context owns most backend-answer fields, but timeout
+        # results should still expose submit-side proof at top level.  The
+        # full backend qualification is copied into ask_phase_timings by
+        # _response_wait_timing_fields.
+        backend_evidence = {}
+        if isinstance(submit_evidence, dict) and isinstance(submit_evidence.get("backend_task_message_evidence"), dict):
+            backend_evidence = submit_evidence.get("backend_task_message_evidence") or {}
+        return {
+            "submit_confirmed": bool(submit_evidence.get("submit_confirmed")) if isinstance(submit_evidence, dict) else False,
+            "backend_user_turn_commit_found": bool(submit_evidence.get("submit_backend_task_message_found")) if isinstance(submit_evidence, dict) else False,
+            "backend_user_turn_id": backend_evidence.get("matched_user_turn_id") if isinstance(backend_evidence, dict) else None,
+            "backend_user_turn_index": backend_evidence.get("matched_user_turn_index") if isinstance(backend_evidence, dict) else None,
+            "conversation_id": backend_evidence.get("conversation_id") if isinstance(backend_evidence, dict) else None,
+        }
+
     async def _build_ask_response_timeout_result(
         self,
         page: Any,
@@ -15145,6 +15295,7 @@ class ChatGPTBrowserClient:
         conversation_url = current_url if self._is_conversation_url(current_url) else None
         error_text = str(exc)
         timeout_status = "submit_confirmed_answer_timeout" if "submit_confirmed_answer_timeout" in error_text else "assistant_response_timeout"
+        backend_answer_diagnostics = self._backend_answer_timeout_diagnostics(submit_evidence=submit_evidence)
         result = {
             "ok": False,
             "status": timeout_status,
@@ -15155,6 +15306,7 @@ class ChatGPTBrowserClient:
             "conversation_url": conversation_url,
             "current_url": current_url,
             "submit_evidence": submit_evidence,
+            "backend_answer_diagnostics": backend_answer_diagnostics,
             "partial_result": True,
             "response_timeout_ms": self.config.response_timeout_ms,
             "debug_artifacts": self._recent_debug_artifacts(),
@@ -15720,6 +15872,15 @@ class ChatGPTBrowserClient:
                         baseline_assistant_count=freshness.get("baseline_assistant_count"),
                         current_assistant_count=freshness.get("current_assistant_count"),
                     )
+                    if isinstance(response_context, dict) and selector == "backend_conversation_detail:assistant_after_user_commit":
+                        reason = str(freshness.get("reason") or "")
+                        response_context["backend_answer_freshness_verified"] = False
+                        response_context["backend_answer_freshness_reason"] = reason
+                        if reason == "request_marker_missing":
+                            response_context["backend_answer_qualification_status"] = "backend_assistant_after_commit_marker_missing"
+                            response_context["backend_answer_last_status"] = "backend_assistant_after_commit_marker_missing"
+                        elif reason:
+                            response_context["backend_answer_last_status"] = f"backend_assistant_after_commit_{reason}"
                     payload = None
                     selector = None
                     text_length = 0
@@ -15987,8 +16148,16 @@ class ChatGPTBrowserClient:
         timeout_status = "submit_confirmed_answer_timeout" if self._backend_answer_wait_context_available(response_context) else "assistant_response_timeout"
         if isinstance(response_context, dict):
             response_context["response_wait_timeout_status"] = timeout_status
+        backend_status = None
+        backend_qualification = None
+        if isinstance(response_context, dict):
+            backend_status = response_context.get("backend_answer_last_status")
+            backend_qualification = response_context.get("backend_answer_qualification_status")
         raise ResponseTimeoutError(
-            f"{timeout_status}: timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
+            f"{timeout_status}: timed out waiting for parseable JSON in the assistant response "
+            f"(last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, "
+            f"send_ready={submit_state.get('send_ready')}, backend_status={backend_status}, "
+            f"backend_qualification={backend_qualification})"
         )
 
     async def _goto(self, page: Any, url: str, *, label: str) -> dict[str, Any]:
