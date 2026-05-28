@@ -2989,6 +2989,107 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
     assert "Control+V" in page.keyboard.pressed
 
 
+
+
+def test_submit_response_body_shape_reports_redacted_prepare_metadata(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    shape = client._submit_response_body_shape(
+        json.dumps({
+            "status": "ok",
+            "conversation_id": "secret-conversation-id",
+            "message_id": "secret-message-id",
+            "finalization_token": "secret-token",
+            "error": {"code": "prepare_warning"},
+        }),
+        url="https://chatgpt.com/backend-api/f/conversation/prepare",
+        status=200,
+    )
+
+    assert shape["json_parse_ok"] is True
+    assert shape["body_length"] > 0
+    assert shape["body_sha256_12"]
+    assert "conversation_id" in shape["top_level_keys"]
+    assert shape["conversation_id_present"] is True
+    assert shape["message_id_present"] is True
+    assert shape["finalization_token_present"] is True
+    assert shape["has_error"] is True
+    assert shape["error_code"] == "prepare_warning"
+    assert "secret-token" not in json.dumps(shape)
+
+
+def test_submit_network_snapshot_reports_prepare_response_stream_and_console_diagnostics(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    prepare_event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": True,
+        "message_request_candidate": False,
+        "marker_found": False,
+        "post_data_length": 500,
+        "captured_at_monotonic": 100.25,
+    }
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [prepare_event],
+        "all_events": [prepare_event],
+        "responses": [],
+        "all_responses": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "status": 200,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.30,
+                "body_shape": client._submit_response_body_shape('{"status":"ok","conversation_id":"c","message_id":"m"}', url="https://chatgpt.com/backend-api/f/conversation/prepare", status=200),
+            },
+            {
+                "url": "https://chatgpt.com/backend-api/conversation/abc/stream_status",
+                "status": 200,
+                "prepare_request": False,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.40,
+                "body_shape": client._submit_response_body_shape('{"status":"idle"}', url="https://chatgpt.com/backend-api/conversation/abc/stream_status", status=200),
+            },
+            {
+                "url": "https://chatgpt.com/backend-api/conversation/init",
+                "status": 200,
+                "prepare_request": False,
+                "message_request_candidate": False,
+                "captured_at_monotonic": 100.50,
+                "body_shape": client._submit_response_body_shape('{"ready":true}', url="https://chatgpt.com/backend-api/conversation/init", status=200),
+            },
+        ],
+        "console_events": [
+            {"type": "warning", "text_preview": "post-prepare warning", "captured_at_monotonic": 100.60},
+        ],
+        "page_errors": [
+            {"text_preview": "post-prepare page error", "captured_at_monotonic": 100.70},
+        ],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["status"] == "submit_prepare_without_message_commit"
+    assert snapshot["prepare_response_observed"] is True
+    assert snapshot["prepare_response_statuses"] == [200]
+    assert snapshot["prepare_response_keys"]
+    assert snapshot["prepare_response_conversation_id_present"] is True
+    assert snapshot["prepare_response_message_id_present"] is True
+    assert snapshot["stream_status_summary"]["observed"] is True
+    assert snapshot["conversation_init_summary"]["observed"] is True
+    assert snapshot["post_prepare_console_error_count"] == 2
+    assert snapshot["post_prepare_console_error_summaries"][0]["text_preview"] == "post-prepare warning"
+    assert snapshot["post_prepare_page_error_summaries"][0]["text_preview"] == "post-prepare page error"
+
 def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marker(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 

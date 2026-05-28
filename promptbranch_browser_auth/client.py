@@ -1875,6 +1875,17 @@ class ChatGPTBrowserClient:
         phase_timings["submit_prepare_response_observed"] = submit_evidence.get("submit_prepare_response_observed")
         phase_timings["submit_prepare_response_statuses"] = submit_evidence.get("submit_prepare_response_statuses")
         phase_timings["submit_prepare_response_error_hint"] = submit_evidence.get("submit_prepare_response_error_hint")
+        phase_timings["submit_prepare_response_keys"] = submit_evidence.get("submit_prepare_response_keys")
+        phase_timings["submit_prepare_response_has_error"] = submit_evidence.get("submit_prepare_response_has_error")
+        phase_timings["submit_prepare_response_error_code"] = submit_evidence.get("submit_prepare_response_error_code")
+        phase_timings["submit_prepare_response_conversation_id_present"] = submit_evidence.get("submit_prepare_response_conversation_id_present")
+        phase_timings["submit_prepare_response_message_id_present"] = submit_evidence.get("submit_prepare_response_message_id_present")
+        phase_timings["submit_prepare_response_finalization_token_present"] = submit_evidence.get("submit_prepare_response_finalization_token_present")
+        phase_timings["submit_stream_status_summary"] = submit_evidence.get("submit_stream_status_summary")
+        phase_timings["submit_conversation_init_summary"] = submit_evidence.get("submit_conversation_init_summary")
+        phase_timings["submit_post_prepare_console_error_count"] = submit_evidence.get("submit_post_prepare_console_error_count")
+        phase_timings["submit_post_prepare_ui_error_visible"] = submit_evidence.get("submit_post_prepare_ui_error_visible")
+        phase_timings["submit_post_prepare_ui_error_status"] = submit_evidence.get("submit_post_prepare_ui_error_status")
         phase_timings["submit_post_prepare_observation_seconds"] = submit_evidence.get("submit_post_prepare_observation_seconds")
         phase_timings["submit_post_prepare_stream_observed"] = submit_evidence.get("submit_post_prepare_stream_observed")
         phase_timings["submit_backend_commit_after_prepare_found"] = submit_evidence.get("submit_backend_commit_after_prepare_found")
@@ -5647,6 +5658,245 @@ class ChatGPTBrowserClient:
         except Exception:
             return ""
 
+    def _submit_response_body_timeout_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_RESPONSE_BODY_TIMEOUT_MS") or "1500").strip()
+        try:
+            return max(100, min(5_000, int(raw)))
+        except ValueError:
+            return 1_500
+
+    def _submit_response_summary_kind(self, url: str) -> str | None:
+        normalized = (url or "").lower()
+        if normalized.endswith("/backend-api/f/conversation/prepare"):
+            return "prepare"
+        if "/backend-api/conversation/" in normalized and normalized.endswith("/stream_status"):
+            return "stream_status"
+        if normalized.endswith("/backend-api/conversation/init"):
+            return "conversation_init"
+        return None
+
+    def _json_key_walk(self, value: Any, *, max_depth: int = 4) -> list[str]:
+        keys: list[str] = []
+
+        def walk(node: Any, depth: int) -> None:
+            if depth > max_depth:
+                return
+            if isinstance(node, dict):
+                for key, child in node.items():
+                    key_text = str(key)
+                    if key_text not in keys:
+                        keys.append(key_text)
+                    walk(child, depth + 1)
+            elif isinstance(node, list):
+                for child in node[:5]:
+                    walk(child, depth + 1)
+
+        walk(value, 0)
+        return keys[:120]
+
+    def _find_json_value_by_key_tokens(self, value: Any, tokens: tuple[str, ...], *, max_depth: int = 5) -> Any:
+        lowered_tokens = tuple(token.lower() for token in tokens)
+
+        def walk(node: Any, depth: int) -> Any:
+            if depth > max_depth:
+                return None
+            if isinstance(node, dict):
+                for key, child in node.items():
+                    key_text = str(key).lower()
+                    if any(token in key_text for token in lowered_tokens):
+                        if isinstance(child, (str, int, float, bool)) or child is None:
+                            return child
+                        if isinstance(child, dict):
+                            nested = walk(child, depth + 1)
+                            if nested is not None:
+                                return nested
+                    nested = walk(child, depth + 1)
+                    if nested is not None:
+                        return nested
+            elif isinstance(node, list):
+                for child in node[:10]:
+                    nested = walk(child, depth + 1)
+                    if nested is not None:
+                        return nested
+            return None
+
+        return walk(value, 0)
+
+    def _json_has_key_token(self, value: Any, tokens: tuple[str, ...], *, max_depth: int = 5) -> bool:
+        lowered_tokens = tuple(token.lower() for token in tokens)
+
+        def walk(node: Any, depth: int) -> bool:
+            if depth > max_depth:
+                return False
+            if isinstance(node, dict):
+                for key, child in node.items():
+                    key_text = str(key).lower()
+                    if any(token in key_text for token in lowered_tokens):
+                        return True
+                    if walk(child, depth + 1):
+                        return True
+            elif isinstance(node, list):
+                return any(walk(child, depth + 1) for child in node[:10])
+            return False
+
+        return walk(value, 0)
+
+    def _submit_response_body_shape(self, text: str, *, url: str = "", status: Any = None) -> dict[str, Any]:
+        body_text = text or ""
+        shape: dict[str, Any] = {
+            "body_length": len(body_text),
+            "body_sha256_12": hashlib.sha256(body_text.encode("utf-8", "replace")).hexdigest()[:12] if body_text else "",
+            "status": status,
+            "url_kind": self._submit_response_summary_kind(url),
+            "json_parse_ok": False,
+            "json_type": None,
+            "top_level_keys": [],
+            "all_keys_sample": [],
+            "has_error": False,
+            "error_code": None,
+            "status_value": None,
+            "conversation_id_present": False,
+            "message_id_present": False,
+            "finalization_token_present": False,
+        }
+        if not body_text:
+            return shape
+        try:
+            parsed = json.loads(body_text)
+        except Exception as exc:
+            shape["json_error"] = type(exc).__name__
+            shape["text_prefix_class"] = "html" if body_text.lstrip().startswith("<") else "text"
+            return shape
+        shape["json_parse_ok"] = True
+        shape["json_type"] = type(parsed).__name__
+        if isinstance(parsed, dict):
+            shape["top_level_keys"] = sorted(str(key) for key in parsed.keys())[:80]
+        elif isinstance(parsed, list):
+            shape["list_length"] = len(parsed)
+            first = parsed[0] if parsed else None
+            if isinstance(first, dict):
+                shape["first_item_keys"] = sorted(str(key) for key in first.keys())[:80]
+        keys = self._json_key_walk(parsed)
+        shape["all_keys_sample"] = keys
+        error_value = self._find_json_value_by_key_tokens(parsed, ("error", "err"))
+        code_value = self._find_json_value_by_key_tokens(parsed, ("code", "error_code"))
+        status_value = self._find_json_value_by_key_tokens(parsed, ("status", "state"))
+        shape["has_error"] = error_value is not None or any("error" in key.lower() for key in keys)
+        shape["error_code"] = str(code_value)[:80] if code_value is not None else None
+        shape["status_value"] = str(status_value)[:80] if status_value is not None else None
+        shape["conversation_id_present"] = self._json_has_key_token(parsed, ("conversation_id", "conversationid"))
+        shape["message_id_present"] = self._json_has_key_token(parsed, ("message_id", "messageid", "parent_message_id", "parentmessageid"))
+        shape["finalization_token_present"] = self._json_has_key_token(parsed, ("token", "final", "finaliz", "arkose", "proof", "turnstile"))
+        return shape
+
+    async def _capture_submit_response_body_shape(self, response: Any, record: dict[str, Any]) -> None:
+        started = time.monotonic()
+        try:
+            timeout = self._submit_response_body_timeout_ms() / 1000
+            text = await asyncio.wait_for(response.text(), timeout=timeout)
+            record["body_shape"] = self._submit_response_body_shape(
+                text,
+                url=str(record.get("url") or ""),
+                status=record.get("status"),
+            )
+            record["body_shape_capture_seconds"] = round(time.monotonic() - started, 3)
+        except Exception as exc:
+            record["body_shape_error"] = type(exc).__name__
+            record["body_shape_capture_seconds"] = round(time.monotonic() - started, 3)
+
+    async def _drain_submit_network_body_tasks(self, observer: Any, *, timeout_ms: int = 0) -> None:
+        if not isinstance(observer, dict):
+            return
+        tasks = [task for task in (observer.get("body_tasks") or []) if hasattr(task, "done") and not task.done()]
+        if not tasks:
+            return
+        timeout = max(0.0, timeout_ms / 1000)
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=timeout)
+            for task in done:
+                try:
+                    task.result()
+                except Exception:
+                    pass
+            observer["body_tasks_pending"] = len([task for task in pending if not task.done()])
+        except Exception as exc:
+            observer["body_task_drain_error"] = str(exc)
+
+    def _console_event_record(self, msg: Any) -> dict[str, Any]:
+        try:
+            text = str(getattr(msg, "text", "") or "")
+        except Exception:
+            text = ""
+        try:
+            msg_type = str(getattr(msg, "type", "") or "")
+        except Exception:
+            msg_type = ""
+        try:
+            location = getattr(msg, "location", None)
+        except Exception:
+            location = None
+        return {
+            "type": msg_type,
+            "text_length": len(text),
+            "text_preview": text[:240],
+            "location": str(location)[:240] if location is not None else None,
+            "captured_at_monotonic": round(time.monotonic(), 6),
+        }
+
+    async def _capture_post_prepare_ui_error_state(self, page: Any) -> dict[str, Any]:
+        started = time.monotonic()
+        selectors = [
+            '[role="alert"]',
+            '[role="alertdialog"]',
+            '[data-testid*="toast"]',
+            '[class*="toast"]',
+            '[class*="error"]',
+            'text=Something went wrong',
+            'text=Try again',
+            'text=Unable to',
+            'text=failed',
+            'text=error',
+        ]
+        matches: list[dict[str, Any]] = []
+        for selector in selectors:
+            try:
+                loc = page.locator(selector)
+                count = await loc.count()
+                visible = False
+                preview = ""
+                if count:
+                    first = loc.first
+                    first_loc = first() if callable(first) else first
+                    try:
+                        visible = bool(await first_loc.is_visible(timeout=200))
+                    except TypeError:
+                        visible = bool(await first_loc.is_visible())
+                    except Exception:
+                        visible = False
+                    if visible:
+                        try:
+                            preview = str(await first_loc.inner_text(timeout=300))[:240]
+                        except Exception:
+                            preview = ""
+                if count or visible:
+                    matches.append({
+                        "selector": selector,
+                        "count": count,
+                        "visible": visible,
+                        "text_preview": preview,
+                    })
+            except Exception as exc:
+                matches.append({"selector": selector, "error": type(exc).__name__})
+        visible_matches = [match for match in matches if match.get("visible")]
+        return {
+            "visible": bool(visible_matches),
+            "status": "post_prepare_ui_error_visible" if visible_matches else "post_prepare_ui_error_not_visible",
+            "match_count": len(matches),
+            "visible_match_count": len(visible_matches),
+            "matches": matches[:20],
+            "probe_seconds": round(time.monotonic() - started, 3),
+        }
+
     def _submit_network_request_record(self, request: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
         try:
@@ -5704,6 +5954,9 @@ class ChatGPTBrowserClient:
             "matched_request": None,
             "matched_response": None,
             "handler_error": None,
+            "body_tasks": [],
+            "console_events": [],
+            "page_errors": [],
             "stopped": False,
         }
         if not observer["enabled"]:
@@ -5758,7 +6011,14 @@ class ChatGPTBrowserClient:
                     "post_data_length": request_record.get("post_data_length"),
                     "observed_after_click_seconds": round(time.monotonic() - started, 3),
                     "captured_at_monotonic": round(time.monotonic(), 6),
+                    "summary_kind": self._submit_response_summary_kind(url),
                 }
+                if record.get("summary_kind") in {"prepare", "stream_status", "conversation_init"}:
+                    try:
+                        task = asyncio.create_task(self._capture_submit_response_body_shape(response, record))
+                        observer.setdefault("body_tasks", []).append(task)
+                    except Exception as exc:
+                        record["body_shape_error"] = type(exc).__name__
                 if len(observer.get("all_responses") or []) < 120:
                     observer.setdefault("all_responses", []).append(record)
                 matched = observer.get("matched_request")
@@ -5769,11 +6029,40 @@ class ChatGPTBrowserClient:
             except Exception as exc:
                 observer["handler_error"] = str(exc)
 
+        def on_console(msg: Any) -> None:
+            if observer.get("stopped"):
+                return
+            try:
+                if len(observer.get("console_events") or []) < 80:
+                    observer.setdefault("console_events", []).append(self._console_event_record(msg))
+            except Exception as exc:
+                observer["handler_error"] = str(exc)
+
+        def on_page_error(exc: Any) -> None:
+            if observer.get("stopped"):
+                return
+            try:
+                if len(observer.get("page_errors") or []) < 40:
+                    observer.setdefault("page_errors", []).append({
+                        "text_length": len(str(exc)),
+                        "text_preview": str(exc)[:240],
+                        "captured_at_monotonic": round(time.monotonic(), 6),
+                    })
+            except Exception as error_exc:
+                observer["handler_error"] = str(error_exc)
+
         observer["request_handler"] = on_request
         observer["response_handler"] = on_response
+        observer["console_handler"] = on_console
+        observer["pageerror_handler"] = on_page_error
         try:
             page.on("request", on_request)
             page.on("response", on_response)
+            try:
+                page.on("console", on_console)
+                page.on("pageerror", on_page_error)
+            except Exception:
+                pass
             observer["status"] = "submit_network_observer_started"
         except Exception as exc:
             observer.update({"enabled": False, "status": "submit_network_observer_attach_failed", "error": str(exc)})
@@ -5783,7 +6072,7 @@ class ChatGPTBrowserClient:
         if not isinstance(observer, dict) or observer.get("stopped"):
             return
         observer["stopped"] = True
-        for event_name, handler_key in [("request", "request_handler"), ("response", "response_handler")]:
+        for event_name, handler_key in [("request", "request_handler"), ("response", "response_handler"), ("console", "console_handler"), ("pageerror", "pageerror_handler")]:
             handler = observer.get(handler_key)
             if handler is None:
                 continue
@@ -5868,6 +6157,44 @@ class ChatGPTBrowserClient:
                 prepare_response_error_hint = f"prepare_response_http_{status_code}"
                 break
 
+        prepare_response_shapes = [event.get("body_shape") for event in prepare_response_events if isinstance(event.get("body_shape"), dict)]
+        stream_status_events = [event for event in all_responses if self._submit_response_summary_kind(str(event.get("url") or "")) == "stream_status"]
+        conversation_init_events = [event for event in all_responses if self._submit_response_summary_kind(str(event.get("url") or "")) == "conversation_init"]
+        stream_status_shapes = [event.get("body_shape") for event in stream_status_events if isinstance(event.get("body_shape"), dict)]
+        conversation_init_shapes = [event.get("body_shape") for event in conversation_init_events if isinstance(event.get("body_shape"), dict)]
+
+        def combine_keys(shapes: list[Any]) -> list[str]:
+            keys: list[str] = []
+            for shape in shapes:
+                if not isinstance(shape, dict):
+                    continue
+                for key in shape.get("all_keys_sample") or shape.get("top_level_keys") or []:
+                    if key not in keys:
+                        keys.append(str(key))
+            return keys[:120]
+
+        def first_value(shapes: list[Any], key: str) -> Any:
+            for shape in shapes:
+                if isinstance(shape, dict) and shape.get(key) not in (None, ""):
+                    return shape.get(key)
+            return None
+
+        console_events = [event for event in (observer.get("console_events") or []) if isinstance(event, dict)]
+        page_errors = [event for event in (observer.get("page_errors") or []) if isinstance(event, dict)]
+        post_prepare_console_events = []
+        post_prepare_page_errors = []
+        if prepare_first_captured_at is not None:
+            post_prepare_console_events = [
+                event for event in console_events
+                if isinstance(event.get("captured_at_monotonic"), (int, float))
+                and float(event.get("captured_at_monotonic")) >= prepare_first_captured_at
+            ]
+            post_prepare_page_errors = [
+                event for event in page_errors
+                if isinstance(event.get("captured_at_monotonic"), (int, float))
+                and float(event.get("captured_at_monotonic")) >= prepare_first_captured_at
+            ]
+
         event_summaries = [
             {
                 "url": event.get("url"),
@@ -5918,6 +6245,32 @@ class ChatGPTBrowserClient:
             "prepare_response_statuses": prepare_response_statuses,
             "prepare_response_urls": [event.get("url") for event in prepare_response_events[:20]],
             "prepare_response_error_hint": prepare_response_error_hint,
+            "prepare_response_body_shapes": prepare_response_shapes[:5],
+            "prepare_response_keys": combine_keys(prepare_response_shapes),
+            "prepare_response_has_error": any(bool(shape.get("has_error")) for shape in prepare_response_shapes if isinstance(shape, dict)),
+            "prepare_response_error_code": first_value(prepare_response_shapes, "error_code"),
+            "prepare_response_conversation_id_present": any(bool(shape.get("conversation_id_present")) for shape in prepare_response_shapes if isinstance(shape, dict)),
+            "prepare_response_message_id_present": any(bool(shape.get("message_id_present")) for shape in prepare_response_shapes if isinstance(shape, dict)),
+            "prepare_response_finalization_token_present": any(bool(shape.get("finalization_token_present")) for shape in prepare_response_shapes if isinstance(shape, dict)),
+            "stream_status_summary": {
+                "observed": bool(stream_status_events),
+                "status_codes": [event.get("status") for event in stream_status_events[:10]],
+                "body_shapes": stream_status_shapes[:3],
+                "keys": combine_keys(stream_status_shapes),
+            },
+            "conversation_init_summary": {
+                "observed": bool(conversation_init_events),
+                "status_codes": [event.get("status") for event in conversation_init_events[:10]],
+                "body_shapes": conversation_init_shapes[:3],
+                "keys": combine_keys(conversation_init_shapes),
+            },
+            "console_error_count": len([event for event in console_events if str(event.get("type") or "").lower() in {"error", "warning"}]),
+            "console_error_summaries": [event for event in console_events if str(event.get("type") or "").lower() in {"error", "warning"}][:10],
+            "post_prepare_console_error_count": len([event for event in post_prepare_console_events if str(event.get("type") or "").lower() in {"error", "warning"}]) + len(post_prepare_page_errors),
+            "post_prepare_console_error_summaries": [event for event in post_prepare_console_events if str(event.get("type") or "").lower() in {"error", "warning"}][:10],
+            "post_prepare_page_error_summaries": post_prepare_page_errors[:10],
+            "body_tasks_pending": observer.get("body_tasks_pending"),
+            "body_task_drain_error": observer.get("body_task_drain_error"),
             "post_prepare_observation_seconds": post_prepare_observation_seconds,
             "post_prepare_request_count": len(post_prepare_events),
             "post_prepare_request_urls": [event.get("url") for event in post_prepare_events[:30]],
@@ -5963,6 +6316,7 @@ class ChatGPTBrowserClient:
             }
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         while True:
+            await self._drain_submit_network_body_tasks(observer, timeout_ms=25)
             snapshot = self._submit_network_evidence_snapshot(observer)
             if snapshot.get("visible"):
                 snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
@@ -6191,7 +6545,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.25 keeps URL-only confirmation rejected, but moves the
+        v0.0.278.26 keeps URL-only confirmation rejected, but moves the
         first causality proof closer to the mutation trigger.  A browser network
         observer is armed before clicking submit; this method first requires a
         post-click ChatGPT backend request carrying the current prompt marker.
@@ -6208,6 +6562,7 @@ class ChatGPTBrowserClient:
         last_user_echo: dict[str, Any] = {}
         last_backend_echo: dict[str, Any] = {}
         last_network_evidence: dict[str, Any] = {}
+        last_post_prepare_ui_error: dict[str, Any] = {}
         probe_seconds_total = 0.0
         user_echo_seconds_total = 0.0
         backend_echo_seconds_total = 0.0
@@ -6257,9 +6612,11 @@ class ChatGPTBrowserClient:
                 backend_echo = await self._wait_for_backend_task_message_echo_after_prepare(page, prompt=prompt)
                 backend_echo_seconds_total += round(time.monotonic() - backend_probe_started, 3)
                 last_backend_echo = backend_echo
+                await self._drain_submit_network_body_tasks(submit_network_observer, timeout_ms=100)
                 network_evidence = self._submit_network_evidence_snapshot(submit_network_observer)
                 last_network_evidence = network_evidence
                 backend_found = self._backend_task_message_echo_found(backend_echo)
+                last_post_prepare_ui_error = await self._capture_post_prepare_ui_error_state(page)
                 attempt += 1
                 attempts.append({
                     "attempt": attempt,
@@ -6272,6 +6629,8 @@ class ChatGPTBrowserClient:
                     "post_prepare_commit_seconds": backend_echo.get("post_prepare_commit_seconds"),
                     "post_prepare_commit_attempt_count": backend_echo.get("post_prepare_commit_attempt_count"),
                     "network_status_after_prepare_window": network_evidence.get("status"),
+                    "post_prepare_ui_error_visible": bool(last_post_prepare_ui_error.get("visible")),
+                    "post_prepare_ui_error_status": last_post_prepare_ui_error.get("status"),
                     "probe_seconds": backend_echo.get("post_prepare_commit_seconds"),
                 })
                 if backend_found:
@@ -6309,6 +6668,7 @@ class ChatGPTBrowserClient:
                         "submit_network_evidence": network_evidence,
                         "user_turn_evidence": last_user_echo,
                         "backend_task_message_evidence": backend_echo,
+                        "post_prepare_ui_error_evidence": last_post_prepare_ui_error,
                         "backend_task_message_found": True,
                         "backend_task_message_seconds": backend_echo.get("post_prepare_commit_seconds"),
                         "backend_task_message_status": backend_echo.get("post_prepare_commit_status"),
@@ -6406,6 +6766,20 @@ class ChatGPTBrowserClient:
             fields["prepare_first_observed_after_click_seconds"] = network_evidence.get("prepare_first_observed_after_click_seconds")
             fields["message_request_observed"] = bool(network_evidence.get("message_request_observed"))
             fields["message_request_count"] = network_evidence.get("message_request_count")
+            fields["prepare_response_observed"] = network_evidence.get("prepare_response_observed")
+            fields["prepare_response_statuses"] = network_evidence.get("prepare_response_statuses")
+            fields["prepare_response_error_hint"] = network_evidence.get("prepare_response_error_hint")
+            fields["prepare_response_keys"] = network_evidence.get("prepare_response_keys")
+            fields["prepare_response_has_error"] = network_evidence.get("prepare_response_has_error")
+            fields["prepare_response_error_code"] = network_evidence.get("prepare_response_error_code")
+            fields["prepare_response_conversation_id_present"] = network_evidence.get("prepare_response_conversation_id_present")
+            fields["prepare_response_message_id_present"] = network_evidence.get("prepare_response_message_id_present")
+            fields["prepare_response_finalization_token_present"] = network_evidence.get("prepare_response_finalization_token_present")
+            fields["stream_status_summary"] = network_evidence.get("stream_status_summary")
+            fields["conversation_init_summary"] = network_evidence.get("conversation_init_summary")
+            fields["post_prepare_console_error_count"] = network_evidence.get("post_prepare_console_error_count")
+            fields["post_prepare_ui_error_visible"] = bool(last_post_prepare_ui_error.get("visible")) if isinstance(last_post_prepare_ui_error, dict) else None
+            fields["post_prepare_ui_error_status"] = last_post_prepare_ui_error.get("status") if isinstance(last_post_prepare_ui_error, dict) else None
             fields["backend_task_message_found"] = self._backend_task_message_echo_found(last_backend_echo)
             fields["backend_task_message_seconds"] = last_backend_echo.get("post_prepare_commit_seconds") if isinstance(last_backend_echo, dict) else None
             fields["backend_task_message_status"] = last_backend_echo.get("post_prepare_commit_status") if isinstance(last_backend_echo, dict) else None
@@ -6417,6 +6791,7 @@ class ChatGPTBrowserClient:
                 "submit_network_evidence": network_evidence,
                 "user_turn_evidence": last_user_echo,
                 "backend_task_message_evidence": last_backend_echo,
+                "post_prepare_ui_error_evidence": last_post_prepare_ui_error,
                 "status": "submit_confirmation_not_observed",
                 "timeout_ms": timeout_ms,
                 "poll_interval_ms": poll_interval_ms,
@@ -7154,6 +7529,17 @@ class ChatGPTBrowserClient:
                 "submit_prepare_response_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_prepare_response_statuses": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_statuses") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_prepare_response_error_hint": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_error_hint") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_keys": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_keys") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_has_error": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_has_error") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_error_code": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_error_code") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_conversation_id_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_conversation_id_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_message_id_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_message_id_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_prepare_response_finalization_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_finalization_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_stream_status_summary": (confirmation.get("submit_network_evidence") or {}).get("stream_status_summary") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_conversation_init_summary": (confirmation.get("submit_network_evidence") or {}).get("conversation_init_summary") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_console_error_count": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_console_error_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                "submit_post_prepare_ui_error_visible": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("visible") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
+                "submit_post_prepare_ui_error_status": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("status") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
                 "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                 "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
@@ -7161,6 +7547,7 @@ class ChatGPTBrowserClient:
                 "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
                 "dom_user_turn_evidence": confirmation.get("user_turn_evidence") or self._skipped_user_turn_dom_evidence(reason="submit_confirmed_by_running_state"),
                 "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
+                "post_prepare_ui_error_evidence": confirmation.get("post_prepare_ui_error_evidence"),
                 "submit_network_evidence": confirmation.get("submit_network_evidence"),
                 "duration_seconds": duration_seconds,
                 "submit_accounted_seconds": submit_accounted_seconds,
@@ -7342,12 +7729,24 @@ class ChatGPTBrowserClient:
             "submit_prepare_response_observed": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_prepare_response_statuses": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_statuses") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_prepare_response_error_hint": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_error_hint") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_keys": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_keys") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_has_error": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_has_error") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_error_code": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_error_code") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_conversation_id_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_conversation_id_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_message_id_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_message_id_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_prepare_response_finalization_token_present": (confirmation.get("submit_network_evidence") or {}).get("prepare_response_finalization_token_present") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_stream_status_summary": (confirmation.get("submit_network_evidence") or {}).get("stream_status_summary") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_conversation_init_summary": (confirmation.get("submit_network_evidence") or {}).get("conversation_init_summary") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_console_error_count": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_console_error_count") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+            "submit_post_prepare_ui_error_visible": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("visible") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
+            "submit_post_prepare_ui_error_status": (confirmation.get("post_prepare_ui_error_evidence") or {}).get("status") if isinstance(confirmation.get("post_prepare_ui_error_evidence"), dict) else None,
             "submit_post_prepare_observation_seconds": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_observation_seconds") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_post_prepare_stream_observed": (confirmation.get("submit_network_evidence") or {}).get("post_prepare_stream_observed") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
             "submit_backend_commit_after_prepare_found": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_found") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
             "submit_backend_commit_after_prepare_seconds": (confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_seconds") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
             "submit_to_turn_visible_seconds": confirmation.get("to_user_turn_echo_seconds"),
             "backend_task_message_evidence": confirmation.get("backend_task_message_evidence"),
+            "post_prepare_ui_error_evidence": confirmation.get("post_prepare_ui_error_evidence"),
             "submit_network_evidence": confirmation.get("submit_network_evidence"),
             "duration_seconds": duration_seconds,
             "submit_accounted_seconds": submit_accounted_seconds,
