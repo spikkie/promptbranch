@@ -2810,3 +2810,91 @@ def test_wait_and_get_json_deep_debug_keeps_completion_probe_and_diagnostics(tmp
     assert breakdown["response_debug_artifact_seconds"] >= 0.015
     assert breakdown["response_post_stabilization_return_seconds"] >= 0.015
 
+
+
+def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.delenv("CHATGPT_PROMPT_FILL_MODE", raising=False)
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.pressed = []
+        async def press(self, key):
+            self.pressed.append(key)
+        async def insert_text(self, text):
+            raise AssertionError("keyboard insert should not be used when trusted paste verifies")
+
+    class DummyContext:
+        async def grant_permissions(self, permissions, origin=None):
+            return None
+
+    class DummyPage:
+        def __init__(self):
+            self.keyboard = DummyKeyboard()
+            self.context = DummyContext()
+            self.clipboard_text = None
+        async def evaluate(self, script, text):
+            self.clipboard_text = text
+        async def wait_for_timeout(self, ms):
+            return None
+
+    class DummyLocator:
+        async def fill(self, text, timeout=None):
+            raise AssertionError("locator.fill should not be used on trusted paste success")
+
+    async def fake_click(locator, *, label, timeout_ms):
+        return None
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "input_selector": "#prompt-textarea",
+            "text_length": len(prompt or ""),
+            "contains_prompt_prefix": True,
+            "text_preview": (prompt or "")[:120],
+        }
+
+    client._click_locator_with_fallback = fake_click
+    client._capture_composer_state = fake_composer_state
+
+    import asyncio
+
+    page = DummyPage()
+    result = asyncio.run(client._fill_chat_prompt(page, DummyLocator(), prompt="hello STALE_GUARD_LIVE_OK_1"))
+
+    assert result["method"] == "trusted_paste"
+    assert result["trusted_input_used"] is True
+    assert result["trusted_paste_used"] is True
+    assert result["verification_passed"] is True
+    assert page.clipboard_text == "hello STALE_GUARD_LIVE_OK_1"
+    assert "Control+V" in page.keyboard.pressed
+
+
+def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marker(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyRequest:
+        url = "https://chatgpt.com/backend-api/f/conversation/prepare"
+        method = "POST"
+        post_data = "{\"conversation_id\":\"abc\"}"
+
+    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_999")
+    observer = {
+        "enabled": True,
+        "markers_count": 1,
+        "events": [record],
+        "responses": [],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["visible"] is False
+    assert snapshot["status"] == "submit_network_marker_not_observed"
+    assert snapshot["backend_write_event_count"] == 1
+    assert snapshot["marker_event_count"] == 0
+    assert snapshot["prepare_request_observed"] is True
+    assert snapshot["message_request_observed"] is False
+    assert snapshot["event_urls"] == ["https://chatgpt.com/backend-api/f/conversation/prepare"]
+    assert snapshot["event_summaries"][0]["post_data_preview"] == "<redacted>"
