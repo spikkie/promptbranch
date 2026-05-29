@@ -5559,6 +5559,64 @@ class ChatGPTBrowserClient:
             state["submit_button"] = {"probe_failed": True, "error": str(exc)}
         return state
 
+    async def _capture_composer_prompt_marker_state(
+        self,
+        page: Any,
+        *,
+        prompt: str | None = None,
+        input_locator: Any | None = None,
+    ) -> dict[str, Any]:
+        """Minimal composer verification for the post-prepare trusted-refill retry.
+
+        The normal composer probe also inspects submit/stop/idle controls.  In the
+        retry path that is expensive and redundant: the raw Enter attempt has
+        already failed closed, and the retry only needs to prove that the current
+        prompt marker is present in the composer before pressing Enter again.
+        """
+        state: dict[str, Any] = {
+            "input_selector": "#prompt-textarea",
+            "input_count": None,
+            "input_visible": None,
+            "text_length": None,
+            "contains_prompt_prefix": None,
+            "text_preview": "",
+            "submit_button": {"probe_skipped": True, "reason": "trusted_refill_retry_slim_verify"},
+            "current_url": await self._safe_page_url(page),
+            "slim_retry_marker_verify": True,
+        }
+        prompt_prefix = (prompt or "")[:80]
+        item = input_locator
+        if item is None:
+            try:
+                locator = page.locator("#prompt-textarea")
+                state["input_count"] = await locator.count()
+                item = locator.first if state["input_count"] else None
+            except Exception as exc:
+                state["input_probe_error"] = str(exc)
+                return state
+        try:
+            if item is not None:
+                try:
+                    visible = await item.is_visible(timeout=250)
+                except Exception:
+                    visible = False
+                state["input_visible"] = bool(visible)
+                if visible:
+                    text = await self._extract_text_from_locator(item, timeout_ms=250)
+                    if not text:
+                        try:
+                            text = (await item.input_value(timeout=250) or "").strip()
+                        except Exception:
+                            text = ""
+                    state.update({
+                        "text_length": len(text),
+                        "text_preview": text[:160],
+                        "contains_prompt_prefix": bool(prompt_prefix and prompt_prefix in text),
+                    })
+        except Exception as exc:
+            state["input_probe_error"] = str(exc)
+        return state
+
     async def _capture_composer_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         state: dict[str, Any] = {
             "input_selector": None,
@@ -8457,10 +8515,22 @@ class ChatGPTBrowserClient:
             return False
         return preview in prompt or prompt[: min(120, len(prompt))] in preview
 
-    async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any) -> dict[str, Any]:
-        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None}
+    async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any, *, slim_retry: bool = False) -> dict[str, Any]:
+        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None, "slim_retry": bool(slim_retry)}
         try:
-            await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-trusted-refill", timeout_ms=5_000)
+            if slim_retry:
+                await self._click_locator_with_fallback(
+                    input_locator,
+                    label="ask-question-composer-input-trusted-refill",
+                    timeout_ms=1_000,
+                    handle_rate_limit=False,
+                )
+            else:
+                await self._click_locator_with_fallback(
+                    input_locator,
+                    label="ask-question-composer-input-trusted-refill",
+                    timeout_ms=5_000,
+                )
             await page.keyboard.press("Control+A")
             evidence["control_a"] = True
             await page.keyboard.press("Backspace")
@@ -8470,7 +8540,7 @@ class ChatGPTBrowserClient:
             self._log("composer", "trusted composer clear failed", error=str(exc))
         return evidence
 
-    async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+    async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
         started = time.monotonic()
         evidence: dict[str, Any] = {
             "attempted": True,
@@ -8479,7 +8549,7 @@ class ChatGPTBrowserClient:
             "error": None,
         }
         try:
-            await self._clear_composer_for_trusted_input(page, input_locator)
+            await self._clear_composer_for_trusted_input(page, input_locator, slim_retry=slim_retry)
             context = getattr(page, "context", None)
             if context is not None and hasattr(context, "grant_permissions"):
                 try:
@@ -8497,11 +8567,11 @@ class ChatGPTBrowserClient:
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
         return evidence
 
-    async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+    async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
         started = time.monotonic()
         evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None}
         try:
-            await self._clear_composer_for_trusted_input(page, input_locator)
+            await self._clear_composer_for_trusted_input(page, input_locator, slim_retry=slim_retry)
             await page.keyboard.insert_text(prompt)
             evidence["insert_text_used"] = True
             await page.wait_for_timeout(100)
@@ -8510,7 +8580,7 @@ class ChatGPTBrowserClient:
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
         return evidence
 
-    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
+    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
         """Fill the ChatGPT composer with a trusted-input-first strategy.
 
         v0.0.278.23 stops treating locator.fill as the primary path because a
@@ -8535,12 +8605,18 @@ class ChatGPTBrowserClient:
             "verification_method": "composer_state_prefix",
             "verification_passed": False,
             "attempts": [],
+            "slim_retry": bool(slim_retry),
+            "slim_retry_marker_verify_used": False,
         }
-        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode)
+        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode, slim_retry=bool(slim_retry))
 
         async def verify(label: str) -> bool:
             try:
-                state = await self._capture_composer_state(page, prompt=prompt)
+                if slim_retry:
+                    evidence["slim_retry_marker_verify_used"] = True
+                    state = await self._capture_composer_prompt_marker_state(page, prompt=prompt, input_locator=input_locator)
+                else:
+                    state = await self._capture_composer_state(page, prompt=prompt)
             except Exception as exc:
                 state = {"error": str(exc)}
             matched = self._composer_text_matches_prompt(state, prompt=prompt)
@@ -8555,7 +8631,7 @@ class ChatGPTBrowserClient:
             return matched
 
         if requested_mode == "trusted_paste":
-            paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt)
+            paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt, slim_retry=slim_retry)
             evidence["attempts"].append({"method": "trusted_paste", **paste_evidence})
             if paste_evidence.get("keyboard_paste_used") and await verify("trusted_paste"):
                 evidence.update({
@@ -8570,7 +8646,7 @@ class ChatGPTBrowserClient:
             evidence["fallback_used"] = True
 
         if requested_mode in {"trusted_paste", "keyboard_insert_text"}:
-            insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt)
+            insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt, slim_retry=slim_retry)
             evidence["attempts"].append({"method": "keyboard_insert_text", **insert_evidence})
             if insert_evidence.get("insert_text_used") and await verify("keyboard_insert_text"):
                 evidence.update({
@@ -8711,13 +8787,17 @@ class ChatGPTBrowserClient:
         fill_started = time.monotonic()
         try:
             result["fill_attempted"] = True
-            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+            slim_retry_fill = variant == "keyboard_enter_refill_retry"
+            result["trusted_refill_retry_slim_fill_used"] = bool(slim_retry_fill)
+            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=slim_retry_fill)
             result["fill_evidence"] = {
                 "method": fill_evidence.get("method"),
                 "requested_method": fill_evidence.get("requested_method"),
                 "verification_passed": fill_evidence.get("verification_passed"),
                 "trusted_input_used": fill_evidence.get("trusted_input_used"),
                 "duration_seconds": fill_evidence.get("duration_seconds"),
+                "slim_retry": fill_evidence.get("slim_retry"),
+                "slim_retry_marker_verify_used": fill_evidence.get("slim_retry_marker_verify_used"),
             }
             result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
         except Exception as exc:

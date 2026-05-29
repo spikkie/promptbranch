@@ -3324,6 +3324,80 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
 
 
 
+
+
+def test_fill_chat_prompt_slim_retry_skips_full_composer_probe(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.delenv("CHATGPT_PROMPT_FILL_MODE", raising=False)
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.pressed = []
+        async def press(self, key):
+            self.pressed.append(key)
+        async def insert_text(self, text):
+            raise AssertionError("keyboard insert should not be used when trusted paste verifies")
+
+    class DummyContext:
+        async def grant_permissions(self, permissions, origin=None):
+            return None
+
+    class DummyPage:
+        def __init__(self):
+            self.keyboard = DummyKeyboard()
+            self.context = DummyContext()
+            self.clipboard_text = None
+        async def evaluate(self, script, text):
+            self.clipboard_text = text
+        async def wait_for_timeout(self, ms):
+            return None
+
+    class DummyLocator:
+        async def fill(self, text, timeout=None):
+            raise AssertionError("locator.fill should not be used on trusted paste success")
+
+    click_calls = []
+
+    async def fake_click(locator, *, label, timeout_ms, **kwargs):
+        click_calls.append({"label": label, "timeout_ms": timeout_ms, **kwargs})
+        return None
+
+    async def forbidden_full_composer_state(page, *, prompt=None):
+        raise AssertionError("slim retry must not call full composer-state probe")
+
+    async def fake_marker_state(page, *, prompt=None, input_locator=None):
+        return {
+            "input_selector": "#prompt-textarea",
+            "text_length": len(prompt or ""),
+            "contains_prompt_prefix": True,
+            "text_preview": (prompt or "")[:120],
+            "submit_button": {"probe_skipped": True},
+            "slim_retry_marker_verify": True,
+        }
+
+    client._click_locator_with_fallback = fake_click
+    client._capture_composer_state = forbidden_full_composer_state
+    client._capture_composer_prompt_marker_state = fake_marker_state
+
+    import asyncio
+
+    page = DummyPage()
+    result = asyncio.run(client._fill_chat_prompt(page, DummyLocator(), prompt="hello STALE_GUARD_LIVE_OK_2", slim_retry=True))
+
+    assert result["method"] == "trusted_paste"
+    assert result["verification_passed"] is True
+    assert result["slim_retry"] is True
+    assert result["slim_retry_marker_verify_used"] is True
+    assert result["react_state_probe"]["matched"] is True
+    assert click_calls == [{
+        "label": "ask-question-composer-input-trusted-refill",
+        "timeout_ms": 1000,
+        "handle_rate_limit": False,
+    }]
+    assert page.clipboard_text == "hello STALE_GUARD_LIVE_OK_2"
+    assert "Control+V" in page.keyboard.pressed
+
+
 def test_submit_response_body_shape_reports_redacted_prepare_metadata(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
