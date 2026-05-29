@@ -90,7 +90,6 @@ chatgpt_claudecode_workflow*.zip
 #browser profile
 .pb_profile/
 profile/
-.pb_profile_local_debug/
 
 #debug info
 debug_artifacts/

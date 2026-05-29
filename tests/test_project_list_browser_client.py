@@ -1703,6 +1703,100 @@ def test_ensure_target_conversation_hydrated_accepts_existing_turns(tmp_path: Pa
     assert result["reload_performed"] is False
 
 
+
+def test_post_submit_prompt_delta_confirms_plain_prompt_only_with_new_user_count(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    state = {
+        "probes": [
+            {
+                "selector": '[data-message-author-role="user"]',
+                "count": 6,
+                "last_text_preview": "print echo 111",
+                "prompt_prefix_found": True,
+            }
+        ],
+        "generic_turns": {
+            "probes": [
+                {
+                    "selector": '[data-testid*="conversation-turn"]',
+                    "snippets": [
+                        {"index": 8, "text_preview": "print echo 3"},
+                        {"index": 9, "text_preview": "3"},
+                        {"index": 10, "text_preview": "print echo 111", "prompt_prefix_found": True},
+                        {"index": 11, "text_preview": "111"},
+                    ],
+                }
+            ]
+        },
+    }
+
+    result = client._post_submit_prompt_delta_from_user_state(
+        state,
+        prompt="print echo 111",
+        response_context={"conversation_user_turn_count": 5},
+    )
+
+    assert result["confirmed"] is True
+    assert result["status"] == "dom_delta_user_turn_confirmed"
+    assert result["reason"] == "new_role_specific_user_turn_matches_prompt"
+    assert result["user_turn_count_delta"] == 1
+
+
+def test_post_submit_prompt_delta_rejects_plain_prompt_without_user_count_delta(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    state = {
+        "probes": [
+            {
+                "selector": '[data-message-author-role="user"]',
+                "count": 5,
+                "last_text_preview": "print echo 111",
+                "prompt_prefix_found": True,
+            }
+        ],
+        "generic_turns": {"probes": []},
+    }
+
+    result = client._post_submit_prompt_delta_from_user_state(
+        state,
+        prompt="print echo 111",
+        response_context={"conversation_user_turn_count": 5},
+    )
+
+    assert result["confirmed"] is False
+    assert result["status"] == "dom_delta_user_turn_not_confirmed"
+    assert result["reason"] == "no_new_prompt_matching_user_turn_delta"
+
+
+def test_post_submit_prompt_delta_accepts_generic_prompt_followed_by_assistant(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    state = {
+        "probes": [],
+        "generic_turns": {
+            "probes": [
+                {
+                    "selector": '[data-testid*="conversation-turn"]',
+                    "snippets": [
+                        {"index": 18, "text_preview": "print echo 111", "prompt_prefix_found": True},
+                        {"index": 19, "text_preview": "111"},
+                    ],
+                }
+            ]
+        },
+    }
+
+    result = client._post_submit_prompt_delta_from_user_state(
+        state,
+        prompt="print echo 111",
+        response_context={"conversation_user_turn_count": 5},
+    )
+
+    assert result["confirmed"] is True
+    assert result["status"] == "dom_delta_generic_turn_pair_confirmed"
+    assert result["reason"] == "generic_turn_prompt_followed_by_new_assistant_turn"
+
 def test_wait_for_submit_confirmation_accepts_stop_button_signal(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
