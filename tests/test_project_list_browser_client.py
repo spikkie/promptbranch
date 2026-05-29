@@ -5043,3 +5043,103 @@ def test_visibility_promotion_requires_confirmed_submit_and_visible_user_turn(tm
     )
     assert promoted is not None
     assert promoted["payload"]["ok"] is True
+
+
+def test_wait_for_composer_ready_before_fill_accepts_idle_send_ready(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms):
+            raise AssertionError("ready state should not wait")
+
+    async def fake_submit_state(page):
+        return {"send_ready": True, "stop_visible": False, "idle_visible": True}
+
+    async def fake_thinking_state(page):
+        return {"visible": False}
+
+    async def fake_interrupted_state(page):
+        return {"present": False}
+
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._probe_interrupted_answer_state = fake_interrupted_state
+
+    result = asyncio.run(client._wait_for_composer_ready_before_fill(DummyPage(), timeout_ms=50))
+
+    assert result["status"] == "composer_ready"
+    assert result["send_ready"] is True
+    assert result["stop_visible"] is False
+    assert result["blockers"] == []
+
+
+def test_wait_for_composer_ready_before_fill_rejects_stop_button(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms):
+            return None
+
+    async def fake_submit_state(page):
+        return {"send_ready": False, "stop_visible": True, "idle_visible": False}
+
+    async def fake_thinking_state(page):
+        return {"visible": False}
+
+    async def fake_interrupted_state(page):
+        return {"present": False}
+
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._probe_interrupted_answer_state = fake_interrupted_state
+
+    result = asyncio.run(
+        client._wait_for_composer_ready_before_fill(
+            DummyPage(),
+            timeout_ms=5,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["status"] in {"composer_not_ready", "composer_not_ready_before_fill"}
+    assert result["ok"] is False
+    assert "stop_button_visible" in result["blockers"]
+    assert "send_button_not_ready" in result["blockers"]
+
+
+def test_wait_for_composer_ready_before_fill_rejects_interrupted_answer(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms):
+            return None
+
+    async def fake_submit_state(page):
+        return {"send_ready": True, "stop_visible": False, "idle_visible": True}
+
+    async def fake_thinking_state(page):
+        return {"visible": False}
+
+    async def fake_interrupted_state(page):
+        return {"present": True, "reason": "interrupted_text_marker"}
+
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._probe_interrupted_answer_state = fake_interrupted_state
+
+    result = asyncio.run(
+        client._wait_for_composer_ready_before_fill(
+            DummyPage(),
+            timeout_ms=5,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["ok"] is False
+    assert "interrupted_answer_state" in result["blockers"]
