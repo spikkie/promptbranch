@@ -8912,6 +8912,15 @@ class ChatGPTBrowserClient:
         result["duration_seconds"] = round(time.monotonic() - started, 3)
         return result
 
+    def _keyboard_enter_retry_post_fill_settle_seconds(self) -> float:
+        raw_value = os.environ.get("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS")
+        if raw_value is None or str(raw_value).strip() == "":
+            return 8.0
+        try:
+            return max(0.0, float(str(raw_value).strip()))
+        except (TypeError, ValueError):
+            return 8.0
+
     async def _run_keyboard_submit_variant(
         self,
         page: Any,
@@ -8940,7 +8949,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.48_observational_only"
+        result["diagnostic_submit_path"] = "v0.0.278.53_observational_only"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
@@ -8950,18 +8959,6 @@ class ChatGPTBrowserClient:
         try:
             result["fill_attempted"] = True
             fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
-            fill_completed = time.monotonic()
-            result["fill_call_site_timing"] = {
-                "diagnostic_timing_path": "v0.0.278.52_call_site_only_fill_timing",
-                "started_at_monotonic": round(fill_started, 6),
-                "completed_at_monotonic": round(fill_completed, 6),
-                "duration_seconds": round(fill_completed - fill_started, 3),
-                "notes": [
-                    "call-site timing only",
-                    "_fill_chat_prompt internals are intentionally unmodified from v0.0.278.48",
-                    "no probes, waits, event listeners, or fill logic changes added",
-                ],
-            }
             result["fill_evidence"] = {
                 "method": fill_evidence.get("method"),
                 "requested_method": fill_evidence.get("requested_method"),
@@ -8971,26 +8968,14 @@ class ChatGPTBrowserClient:
             }
             result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
         except Exception as exc:
-            fill_completed = time.monotonic()
-            result["fill_call_site_timing"] = {
-                "diagnostic_timing_path": "v0.0.278.52_call_site_only_fill_timing",
-                "started_at_monotonic": round(fill_started, 6),
-                "completed_at_monotonic": round(fill_completed, 6),
-                "duration_seconds": round(fill_completed - fill_started, 3),
-                "notes": [
-                    "call-site timing only",
-                    "_fill_chat_prompt internals are intentionally unmodified from v0.0.278.48",
-                    "no probes, waits, event listeners, or fill logic changes added",
-                ],
-            }
             result.update({
                 "status": "fill_failed",
                 "error": type(exc).__name__,
-                "fill_seconds": result["fill_call_site_timing"]["duration_seconds"],
+                "fill_seconds": round(time.monotonic() - fill_started, 3),
                 "duration_seconds": round(time.monotonic() - started, 3),
             })
             return result
-        result["fill_seconds"] = result["fill_call_site_timing"]["duration_seconds"]
+        result["fill_seconds"] = round(time.monotonic() - fill_started, 3)
         result["after_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
@@ -8999,6 +8984,31 @@ class ChatGPTBrowserClient:
         if not result["fill_verified"]:
             result.update({"status": "fill_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
+        if variant == "keyboard_enter_refill_retry":
+            requested_settle_seconds = self._keyboard_enter_retry_post_fill_settle_seconds()
+            settle_started = time.monotonic()
+            if requested_settle_seconds > 0:
+                self._log(
+                    "submit",
+                    "settling after verified retry fill before Enter dispatch",
+                    variant=variant,
+                    post_fill_settle_seconds=requested_settle_seconds,
+                )
+                await asyncio.sleep(requested_settle_seconds)
+            settle_completed = time.monotonic()
+            result["post_fill_settle"] = {
+                "diagnostic_timing_path": "v0.0.278.53_retry_post_fill_settle",
+                "requested_seconds": round(requested_settle_seconds, 3),
+                "observed_seconds": round(settle_completed - settle_started, 3),
+                "applied": requested_settle_seconds > 0,
+                "notes": [
+                    "explicit post-fill settle before retry Enter",
+                    "_fill_chat_prompt internals are unmodified from v0.0.278.48",
+                    "no additional probes, event listeners, or dispatch changes added",
+                ],
+            }
+            result["post_fill_settle_seconds"] = round(requested_settle_seconds, 3)
+            result["post_fill_settle_observed_seconds"] = round(settle_completed - settle_started, 3)
         observer = self._start_submit_network_observer(page, prompt=prompt)
         result["pre_dispatch_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
