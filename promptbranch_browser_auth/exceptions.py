@@ -6,6 +6,44 @@ class ManualLoginRequiredError(AuthenticationError):
     """Raised when a visible browser is required to complete login."""
 
 
+
+
+class AuthChallengeRequiredError(AuthenticationError):
+    """Raised when login reaches a provider challenge that automation must not bypass."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        challenge_type: str = "unknown",
+        page_url: str | None = None,
+        page_title: str | None = None,
+        text_preview: str | None = None,
+        artifact_paths: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.challenge_type = challenge_type
+        self.page_url = page_url
+        self.page_title = page_title
+        self.text_preview = text_preview
+        self.artifact_paths = artifact_paths or {}
+
+    def to_payload(self) -> dict:
+        return {
+            "ok": False,
+            "status": "auth_challenge_required",
+            "error": str(self),
+            "error_type": type(self).__name__,
+            "timeout_layer": "authentication",
+            "challenge_type": self.challenge_type,
+            "manual_action_required": True,
+            "page_url": self.page_url,
+            "page_title": self.page_title,
+            "text_preview": self.text_preview,
+            "artifact_paths": self.artifact_paths,
+        }
+
+
 class ResponseTimeoutError(TimeoutError):
     """Raised when ChatGPT did not produce the expected output in time."""
 

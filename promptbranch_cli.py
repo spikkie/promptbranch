@@ -55,6 +55,7 @@ from promptbranch_mcp import (
 )
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
+    AuthChallengeRequiredError,
     BotChallengeError,
     ManualLoginRequiredError,
     BrowserProfileBusyError,
@@ -15080,9 +15081,9 @@ def make_parser() -> argparse.ArgumentParser:
         description=f"promptbranch v{CLI_VERSION}: stateful ChatGPT workflow CLI for browser automation or the service API.",
     )
     parser.add_argument("--project-url", default=os.getenv("CHATGPT_PROJECT_URL", DEFAULT_PROJECT_URL))
-    parser.add_argument("--email", default=os.getenv("CHATGPT_EMAIL"))
+    parser.add_argument("--email", default=(os.getenv("CHATGPT_EMAIL") or os.getenv("EMAIL")))
     parser.add_argument("--password", default=os.getenv("CHATGPT_PASSWORD"))
-    parser.add_argument("--password-file", default=os.getenv("CHATGPT_PASSWORD_FILE"))
+    parser.add_argument("--password-file", default=(os.getenv("CHATGPT_PASSWORD_FILE") or os.getenv("CHATGPT_PASSWORD_SECRET_FILE") or os.getenv("GOOGLE_PASSWORD_FILE") or os.getenv("PASSWORD_FILE")))
     parser.add_argument("--profile-dir", default=None, help=f"Path to browser profile. Defaults to nearest inherited {PROFILE_DIR_NAME} directory or ./{PROFILE_DIR_NAME}.")
     parser.add_argument("--headless", action="store_true", default=_env_flag("CHATGPT_HEADLESS", False))
     parser.add_argument("--use-playwright", action="store_true", help="Use playwright instead of patchright.")
@@ -16156,6 +16157,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         if handled is not None:
             return handled
         raise
+    except AuthChallengeRequiredError as exc:
+        payload = exc.to_payload()
+        if _json_output_requested(args):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"auth challenge required: {exc}", file=sys.stderr)
+            if payload.get("challenge_type"):
+                print(f"challenge_type={payload.get('challenge_type')}", file=sys.stderr)
+        return 10
     except ManualLoginRequiredError as exc:
         print(f"manual login required: {exc}", file=sys.stderr)
         return 10

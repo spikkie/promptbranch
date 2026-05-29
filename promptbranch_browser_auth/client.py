@@ -18,6 +18,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from .config import ChatGPTBrowserConfig
 from .exceptions import (
     AuthenticationError,
+    AuthChallengeRequiredError,
     BotChallengeError,
     BrowserContextUnavailableError,
     ManualLoginRequiredError,
@@ -4597,6 +4598,50 @@ class ChatGPTBrowserClient:
         login_button = await self._find_visible_locator(page, LOGIN_BUTTON_SELECTORS, label="login-button")
         login_count = 1 if login_button is not None else 0
         self._log("auth", "login button probe complete", selectors=LOGIN_BUTTON_SELECTORS, count=login_count)
+        direct_auth_login = await self._is_chatgpt_auth_login_page(page)
+        if not login_count and direct_auth_login:
+            self._log(
+                "auth",
+                "current ChatGPT /auth/login surface detected; starting provider login directly",
+                current_url=await self._safe_page_url(page),
+            )
+            if self.config.headless and not (self.config.email and self.config.password):
+                raise ManualLoginRequiredError(
+                    "Headless login without email/password is not supported for a fresh profile."
+                )
+            try:
+                auth_page = await self._resolve_google_entry_page(page, context)
+                await self._attempt_google_login(auth_page)
+            except AuthChallengeRequiredError:
+                raise
+            except ManualLoginRequiredError as exc:
+                self._log(
+                    "auth",
+                    "direct auth/login automation could not finish",
+                    error=str(exc),
+                    current_url=await self._safe_page_url(page),
+                )
+                if self.config.headless:
+                    raise
+                raise AuthChallengeRequiredError(
+                    str(exc),
+                    challenge_type="login_bootstrap_not_automatable",
+                    page_url=await self._safe_page_url(page),
+                    page_title=await self._safe_page_title(page),
+                    text_preview=await self._visible_text_preview(page),
+                ) from exc
+
+            if await self._wait_for_session_after_google(page, auth_page, context):
+                self._log("auth", "session detected after direct auth/login provider flow")
+                return True
+            raise AuthChallengeRequiredError(
+                "Login provider flow completed but ChatGPT session was not detected.",
+                challenge_type="post_login_session_not_detected",
+                page_url=await self._safe_page_url(page),
+                page_title=await self._safe_page_title(page),
+                text_preview=await self._visible_text_preview(page),
+            )
+
         if not login_count:
             if self.config.headless:
                 current_url = await self._safe_page_url(page)
@@ -4920,6 +4965,83 @@ class ChatGPTBrowserClient:
                 self._log("selector", "selector probe failed", label=label, selector=selector, error=str(exc))
         return None
 
+    async def _visible_text_preview(self, page: Any, *, limit: int = 700) -> str:
+        try:
+            text = await page.evaluate(
+                r'''
+                () => {
+                  const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+                  const body = document.body;
+                  return normalize(body && (body.innerText || body.textContent) || '');
+                }
+                '''
+            )
+        except Exception as exc:
+            self._log("auth", "visible text preview extraction failed", error=str(exc))
+            return ""
+        return re.sub(r"\s+", " ", str(text or "")).strip()[:limit]
+
+    async def _is_chatgpt_auth_login_page(self, page: Any) -> bool:
+        current_url = await self._safe_page_url(page)
+        normalized_url = (current_url or "").lower()
+        if "chatgpt.com/auth/login" in normalized_url or "/auth/login" in normalized_url:
+            return True
+        login_surface_selectors = [
+            'button:has-text("Continue with Google")',
+            'button:has-text("Continue with Apple")',
+            'button:has-text("Continue with phone")',
+            'input[type="email"]',
+            'input[name="email"]',
+            'input[autocomplete="username"]',
+            'input[placeholder*="Email" i]',
+        ]
+        for selector in login_surface_selectors:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                visible = False
+                if count:
+                    try:
+                        visible = await locator.first.is_visible(timeout=750)
+                    except Exception:
+                        visible = False
+                self._log("auth", "auth/login surface probe", selector=selector, count=count, visible=visible)
+                if count and visible:
+                    return True
+            except Exception as exc:
+                self._log("auth", "auth/login surface probe failed", selector=selector, error=str(exc))
+        return False
+
+    async def _classify_auth_challenge(
+        self,
+        page: Any,
+        *,
+        default_type: str = "provider_challenge",
+        message: str = "Authentication challenge requires operator approval.",
+    ) -> AuthChallengeRequiredError:
+        page_url = await self._safe_page_url(page)
+        page_title = await self._safe_page_title(page)
+        text_preview = await self._visible_text_preview(page)
+        lower = text_preview.lower()
+        challenge_type = default_type
+        if any(token in lower for token in ["2-step verification", "2-step", "two-step", "verification code", "authenticator"]):
+            challenge_type = "two_factor_verification"
+        elif any(token in lower for token in ["passkey", "security key"]):
+            challenge_type = "passkey_or_security_key"
+        elif any(token in lower for token in ["captcha", "recaptcha"]):
+            challenge_type = "captcha"
+        elif self._looks_like_google_device_prompt_text(text_preview) or self._is_google_device_prompt_url(page_url):
+            challenge_type = "google_device_prompt"
+        elif any(token in lower for token in ["verify it's you", "verify it’s you", "confirm it", "check your phone"]):
+            challenge_type = "identity_verification"
+        return AuthChallengeRequiredError(
+            message,
+            challenge_type=challenge_type,
+            page_url=page_url,
+            page_title=page_title,
+            text_preview=text_preview,
+        )
+
     async def _dismiss_cookie_banner(self, page: Any) -> bool:
         self._log("cookie", "probing cookie banner controls")
         for selector in COOKIE_BANNER_SELECTORS:
@@ -5003,12 +5125,41 @@ class ChatGPTBrowserClient:
 
             await page.wait_for_timeout(1_000)
 
+        if not clicked_selector and self.config.email:
+            chatgpt_email_input = await self._find_visible_locator(
+                page,
+                [
+                    'input[type="email"]',
+                    'input[name="email"]',
+                    'input[autocomplete="username"]',
+                    'input[placeholder*="Email" i]',
+                ],
+                label="chatgpt-auth-email-input",
+                timeout_ms=1_000,
+            )
+            if chatgpt_email_input is not None:
+                self._log("google", "filling ChatGPT auth/login email field before provider redirect")
+                await chatgpt_email_input.fill(self.config.email)
+                continue_button = await self._find_visible_locator(
+                    page,
+                    [
+                        'button:has-text("Continue")',
+                        'button[type="submit"]',
+                    ],
+                    label="chatgpt-auth-continue-button",
+                    timeout_ms=1_000,
+                )
+                if continue_button is None:
+                    raise ManualLoginRequiredError("ChatGPT auth/login email field was visible, but Continue button was not found.")
+                await continue_button.click(timeout=5_000)
+                clicked_selector = "chatgpt-auth-email-continue"
+
         if not clicked_selector:
             raise ManualLoginRequiredError(
-                "The Google sign-in button was not found automatically."
+                "The Google sign-in button or ChatGPT auth email entry was not found automatically."
             )
 
-        self._log("google", "google entry button clicked", selector=clicked_selector)
+        self._log("google", "google/auth entry action completed", selector=clicked_selector)
 
         deadline = asyncio.get_running_loop().time() + 15
         last_seen_url = await self._safe_page_url(page)
@@ -5352,8 +5503,10 @@ class ChatGPTBrowserClient:
             visibility_timeout_ms=1_000,
         )
         if password_input is None:
-            raise ManualLoginRequiredError(
-                "Password input did not appear. Google likely requires a manual challenge step."
+            raise await self._classify_auth_challenge(
+                google_page,
+                default_type="password_step_not_visible",
+                message="Password input did not appear. Google likely requires an additional verification step.",
             )
 
         self._log("google", "password input became visible")
@@ -5379,10 +5532,12 @@ class ChatGPTBrowserClient:
                         visible = False
                 self._log("google", "challenge indicator probe", selector=selector, count=count, visible=visible)
                 if count and visible:
-                    raise ManualLoginRequiredError(
-                        "Google requested additional verification. Complete it manually in headed mode."
+                    raise await self._classify_auth_challenge(
+                        google_page,
+                        default_type="google_additional_verification",
+                        message="Google requested additional verification.",
                     )
-            except ManualLoginRequiredError:
+            except (ManualLoginRequiredError, AuthChallengeRequiredError):
                 raise
             except Exception as exc:
                 self._log("google", "challenge probe failed", selector=selector, error=str(exc))
@@ -5418,10 +5573,14 @@ class ChatGPTBrowserClient:
         end_time = asyncio.get_running_loop().time() + deadline_seconds
         self._log("manual-login", "waiting for manual login", timeout_seconds=deadline_seconds)
         iteration = 0
+        last_navigation_time = 0.0
         while asyncio.get_running_loop().time() < end_time:
             iteration += 1
+            current_loop_time = asyncio.get_running_loop().time()
+
             if auth_page is not None:
-                auth_page_url = await self._safe_page_url(auth_page)
+                auth_page_closed = bool(auth_page.is_closed()) if hasattr(auth_page, "is_closed") else False
+                auth_page_url = "<closed>" if auth_page_closed else await self._safe_page_url(auth_page)
                 page_url = await self._safe_page_url(page)
                 self._log(
                     "manual-login",
@@ -5429,30 +5588,46 @@ class ChatGPTBrowserClient:
                     iteration=iteration,
                     page_url=page_url,
                     auth_page_url=auth_page_url,
-                    auth_page_closed=auth_page.is_closed() if hasattr(auth_page, "is_closed") else None,
+                    auth_page_closed=auth_page_closed,
                 )
-                if auth_page_url != "<url-unavailable>" and self._is_google_auth_url(auth_page_url):
-                    await self._detect_and_log_google_device_prompt(auth_page, stage="manual-login", iteration=iteration)
+                if (not auth_page_closed) and auth_page_url != "<url-unavailable>" and self._is_google_auth_url(auth_page_url):
+                    if await self._detect_and_log_google_device_prompt(auth_page, stage="manual-login", iteration=iteration):
+                        raise await self._classify_auth_challenge(
+                            auth_page,
+                            default_type="google_device_prompt",
+                            message="Google requested an additional verification challenge.",
+                        )
                     self._log(
                         "manual-login",
-                        "google auth page still active; waiting on Google/browser-mediated confirmation before polling ChatGPT",
+                        "google auth page still active; polling current auth page without re-navigation",
                         iteration=iteration,
                         auth_page_url=auth_page_url,
                     )
                     await asyncio.sleep(2)
                     continue
+
             try:
                 if hasattr(page, "is_closed") and page.is_closed():
                     self._log("manual-login", "chatgpt page is closed during manual-login poll", iteration=iteration)
                     raise AuthenticationError("ChatGPT page closed while waiting for manual login.")
-                await self._goto(page, self.config.project_url, label=f"manual-login-poll-{iteration}")
+                if await self._is_logged_in(page):
+                    self._log("manual-login", "manual login detected", iteration=iteration)
+                    return True
+                current_url = await self._safe_page_url(page)
+                if ("/auth/login" in current_url) or self._is_google_auth_url(current_url):
+                    self._log(
+                        "manual-login",
+                        "auth/login surface still active; not re-navigating during manual-login poll",
+                        iteration=iteration,
+                        current_url=current_url,
+                    )
+                elif current_loop_time - last_navigation_time >= 15.0:
+                    last_navigation_time = current_loop_time
+                    await self._goto(page, self.config.project_url, label=f"manual-login-poll-{iteration}")
             except AuthenticationError:
                 raise
             except Exception as exc:
-                self._log("manual-login", "navigation during manual-login poll failed", iteration=iteration, error=str(exc))
-            if await self._is_logged_in(page):
-                self._log("manual-login", "manual login detected", iteration=iteration)
-                return True
+                self._log("manual-login", "manual-login poll failed", iteration=iteration, error=str(exc))
             remaining = max(0.0, end_time - asyncio.get_running_loop().time())
             self._log("manual-login", "manual login not detected yet", iteration=iteration, seconds_remaining=round(remaining, 1))
             await asyncio.sleep(2)
