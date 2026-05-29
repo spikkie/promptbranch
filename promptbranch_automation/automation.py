@@ -53,6 +53,7 @@ def _resolve_password_file_path(explicit_password_file: Optional[str] = None) ->
     env_candidates = [
         explicit_password_file,
         os.getenv("CHATGPT_PASSWORD_FILE"),
+        os.getenv("CHATGPT_PASSWORD_SECRET_FILE"),
         os.getenv("GOOGLE_PASSWORD_FILE"),
         os.getenv("PASSWORD_FILE"),
     ]

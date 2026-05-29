@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
+    AuthChallengeRequiredError,
     BotChallengeError,
     ManualLoginRequiredError,
     BrowserProfileBusyError,
@@ -1115,6 +1116,22 @@ class ChatGPTAutomationService:
                     await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
                 except BrowserContextUnavailableError as exc:
                     logger.warning("ChatGPT browser launch failed: %s", exc)
+                    payload = exc.to_payload()
+                    payload.setdefault("action", "ask")
+                    payload.setdefault("answer", None)
+                    payload.setdefault("answer_text", "")
+                    payload.setdefault("answer_text_length", 0)
+                    payload.setdefault("partial_result", True)
+                    payload.setdefault("conversation_url", conversation_url or self.settings.project_url)
+                    payload.setdefault("submit_evidence", None)
+                    payload.setdefault("ask_phase_timings", {})
+                    timings = payload.get("ask_phase_timings")
+                    if isinstance(timings, dict):
+                        timings.setdefault("lock_wait_seconds", getattr(profile_lock, "last_waited_seconds", 0.0))
+                        timings.setdefault("submit_method", None)
+                    return payload
+                except AuthChallengeRequiredError as exc:
+                    logger.warning("ChatGPT authentication challenge required: %s", exc)
                     payload = exc.to_payload()
                     payload.setdefault("action", "ask")
                     payload.setdefault("answer", None)

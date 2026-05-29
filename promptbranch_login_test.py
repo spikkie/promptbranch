@@ -4,6 +4,8 @@ import json
 import os
 import traceback
 
+from dotenv import load_dotenv
+
 from promptbranch_automation import ChatGPTAutomation
 
 
@@ -18,8 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--email",
-        default=os.getenv("EMAIL"),
-        help="Google account email. Defaults to EMAIL.",
+        default=(os.getenv("EMAIL") or os.getenv("CHATGPT_EMAIL")),
+        help="Google account email. Defaults to EMAIL or CHATGPT_EMAIL.",
     )
     parser.add_argument(
         "--password",
@@ -106,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def main() -> int:
+    load_dotenv(".env", override=False)
     args = build_parser().parse_args()
     if not args.url:
         raise SystemExit("Missing --url or CHATGPT_PROJECT_URL")

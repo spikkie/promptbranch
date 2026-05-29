@@ -5237,3 +5237,104 @@ def test_wait_for_composer_ready_before_fill_rejects_interrupted_answer(tmp_path
 
     assert result["ok"] is False
     assert "interrupted_answer_state" in result["blockers"]
+
+
+def test_ensure_logged_in_starts_provider_login_from_auth_login_surface(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    events: list[str] = []
+
+    class DummyContext:
+        pages = []
+
+    class DummyPage:
+        pass
+
+    page = DummyPage()
+
+    async def fake_goto(_page, _url, label=None):
+        events.append(f"goto:{label}")
+
+    checks = iter([False, False])
+
+    async def fake_is_logged_in(_page):
+        return next(checks)
+
+    async def fake_wait_challenge(_page, label=None):
+        events.append(f"challenge:{label}")
+
+    async def fake_dismiss(_page):
+        events.append("dismiss")
+        return False
+
+    async def fake_find(_page, selectors, label=None, timeout_ms=None):
+        if label == "login-button":
+            return None
+        raise AssertionError(f"unexpected locator probe: {label}")
+
+    async def fake_auth_login(_page):
+        events.append("auth_login_detected")
+        return True
+
+    async def fake_resolve(_page, _context):
+        events.append("resolve_provider")
+        return _page
+
+    async def fake_attempt(_auth_page):
+        events.append("attempt_provider_login")
+
+    async def fake_wait_session(_page, _auth_page, _context):
+        events.append("wait_session")
+        return True
+
+    client._goto = fake_goto
+    client._is_logged_in = fake_is_logged_in
+    client._wait_for_challenge_resolution = fake_wait_challenge
+    client._dismiss_cookie_banner = fake_dismiss
+    client._find_visible_locator = fake_find
+    client._is_chatgpt_auth_login_page = fake_auth_login
+    client._resolve_google_entry_page = fake_resolve
+    client._attempt_google_login = fake_attempt
+    client._wait_for_session_after_google = fake_wait_session
+
+    import asyncio
+
+    assert asyncio.run(client.ensure_logged_in(page, DummyContext())) is True
+    assert events == [
+        "goto:initial-auth-check",
+        "challenge:initial-auth-check",
+        "dismiss",
+        "auth_login_detected",
+        "resolve_provider",
+        "attempt_provider_login",
+        "wait_session",
+    ]
+
+
+def test_classify_auth_challenge_detects_two_factor(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        pass
+
+    page = DummyPage()
+
+    async def fake_url(_page):
+        return "https://accounts.google.com/signin/challenge"
+
+    async def fake_title(_page):
+        return "Verify it’s you"
+
+    async def fake_text(_page, *, limit=700):
+        return "2-Step Verification Enter the verification code"
+
+    client._safe_page_url = fake_url
+    client._safe_page_title = fake_title
+    client._visible_text_preview = fake_text
+
+    import asyncio
+
+    exc = asyncio.run(client._classify_auth_challenge(page, default_type="provider_challenge", message="challenge"))
+    payload = exc.to_payload()
+    assert payload["status"] == "auth_challenge_required"
+    assert payload["challenge_type"] == "two_factor_verification"
+    assert payload["manual_action_required"] is True

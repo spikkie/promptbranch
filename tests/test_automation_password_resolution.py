@@ -29,3 +29,12 @@ def test_resolve_password_file_path_returns_first_candidate_when_nothing_exists(
     monkeypatch.setenv("CHATGPT_PASSWORD_FILE", str(missing))
 
     assert _resolve_password_file_path() == str(missing.resolve())
+
+
+def test_resolve_password_file_path_accepts_chatgpt_password_secret_file(monkeypatch, tmp_path):
+    secret_file = tmp_path / "password.txt"
+    secret_file.write_text("secret\n", encoding="utf-8")
+    monkeypatch.delenv("CHATGPT_PASSWORD_FILE", raising=False)
+    monkeypatch.setenv("CHATGPT_PASSWORD_SECRET_FILE", str(secret_file))
+
+    assert _resolve_password_file_path() == str(secret_file.resolve())
