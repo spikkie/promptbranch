@@ -3320,6 +3320,18 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
     assert result["verification_passed"] is True
     assert page.clipboard_text == "hello STALE_GUARD_LIVE_OK_1"
     assert "Control+V" in page.keyboard.pressed
+    assert result["timing_decomposition"]["diagnostic_fill_path"] == "v0.0.278.49_retry_fill_timing_decomposition_only"
+    assert result["timing_decomposition"]["phase_order"] == ["trusted_paste_attempt", "verify_trusted_paste"]
+    assert "trusted_paste_attempt" in result["timing_decomposition"]["phase_timings"]
+    assert "verify_trusted_paste" in result["timing_decomposition"]["phase_timings"]
+    assert result["attempts"][0]["phase_order"] == [
+        "clear_composer",
+        "clipboard_grant_permissions",
+        "clipboard_write_text",
+        "keyboard_control_v",
+        "post_paste_dwell",
+    ]
+    assert result["attempts"][0]["clear_evidence"]["phase_order"] == ["focus_click", "control_a", "backspace"]
 
 
 
@@ -4980,7 +4992,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.49_observational_only_prepare_excluded"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
