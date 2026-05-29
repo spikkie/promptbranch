@@ -3920,42 +3920,6 @@ def test_keyboard_enter_primary_submit_enabled_defaults_on_and_has_escape_hatch(
     monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "1")
     assert client._keyboard_enter_primary_submit_enabled() is True
 
-def test_keyboard_enter_commit_retry_disabled_by_default_and_has_escape_hatch(tmp_path: Path, monkeypatch) -> None:
-    client = _make_client(tmp_path)
-
-    monkeypatch.delenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", raising=False)
-    assert client._keyboard_enter_commit_retry_enabled() is False
-
-    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "1")
-    assert client._keyboard_enter_commit_retry_enabled() is True
-
-    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "0")
-    assert client._keyboard_enter_commit_retry_enabled() is False
-
-
-def test_unconfirmed_primary_keyboard_enter_allows_answer_wait(tmp_path: Path) -> None:
-    client = _make_client(tmp_path)
-
-    assert client._allow_answer_wait_after_keyboard_enter_once({
-        "submit_method": "keyboard_enter",
-        "submit_keyboard_enter_primary_used": True,
-        "submit_keyboard_enter_dispatch_key": "Enter",
-        "submit_keyboard_enter_retry_used": False,
-        "submit_keyboard_enter_refill_used": False,
-        "send_button_retry_used": False,
-    }) is True
-    assert client._allow_answer_wait_after_keyboard_enter_once({
-        "submit_method": "keyboard_enter",
-        "submit_keyboard_enter_primary_used": True,
-        "submit_keyboard_enter_dispatch_key": "Enter",
-        "submit_keyboard_enter_retry_used": True,
-    }) is False
-    assert client._allow_answer_wait_after_keyboard_enter_once({
-        "submit_method": "button",
-        "submit_keyboard_enter_primary_used": False,
-    }) is False
-
-
 def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
@@ -4044,8 +4008,7 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
 
 
 
-def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "1")
+def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
 
@@ -5017,7 +4980,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.57_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
