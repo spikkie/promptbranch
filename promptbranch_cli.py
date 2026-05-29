@@ -6459,13 +6459,25 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         return _emit_protocol_result(args, result)
 
     response = _enrich_ask_response_with_canonical_text(response)
-    if args.json:
-        print(json.dumps(response, indent=2, ensure_ascii=False))
+    ok = True
+    if isinstance(response, dict) and response.get("ok") is False:
+        ok = False
+
+    if getattr(args, "text", False):
+        if not ok:
+            error = response.get("error") if isinstance(response, dict) else None
+            status = response.get("status") if isinstance(response, dict) else None
+            print(error or status or "ask failed", file=sys.stderr)
+            return 1
+        answer, _ = _split_ask_response(response)
+        print(_canonical_answer_text(answer))
         return 0
 
-    answer, _ = _split_ask_response(response)
-    print(_canonical_answer_text(answer))
-    return 0
+    # v0.0.278.60: structured JSON result output is the default transport
+    # contract for pb ask.  --json remains a request-mode flag for strict
+    # assistant JSON, while --text opts into the legacy answer-only output.
+    print(json.dumps(response, indent=2, ensure_ascii=False))
+    return 0 if ok else 1
 
 
 def _cli_command_name(argv0: Optional[str] = None) -> str:
@@ -6536,7 +6548,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
         "version": [],
-        "ask": ["--file", "--json", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
+        "ask": ["--file", "--attach", "--attachment", "--json", "--expect-json", "--text", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--baseline-artifact", "--baseline-version", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
@@ -15826,7 +15838,8 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--prompt-file", help="Read additional prompt text from a UTF-8 file. If prompt text is also provided, both are joined with a blank line.")
     ask.add_argument("--file", help="Legacy single chat attachment. Prefer repeatable --attach for multiple files.")
     ask.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
-    ask.add_argument("--json", action="store_true", help="Request strict JSON mode.")
+    ask.add_argument("--json", "--expect-json", dest="json", action="store_true", help="Request strict assistant JSON. Structured JSON result output is the default.")
+    ask.add_argument("--text", action="store_true", help="Print only the canonical answer text on success. Failures still exit non-zero and print an error to stderr.")
     ask.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
     ask.add_argument("--protocol", action="store_true", help="Wrap the prompt in a Promptbranch ask.request envelope.")
     ask.add_argument("--from-current-baseline", action="store_true", help="Build protocol artifact fields from pb artifact current. Currently implied by --protocol.")
