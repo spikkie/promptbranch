@@ -1,3 +1,4 @@
+
 .promptbranch-release.yml
 .promptbranch/skills/promptbranch-final-mvp/SKILL.md
 README.md
@@ -142,5 +143,6 @@ docs/release-v0.0.278.34.md
 docs/release-v0.0.278.37.md
 docs/release-v0.0.278.39.md
 docs/release-v0.0.278.40.md
-docs/release-v0.0.278.45.md
+
+docs/release-v0.0.278.46.md
 docs/release-v0.0.278.42.md

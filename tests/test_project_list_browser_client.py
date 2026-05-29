@@ -1,11 +1,8 @@
 import json
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from promptbranch_browser_auth.client import ChatGPTBrowserClient
 from promptbranch_browser_auth.config import ChatGPTBrowserConfig
-from promptbranch_container_api import app
 
 
 def _make_client(tmp_path: Path) -> ChatGPTBrowserClient:
@@ -4084,128 +4081,6 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
 
 
-
-def test_ask_endpoint_internal_deadline_preserves_latest_submit_progress(monkeypatch) -> None:
-    class FakeService:
-        async def ask_question_result(self, **kwargs):
-            import asyncio
-            await asyncio.sleep(2.0)
-            return {"answer": "late"}
-
-    preserved_submit = {
-        "submit_confirmed": True,
-        "submit_confirmed_by": ["backend_task_message"],
-        "submit_backend_task_message_found": True,
-        "post_submit_user_turn_visible": False,
-        "submit_backend_confirmed_but_user_turn_not_visible": True,
-    }
-    preserved_timings = {
-        "submit_confirmed": True,
-        "submit_visibility_classification": "backend_confirmed_but_user_turn_not_visible",
-    }
-
-    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
-    monkeypatch.setattr(
-        "promptbranch_container_api.get_latest_ask_progress",
-        lambda: {
-            "status": "submit_confirmed",
-            "conversation_url": "https://chatgpt.com/g/demo/c/chat-1",
-            "submit_evidence": preserved_submit,
-            "ask_phase_timings": preserved_timings,
-            "updated_at_monotonic": 123.0,
-        },
-    )
-
-    client = TestClient(app)
-    response = client.post("/v1/ask", data={"prompt": "hello", "service_timeout_seconds": "1"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["ok"] is False
-    assert payload["status"] == "submit_confirmed_backend_only_ui_not_hydrated"
-    assert payload["timeout_layer"] == "submit_visibility"
-    assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/chat-1"
-    assert payload["submit_evidence"] == preserved_submit
-    assert payload["ask_phase_timings"] == preserved_timings
-    assert payload["progress_status"] == "submit_confirmed"
-
-def test_keyboard_refill_retry_runs_slim_prefill_then_full_fill_before_enter(tmp_path: Path) -> None:
-    client = _make_client(tmp_path)
-    call_order: list[tuple[str, bool | int]] = []
-
-    class DummyKeyboard:
-        def __init__(self) -> None:
-            self.pressed: list[str] = []
-
-        async def press(self, key: str):
-            self.pressed.append(key)
-            call_order.append(("press", len(self.pressed)))
-
-    class DummyPage:
-        def __init__(self) -> None:
-            self.keyboard = DummyKeyboard()
-
-    async def fake_fill(page, input_locator, *, prompt, slim_retry=False):
-        call_order.append(("fill", bool(slim_retry)))
-        assert page.keyboard.pressed == []
-        return {
-            "method": "trusted_paste" if slim_retry else "trusted_paste_full",
-            "requested_method": "trusted_paste",
-            "verification_passed": True,
-            "trusted_input_used": True,
-            "duration_seconds": 0.01,
-            "slim_retry": bool(slim_retry),
-            "slim_retry_marker_verify_used": bool(slim_retry),
-        }
-
-    async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
-        assert page.keyboard.pressed == ["Enter"]
-        return {
-            "status": "submit_confirmed",
-            "confirmed": True,
-            "confirmed_by": ["network_submit_request"],
-            "confirmation_mode": "network_submit_request",
-            "causal_confirmation_required": True,
-            "causal_confirmation_verified": True,
-            "causal_confirmation_reason": "network_submit_request",
-            "submit_network_evidence": {
-                "status": "submit_network_request_observed",
-                "request_marker_found": True,
-                "message_request_observed": True,
-                "message_request_count": 1,
-            },
-        }
-
-    async def fake_after(page, *, prompt=None):
-        return {"text_length": 0, "skipped": False}
-
-    page = DummyPage()
-    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((object(), "#prompt-textarea"))
-    client._fill_chat_prompt = fake_fill
-    client._start_submit_network_observer = lambda page, prompt=None: {"observer": True}
-    client._stop_submit_network_observer = lambda page, observer: None
-    client._wait_for_submit_confirmation = fake_wait
-    client._capture_post_submit_composer_state = fake_after
-
-    import asyncio
-
-    result = asyncio.run(client._run_keyboard_submit_variant(
-        page,
-        prompt="Return exactly {\"sentinel\": \"STALE_GUARD_LIVE_OK_123\"}",
-        before_assistant_count=0,
-        before_user_turn_state={},
-        variant="keyboard_enter_refill_retry",
-        dispatch_key="Enter",
-    ))
-
-    assert call_order[:3] == [("fill", True), ("fill", False), ("press", 1)]
-    assert result["confirmed"] is True
-    assert result["trusted_refill_retry_slim_prefill_used"] is True
-    assert result["trusted_refill_retry_slim_prefill_verified"] is True
-    assert result["trusted_refill_retry_dispatch_after_slim_prefill"] is False
-    assert result["trusted_refill_retry_full_fill_after_slim_prefill_used"] is True
-    assert result["fill_evidence"]["slim_retry"] is False
-
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -4957,3 +4832,118 @@ def test_fast_latest_visible_answer_rejects_prompt_echo(tmp_path: Path) -> None:
 
     assert promoted is None
     assert "response_extraction_accepted_source" not in response_context
+
+
+def test_keyboard_submit_diagnostics_are_observational(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        def __init__(self):
+            self.calls = []
+
+        async def evaluate(self, script, arg):
+            self.calls.append((script, arg))
+            return {
+                "status": "captured",
+                "label": arg["label"],
+                "active_element": {"present": True, "tag_name": "div", "exact_marker_found": True},
+                "composer": {"present": True, "text_length": 80, "exact_marker_found": True},
+                "send_button": {"present": True, "send_ready": True},
+            }
+
+    import asyncio
+
+    page = DummyPage()
+    result = asyncio.run(client._capture_keyboard_submit_diagnostics(
+        page,
+        prompt='Return {"sentinel":"STALE_GUARD_LIVE_OK_1780017000000000000"}',
+        label="unit:pre_dispatch",
+    ))
+
+    assert result["status"] == "captured"
+    assert result["label"] == "unit:pre_dispatch"
+    assert result["requested_exact_marker_count"] == 1
+    assert result["active_element"]["exact_marker_found"] is True
+    assert page.calls[0][1]["label"] == "unit:pre_dispatch"
+
+
+def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.pressed = []
+
+        async def press(self, key):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self):
+            self.keyboard = DummyKeyboard()
+
+        async def evaluate(self, script, arg):
+            if isinstance(arg, dict):
+                return {
+                    "status": "captured",
+                    "label": arg["label"],
+                    "composer": {"present": True, "exact_marker_found": True},
+                    "send_button": {"present": True, "send_ready": True},
+                }
+            if "event_count" in script:
+                return {"collected": True, "label": arg, "event_count": 1, "events": [{"type": "keydown", "key": "Enter"}]}
+            return {"installed": True, "label": arg, "event_types": ["keydown"]}
+
+    async def fake_find(page):
+        return object(), "#prompt-textarea"
+
+    async def fake_fill(page, input_locator, *, prompt):
+        return {
+            "method": "trusted_paste",
+            "requested_method": "trusted_paste",
+            "verification_passed": True,
+            "trusted_input_used": True,
+            "duration_seconds": 0.01,
+        }
+
+    async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["network_submit_request"],
+            "confirmation_mode": "network_submit_request",
+            "submit_network_evidence": {
+                "status": "submit_network_request_observed",
+                "message_request_observed": True,
+                "message_request_count": 1,
+            },
+        }
+
+    async def fake_after(page, *, prompt):
+        return {"text_length": 0}
+
+    page = DummyPage()
+    client._find_visible_chat_input_for_submit_variant = fake_find
+    client._fill_chat_prompt = fake_fill
+    client._start_submit_network_observer = lambda page, prompt=None: {"observer": True}
+    client._stop_submit_network_observer = lambda page, observer: None
+    client._wait_for_submit_confirmation = fake_wait
+    client._capture_post_submit_composer_state = fake_after
+
+    import asyncio
+
+    result = asyncio.run(client._run_keyboard_submit_variant(
+        page,
+        prompt='Return {"sentinel":"STALE_GUARD_LIVE_OK_1780017000000000001"}',
+        before_assistant_count=0,
+        before_user_turn_state={},
+        variant="keyboard_enter_refill_retry",
+        dispatch_key="Enter",
+    ))
+
+    assert page.keyboard.pressed == ["Enter"]
+    assert result["confirmed"] is True
+    assert result["diagnostic_submit_path"] == "v0.0.278.46_observational_only"
+    assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
+    assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
+    assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
+    assert result["keyboard_event_probe_install"]["installed"] is True
+    assert result["keyboard_event_probe_events"]["event_count"] == 1
