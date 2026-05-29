@@ -1764,7 +1764,31 @@ class ChatGPTBrowserClient:
         await self._wait_for_rate_limit_modal_to_clear(page, label="ask-question-before-composer-click")
         mark_phase("rate_limit_wait_seconds", phase_started)
 
-        self._log("composer", "chat input resolved; clicking")
+        phase_started = time.monotonic()
+        composer_ready_evidence = await self._wait_for_composer_ready_before_fill(page)
+        mark_phase("composer_ready_before_fill_seconds", phase_started)
+        phase_timings["composer_ready_before_fill_status"] = composer_ready_evidence.get("status")
+        phase_timings["composer_ready_before_fill_blockers"] = composer_ready_evidence.get("blockers")
+        phase_timings["composer_ready_before_fill_send_ready"] = composer_ready_evidence.get("send_ready")
+        phase_timings["composer_ready_before_fill_stop_visible"] = composer_ready_evidence.get("stop_visible")
+        if composer_ready_evidence.get("status") != "composer_ready":
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            result = {
+                "ok": False,
+                "action": "ask",
+                "status": "composer_not_ready_before_fill",
+                "error": "composer was not ready before fill; refusing to type into a running or interrupted composer",
+                "error_type": "composer_not_ready_before_fill",
+                "timeout_layer": "composer_ready_before_fill",
+                "conversation_url": target_url if self._is_conversation_url(target_url) else None,
+                "composer_ready_evidence": composer_ready_evidence,
+                "partial_result": True,
+                "ask_phase_timings": phase_timings,
+            }
+            self._record_ask_progress(**result)
+            return result
+
+        self._log("composer", "chat input resolved and composer ready; clicking")
         phase_started = time.monotonic()
         await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
         mark_phase("composer_click_seconds", phase_started)
@@ -4596,6 +4620,105 @@ class ChatGPTBrowserClient:
                 self._log("composer", "chat input selector wait failed", selector=selector, error=str(exc))
                 last_error = exc
         raise ResponseTimeoutError("Chat input did not become visible") from last_error
+
+    async def _probe_interrupted_answer_state(self, page: Any) -> dict[str, Any]:
+        """Detect answer-interrupted UI that must settle before a new prompt is typed."""
+
+        started = time.monotonic()
+        script = '''
+() => {
+  function visible(el) {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    return !!(rect && rect.width > 0 && rect.height > 0 && (!style || (style.visibility !== "hidden" && style.display !== "none")));
+  }
+  const buttonSelectors = [
+    'button[aria-label*="Continue generating" i]',
+    'button[aria-label*="Regenerate" i]',
+    'button[aria-label*="Retry" i]'
+  ];
+  for (const selector of buttonSelectors) {
+    try {
+      const nodes = Array.from(document.querySelectorAll(selector));
+      const match = nodes.find(visible);
+      if (match) {
+        return {present: true, reason: "interrupted_control_visible", selector, text: String(match.innerText || match.textContent || "").slice(0, 160)};
+      }
+    } catch (err) {}
+  }
+  const turns = Array.from(document.querySelectorAll('[data-message-author-role="assistant"], [data-testid*="conversation-turn"], article, section'));
+  const last = turns.length ? turns[turns.length - 1] : null;
+  const text = last ? String(last.innerText || last.textContent || "") : "";
+  const lower = text.toLowerCase();
+  const markers = ["streaming interrupted", "response interrupted", "message interrupted", "generation interrupted"];
+  const marker = markers.find(m => lower.includes(m));
+  return {present: !!marker, reason: marker ? "interrupted_text_marker" : null, marker: marker || null, text_preview: text.slice(0, 220)};
+}
+'''
+        try:
+            result = await page.evaluate(script)
+            if not isinstance(result, dict):
+                result = {"present": False, "status": "unexpected_result", "value_type": type(result).__name__}
+        except Exception as exc:
+            result = {"present": False, "status": "probe_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
+        result["duration_seconds"] = round(time.monotonic() - started, 3)
+        return result
+
+    async def _wait_for_composer_ready_before_fill(
+        self,
+        page: Any,
+        *,
+        timeout_ms: int = 20_000,
+        poll_interval_ms: int = 500,
+    ) -> dict[str, Any]:
+        """Require a real idle/send-ready composer before mutating prompt text."""
+
+        started = time.monotonic()
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        attempt = 0
+        last_state: dict[str, Any] = {}
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            submit_state = await self._probe_submit_button_state(page)
+            thinking_state = await self._probe_thinking_state(page)
+            interrupted_state = await self._probe_interrupted_answer_state(page)
+            blockers: list[str] = []
+            if submit_state.get("stop_visible"):
+                blockers.append("stop_button_visible")
+            if not submit_state.get("send_ready"):
+                blockers.append("send_button_not_ready")
+            if thinking_state.get("visible"):
+                blockers.append("thinking_visible")
+            if interrupted_state.get("present"):
+                blockers.append("interrupted_answer_state")
+            last_state = {
+                "status": "composer_ready" if not blockers else "composer_not_ready",
+                "attempt": attempt,
+                "send_ready": bool(submit_state.get("send_ready")),
+                "stop_visible": bool(submit_state.get("stop_visible")),
+                "idle_visible": bool(submit_state.get("idle_visible")),
+                "blockers": blockers,
+                "submit_button": submit_state,
+                "thinking_state": thinking_state,
+                "interrupted_state": interrupted_state,
+            }
+            if not blockers:
+                last_state["duration_seconds"] = round(time.monotonic() - started, 3)
+                self._log("composer", "composer ready before fill", attempt=attempt, duration_seconds=last_state["duration_seconds"])
+                return last_state
+            self._log("composer", "composer not ready before fill", attempt=attempt, blockers=blockers)
+            remaining_ms = int(max(0, (deadline - asyncio.get_running_loop().time()) * 1000))
+            if remaining_ms <= 0:
+                break
+            await page.wait_for_timeout(min(poll_interval_ms, remaining_ms))
+
+        last_state.setdefault("status", "composer_not_ready_before_fill")
+        last_state["ok"] = False
+        last_state["timeout_ms"] = timeout_ms
+        last_state["attempt_count"] = attempt
+        last_state["duration_seconds"] = round(time.monotonic() - started, 3)
+        return last_state
 
 
     async def _wait_for_visible_locator(
