@@ -2458,7 +2458,7 @@ def test_wait_for_submit_confirmation_accepts_backend_commit_after_prepare(tmp_p
     assert result["backend_task_message_status"] == "backend_commit_after_prepare_found"
     assert result["attempts"][-1]["mode"] == "backend_commit_after_prepare"
 
-def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
+def test_submit_prompt_fast_one_shot_skips_button_path_and_slow_submit_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
     class DummyButton:
@@ -2479,12 +2479,22 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
         def first(self):
             return DummyButton()
 
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
     class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
         def locator(self, selector):
-            return DummyLocator()
+            raise AssertionError("fast one-shot submit must not probe the send button")
 
         async def wait_for_timeout(self, ms: int):
-            raise AssertionError("button path should not wait after first enabled selector")
+            raise AssertionError("fast one-shot submit must not run button/retry waits")
 
     async def fake_composer_state(page, *, prompt=None):
         return {
@@ -2521,24 +2531,28 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
     client._wait_for_submit_confirmation = fake_confirmation
     client._wait_for_user_turn_dom_evidence = fail_user_turn_dom
     client._capture_post_submit_composer_state = fail_post_submit_snapshot
+    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((None, None))
 
     import asyncio
 
-    result = asyncio.run(client._submit_prompt(DummyPage(), prompt="hello"))
+    page = DummyPage()
+    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
 
-    assert result["submit_method"] == "button"
-    assert result["submit_confirmed"] is True
-    assert result["submit_confirmed_by"] == ["stop_button"]
+    assert page.keyboard.pressed == ["Enter"]
+    assert result["submit_method"] == "keyboard_enter"
+    assert result["submit_strategy"] == "keyboard_enter_once"
+    assert result["submit_confirmed"] is None
+    assert result["submit_confirmed_by"] == []
+    assert result["submit_keyboard_enter_retry_used"] is False
     assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
     assert result["after_submit_composer_snapshot_seconds"] == 0.0
-    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
-    assert result["after_submit_snapshot_skipped_reason"] == "submit_confirmed_without_deep_debug"
-    assert result["after_composer"]["skipped"] is True
+    assert result["after_submit_snapshot_mode"] == "skipped_fast_one_shot_default"
+    assert result["after_submit_snapshot_skipped_reason"] == "default_path_does_not_run_submit_diagnostics"
     assert "submit_dispatch_to_confirmation_seconds" in result
     assert "submit_accounted_seconds" in result
     assert "submit_unaccounted_seconds" in result
     assert abs(result["submit_unaccounted_seconds"]) < 0.1
-    assert result["submit_wait_seconds"] >= result["submit_confirmation_seconds"]
+    assert result["submit_wait_seconds"] == result["enter_fallback_press_seconds"]
 
 
 def test_extract_last_text_from_selector_avoids_full_historical_evaluate_all(tmp_path: Path) -> None:
@@ -3997,18 +4011,20 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["submit_method"] == "keyboard_enter"
+    assert result["submit_strategy"] == "keyboard_enter_once"
     assert result["clicked"] is False
     assert result["enter_fallback_used"] is False
     assert result["submit_keyboard_enter_primary_used"] is True
-    assert result["submit_keyboard_enter_submit_confirmed"] is True
+    assert result["submit_keyboard_enter_submit_confirmed"] is None
     assert result["submit_keyboard_enter_fresh_answer_gate_required"] is True
-    assert result["submit_confirmed"] is True
-    assert result["submit_network_request_marker_found"] is True
-    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
+    assert result["submit_confirmed"] is None
+    assert result["submit_network_request_marker_found"] is None
+    assert result["submit_keyboard_enter_retry_used"] is False
+    assert result["after_submit_snapshot_mode"] == "skipped_fast_one_shot_default"
 
 
 
-def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:
+def test_submit_prompt_does_not_retry_or_refill_after_enter_in_default_path(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
 
@@ -4067,12 +4083,10 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
             },
         }
 
-    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key, dispatch_method="keyboard"):
+    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
         return {
             "variant": variant,
             "dispatch_key": dispatch_key,
-            "dispatch_method": dispatch_method,
-            "send_button_click_dispatch": {"clicked": dispatch_method == "send_button_click"},
             "confirmed": True,
             "network_status": "submit_network_request_observed",
             "confirmation": {
@@ -4115,124 +4129,14 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["submit_method"] == "keyboard_enter"
-    assert result["submit_keyboard_enter_retry_used"] is True
-    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_send_button_click_retry"
-    assert result["submit_keyboard_enter_retry_result"]["dispatch_method"] == "send_button_click"
-    assert result["submit_keyboard_enter_retry_result"]["send_button_click_dispatch"]["clicked"] is True
-    assert result["submit_confirmed"] is True
-    assert result["submit_confirmed_by"] == ["backend_task_message"]
-    assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
-
-
-def test_submit_prompt_retries_after_primary_prepare_only_fast_fail(tmp_path: Path) -> None:
-    client = _make_client(tmp_path)
-    observer = {"observer": "network"}
-
-    class DummyKeyboard:
-        def __init__(self) -> None:
-            self.pressed: list[str] = []
-
-        async def press(self, key: str):
-            self.pressed.append(key)
-
-    class DummyPage:
-        def __init__(self) -> None:
-            self.keyboard = DummyKeyboard()
-
-        def locator(self, selector):
-            raise AssertionError("input probing is monkeypatched for this test")
-
-        async def wait_for_timeout(self, ms: int):
-            return None
-
-    async def fake_composer_state(page, *, prompt=None):
-        return {
-            "contains_prompt_prefix": True,
-            "text_length": len(prompt or ""),
-            "submit_button": {"send_ready": True},
-        }
-
-    async def fake_count_assistant(page):
-        return 0
-
-    async def first_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None, prepare_only_fast_fail=False):
-        return {
-            "status": "submit_confirmation_not_observed",
-            "confirmed": False,
-            "confirmed_by": [],
-            "confirmation_mode": "submit_prepare_only_timeout",
-            "network_submit_request_observed": False,
-            "network_submit_request_status": "submit_prepare_without_message_commit",
-            "causal_confirmation_required": True,
-            "causal_confirmation_verified": False,
-            "causal_confirmation_reason": "submit_prepare_without_message_commit",
-            "duration_seconds": 0.1,
-            "submit_network_evidence": {
-                "status": "submit_prepare_without_message_commit",
-                "prepare_request_observed": True,
-                "prepare_request_count": 2,
-                "prepare_only": True,
-                "prepare_only_fast_fail_used": True,
-                "message_request_observed": False,
-                "message_request_count": 0,
-                "request_marker_found": False,
-            },
-            "backend_task_message_evidence": {
-                "post_prepare_commit_found": False,
-                "post_prepare_commit_status": "backend_commit_probe_skipped_due_to_prepare_fast_fail",
-            },
-        }
-
-    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key, dispatch_method="keyboard"):
-        return {
-            "variant": variant,
-            "dispatch_key": dispatch_key,
-            "dispatch_method": dispatch_method,
-            "send_button_click_dispatch": {"clicked": dispatch_method == "send_button_click"},
-            "confirmed": True,
-            "network_status": "submit_network_request_observed",
-            "confirmation": {
-                "status": "submit_confirmed",
-                "confirmed": True,
-                "confirmed_by": ["network_submit_request"],
-                "confirmation_mode": "network_submit_request",
-                "backend_task_message_found": False,
-                "causal_confirmation_required": True,
-                "causal_confirmation_verified": True,
-                "causal_confirmation_reason": "network_submit_request",
-                "network_submit_request_observed": True,
-                "network_submit_request_status": "submit_network_request_observed",
-                "submit_network_evidence": {
-                    "status": "submit_network_request_observed",
-                    "request_marker_found": True,
-                    "message_request_observed": True,
-                    "message_request_count": 1,
-                },
-                "backend_task_message_evidence": {},
-            },
-        }
-
-    page = DummyPage()
-    client._capture_composer_state = fake_composer_state
-    client._count_assistant_turns = fake_count_assistant
-    client._wait_for_submit_confirmation = first_confirmation
-    client._run_keyboard_submit_variant = retry_variant
-    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((None, None))
-    client._start_submit_network_observer = lambda page, prompt=None: observer
-    client._stop_submit_network_observer = lambda page, observer: None
-
-    import asyncio
-
-    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
-
-    assert page.keyboard.pressed == ["Enter"]
-    assert result["submit_keyboard_enter_retry_used"] is True
-    assert result["submit_keyboard_enter_retry_reason"] == "primary_prepare_only_fast_fail"
-    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_send_button_click_retry"
-    assert result["submit_keyboard_enter_retry_result"]["dispatch_method"] == "send_button_click"
-    assert result["submit_keyboard_enter_retry_result"]["send_button_click_dispatch"]["clicked"] is True
-    assert result["submit_confirmed"] is True
-    assert result["submit_confirmed_by"] == ["network_submit_request"]
+    assert result["submit_strategy"] == "keyboard_enter_once"
+    assert result["submit_keyboard_enter_retry_used"] is False
+    assert result["submit_keyboard_enter_retry_result"] is None
+    assert result["submit_keyboard_enter_refill_used"] is False
+    assert result["submit_retry_disabled_reason"] == "fast_one_shot_default_path"
+    assert result["submit_confirmed"] is None
+    assert result["submit_confirmed_by"] == []
+    assert result["submit_keyboard_enter_backend_commit_confirmed"] is None
 
 
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
@@ -5095,129 +4999,9 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.55_prepare_only_retry_route"
+    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
     assert result["keyboard_event_probe_install"]["installed"] is True
     assert result["keyboard_event_probe_events"]["event_count"] == 1
-
-
-
-def test_keyboard_submit_variant_can_dispatch_by_send_button_click(tmp_path: Path) -> None:
-    client = _make_client(tmp_path)
-
-    class DummyKeyboard:
-        def __init__(self):
-            self.pressed = []
-
-        async def press(self, key):
-            self.pressed.append(key)
-
-    class DummyButton:
-        def __init__(self):
-            self.clicked = False
-
-        async def is_visible(self, timeout=None):
-            return True
-
-        async def is_enabled(self, timeout=None):
-            return True
-
-        async def get_attribute(self, name):
-            if name == "aria-label":
-                return "Send prompt"
-            if name == "data-testid":
-                return "send-button"
-            return ""
-
-        async def click(self):
-            self.clicked = True
-
-    class DummyLocator:
-        def __init__(self, button):
-            self.first = button
-            self._button = button
-
-        async def count(self):
-            return 1
-
-        def nth(self, index):
-            return self._button
-
-    class DummyPage:
-        def __init__(self):
-            self.keyboard = DummyKeyboard()
-            self.button = DummyButton()
-
-        async def evaluate(self, script, arg):
-            if isinstance(arg, dict):
-                return {
-                    "status": "captured",
-                    "label": arg["label"],
-                    "composer": {"present": True, "exact_marker_found": True},
-                    "send_button": {"present": True, "send_ready": True},
-                }
-            return {"collected": True, "label": arg, "event_count": 0, "events": []}
-
-        def locator(self, selector):
-            if "send" in selector or "composer-submit-button" in selector:
-                return DummyLocator(self.button)
-            return DummyLocator(self.button)
-
-    async def fake_find(page):
-        return object(), "#prompt-textarea"
-
-    async def fake_fill(page, input_locator, *, prompt):
-        return {
-            "method": "trusted_paste",
-            "requested_method": "trusted_paste",
-            "verification_passed": True,
-            "trusted_input_used": True,
-            "duration_seconds": 0.01,
-        }
-
-    async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
-        return {
-            "confirmed": True,
-            "confirmed_by": ["network_submit_request"],
-            "confirmation_mode": "network_submit_request",
-            "submit_network_evidence": {
-                "status": "submit_network_request_observed",
-                "message_request_observed": True,
-                "message_request_count": 1,
-            },
-        }
-
-    async def fake_after(page, *, prompt):
-        return {"text_length": 0}
-
-    page = DummyPage()
-    client._find_visible_chat_input_for_submit_variant = fake_find
-    client._fill_chat_prompt = fake_fill
-    client._start_submit_network_observer = lambda page, prompt=None: {"observer": True}
-    client._stop_submit_network_observer = lambda page, observer: None
-    client._wait_for_submit_confirmation = fake_wait
-    client._capture_post_submit_composer_state = fake_after
-
-    import asyncio
-
-    result = asyncio.run(client._run_keyboard_submit_variant(
-        page,
-        prompt='Return {"sentinel":"STALE_GUARD_LIVE_OK_1780017000000000002"}',
-        before_assistant_count=0,
-        before_user_turn_state={},
-        variant="keyboard_enter_refill_send_button_click_retry",
-        dispatch_key="send_button_click",
-        dispatch_method="send_button_click",
-    ))
-
-    assert page.keyboard.pressed == []
-    assert page.button.clicked is True
-    assert result["confirmed"] is True
-    assert result["dispatch_method"] == "send_button_click"
-    assert result["dispatch_key"] == "send_button_click"
-    assert result["send_button_click_used"] is True
-    assert result["send_button_click_dispatch"]["clicked"] is True
-    assert result["send_button_click_dispatch"]["button_enabled"] is True
-    assert result["keyboard_event_probe_install"]["status"] == "skipped_send_button_click_dispatch"
