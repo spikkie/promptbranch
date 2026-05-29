@@ -145,5 +145,5 @@ docs/release-v0.0.278.39.md
 docs/release-v0.0.278.40.md
 
 docs/release-v0.0.278.48.md
-docs/release-v0.0.278.51.md
+docs/release-v0.0.278.52.md
 docs/release-v0.0.278.42.md

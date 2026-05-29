@@ -8502,45 +8502,19 @@ class ChatGPTBrowserClient:
 
     async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any) -> dict[str, Any]:
         evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None}
-        phase_timings: dict[str, float] = {}
-        phase_order: list[str] = []
-
-        def finish_phase(name: str, phase_started: float) -> None:
-            phase_timings[name] = round(time.monotonic() - phase_started, 3)
-            phase_order.append(name)
-
         try:
-            phase_started = time.monotonic()
             await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-trusted-refill", timeout_ms=5_000)
-            finish_phase("focus_click", phase_started)
-            phase_started = time.monotonic()
             await page.keyboard.press("Control+A")
-            finish_phase("control_a", phase_started)
             evidence["control_a"] = True
-            phase_started = time.monotonic()
             await page.keyboard.press("Backspace")
-            finish_phase("backspace", phase_started)
             evidence["backspace"] = True
         except Exception as exc:
             evidence["error"] = str(exc)
             self._log("composer", "trusted composer clear failed", error=str(exc))
-        evidence["monotonic_timing"] = {
-            "diagnostic_fill_path": "v0.0.278.51_monotonic_only_fill_timing",
-            "phase_timings": phase_timings,
-            "phase_order": phase_order,
-            "total_seconds": round(sum(phase_timings.values()), 3),
-        }
         return evidence
 
     async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
-        phase_timings: dict[str, float] = {}
-        phase_order: list[str] = []
-
-        def finish_phase(name: str, phase_started: float) -> None:
-            phase_timings[name] = round(time.monotonic() - phase_started, 3)
-            phase_order.append(name)
-
         evidence: dict[str, Any] = {
             "attempted": True,
             "clipboard_write_used": False,
@@ -8548,72 +8522,35 @@ class ChatGPTBrowserClient:
             "error": None,
         }
         try:
-            phase_started = time.monotonic()
-            clear_evidence = await self._clear_composer_for_trusted_input(page, input_locator)
-            finish_phase("clear_composer", phase_started)
-            evidence["clear_evidence"] = clear_evidence
+            await self._clear_composer_for_trusted_input(page, input_locator)
             context = getattr(page, "context", None)
             if context is not None and hasattr(context, "grant_permissions"):
-                phase_started = time.monotonic()
                 try:
                     await context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://chatgpt.com")
                     evidence["clipboard_permissions_granted"] = True
                 except Exception as exc:
                     evidence["clipboard_permissions_error"] = str(exc)
-                finish_phase("clipboard_grant_permissions", phase_started)
-            phase_started = time.monotonic()
             await page.evaluate("text => navigator.clipboard.writeText(text)", prompt)
-            finish_phase("clipboard_write_text", phase_started)
             evidence["clipboard_write_used"] = True
-            phase_started = time.monotonic()
             await page.keyboard.press("Control+V")
-            finish_phase("keyboard_control_v", phase_started)
             evidence["keyboard_paste_used"] = True
-            phase_started = time.monotonic()
             await page.wait_for_timeout(100)
-            finish_phase("post_paste_dwell", phase_started)
         except Exception as exc:
             evidence["error"] = str(exc)
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-        evidence["monotonic_timing"] = {
-            "diagnostic_fill_path": "v0.0.278.51_monotonic_only_fill_timing",
-            "phase_timings": phase_timings,
-            "phase_order": phase_order,
-            "total_seconds": evidence["duration_seconds"],
-        }
         return evidence
 
     async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
-        phase_timings: dict[str, float] = {}
-        phase_order: list[str] = []
-
-        def finish_phase(name: str, phase_started: float) -> None:
-            phase_timings[name] = round(time.monotonic() - phase_started, 3)
-            phase_order.append(name)
-
         evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None}
         try:
-            phase_started = time.monotonic()
-            clear_evidence = await self._clear_composer_for_trusted_input(page, input_locator)
-            finish_phase("clear_composer", phase_started)
-            evidence["clear_evidence"] = clear_evidence
-            phase_started = time.monotonic()
+            await self._clear_composer_for_trusted_input(page, input_locator)
             await page.keyboard.insert_text(prompt)
-            finish_phase("keyboard_insert_text", phase_started)
             evidence["insert_text_used"] = True
-            phase_started = time.monotonic()
             await page.wait_for_timeout(100)
-            finish_phase("post_insert_dwell", phase_started)
         except Exception as exc:
             evidence["error"] = str(exc)
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-        evidence["monotonic_timing"] = {
-            "diagnostic_fill_path": "v0.0.278.51_monotonic_only_fill_timing",
-            "phase_timings": phase_timings,
-            "phase_order": phase_order,
-            "total_seconds": evidence["duration_seconds"],
-        }
         return evidence
 
     async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
@@ -8628,25 +8565,6 @@ class ChatGPTBrowserClient:
         """
         started = time.monotonic()
         requested_mode = self._prompt_fill_mode()
-        phase_timings: dict[str, float] = {}
-        phase_order: list[str] = []
-        verification_timings: list[dict[str, Any]] = []
-
-        def finish_phase(name: str, phase_started: float) -> None:
-            phase_timings[name] = round(time.monotonic() - phase_started, 3)
-            phase_order.append(name)
-
-        fill_monotonic_timing: dict[str, Any] = {
-            "diagnostic_fill_path": "v0.0.278.51_monotonic_only_fill_timing",
-            "phase_timings": phase_timings,
-            "phase_order": phase_order,
-            "verification_timings": verification_timings,
-            "notes": [
-                "monotonic timing only",
-                "no probes, waits, event listeners, or fill logic changes added",
-                "existing v0.0.278.48 fill awaits are timed externally from Python",
-            ],
-        }
         evidence: dict[str, Any] = {
             "method": requested_mode,
             "requested_method": requested_mode,
@@ -8660,27 +8578,15 @@ class ChatGPTBrowserClient:
             "verification_method": "composer_state_prefix",
             "verification_passed": False,
             "attempts": [],
-            "monotonic_timing": fill_monotonic_timing,
         }
         self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode)
 
         async def verify(label: str) -> bool:
-            verify_started = time.monotonic()
             try:
                 state = await self._capture_composer_state(page, prompt=prompt)
             except Exception as exc:
                 state = {"error": str(exc)}
             matched = self._composer_text_matches_prompt(state, prompt=prompt)
-            verify_duration = round(time.monotonic() - verify_started, 3)
-            verification_timing = {
-                "label": label,
-                "matched": matched,
-                "duration_seconds": verify_duration,
-            }
-            verification_timings.append(verification_timing)
-            phase_name = f"verify_{label}"
-            phase_timings[phase_name] = verify_duration
-            phase_order.append(phase_name)
             evidence["react_state_probe"] = {
                 "label": label,
                 "matched": matched,
@@ -8692,9 +8598,7 @@ class ChatGPTBrowserClient:
             return matched
 
         if requested_mode == "trusted_paste":
-            phase_started = time.monotonic()
             paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt)
-            finish_phase("trusted_paste_attempt", phase_started)
             evidence["attempts"].append({"method": "trusted_paste", **paste_evidence})
             if paste_evidence.get("keyboard_paste_used") and await verify("trusted_paste"):
                 evidence.update({
@@ -8704,15 +8608,12 @@ class ChatGPTBrowserClient:
                     "verification_passed": True,
                     "duration_seconds": round(time.monotonic() - started, 3),
                 })
-                fill_monotonic_timing["total_seconds"] = evidence["duration_seconds"]
                 self._log("composer", "prompt filled by trusted paste", **evidence)
                 return evidence
             evidence["fallback_used"] = True
 
         if requested_mode in {"trusted_paste", "keyboard_insert_text"}:
-            phase_started = time.monotonic()
             insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt)
-            finish_phase("keyboard_insert_text_attempt", phase_started)
             evidence["attempts"].append({"method": "keyboard_insert_text", **insert_evidence})
             if insert_evidence.get("insert_text_used") and await verify("keyboard_insert_text"):
                 evidence.update({
@@ -8722,7 +8623,6 @@ class ChatGPTBrowserClient:
                     "verification_passed": True,
                     "duration_seconds": round(time.monotonic() - started, 3),
                 })
-                fill_monotonic_timing["total_seconds"] = evidence["duration_seconds"]
                 self._log("composer", "prompt filled by keyboard insert", **evidence)
                 return evidence
             evidence["fallback_used"] = True
@@ -8736,14 +8636,12 @@ class ChatGPTBrowserClient:
             locator_attempt["error"] = str(exc)
             self._log("composer", "locator fill fallback failed", error=str(exc), prompt_length=len(prompt))
         locator_attempt["duration_seconds"] = round(time.monotonic() - locator_started, 3)
-        finish_phase("locator_fill_attempt", locator_started)
         evidence["attempts"].append(locator_attempt)
         evidence["locator_fill_used"] = bool(locator_attempt.get("locator_fill_used"))
         evidence["method"] = "locator_fill"
         evidence["trusted_input_used"] = bool(evidence.get("trusted_input_used"))
         evidence["verification_passed"] = await verify("locator_fill")
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-        fill_monotonic_timing["total_seconds"] = evidence["duration_seconds"]
         self._log("composer", "prompt fill completed after fallback chain", **evidence)
         return evidence
 
@@ -9052,25 +8950,47 @@ class ChatGPTBrowserClient:
         try:
             result["fill_attempted"] = True
             fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+            fill_completed = time.monotonic()
+            result["fill_call_site_timing"] = {
+                "diagnostic_timing_path": "v0.0.278.52_call_site_only_fill_timing",
+                "started_at_monotonic": round(fill_started, 6),
+                "completed_at_monotonic": round(fill_completed, 6),
+                "duration_seconds": round(fill_completed - fill_started, 3),
+                "notes": [
+                    "call-site timing only",
+                    "_fill_chat_prompt internals are intentionally unmodified from v0.0.278.48",
+                    "no probes, waits, event listeners, or fill logic changes added",
+                ],
+            }
             result["fill_evidence"] = {
                 "method": fill_evidence.get("method"),
                 "requested_method": fill_evidence.get("requested_method"),
                 "verification_passed": fill_evidence.get("verification_passed"),
                 "trusted_input_used": fill_evidence.get("trusted_input_used"),
                 "duration_seconds": fill_evidence.get("duration_seconds"),
-                "monotonic_timing": fill_evidence.get("monotonic_timing"),
-                "attempts": fill_evidence.get("attempts"),
             }
             result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
         except Exception as exc:
+            fill_completed = time.monotonic()
+            result["fill_call_site_timing"] = {
+                "diagnostic_timing_path": "v0.0.278.52_call_site_only_fill_timing",
+                "started_at_monotonic": round(fill_started, 6),
+                "completed_at_monotonic": round(fill_completed, 6),
+                "duration_seconds": round(fill_completed - fill_started, 3),
+                "notes": [
+                    "call-site timing only",
+                    "_fill_chat_prompt internals are intentionally unmodified from v0.0.278.48",
+                    "no probes, waits, event listeners, or fill logic changes added",
+                ],
+            }
             result.update({
                 "status": "fill_failed",
                 "error": type(exc).__name__,
-                "fill_seconds": round(time.monotonic() - fill_started, 3),
+                "fill_seconds": result["fill_call_site_timing"]["duration_seconds"],
                 "duration_seconds": round(time.monotonic() - started, 3),
             })
             return result
-        result["fill_seconds"] = round(time.monotonic() - fill_started, 3)
+        result["fill_seconds"] = result["fill_call_site_timing"]["duration_seconds"]
         result["after_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
