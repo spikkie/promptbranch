@@ -36,6 +36,9 @@ class ChatGPTBrowserConfig:
     rate_limit_modal_poll_interval_ms: int = 1_000
     clear_singleton_locks: bool = False
     dom_diagnostic_mode: str = "light"
+    pause_before_fill: bool = False
+    pause_after_fill: bool = False
+    pause_before_submit: bool = False
 
     def __post_init__(self) -> None:
         self.profile_dir = str(Path(self.profile_dir).expanduser().resolve())

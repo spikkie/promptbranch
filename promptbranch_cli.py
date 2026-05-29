@@ -874,6 +874,13 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
         filter_no_sandbox=not args.keep_no_sandbox,
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
+        slow_mo_ms=getattr(args, "slow_mo_ms", 0) or 0,
+        debug=bool(getattr(args, "debug", False)),
+        debug_artifact_dir=os.getenv("CHATGPT_DEBUG_ARTIFACT_DIR", "debug_artifacts"),
+        dom_diagnostic_mode=os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE", "light"),
+        pause_before_fill=bool(getattr(args, "pause_before_fill", False)),
+        pause_after_fill=bool(getattr(args, "pause_after_fill", False)),
+        pause_before_submit=bool(getattr(args, "pause_before_submit", False)),
     )
     return ChatGPTAutomationService(settings)
 
@@ -882,6 +889,15 @@ def build_backend(args: argparse.Namespace) -> CommandBackend:
     resolved_profile_dir = str(resolve_profile_dir(getattr(args, "profile_dir", None)))
     args.profile_dir = resolved_profile_dir
     conversation_state = ConversationStateStore(resolved_profile_dir)
+    if getattr(args, "debug_browser", False):
+        # Local visual debugging intentionally bypasses the Docker service so the
+        # operator can inspect a headed localhost browser.  Docker remains the
+        # default/release target when this flag is absent.
+        args.service_base_url = None
+        args.headless = False
+        args.debug = True
+        if getattr(args, "slow_mo_ms", 0) <= 0:
+            args.slow_mo_ms = 100
     if args.service_base_url:
         return ServiceBackend(
             base_url=args.service_base_url,
@@ -6390,6 +6406,10 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) else None
     repeatable_attachments = attachment_paths if not legacy_single_file else None
 
+    if getattr(args, "debug_browser", False):
+        args.keep_open = True
+        args.headless = False
+        args.debug = True
     protocol_parse = bool(getattr(args, "parse_reply", False))
     pre_ask_marker = await _capture_pre_ask_protocol_marker(backend, args) if protocol_parse else None
     try:
@@ -15060,6 +15080,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=int, default=int(os.getenv("CHATGPT_MAX_RETRIES", str(DEFAULT_MAX_RETRIES))))
     parser.add_argument("--retry-backoff-seconds", type=float, default=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")))
     parser.add_argument("--debug", action="store_true", default=_env_flag("CHATGPT_DEBUG", False))
+    parser.add_argument("--slow-mo-ms", type=int, default=int(os.getenv("CHATGPT_SLOW_MO_MS", "0")), help="Slow Playwright browser actions for local headed debugging.")
     parser.add_argument("--dotenv", default=".env", help="Optional .env file to load before reading env vars.")
     parser.add_argument(
         "--config",
@@ -15856,6 +15877,10 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--answer-index", help="Assistant answer index to parse after --parse-reply. Defaults to latest.")
     ask.add_argument("--answer-id", help="Assistant answer id or unique prefix to parse after --parse-reply.")
     ask.add_argument("--keep-open", action="store_true")
+    ask.add_argument("--debug-browser", action="store_true", help="Run this ask through a local headed browser instead of the Docker service for visual DOM/composer inspection.")
+    ask.add_argument("--pause-before-fill", action="store_true", help="In --debug-browser/headed mode, pause before filling the composer.")
+    ask.add_argument("--pause-after-fill", action="store_true", help="In --debug-browser/headed mode, pause after filling the composer before submit.")
+    ask.add_argument("--pause-before-submit", action="store_true", help="In --debug-browser/headed mode, pause immediately before submitting the prompt.")
     ask.add_argument("--retries", type=int)
 
     shell = subparsers.add_parser("shell", help="Interactive prompt loop.")

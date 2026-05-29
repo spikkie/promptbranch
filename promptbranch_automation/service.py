@@ -266,6 +266,13 @@ class ChatGPTAutomationSettings:
     retry_backoff_seconds: float = 2.0
     clear_singleton_locks: bool = False
     profile_lock_wait_seconds: float = 30.0
+    slow_mo_ms: int = 0
+    debug: bool = False
+    debug_artifact_dir: str = "debug_artifacts"
+    dom_diagnostic_mode: str = "light"
+    pause_before_fill: bool = False
+    pause_after_fill: bool = False
+    pause_before_submit: bool = False
 
 
 class ChatGPTAutomationService:
@@ -603,6 +610,13 @@ class ChatGPTAutomationService:
             disable_fedcm=self.settings.disable_fedcm,
             filter_no_sandbox=self.settings.filter_no_sandbox,
             clear_singleton_locks=self.settings.clear_singleton_locks,
+            slow_mo_ms=self.settings.slow_mo_ms,
+            debug=self.settings.debug,
+            debug_artifact_dir=self.settings.debug_artifact_dir,
+            dom_diagnostic_mode=self.settings.dom_diagnostic_mode,
+            pause_before_fill=self.settings.pause_before_fill,
+            pause_after_fill=self.settings.pause_after_fill,
+            pause_before_submit=self.settings.pause_before_submit,
         )
 
 

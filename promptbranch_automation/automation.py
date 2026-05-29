@@ -128,6 +128,9 @@ class ChatGPTAutomation:
         rate_limit_modal_poll_interval_ms: Optional[int] = None,
         clear_singleton_locks: Optional[bool] = None,
         dom_diagnostic_mode: Optional[str] = None,
+        pause_before_fill: Optional[bool] = None,
+        pause_after_fill: Optional[bool] = None,
+        pause_before_submit: Optional[bool] = None,
     ):
         self.project_url = project_url
         self.email = email
@@ -205,6 +208,21 @@ class ChatGPTAutomation:
             if dom_diagnostic_mode is None
             else str(dom_diagnostic_mode)
         ).strip().lower()
+        self.pause_before_fill = (
+            _env_flag("CHATGPT_PAUSE_BEFORE_FILL", False)
+            if pause_before_fill is None
+            else bool(pause_before_fill)
+        )
+        self.pause_after_fill = (
+            _env_flag("CHATGPT_PAUSE_AFTER_FILL", False)
+            if pause_after_fill is None
+            else bool(pause_after_fill)
+        )
+        self.pause_before_submit = (
+            _env_flag("CHATGPT_PAUSE_BEFORE_SUBMIT", False)
+            if pause_before_submit is None
+            else bool(pause_before_submit)
+        )
 
     @property
     def client(self) -> ChatGPTBrowserClient:
@@ -236,6 +254,9 @@ class ChatGPTAutomation:
                 rate_limit_modal_poll_interval_ms=self.rate_limit_modal_poll_interval_ms,
                 clear_singleton_locks=self.clear_singleton_locks,
                 dom_diagnostic_mode=self.dom_diagnostic_mode,
+                pause_before_fill=self.pause_before_fill,
+                pause_after_fill=self.pause_after_fill,
+                pause_before_submit=self.pause_before_submit,
             )
         )
 
