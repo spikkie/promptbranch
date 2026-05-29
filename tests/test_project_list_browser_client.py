@@ -3287,15 +3287,7 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
             self.context = DummyContext()
             self.clipboard_text = None
         async def evaluate(self, script, text):
-            script_text = str(script)
-            if "navigator.clipboard.writeText" in script_text:
-                self.clipboard_text = text
-                return None
-            if "__promptbranchComposerFillDiagnosticEvents" in script_text and "event_count" in script_text:
-                return {"collected": True, "label": text, "event_count": 1, "events": [{"type": "paste"}]}
-            if "__promptbranchComposerFillDiagnosticEvents" in script_text:
-                return {"installed": True, "label": text, "event_types": ["paste", "beforeinput", "input"]}
-            return None
+            self.clipboard_text = text
         async def wait_for_timeout(self, ms):
             return None
 
@@ -3328,11 +3320,6 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
     assert result["verification_passed"] is True
     assert page.clipboard_text == "hello STALE_GUARD_LIVE_OK_1"
     assert "Control+V" in page.keyboard.pressed
-    assert result["diagnostic_fill_path"] == "v0.0.278.47_refill_decomposition_only"
-    assert result["fill_event_probe_install"]["installed"] is True
-    assert result["fill_event_probe_events"]["event_count"] == 1
-    assert result["phase_timings"]["trusted_paste_attempt"] >= 0
-    assert result["attempt_phase_timings"]["trusted_paste"]["keyboard_control_v"] >= 0
 
 
 
@@ -3444,7 +3431,7 @@ def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marke
         method = "POST"
         post_data = "{\"conversation_id\":\"abc\"}"
 
-    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_999")
+    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_1234567890")
     observer = {
         "enabled": True,
         "markers_count": 1,
@@ -3468,6 +3455,45 @@ def test_submit_network_snapshot_reports_backend_write_diagnostics_without_marke
     assert snapshot["message_request_count"] == 0
     assert snapshot["event_urls"] == ["https://chatgpt.com/backend-api/f/conversation/prepare"]
     assert snapshot["event_summaries"][0]["post_data_preview"] == "<redacted>"
+
+
+def test_submit_network_snapshot_rejects_marker_bearing_prepare_as_submit_confirmation(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyRequest:
+        url = "https://chatgpt.com/backend-api/f/conversation/prepare"
+        method = "POST"
+        post_data = "{\"message\":\"Return sentinel STALE_GUARD_LIVE_OK_1234567890\"}"
+
+    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_1234567890")
+    assert record["marker_found"] is True
+    assert record["prepare_request"] is True
+    assert record["message_request_candidate"] is False
+
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [record],
+        "all_events": [record],
+        "responses": [],
+        "all_responses": [],
+        # Simulate a stale/buggy observer that previously promoted prepare as matched_request.
+        "matched_request": record,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+
+    snapshot = client._submit_network_evidence_snapshot(observer)
+
+    assert snapshot["visible"] is False
+    assert snapshot["request_observed"] is False
+    assert snapshot["request_marker_found"] is False
+    assert snapshot["request_url"] is None
+    assert snapshot["status"] == "submit_prepare_without_message_commit"
+    assert snapshot["prepare_request_observed"] is True
+    assert snapshot["message_request_observed"] is False
+    assert snapshot["marker_event_count"] == 1
 
 
 def test_submit_response_body_shape_reports_redacted_conduit_token_metadata(tmp_path: Path) -> None:
@@ -3643,7 +3669,7 @@ def test_submit_network_request_record_captures_resource_type_and_initiator(tmp_
         def is_navigation_request(self) -> bool:
             return False
 
-    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_999")
+    record = client._submit_network_request_record(DummyRequest(), prompt="Return sentinel STALE_GUARD_LIVE_OK_1234567890")
 
     assert record["resource_type"] == "fetch"
     assert record["navigation_request"] is False
@@ -4213,7 +4239,7 @@ def test_try_extract_json_payload_uses_backend_assistant_after_committed_user_tu
 def test_wait_and_get_json_fast_returns_backend_fresh_marker_payload(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CHATGPT_BACKEND_FIRST_ANSWER_WAIT", "1")
     client = _make_client(tmp_path)
-    token = "STALE_GUARD_LIVE_OK_9999999999"
+    token = "STALE_GUARD_LIVE_OK_12345678909999999"
     payload = {"ok": True, "sentinel": token, "finished": "finished"}
     calls = {"extract": 0}
 
@@ -4916,14 +4942,6 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
             "verification_passed": True,
             "trusted_input_used": True,
             "duration_seconds": 0.01,
-            "diagnostic_fill_path": "v0.0.278.47_refill_decomposition_only",
-            "phase_timings": {"trusted_paste_attempt": 0.01},
-            "phase_order": ["trusted_paste_attempt"],
-            "attempt_phase_timings": {"trusted_paste": {"keyboard_control_v": 0.01}},
-            "verification_attempts": [{"label": "trusted_paste", "matched": True}],
-            "fill_event_probe_install": {"installed": True},
-            "fill_event_probe_events": {"collected": True, "event_count": 1, "events": [{"type": "paste"}]},
-            "attempts": [{"method": "trusted_paste", "duration_seconds": 0.01}],
         }
 
     async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
@@ -4962,12 +4980,9 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.47_refill_decomposition_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
     assert result["keyboard_event_probe_install"]["installed"] is True
     assert result["keyboard_event_probe_events"]["event_count"] == 1
-    assert result["fill_evidence"]["diagnostic_fill_path"] == "v0.0.278.47_refill_decomposition_only"
-    assert result["fill_evidence"]["phase_timings"]["trusted_paste_attempt"] == 0.01
-    assert result["fill_evidence"]["fill_event_probe_events"]["event_count"] == 1

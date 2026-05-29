@@ -6624,6 +6624,33 @@ class ChatGPTBrowserClient:
                 pass
         return summary
 
+    def _submit_network_record_is_message_submit(self, record: Any) -> bool:
+        """Return True only for a marker-bearing final message-submit request.
+
+        `/backend-api/f/conversation/prepare` is diagnostic prepare traffic.  It may
+        carry the current prompt marker, but it must not satisfy submit causality;
+        otherwise the retry path is skipped after a prepare-only request.
+        """
+        if not isinstance(record, dict):
+            return False
+        if not bool(record.get("marker_found")):
+            return False
+        try:
+            url = str(record.get("url") or "")
+        except Exception:
+            url = ""
+        parsed = urlparse(url) if url else None
+        host = (parsed.netloc if parsed else "").lower()
+        path = (parsed.path if parsed else "").lower()
+        method = str(record.get("method") or "").upper()
+        backend_like = bool(record.get("backend_like")) or ("chatgpt.com" in host and "/backend-api/" in path)
+        mutating = bool(record.get("mutating")) or method in {"POST", "PUT", "PATCH"}
+        if bool(record.get("prepare_request")) or path.endswith("/backend-api/f/conversation/prepare"):
+            return False
+        if record.get("message_request_candidate") is False:
+            return False
+        return bool(backend_like and mutating)
+
     def _submit_network_request_record(self, request: Any, *, prompt: str | None) -> dict[str, Any]:
         started = time.monotonic()
         try:
@@ -6722,12 +6749,26 @@ class ChatGPTBrowserClient:
                     observer.setdefault("all_events", []).append(record)
                 if record.get("interesting") and len(observer["events"]) < 40:
                     observer["events"].append(record)
-                if record.get("marker_found") and observer.get("matched_request") is None:
+                if (
+                    record.get("marker_found")
+                    and self._submit_network_record_is_message_submit(record)
+                    and observer.get("matched_request") is None
+                ):
                     record["observed_after_click_seconds"] = round(time.monotonic() - started, 3)
                     observer["matched_request"] = record
                     self._log(
                         "submit",
                         "submit network request carrying current marker observed",
+                        url=record.get("url"),
+                        method=record.get("method"),
+                        matched_by=record.get("matched_by"),
+                        matched_marker=record.get("matched_marker"),
+                        post_data_length=record.get("post_data_length"),
+                    )
+                elif record.get("marker_found") and record.get("prepare_request"):
+                    self._log(
+                        "submit",
+                        "prepare request carrying current marker observed but rejected as submit confirmation",
                         url=record.get("url"),
                         method=record.get("method"),
                         matched_by=record.get("matched_by"),
@@ -6880,8 +6921,10 @@ class ChatGPTBrowserClient:
         responses = [event for event in (observer.get("responses") or []) if isinstance(event, dict)]
         all_responses = [event for event in (observer.get("all_responses") or responses or []) if isinstance(event, dict)]
         matched = observer.get("matched_request") if isinstance(observer.get("matched_request"), dict) else None
+        if matched is not None and not self._submit_network_record_is_message_submit(matched):
+            matched = None
         matched_response = observer.get("matched_response") if isinstance(observer.get("matched_response"), dict) else None
-        found = matched is not None and bool(matched.get("marker_found"))
+        found = matched is not None and self._submit_network_record_is_message_submit(matched)
         first_event = (events or [None])[0]
         backend_write_events = [event for event in events if event.get("backend_like") and event.get("mutating")]
         marker_events = [event for event in events if event.get("marker_found")]
@@ -8458,19 +8501,13 @@ class ChatGPTBrowserClient:
         return preview in prompt or prompt[: min(120, len(prompt))] in preview
 
     async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any) -> dict[str, Any]:
-        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None, "phase_timings": {}}
+        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None}
         try:
-            click_started = time.monotonic()
             await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-trusted-refill", timeout_ms=5_000)
-            evidence["phase_timings"]["focus_click"] = round(time.monotonic() - click_started, 3)
-            control_started = time.monotonic()
             await page.keyboard.press("Control+A")
             evidence["control_a"] = True
-            evidence["phase_timings"]["control_a"] = round(time.monotonic() - control_started, 3)
-            backspace_started = time.monotonic()
             await page.keyboard.press("Backspace")
             evidence["backspace"] = True
-            evidence["phase_timings"]["backspace"] = round(time.monotonic() - backspace_started, 3)
         except Exception as exc:
             evidence["error"] = str(exc)
             self._log("composer", "trusted composer clear failed", error=str(exc))
@@ -8483,37 +8520,21 @@ class ChatGPTBrowserClient:
             "clipboard_write_used": False,
             "keyboard_paste_used": False,
             "error": None,
-            "phase_timings": {},
         }
         try:
-            clear_started = time.monotonic()
-            clear_evidence = await self._clear_composer_for_trusted_input(page, input_locator)
-            evidence["clear_evidence"] = clear_evidence
-            evidence["phase_timings"]["clear_composer"] = round(time.monotonic() - clear_started, 3)
-            if isinstance(clear_evidence, dict) and isinstance(clear_evidence.get("phase_timings"), dict):
-                evidence["phase_timings"]["clear_focus_click"] = clear_evidence["phase_timings"].get("focus_click")
-                evidence["phase_timings"]["clear_control_a"] = clear_evidence["phase_timings"].get("control_a")
-                evidence["phase_timings"]["clear_backspace"] = clear_evidence["phase_timings"].get("backspace")
+            await self._clear_composer_for_trusted_input(page, input_locator)
             context = getattr(page, "context", None)
             if context is not None and hasattr(context, "grant_permissions"):
                 try:
-                    grant_started = time.monotonic()
                     await context.grant_permissions(["clipboard-read", "clipboard-write"], origin="https://chatgpt.com")
                     evidence["clipboard_permissions_granted"] = True
-                    evidence["phase_timings"]["clipboard_grant_permissions"] = round(time.monotonic() - grant_started, 3)
                 except Exception as exc:
                     evidence["clipboard_permissions_error"] = str(exc)
-            write_started = time.monotonic()
             await page.evaluate("text => navigator.clipboard.writeText(text)", prompt)
             evidence["clipboard_write_used"] = True
-            evidence["phase_timings"]["clipboard_write_text"] = round(time.monotonic() - write_started, 3)
-            paste_started = time.monotonic()
             await page.keyboard.press("Control+V")
             evidence["keyboard_paste_used"] = True
-            evidence["phase_timings"]["keyboard_control_v"] = round(time.monotonic() - paste_started, 3)
-            dwell_started = time.monotonic()
             await page.wait_for_timeout(100)
-            evidence["phase_timings"]["post_paste_dwell"] = round(time.monotonic() - dwell_started, 3)
         except Exception as exc:
             evidence["error"] = str(exc)
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
@@ -8521,19 +8542,12 @@ class ChatGPTBrowserClient:
 
     async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
-        evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None, "phase_timings": {}}
+        evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None}
         try:
-            clear_started = time.monotonic()
-            clear_evidence = await self._clear_composer_for_trusted_input(page, input_locator)
-            evidence["clear_evidence"] = clear_evidence
-            evidence["phase_timings"]["clear_composer"] = round(time.monotonic() - clear_started, 3)
-            insert_started = time.monotonic()
+            await self._clear_composer_for_trusted_input(page, input_locator)
             await page.keyboard.insert_text(prompt)
             evidence["insert_text_used"] = True
-            evidence["phase_timings"]["keyboard_insert_text"] = round(time.monotonic() - insert_started, 3)
-            dwell_started = time.monotonic()
             await page.wait_for_timeout(100)
-            evidence["phase_timings"]["post_insert_dwell"] = round(time.monotonic() - dwell_started, 3)
         except Exception as exc:
             evidence["error"] = str(exc)
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
@@ -8564,91 +8578,53 @@ class ChatGPTBrowserClient:
             "verification_method": "composer_state_prefix",
             "verification_passed": False,
             "attempts": [],
-            "diagnostic_fill_path": "v0.0.278.47_refill_decomposition_only",
-            "phase_timings": {},
-            "phase_order": [],
-            "verification_attempts": [],
         }
-
-        def record_phase(name: str, seconds: float) -> None:
-            evidence.setdefault("phase_order", []).append(name)
-            evidence.setdefault("phase_timings", {})[name] = round(seconds, 3)
-
         self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode)
-        probe_started = time.monotonic()
-        evidence["fill_event_probe_install"] = await self._install_composer_fill_event_probe(
-            page,
-            label="composer_fill:events",
-        )
-        record_phase("event_probe_install", time.monotonic() - probe_started)
-
-        async def finalize(log_message: str) -> dict[str, Any]:
-            collect_started = time.monotonic()
-            evidence["fill_event_probe_events"] = await self._collect_composer_fill_event_probe(
-                page,
-                label="composer_fill:events",
-            )
-            record_phase("event_probe_collect", time.monotonic() - collect_started)
-            evidence["duration_seconds"] = round(time.monotonic() - started, 3)
-            self._log("composer", log_message, **evidence)
-            return evidence
 
         async def verify(label: str) -> bool:
-            verify_started = time.monotonic()
             try:
                 state = await self._capture_composer_state(page, prompt=prompt)
             except Exception as exc:
                 state = {"error": str(exc)}
             matched = self._composer_text_matches_prompt(state, prompt=prompt)
-            probe = {
+            evidence["react_state_probe"] = {
                 "label": label,
                 "matched": matched,
                 "input_selector": state.get("input_selector") if isinstance(state, dict) else None,
                 "text_length": state.get("text_length") if isinstance(state, dict) else None,
                 "contains_prompt_prefix": state.get("contains_prompt_prefix") if isinstance(state, dict) else None,
-                "text_preview_length": len(str(state.get("text_preview") or "")) if isinstance(state, dict) else None,
-                "submit_button_send_ready": (state.get("submit_button") or {}).get("send_ready") if isinstance(state, dict) and isinstance(state.get("submit_button"), dict) else None,
-                "submit_button_stop_visible": (state.get("submit_button") or {}).get("stop_visible") if isinstance(state, dict) and isinstance(state.get("submit_button"), dict) else None,
                 "error": state.get("error") if isinstance(state, dict) else None,
-                "duration_seconds": round(time.monotonic() - verify_started, 3),
             }
-            evidence["react_state_probe"] = probe
-            evidence.setdefault("verification_attempts", []).append(probe)
-            record_phase(f"verify_{label}", probe["duration_seconds"] or 0.0)
             return matched
 
         if requested_mode == "trusted_paste":
-            paste_started = time.monotonic()
             paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt)
-            record_phase("trusted_paste_attempt", time.monotonic() - paste_started)
             evidence["attempts"].append({"method": "trusted_paste", **paste_evidence})
-            if paste_evidence.get("phase_timings"):
-                evidence.setdefault("attempt_phase_timings", {})["trusted_paste"] = paste_evidence.get("phase_timings")
             if paste_evidence.get("keyboard_paste_used") and await verify("trusted_paste"):
                 evidence.update({
                     "method": "trusted_paste",
                     "trusted_input_used": True,
                     "trusted_paste_used": True,
                     "verification_passed": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
                 })
-                return await finalize("prompt filled by trusted paste")
+                self._log("composer", "prompt filled by trusted paste", **evidence)
+                return evidence
             evidence["fallback_used"] = True
 
         if requested_mode in {"trusted_paste", "keyboard_insert_text"}:
-            insert_started = time.monotonic()
             insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt)
-            record_phase("keyboard_insert_attempt", time.monotonic() - insert_started)
             evidence["attempts"].append({"method": "keyboard_insert_text", **insert_evidence})
-            if insert_evidence.get("phase_timings"):
-                evidence.setdefault("attempt_phase_timings", {})["keyboard_insert_text"] = insert_evidence.get("phase_timings")
             if insert_evidence.get("insert_text_used") and await verify("keyboard_insert_text"):
                 evidence.update({
                     "method": "keyboard_insert_text",
                     "trusted_input_used": True,
                     "keyboard_insert_used": True,
                     "verification_passed": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
                 })
-                return await finalize("prompt filled by keyboard insert")
+                self._log("composer", "prompt filled by keyboard insert", **evidence)
+                return evidence
             evidence["fallback_used"] = True
 
         locator_started = time.monotonic()
@@ -8660,13 +8636,14 @@ class ChatGPTBrowserClient:
             locator_attempt["error"] = str(exc)
             self._log("composer", "locator fill fallback failed", error=str(exc), prompt_length=len(prompt))
         locator_attempt["duration_seconds"] = round(time.monotonic() - locator_started, 3)
-        record_phase("locator_fill_attempt", time.monotonic() - locator_started)
         evidence["attempts"].append(locator_attempt)
         evidence["locator_fill_used"] = bool(locator_attempt.get("locator_fill_used"))
         evidence["method"] = "locator_fill"
         evidence["trusted_input_used"] = bool(evidence.get("trusted_input_used"))
         evidence["verification_passed"] = await verify("locator_fill")
-        return await finalize("prompt fill completed after fallback chain")
+        evidence["duration_seconds"] = round(time.monotonic() - started, 3)
+        self._log("composer", "prompt fill completed after fallback chain", **evidence)
+        return evidence
 
     def _submit_variant_comparison_enabled(self) -> bool:
         value = (os.getenv("CHATGPT_SUBMIT_VARIANT_COMPARISON") or "1").strip().lower()
@@ -8935,32 +8912,6 @@ class ChatGPTBrowserClient:
         result["duration_seconds"] = round(time.monotonic() - started, 3)
         return result
 
-    async def _install_composer_fill_event_probe(self, page: Any, *, label: str) -> dict[str, Any]:
-        started = time.monotonic()
-        script = '\n(label) => {\n  const eventKey = "__promptbranchComposerFillDiagnosticEvents";\n  const cleanupKey = "__promptbranchComposerFillDiagnosticCleanup";\n  try { if (typeof window[cleanupKey] === "function") window[cleanupKey](); } catch (err) {}\n  window[eventKey] = [];\n  const types = ["focus", "blur", "keydown", "keypress", "keyup", "beforeinput", "input", "paste", "compositionstart", "compositionupdate", "compositionend", "selectionchange"];\n  const textOf = (target) => {\n    if (!target) return "";\n    if (typeof target.value === "string") return target.value;\n    if (typeof target.innerText === "string") return target.innerText;\n    if (typeof target.textContent === "string") return target.textContent;\n    return "";\n  };\n  const handler = (ev) => {\n    try {\n      const target = ev.target || document.activeElement || null;\n      const text = textOf(target);\n      if (window[eventKey].length < 80) {\n        window[eventKey].push({\n          type: ev.type,\n          key: ev.key || null,\n          code: ev.code || null,\n          input_type: ev.inputType || null,\n          data_length: typeof ev.data === "string" ? ev.data.length : null,\n          clipboard_types: ev.clipboardData && ev.clipboardData.types ? Array.from(ev.clipboardData.types).slice(0, 8) : [],\n          is_trusted: !!ev.isTrusted,\n          default_prevented: !!ev.defaultPrevented,\n          cancelable: !!ev.cancelable,\n          bubbles: !!ev.bubbles,\n          target_tag: target && target.tagName ? String(target.tagName).toLowerCase() : "",\n          target_id: target && target.id ? String(target.id) : "",\n          target_role: target && target.getAttribute ? (target.getAttribute("role") || "") : "",\n          target_testid: target && target.getAttribute ? (target.getAttribute("data-testid") || "") : "",\n          target_text_length: String(text || "").length,\n          active_id: document.activeElement && document.activeElement.id ? String(document.activeElement.id) : "",\n          time_stamp: Math.round(ev.timeStamp || 0),\n        });\n      }\n    } catch (err) {}\n  };\n  for (const type of types) document.addEventListener(type, handler, true);\n  window[cleanupKey] = () => {\n    for (const type of types) document.removeEventListener(type, handler, true);\n    window[cleanupKey] = null;\n  };\n  return {installed: true, label: label || "", event_types: types};\n}\n'
-        try:
-            result = await page.evaluate(script, label)
-            if not isinstance(result, dict):
-                result = {"installed": False, "status": "unexpected_result", "value_type": type(result).__name__}
-        except Exception as exc:
-            result = {"installed": False, "status": "install_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
-        result.setdefault("label", label)
-        result["duration_seconds"] = round(time.monotonic() - started, 3)
-        return result
-
-    async def _collect_composer_fill_event_probe(self, page: Any, *, label: str) -> dict[str, Any]:
-        started = time.monotonic()
-        script = '\n(label) => {\n  const eventKey = "__promptbranchComposerFillDiagnosticEvents";\n  const cleanupKey = "__promptbranchComposerFillDiagnosticCleanup";\n  const events = Array.isArray(window[eventKey]) ? window[eventKey].slice(0, 80) : [];\n  try { if (typeof window[cleanupKey] === "function") window[cleanupKey](); } catch (err) {}\n  return {collected: true, label: label || "", event_count: events.length, events};\n}\n'
-        try:
-            result = await page.evaluate(script, label)
-            if not isinstance(result, dict):
-                result = {"collected": False, "status": "unexpected_result", "value_type": type(result).__name__}
-        except Exception as exc:
-            result = {"collected": False, "status": "collect_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
-        result.setdefault("label", label)
-        result["duration_seconds"] = round(time.monotonic() - started, 3)
-        return result
-
     async def _run_keyboard_submit_variant(
         self,
         page: Any,
@@ -8989,7 +8940,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.47_refill_decomposition_only"
+        result["diagnostic_submit_path"] = "v0.0.278.48_observational_only"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
@@ -9005,14 +8956,6 @@ class ChatGPTBrowserClient:
                 "verification_passed": fill_evidence.get("verification_passed"),
                 "trusted_input_used": fill_evidence.get("trusted_input_used"),
                 "duration_seconds": fill_evidence.get("duration_seconds"),
-                "diagnostic_fill_path": fill_evidence.get("diagnostic_fill_path"),
-                "phase_timings": fill_evidence.get("phase_timings"),
-                "phase_order": fill_evidence.get("phase_order"),
-                "attempt_phase_timings": fill_evidence.get("attempt_phase_timings"),
-                "verification_attempts": fill_evidence.get("verification_attempts"),
-                "fill_event_probe_install": fill_evidence.get("fill_event_probe_install"),
-                "fill_event_probe_events": fill_evidence.get("fill_event_probe_events"),
-                "attempts": fill_evidence.get("attempts"),
             }
             result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
         except Exception as exc:
