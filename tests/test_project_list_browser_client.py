@@ -3287,7 +3287,15 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
             self.context = DummyContext()
             self.clipboard_text = None
         async def evaluate(self, script, text):
-            self.clipboard_text = text
+            script_text = str(script)
+            if "navigator.clipboard.writeText" in script_text:
+                self.clipboard_text = text
+                return None
+            if "__promptbranchComposerFillDiagnosticEvents" in script_text and "event_count" in script_text:
+                return {"collected": True, "label": text, "event_count": 1, "events": [{"type": "paste"}]}
+            if "__promptbranchComposerFillDiagnosticEvents" in script_text:
+                return {"installed": True, "label": text, "event_types": ["paste", "beforeinput", "input"]}
+            return None
         async def wait_for_timeout(self, ms):
             return None
 
@@ -3320,6 +3328,11 @@ def test_fill_chat_prompt_prefers_trusted_paste_over_locator_fill(tmp_path: Path
     assert result["verification_passed"] is True
     assert page.clipboard_text == "hello STALE_GUARD_LIVE_OK_1"
     assert "Control+V" in page.keyboard.pressed
+    assert result["diagnostic_fill_path"] == "v0.0.278.47_refill_decomposition_only"
+    assert result["fill_event_probe_install"]["installed"] is True
+    assert result["fill_event_probe_events"]["event_count"] == 1
+    assert result["phase_timings"]["trusted_paste_attempt"] >= 0
+    assert result["attempt_phase_timings"]["trusted_paste"]["keyboard_control_v"] >= 0
 
 
 
@@ -4903,6 +4916,14 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
             "verification_passed": True,
             "trusted_input_used": True,
             "duration_seconds": 0.01,
+            "diagnostic_fill_path": "v0.0.278.47_refill_decomposition_only",
+            "phase_timings": {"trusted_paste_attempt": 0.01},
+            "phase_order": ["trusted_paste_attempt"],
+            "attempt_phase_timings": {"trusted_paste": {"keyboard_control_v": 0.01}},
+            "verification_attempts": [{"label": "trusted_paste", "matched": True}],
+            "fill_event_probe_install": {"installed": True},
+            "fill_event_probe_events": {"collected": True, "event_count": 1, "events": [{"type": "paste"}]},
+            "attempts": [{"method": "trusted_paste", "duration_seconds": 0.01}],
         }
 
     async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
@@ -4941,9 +4962,12 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.46_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.47_refill_decomposition_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
     assert result["keyboard_event_probe_install"]["installed"] is True
     assert result["keyboard_event_probe_events"]["event_count"] == 1
+    assert result["fill_evidence"]["diagnostic_fill_path"] == "v0.0.278.47_refill_decomposition_only"
+    assert result["fill_evidence"]["phase_timings"]["trusted_paste_attempt"] == 0.01
+    assert result["fill_evidence"]["fill_event_probe_events"]["event_count"] == 1
