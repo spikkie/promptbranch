@@ -2166,11 +2166,9 @@ class ChatGPTBrowserClient:
             self._record_ask_progress(**result)
             return result
 
-        allow_keyboard_answer_wait = self._allow_answer_wait_after_keyboard_enter_once(submit_evidence)
         if isinstance(response_context, dict):
             response_context["submit_confirmed"] = bool(submit_evidence.get("submit_confirmed")) if isinstance(submit_evidence, dict) else False
             response_context["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by") if isinstance(submit_evidence, dict) else []
-            response_context["submit_unconfirmed_keyboard_answer_wait_allowed"] = allow_keyboard_answer_wait
             self._configure_backend_answer_wait_context(
                 response_context,
                 submit_evidence=submit_evidence,
@@ -2189,7 +2187,7 @@ class ChatGPTBrowserClient:
             phase_timings["backend_first_answer_budget_elapsed_before_wait_ms"] = response_context.get("ask_operation_elapsed_before_answer_wait_ms")
             phase_timings["ask_operation_deadline_remaining_ms_at_answer_wait_config"] = response_context.get("ask_operation_deadline_remaining_ms_at_answer_wait_config")
 
-        if not bool(submit_evidence.get("submit_confirmed")) and not allow_keyboard_answer_wait:
+        if not bool(submit_evidence.get("submit_confirmed")):
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
             prepare_failures = {
                 "submit_prepare_without_message_commit",
@@ -2234,9 +2232,6 @@ class ChatGPTBrowserClient:
             }
 
         response_wait_started = time.monotonic()
-        if allow_keyboard_answer_wait and not bool(submit_evidence.get("submit_confirmed")):
-            phase_timings["response_wait_after_unconfirmed_keyboard_enter"] = True
-            phase_timings["response_wait_after_unconfirmed_keyboard_enter_reason"] = "keyboard_enter_primary_dispatched_no_retry"
         if isinstance(response_context, dict):
             response_context["response_wait_started_at_monotonic"] = response_wait_started
             response_context["ask_operation_deadline_monotonic"] = ask_operation_deadline_monotonic
@@ -8674,32 +8669,8 @@ class ChatGPTBrowserClient:
         detail temporarily unavailable, and it must independently satisfy the
         same backend commit/fresh-answer gates.
         """
-        value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "0").strip().lower()
+        value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled"}
-
-    def _allow_answer_wait_after_keyboard_enter_once(self, submit_evidence: Any) -> bool:
-        """Allow the simple UI-equivalent ask path to wait for an answer after Enter.
-
-        The normal product goal is: fill once, press Enter once, then wait for
-        the assistant answer.  A failed or skipped submit-confirmation probe
-        must not short-circuit that answer wait when the primary keyboard Enter
-        dispatch was actually attempted.  Stale-answer protection remains in
-        the response extraction layer through the pre-submit response context
-        and request-marker checks.
-        """
-        if not isinstance(submit_evidence, dict):
-            return False
-        if not bool(submit_evidence.get("submit_keyboard_enter_primary_used")):
-            return False
-        if bool(submit_evidence.get("submit_keyboard_enter_retry_used")):
-            return False
-        if bool(submit_evidence.get("submit_keyboard_enter_refill_used")):
-            return False
-        if bool(submit_evidence.get("send_button_retry_used")):
-            return False
-        dispatch_key = str(submit_evidence.get("submit_keyboard_enter_dispatch_key") or "")
-        method = str(submit_evidence.get("submit_method") or "")
-        return dispatch_key == "Enter" and method == "keyboard_enter"
 
     def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
         if not isinstance(confirmation, dict) or confirmation.get("confirmed"):
@@ -8969,7 +8940,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.57_observational_only"
+        result["diagnostic_submit_path"] = "v0.0.278.48_observational_only"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
