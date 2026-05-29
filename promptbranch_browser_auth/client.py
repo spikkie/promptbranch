@@ -8724,6 +8724,122 @@ class ChatGPTBrowserClient:
         return None, None
 
 
+    async def _click_visible_enabled_submit_button_for_variant(self, page: Any, *, label: str) -> dict[str, Any]:
+        started = time.monotonic()
+        probe_history: list[dict[str, Any]] = []
+        best_disabled: dict[str, Any] | None = None
+        for selector in COMPOSER_SEND_READY_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                first_only = False
+                try:
+                    count = await locator.count()
+                except Exception as exc:
+                    if hasattr(locator, "first"):
+                        count = 1
+                        first_only = True
+                    else:
+                        probe = {
+                            "label": label,
+                            "selector": selector,
+                            "error": str(exc),
+                            "count": 0,
+                            "visible": False,
+                            "enabled": False,
+                        }
+                        if len(probe_history) < 40:
+                            probe_history.append(probe)
+                        continue
+                limit = 1 if first_only else min(int(count or 0), 5)
+                if limit <= 0:
+                    probe = {
+                        "label": label,
+                        "selector": selector,
+                        "index": None,
+                        "count": count,
+                        "visible": False,
+                        "enabled": False,
+                    }
+                    if len(probe_history) < 40:
+                        probe_history.append(probe)
+                    continue
+                for index in range(limit):
+                    item = locator.first if first_only else locator.nth(index)
+                    visible = False
+                    enabled = False
+                    aria_label = ""
+                    data_testid = ""
+                    try:
+                        visible = await item.is_visible(timeout=500)
+                    except Exception:
+                        visible = False
+                    try:
+                        enabled = await item.is_enabled(timeout=750)
+                    except Exception:
+                        enabled = False
+                    try:
+                        aria_label = (await item.get_attribute("aria-label") or "").strip()
+                    except Exception:
+                        aria_label = ""
+                    try:
+                        data_testid = (await item.get_attribute("data-testid") or "").strip()
+                    except Exception:
+                        data_testid = ""
+                    probe = {
+                        "label": label,
+                        "selector": selector,
+                        "index": index,
+                        "count": count,
+                        "visible": visible,
+                        "enabled": enabled,
+                        "aria_label": aria_label,
+                        "data_testid": data_testid,
+                    }
+                    if len(probe_history) < 40:
+                        probe_history.append(probe)
+                    if visible and not enabled and best_disabled is None:
+                        best_disabled = probe
+                    if visible and enabled:
+                        click_started = time.monotonic()
+                        await item.click()
+                        click_completed = time.monotonic()
+                        return {
+                            "clicked": True,
+                            "label": label,
+                            "selector": selector,
+                            "index": index,
+                            "button_visible": visible,
+                            "button_enabled": enabled,
+                            "aria_label": aria_label,
+                            "data_testid": data_testid,
+                            "dispatch_started_at_monotonic": click_started,
+                            "dispatch_completed_at_monotonic": click_completed,
+                            "click_seconds": round(click_completed - click_started, 3),
+                            "duration_seconds": round(time.monotonic() - started, 3),
+                            "probe_history": probe_history,
+                        }
+            except Exception as exc:
+                probe = {
+                    "label": label,
+                    "selector": selector,
+                    "error": type(exc).__name__,
+                    "error_text": str(exc)[:240],
+                    "visible": False,
+                    "enabled": False,
+                }
+                if len(probe_history) < 40:
+                    probe_history.append(probe)
+                continue
+        return {
+            "clicked": False,
+            "label": label,
+            "reason": "no_visible_enabled_submit_button",
+            "best_disabled": best_disabled,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "probe_history": probe_history,
+        }
+
+
     async def _capture_keyboard_submit_diagnostics(
         self,
         page: Any,
@@ -8912,15 +9028,6 @@ class ChatGPTBrowserClient:
         result["duration_seconds"] = round(time.monotonic() - started, 3)
         return result
 
-    def _keyboard_enter_retry_post_fill_settle_seconds(self) -> float:
-        raw_value = os.environ.get("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS")
-        if raw_value is None or str(raw_value).strip() == "":
-            return 8.0
-        try:
-            return max(0.0, float(str(raw_value).strip()))
-        except (TypeError, ValueError):
-            return 8.0
-
     async def _run_keyboard_submit_variant(
         self,
         page: Any,
@@ -8930,11 +9037,13 @@ class ChatGPTBrowserClient:
         before_user_turn_state: dict[str, Any] | None,
         variant: str,
         dispatch_key: str,
+        dispatch_method: str = "keyboard",
     ) -> dict[str, Any]:
         started = time.monotonic()
         result: dict[str, Any] = {
             "variant": variant,
             "dispatch_key": dispatch_key,
+            "dispatch_method": dispatch_method,
             "attempted": False,
             "fill_attempted": False,
             "fill_verified": False,
@@ -8949,7 +9058,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.53_observational_only"
+        result["diagnostic_submit_path"] = "v0.0.278.54_observational_only"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
@@ -8984,60 +9093,64 @@ class ChatGPTBrowserClient:
         if not result["fill_verified"]:
             result.update({"status": "fill_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        if variant == "keyboard_enter_refill_retry":
-            requested_settle_seconds = self._keyboard_enter_retry_post_fill_settle_seconds()
-            settle_started = time.monotonic()
-            if requested_settle_seconds > 0:
-                self._log(
-                    "submit",
-                    "settling after verified retry fill before Enter dispatch",
-                    variant=variant,
-                    post_fill_settle_seconds=requested_settle_seconds,
-                )
-                await asyncio.sleep(requested_settle_seconds)
-            settle_completed = time.monotonic()
-            result["post_fill_settle"] = {
-                "diagnostic_timing_path": "v0.0.278.53_retry_post_fill_settle",
-                "requested_seconds": round(requested_settle_seconds, 3),
-                "observed_seconds": round(settle_completed - settle_started, 3),
-                "applied": requested_settle_seconds > 0,
-                "notes": [
-                    "explicit post-fill settle before retry Enter",
-                    "_fill_chat_prompt internals are unmodified from v0.0.278.48",
-                    "no additional probes, event listeners, or dispatch changes added",
-                ],
-            }
-            result["post_fill_settle_seconds"] = round(requested_settle_seconds, 3)
-            result["post_fill_settle_observed_seconds"] = round(settle_completed - settle_started, 3)
         observer = self._start_submit_network_observer(page, prompt=prompt)
         result["pre_dispatch_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
             label=f"{variant}:pre_dispatch",
         )
-        result["keyboard_event_probe_install"] = await self._install_keyboard_submit_event_probe(
-            page,
-            label=f"{variant}:dispatch_events",
-        )
-        dispatch_started = time.monotonic()
-        result["attempted"] = True
-        try:
-            await page.keyboard.press(dispatch_key)
-        except Exception as exc:
-            self._stop_submit_network_observer(page, observer)
-            result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+        if dispatch_method == "send_button_click":
+            result["keyboard_event_probe_install"] = {
+                "installed": False,
+                "status": "skipped_send_button_click_dispatch",
+                "label": f"{variant}:dispatch_events",
+            }
+        else:
+            result["keyboard_event_probe_install"] = await self._install_keyboard_submit_event_probe(
                 page,
                 label=f"{variant}:dispatch_events",
             )
+        dispatch_started = time.monotonic()
+        result["attempted"] = True
+        send_button_click_dispatch: dict[str, Any] | None = None
+        try:
+            if dispatch_method == "send_button_click":
+                send_button_click_dispatch = await self._click_visible_enabled_submit_button_for_variant(
+                    page,
+                    label=f"{variant}:send_button_click_dispatch",
+                )
+                result["send_button_click_dispatch"] = send_button_click_dispatch
+                if not bool(send_button_click_dispatch.get("clicked")):
+                    raise RuntimeError(str(send_button_click_dispatch.get("reason") or "send_button_click_not_performed"))
+            else:
+                await page.keyboard.press(dispatch_key)
+        except Exception as exc:
+            self._stop_submit_network_observer(page, observer)
+            if dispatch_method == "send_button_click":
+                result["keyboard_event_probe_events"] = {
+                    "collected": False,
+                    "status": "skipped_send_button_click_dispatch",
+                    "event_count": 0,
+                    "events": [],
+                    "label": f"{variant}:dispatch_events",
+                }
+            else:
+                result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+                    page,
+                    label=f"{variant}:dispatch_events",
+                )
             result.update({
-                "status": "keyboard_dispatch_failed",
+                "status": "send_button_click_dispatch_failed" if dispatch_method == "send_button_click" else "keyboard_dispatch_failed",
                 "error": type(exc).__name__,
+                "error_text": str(exc)[:240],
                 "dispatch_seconds": round(time.monotonic() - dispatch_started, 3),
                 "duration_seconds": round(time.monotonic() - started, 3),
             })
             return result
         dispatch_completed = time.monotonic()
-        result["dispatch_seconds"] = round(dispatch_completed - dispatch_started, 3)
+        if isinstance(send_button_click_dispatch, dict):
+            dispatch_completed = send_button_click_dispatch.get("dispatch_completed_at_monotonic") or dispatch_completed
+        result["dispatch_seconds"] = round(float(dispatch_completed) - dispatch_started, 3)
         try:
             confirmation = await self._wait_for_submit_confirmation(
                 page,
@@ -9049,16 +9162,29 @@ class ChatGPTBrowserClient:
         finally:
             self._stop_submit_network_observer(page, observer)
         result["confirmation"] = confirmation
-        result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
-            page,
-            label=f"{variant}:dispatch_events",
-        )
+        if dispatch_method == "send_button_click":
+            result["keyboard_event_probe_events"] = {
+                "collected": False,
+                "status": "skipped_send_button_click_dispatch",
+                "event_count": 0,
+                "events": [],
+                "label": f"{variant}:dispatch_events",
+            }
+        else:
+            result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+                page,
+                label=f"{variant}:dispatch_events",
+            )
         result["post_confirmation_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
             label=f"{variant}:post_confirmation",
         )
         result.update(self._submit_variant_network_summary(confirmation, variant=variant, dispatch_key=dispatch_key))
+        result["dispatch_method"] = dispatch_method
+        if dispatch_method == "send_button_click":
+            result["dispatch_key"] = "send_button_click"
+            result["send_button_click_used"] = bool((result.get("send_button_click_dispatch") or {}).get("clicked"))
         try:
             after_state = await self._capture_post_submit_composer_state(page, prompt=prompt)
             result["after_composer"] = after_state
@@ -9709,7 +9835,7 @@ class ChatGPTBrowserClient:
                 retry_started = time.monotonic()
                 self._log(
                     "submit",
-                    "primary keyboard Enter did not commit; retrying with trusted refill and Enter",
+                    "primary keyboard Enter did not commit; retrying with trusted refill and send button click",
                     confirmation_mode=confirmation.get("confirmation_mode"),
                     causal_reason=confirmation.get("causal_confirmation_reason"),
                     network_status=(confirmation.get("submit_network_evidence") or {}).get("status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
@@ -9720,8 +9846,9 @@ class ChatGPTBrowserClient:
                     prompt=prompt,
                     before_assistant_count=before_assistant_count,
                     before_user_turn_state=before_user_turns,
-                    variant="keyboard_enter_refill_retry",
-                    dispatch_key="Enter",
+                    variant="keyboard_enter_refill_send_button_click_retry",
+                    dispatch_key="send_button_click",
+                    dispatch_method="send_button_click",
                 )
                 keyboard_enter_retry_seconds = round(time.monotonic() - retry_started, 3)
                 retry_confirmation = keyboard_enter_retry_result.get("confirmation") if isinstance(keyboard_enter_retry_result, dict) else None

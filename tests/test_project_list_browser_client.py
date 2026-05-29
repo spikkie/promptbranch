@@ -4067,10 +4067,12 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
             },
         }
 
-    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
+    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key, dispatch_method="keyboard"):
         return {
             "variant": variant,
             "dispatch_key": dispatch_key,
+            "dispatch_method": dispatch_method,
+            "send_button_click_dispatch": {"clicked": dispatch_method == "send_button_click"},
             "confirmed": True,
             "network_status": "submit_network_request_observed",
             "confirmation": {
@@ -4114,7 +4116,9 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert page.keyboard.pressed == ["Enter"]
     assert result["submit_method"] == "keyboard_enter"
     assert result["submit_keyboard_enter_retry_used"] is True
-    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_retry"
+    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_send_button_click_retry"
+    assert result["submit_keyboard_enter_retry_result"]["dispatch_method"] == "send_button_click"
+    assert result["submit_keyboard_enter_retry_result"]["send_button_click_dispatch"]["clicked"] is True
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["backend_task_message"]
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
@@ -4966,7 +4970,6 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
     client._stop_submit_network_observer = lambda page, observer: None
     client._wait_for_submit_confirmation = fake_wait
     client._capture_post_submit_composer_state = fake_after
-    client._keyboard_enter_retry_post_fill_settle_seconds = lambda: 0.0
 
     import asyncio
 
@@ -4981,28 +4984,129 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.53_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.54_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
-    assert result["post_fill_settle"]["diagnostic_timing_path"] == "v0.0.278.53_retry_post_fill_settle"
-    assert result["post_fill_settle"]["requested_seconds"] == 0.0
-    assert result["post_fill_settle"]["applied"] is False
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
     assert result["keyboard_event_probe_install"]["installed"] is True
     assert result["keyboard_event_probe_events"]["event_count"] == 1
 
 
-def test_keyboard_enter_retry_post_fill_settle_seconds_defaults_to_eight_seconds(tmp_path: Path, monkeypatch) -> None:
+
+def test_keyboard_submit_variant_can_dispatch_by_send_button_click(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
-    monkeypatch.delenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", raising=False)
-    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 8.0
+    class DummyKeyboard:
+        def __init__(self):
+            self.pressed = []
 
-    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "0")
-    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 0.0
+        async def press(self, key):
+            self.pressed.append(key)
 
-    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "3.5")
-    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 3.5
+    class DummyButton:
+        def __init__(self):
+            self.clicked = False
 
-    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "invalid")
-    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 8.0
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def is_enabled(self, timeout=None):
+            return True
+
+        async def get_attribute(self, name):
+            if name == "aria-label":
+                return "Send prompt"
+            if name == "data-testid":
+                return "send-button"
+            return ""
+
+        async def click(self):
+            self.clicked = True
+
+    class DummyLocator:
+        def __init__(self, button):
+            self.first = button
+            self._button = button
+
+        async def count(self):
+            return 1
+
+        def nth(self, index):
+            return self._button
+
+    class DummyPage:
+        def __init__(self):
+            self.keyboard = DummyKeyboard()
+            self.button = DummyButton()
+
+        async def evaluate(self, script, arg):
+            if isinstance(arg, dict):
+                return {
+                    "status": "captured",
+                    "label": arg["label"],
+                    "composer": {"present": True, "exact_marker_found": True},
+                    "send_button": {"present": True, "send_ready": True},
+                }
+            return {"collected": True, "label": arg, "event_count": 0, "events": []}
+
+        def locator(self, selector):
+            if "send" in selector or "composer-submit-button" in selector:
+                return DummyLocator(self.button)
+            return DummyLocator(self.button)
+
+    async def fake_find(page):
+        return object(), "#prompt-textarea"
+
+    async def fake_fill(page, input_locator, *, prompt):
+        return {
+            "method": "trusted_paste",
+            "requested_method": "trusted_paste",
+            "verification_passed": True,
+            "trusted_input_used": True,
+            "duration_seconds": 0.01,
+        }
+
+    async def fake_wait(page, *, before_assistant_count, before_user_turn_state, prompt, submit_network_observer):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["network_submit_request"],
+            "confirmation_mode": "network_submit_request",
+            "submit_network_evidence": {
+                "status": "submit_network_request_observed",
+                "message_request_observed": True,
+                "message_request_count": 1,
+            },
+        }
+
+    async def fake_after(page, *, prompt):
+        return {"text_length": 0}
+
+    page = DummyPage()
+    client._find_visible_chat_input_for_submit_variant = fake_find
+    client._fill_chat_prompt = fake_fill
+    client._start_submit_network_observer = lambda page, prompt=None: {"observer": True}
+    client._stop_submit_network_observer = lambda page, observer: None
+    client._wait_for_submit_confirmation = fake_wait
+    client._capture_post_submit_composer_state = fake_after
+
+    import asyncio
+
+    result = asyncio.run(client._run_keyboard_submit_variant(
+        page,
+        prompt='Return {"sentinel":"STALE_GUARD_LIVE_OK_1780017000000000002"}',
+        before_assistant_count=0,
+        before_user_turn_state={},
+        variant="keyboard_enter_refill_send_button_click_retry",
+        dispatch_key="send_button_click",
+        dispatch_method="send_button_click",
+    ))
+
+    assert page.keyboard.pressed == []
+    assert page.button.clicked is True
+    assert result["confirmed"] is True
+    assert result["dispatch_method"] == "send_button_click"
+    assert result["dispatch_key"] == "send_button_click"
+    assert result["send_button_click_used"] is True
+    assert result["send_button_click_dispatch"]["clicked"] is True
+    assert result["send_button_click_dispatch"]["button_enabled"] is True
+    assert result["keyboard_event_probe_install"]["status"] == "skipped_send_button_click_dispatch"
