@@ -6084,6 +6084,17 @@ class ChatGPTBrowserClient:
         except ValueError:
             return 3_000
 
+    def _submit_prepare_fast_fail_enabled(self) -> bool:
+        value = (os.getenv("CHATGPT_SUBMIT_PREPARE_FAST_FAIL") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled"}
+
+    def _submit_prepare_fast_fail_timeout_ms(self) -> int:
+        raw = (os.getenv("CHATGPT_SUBMIT_PREPARE_FAST_FAIL_TIMEOUT_MS") or "1500").strip()
+        try:
+            return max(250, min(10_000, int(raw)))
+        except ValueError:
+            return 1_500
+
     def _request_post_data_text(self, request: Any) -> str:
         try:
             value = getattr(request, "post_data", None)
@@ -7226,6 +7237,7 @@ class ChatGPTBrowserClient:
         *,
         timeout_ms: int | None = None,
         poll_interval_ms: int = 100,
+        prepare_only_fast_fail_ms: int | None = None,
     ) -> dict[str, Any]:
         started = time.monotonic()
         timeout_ms = self._submit_network_timeout_ms() if timeout_ms is None else timeout_ms
@@ -7251,6 +7263,21 @@ class ChatGPTBrowserClient:
             if snapshot.get("visible"):
                 snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
                 return snapshot
+            if prepare_only_fast_fail_ms is not None:
+                elapsed_ms = int(max(0.0, (time.monotonic() - started) * 1000))
+                prepare_only_fast_fail_ready = bool(
+                    snapshot.get("prepare_token_set_not_consumed")
+                    and snapshot.get("prepare_conduit_token_present")
+                    and not snapshot.get("message_request_observed")
+                    and not snapshot.get("request_marker_found")
+                    and elapsed_ms >= int(prepare_only_fast_fail_ms)
+                )
+                if prepare_only_fast_fail_ready:
+                    snapshot["status"] = "prepare_token_set_not_consumed"
+                    snapshot["prepare_only_fast_fail_used"] = True
+                    snapshot["prepare_only_fast_fail_timeout_ms"] = int(prepare_only_fast_fail_ms)
+                    snapshot["probe_seconds"] = round(time.monotonic() - started, 3)
+                    return snapshot
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 if snapshot.get("prepare_request_observed") and not snapshot.get("message_request_observed") and not snapshot.get("request_marker_found"):
@@ -7832,6 +7859,7 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 3_000,
         poll_interval_ms: int = 250,
         submit_network_observer: dict[str, Any] | None = None,
+        prepare_only_fast_fail: bool = False,
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
@@ -7875,7 +7903,14 @@ class ChatGPTBrowserClient:
 
         if network_required:
             attempt += 1
-            network_evidence = await self._wait_for_submit_network_evidence(page, submit_network_observer)
+            try:
+                network_evidence = await self._wait_for_submit_network_evidence(
+                    page,
+                    submit_network_observer,
+                    prepare_only_fast_fail_ms=self._submit_prepare_fast_fail_timeout_ms() if prepare_only_fast_fail else None,
+                )
+            except TypeError:
+                network_evidence = await self._wait_for_submit_network_evidence(page, submit_network_observer)
             network_submit_seconds_total += float(network_evidence.get("probe_seconds") or 0.0)
             last_network_evidence = network_evidence
             network_found = bool(network_evidence.get("visible") and network_evidence.get("request_marker_found"))
@@ -7897,7 +7932,47 @@ class ChatGPTBrowserClient:
                 and not network_evidence.get("message_request_observed")
                 and not network_evidence.get("request_marker_found")
             )
-            if prepare_only_initial:
+            if prepare_only_initial and prepare_only_fast_fail:
+                await self._drain_submit_network_body_tasks(submit_network_observer, timeout_ms=100)
+                network_evidence = self._submit_network_evidence_snapshot(submit_network_observer)
+                if network_evidence.get("request_marker_found"):
+                    network_found = True
+                else:
+                    network_evidence["prepare_only_fast_fail_used"] = True
+                    network_evidence["prepare_only_fast_fail_timeout_ms"] = self._submit_prepare_fast_fail_timeout_ms()
+                    last_network_evidence = network_evidence
+                    last_backend_echo = {
+                        "visible": False,
+                        "status": "backend_commit_probe_skipped_due_to_prepare_fast_fail",
+                        "post_prepare_commit_window_used": False,
+                        "post_prepare_commit_found": False,
+                        "post_prepare_commit_status": "backend_commit_probe_skipped_due_to_prepare_fast_fail",
+                        "post_prepare_commit_attempt_count": 0,
+                        "post_prepare_commit_seconds": 0.0,
+                        "post_prepare_commit_timeout_ms": 0,
+                        "backend_stale_user_turn_prefix_match_rejected": None,
+                        "marker_present_in_matched_user_text": False,
+                        "matched_marker": None,
+                    }
+                    last_post_prepare_ui_error = {
+                        "visible": False,
+                        "status": "post_prepare_ui_error_skipped_due_to_prepare_fast_fail",
+                        "probe_seconds": 0.0,
+                    }
+                    attempt += 1
+                    attempts.append({
+                        "attempt": attempt,
+                        "mode": "prepare_only_fast_fail",
+                        "confirmed": False,
+                        "confirmed_by": [],
+                        "network_status_after_prepare_window": network_evidence.get("status"),
+                        "prepare_only_fast_fail_used": True,
+                        "prepare_only_fast_fail_timeout_ms": self._submit_prepare_fast_fail_timeout_ms(),
+                        "backend_task_message_status": last_backend_echo.get("status"),
+                        "post_prepare_ui_error_status": last_post_prepare_ui_error.get("status"),
+                        "probe_seconds": network_evidence.get("probe_seconds"),
+                    })
+            elif prepare_only_initial:
                 backend_probe_started = time.monotonic()
                 backend_echo = await self._wait_for_backend_task_message_echo_after_prepare(page, prompt=prompt)
                 backend_echo_seconds_total += round(time.monotonic() - backend_probe_started, 3)
@@ -8152,6 +8227,8 @@ class ChatGPTBrowserClient:
             fields["marker_present_in_matched_user_text"] = last_backend_echo.get("marker_present_in_matched_user_text") if isinstance(last_backend_echo, dict) else None
             fields["matched_marker"] = last_backend_echo.get("matched_marker") if isinstance(last_backend_echo, dict) else None
             fields["stale_marker_values_detected"] = last_backend_echo.get("stale_marker_values_detected") if isinstance(last_backend_echo, dict) else None
+            fields["prepare_only_fast_fail_used"] = bool(network_evidence.get("prepare_only_fast_fail_used"))
+            fields["prepare_only_fast_fail_timeout_ms"] = network_evidence.get("prepare_only_fast_fail_timeout_ms")
             return {
                 **fields,
                 "confirmed": False,
@@ -8552,16 +8629,6 @@ class ChatGPTBrowserClient:
         value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled"}
 
-    def _keyboard_enter_refill_primary_enabled(self) -> bool:
-        """Return whether trusted-refill + Enter is the first keyboard submit path.
-
-        v0.0.278.41 promotes the repeatedly successful retry variant from
-        v0.0.278.39/.40 to the primary path.  The old raw Enter primary path
-        remains available as fallback and as an emergency opt-out.
-        """
-        value = (os.getenv("CHATGPT_KEYBOARD_ENTER_REFILL_PRIMARY") or "1").strip().lower()
-        return value not in {"0", "false", "no", "off", "disabled"}
-
     def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
         if not isinstance(confirmation, dict) or confirmation.get("confirmed"):
             return False
@@ -8680,11 +8747,7 @@ class ChatGPTBrowserClient:
             })
             return result
         dispatch_completed = time.monotonic()
-        result["dispatch_started_at_monotonic"] = round(dispatch_started, 6)
-        result["dispatch_completed_at_monotonic"] = round(dispatch_completed, 6)
         result["dispatch_seconds"] = round(dispatch_completed - dispatch_started, 3)
-        confirmation_started = time.monotonic()
-        result["confirmation_started_at_monotonic"] = round(confirmation_started, 6)
         try:
             confirmation = await self._wait_for_submit_confirmation(
                 page,
@@ -8695,9 +8758,6 @@ class ChatGPTBrowserClient:
             )
         finally:
             self._stop_submit_network_observer(page, observer)
-        confirmation_completed = time.monotonic()
-        result["confirmation_completed_at_monotonic"] = round(confirmation_completed, 6)
-        result["confirmation_seconds"] = round(confirmation_completed - confirmation_started, 3)
         result["confirmation"] = confirmation
         result.update(self._submit_variant_network_summary(confirmation, variant=variant, dispatch_key=dispatch_key))
         try:
@@ -9257,114 +9317,50 @@ class ChatGPTBrowserClient:
             evidence["enter_fallback_decision_seconds"] = enter_fallback_decision_seconds
             evidence["submit_keyboard_enter_primary_used"] = True
             evidence["submit_keyboard_enter_dispatch_key"] = "Enter"
-            keyboard_enter_retry_result: dict[str, Any] | None = None
-            keyboard_enter_retry_seconds = 0.0
-            keyboard_enter_refill_primary_result: dict[str, Any] | None = None
-            keyboard_enter_refill_primary_seconds = 0.0
-            confirmation: dict[str, Any] = {}
-            confirmation_started = time.monotonic()
-            confirmation_completed = confirmation_started
-            confirmation_seconds = 0.0
+            self._log(
+                "submit",
+                "pressing Enter as primary submit dispatch",
+                prompt_present=prompt_present,
+                before_composer=before_composer,
+                send_button_wait_seconds=send_button_wait_seconds,
+            )
             enter_started = time.monotonic()
-            enter_completed = enter_started
-            enter_press_seconds = 0.0
-            enter_dispatch_surface = "not_dispatched"
+            enter_dispatch_surface = "page_keyboard"
             enter_input_selector = None
-
-            if self._keyboard_enter_refill_primary_enabled():
-                # The v0.0.278.39/.40 live path showed that the old raw Enter
-                # attempt consistently fell into prepare-only/no-commit before
-                # the trusted-refill + Enter retry produced the marker-bound
-                # conversation POST.  Promote that successful variant to the
-                # first path, but keep the raw Enter path below as fallback.
-                self._stop_submit_network_observer(page, submit_network_observer)
-                submit_network_observer = None
-                primary_started = time.monotonic()
-                self._log(
-                    "submit",
-                    "running trusted-refill + Enter as primary submit dispatch",
-                    prompt_present=prompt_present,
-                    before_composer=before_composer,
-                    send_button_wait_seconds=send_button_wait_seconds,
-                )
-                keyboard_enter_refill_primary_result = await self._run_keyboard_submit_variant(
-                    page,
-                    prompt=prompt,
-                    before_assistant_count=before_assistant_count,
-                    before_user_turn_state=before_user_turns,
-                    variant="keyboard_enter_refill_primary",
-                    dispatch_key="Enter",
-                )
-                keyboard_enter_refill_primary_seconds = round(time.monotonic() - primary_started, 3)
-                primary_confirmation = keyboard_enter_refill_primary_result.get("confirmation") if isinstance(keyboard_enter_refill_primary_result, dict) else None
-                if isinstance(primary_confirmation, dict) and primary_confirmation.get("confirmed"):
-                    confirmation = primary_confirmation
-                    enter_input_selector = keyboard_enter_refill_primary_result.get("input_selector")
-                    enter_dispatch_surface = "trusted_refill_primary"
-                    enter_started = float(keyboard_enter_refill_primary_result.get("dispatch_started_at_monotonic") or primary_started)
-                    enter_completed = float(keyboard_enter_refill_primary_result.get("dispatch_completed_at_monotonic") or time.monotonic())
-                    enter_press_seconds = float(keyboard_enter_refill_primary_result.get("dispatch_seconds") or 0.0)
-                    confirmation_started = float(keyboard_enter_refill_primary_result.get("confirmation_started_at_monotonic") or enter_completed)
-                    confirmation_completed = float(keyboard_enter_refill_primary_result.get("confirmation_completed_at_monotonic") or time.monotonic())
-                    confirmation_seconds = float(keyboard_enter_refill_primary_result.get("confirmation_seconds") or round(confirmation_completed - confirmation_started, 3))
-                else:
-                    self._log(
-                        "submit",
-                        "trusted-refill + Enter primary did not commit; falling back to raw Enter primary",
-                        primary_status=(keyboard_enter_refill_primary_result or {}).get("status") if isinstance(keyboard_enter_refill_primary_result, dict) else None,
-                        primary_network_status=(keyboard_enter_refill_primary_result or {}).get("network_status") if isinstance(keyboard_enter_refill_primary_result, dict) else None,
-                        primary_confirmation_mode=(keyboard_enter_refill_primary_result or {}).get("confirmation_mode") if isinstance(keyboard_enter_refill_primary_result, dict) else None,
-                    )
-
-            if not confirmation.get("confirmed"):
-                if submit_network_observer is None:
-                    submit_network_observer = self._start_submit_network_observer(page, prompt=prompt)
-                self._log(
-                    "submit",
-                    "pressing raw Enter as fallback submit dispatch",
-                    prompt_present=prompt_present,
-                    before_composer=before_composer,
-                    send_button_wait_seconds=send_button_wait_seconds,
-                )
-                enter_started = time.monotonic()
-                enter_dispatch_surface = "page_keyboard"
-                enter_input_selector = None
-                try:
-                    input_locator, enter_input_selector = await self._find_visible_chat_input_for_submit_variant(page)
-                    if input_locator is not None:
-                        try:
-                            await self._click_locator_with_fallback(input_locator, label="keyboard-primary-submit-composer-focus", timeout_ms=1_000)
-                            if hasattr(input_locator, "press"):
-                                await input_locator.press("Enter")
-                                enter_dispatch_surface = "focused_input_locator"
-                            else:
-                                await page.keyboard.press("Enter")
-                                enter_dispatch_surface = "focused_page_keyboard"
-                        except Exception:
+            try:
+                input_locator, enter_input_selector = await self._find_visible_chat_input_for_submit_variant(page)
+                if input_locator is not None:
+                    try:
+                        await self._click_locator_with_fallback(input_locator, label="keyboard-primary-submit-composer-focus", timeout_ms=1_000)
+                        if hasattr(input_locator, "press"):
+                            await input_locator.press("Enter")
+                            enter_dispatch_surface = "focused_input_locator"
+                        else:
                             await page.keyboard.press("Enter")
-                            enter_dispatch_surface = "page_keyboard_after_focus_failure"
-                    else:
+                            enter_dispatch_surface = "focused_page_keyboard"
+                    except Exception:
                         await page.keyboard.press("Enter")
-                except Exception as exc:
-                    if submit_network_observer is not None:
-                        self._stop_submit_network_observer(page, submit_network_observer)
-                    evidence.update({
-                        "status": "keyboard_enter_dispatch_failed",
-                        "submit_method": "keyboard_enter",
-                        "submit_keyboard_enter_primary_used": True,
-                        "submit_keyboard_enter_refill_primary_used": keyboard_enter_refill_primary_result is not None,
-                        "submit_keyboard_enter_refill_primary_result": keyboard_enter_refill_primary_result,
-                        "submit_keyboard_enter_dispatch_failed": True,
-                        "submit_keyboard_enter_error": type(exc).__name__,
-                        "submit_keyboard_enter_input_selector": enter_input_selector,
-                        "submit_keyboard_enter_dispatch_surface": enter_dispatch_surface,
-                        "enter_fallback_press_seconds": round(time.monotonic() - enter_started, 3),
-                        "duration_seconds": round(time.monotonic() - submit_total_started, 3),
-                    })
-                    return evidence
-                enter_completed = time.monotonic()
-                enter_press_seconds = round(enter_completed - enter_started, 3)
-                confirmation_started = time.monotonic()
+                        enter_dispatch_surface = "page_keyboard_after_focus_failure"
+                else:
+                    await page.keyboard.press("Enter")
+            except Exception as exc:
+                self._stop_submit_network_observer(page, submit_network_observer)
+                evidence.update({
+                    "status": "keyboard_enter_dispatch_failed",
+                    "submit_method": "keyboard_enter",
+                    "submit_keyboard_enter_primary_used": True,
+                    "submit_keyboard_enter_dispatch_failed": True,
+                    "submit_keyboard_enter_error": type(exc).__name__,
+                    "submit_keyboard_enter_input_selector": enter_input_selector,
+                    "submit_keyboard_enter_dispatch_surface": enter_dispatch_surface,
+                    "enter_fallback_press_seconds": round(time.monotonic() - enter_started, 3),
+                    "duration_seconds": round(time.monotonic() - submit_total_started, 3),
+                })
+                return evidence
+            enter_completed = time.monotonic()
+            enter_press_seconds = round(enter_completed - enter_started, 3)
+            confirmation_started = time.monotonic()
+            try:
                 try:
                     confirmation = await self._wait_for_submit_confirmation(
                         page,
@@ -9372,37 +9368,46 @@ class ChatGPTBrowserClient:
                         before_user_turn_state=before_user_turns,
                         prompt=prompt,
                         submit_network_observer=submit_network_observer,
+                        prepare_only_fast_fail=self._submit_prepare_fast_fail_enabled(),
                     )
-                finally:
-                    self._stop_submit_network_observer(page, submit_network_observer)
-                    submit_network_observer = None
-                confirmation_completed = time.monotonic()
-                confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
-                if self._keyboard_enter_commit_retry_enabled() and self._submit_confirmation_needs_keyboard_retry(confirmation):
-                    retry_started = time.monotonic()
-                    self._log(
-                        "submit",
-                        "raw Enter fallback did not commit; retrying with trusted refill and Enter",
-                        confirmation_mode=confirmation.get("confirmation_mode"),
-                        causal_reason=confirmation.get("causal_confirmation_reason"),
-                        network_status=(confirmation.get("submit_network_evidence") or {}).get("status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
-                        backend_status=(confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_status") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
-                    )
-                    keyboard_enter_retry_result = await self._run_keyboard_submit_variant(
+                except TypeError:
+                    confirmation = await self._wait_for_submit_confirmation(
                         page,
-                        prompt=prompt,
                         before_assistant_count=before_assistant_count,
                         before_user_turn_state=before_user_turns,
-                        variant="keyboard_enter_refill_retry",
-                        dispatch_key="Enter",
+                        prompt=prompt,
+                        submit_network_observer=submit_network_observer,
                     )
-                    keyboard_enter_retry_seconds = round(time.monotonic() - retry_started, 3)
-                    retry_confirmation = keyboard_enter_retry_result.get("confirmation") if isinstance(keyboard_enter_retry_result, dict) else None
-                    if isinstance(retry_confirmation, dict) and retry_confirmation.get("confirmed"):
-                        confirmation = retry_confirmation
-                        confirmation_started = float(keyboard_enter_retry_result.get("confirmation_started_at_monotonic") or confirmation_started)
-                        confirmation_completed = float(keyboard_enter_retry_result.get("confirmation_completed_at_monotonic") or time.monotonic())
-                        confirmation_seconds = float(keyboard_enter_retry_result.get("confirmation_seconds") or round(confirmation_completed - confirmation_started, 3))
+            finally:
+                self._stop_submit_network_observer(page, submit_network_observer)
+            confirmation_completed = time.monotonic()
+            confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
+            keyboard_enter_retry_result: dict[str, Any] | None = None
+            keyboard_enter_retry_seconds = 0.0
+            if self._keyboard_enter_commit_retry_enabled() and self._submit_confirmation_needs_keyboard_retry(confirmation):
+                retry_started = time.monotonic()
+                self._log(
+                    "submit",
+                    "primary keyboard Enter did not commit; retrying with trusted refill and Enter",
+                    confirmation_mode=confirmation.get("confirmation_mode"),
+                    causal_reason=confirmation.get("causal_confirmation_reason"),
+                    network_status=(confirmation.get("submit_network_evidence") or {}).get("status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
+                    backend_status=(confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_status") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
+                )
+                keyboard_enter_retry_result = await self._run_keyboard_submit_variant(
+                    page,
+                    prompt=prompt,
+                    before_assistant_count=before_assistant_count,
+                    before_user_turn_state=before_user_turns,
+                    variant="keyboard_enter_refill_retry",
+                    dispatch_key="Enter",
+                )
+                keyboard_enter_retry_seconds = round(time.monotonic() - retry_started, 3)
+                retry_confirmation = keyboard_enter_retry_result.get("confirmation") if isinstance(keyboard_enter_retry_result, dict) else None
+                if isinstance(retry_confirmation, dict) and retry_confirmation.get("confirmed"):
+                    confirmation = retry_confirmation
+                    confirmation_completed = time.monotonic()
+                    confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
             after_composer, after_submit_composer_snapshot_seconds = await maybe_capture_after_submit_snapshot(
                 confirmation=confirmation,
                 reason="keyboard_enter_submit_confirmed_without_deep_debug",
@@ -9460,11 +9465,6 @@ class ChatGPTBrowserClient:
                 "send_button_wait_seconds": send_button_wait_seconds,
                 "send_button_retry_seconds": send_button_retry_seconds,
                 "enter_fallback_press_seconds": enter_press_seconds,
-                "submit_keyboard_enter_refill_primary_used": keyboard_enter_refill_primary_result is not None,
-                "submit_keyboard_enter_refill_primary_confirmed": bool((keyboard_enter_refill_primary_result or {}).get("confirmed")) if isinstance(keyboard_enter_refill_primary_result, dict) else False,
-                "submit_keyboard_enter_refill_primary_seconds": keyboard_enter_refill_primary_seconds,
-                "submit_keyboard_enter_refill_primary_result": keyboard_enter_refill_primary_result,
-                "submit_keyboard_enter_raw_fallback_used": not bool((keyboard_enter_refill_primary_result or {}).get("confirmed")) if isinstance(keyboard_enter_refill_primary_result, dict) else True,
                 "submit_keyboard_enter_retry_used": keyboard_enter_retry_result is not None,
                 "submit_keyboard_enter_retry_seconds": keyboard_enter_retry_seconds,
                 "submit_keyboard_enter_retry_result": keyboard_enter_retry_result,
@@ -9550,6 +9550,8 @@ class ChatGPTBrowserClient:
                 "submit_stream_started_without_user_message_commit": network_evidence.get("stream_started_without_user_message_commit"),
                 "submit_prepare_token_set_not_consumed": network_evidence.get("prepare_token_set_not_consumed"),
                 "submit_prepare_only_then_idle_without_commit": network_evidence.get("prepare_only_then_idle_without_commit"),
+                "submit_prepare_only_fast_fail_used": network_evidence.get("prepare_only_fast_fail_used"),
+                "submit_prepare_only_fast_fail_timeout_ms": network_evidence.get("prepare_only_fast_fail_timeout_ms"),
                 "submit_stream_status_streaming_observed": network_evidence.get("stream_status_streaming_observed"),
                 "submit_post_prepare_stream_status_streaming_observed": network_evidence.get("post_prepare_stream_status_streaming_observed"),
                 "submit_stream_status_complete_observed": network_evidence.get("stream_status_complete_observed"),
