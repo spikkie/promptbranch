@@ -3398,6 +3398,134 @@ def test_fill_chat_prompt_slim_retry_skips_full_composer_probe(tmp_path: Path, m
     assert "Control+V" in page.keyboard.pressed
 
 
+def test_retry_send_ready_barrier_requires_marker_and_send_button(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyItem:
+        async def is_visible(self, timeout=None):
+            return True
+        async def is_enabled(self, timeout=None):
+            return True
+
+    class DummyLocator:
+        async def count(self):
+            return 1
+        @property
+        def first(self):
+            return DummyItem()
+
+    class DummyPage:
+        def __init__(self):
+            self.waits = []
+            self.locator_calls = []
+        def locator(self, selector):
+            self.locator_calls.append(selector)
+            return DummyLocator()
+        async def wait_for_timeout(self, ms):
+            self.waits.append(ms)
+
+    async def fake_marker_state(page, *, prompt=None, input_locator=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_preview": prompt,
+            "submit_button": {"probe_skipped": True},
+            "slim_retry_marker_verify": True,
+        }
+
+    client._capture_composer_prompt_marker_state = fake_marker_state
+
+    import asyncio
+
+    page = DummyPage()
+    result = asyncio.run(client._wait_for_retry_send_ready_barrier(page, prompt="hello STALE_GUARD_LIVE_OK_2", input_locator=object(), settle_ms=250))
+
+    assert result["ready"] is True
+    assert result["status"] == "send_ready"
+    assert result["marker_ready"] is True
+    assert result["send_ready"] is True
+    assert page.waits == [250]
+    assert '#composer-submit-button[data-testid="send-button"]' in page.locator_calls
+
+
+def test_keyboard_retry_slim_fill_falls_back_to_full_fill_when_send_ready_missing(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.delenv("CHATGPT_PROMPT_FILL_MODE", raising=False)
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.pressed = []
+        async def press(self, key):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self):
+            self.keyboard = DummyKeyboard()
+
+    fill_calls = []
+
+    async def fake_find_input(page):
+        return object(), "#prompt-textarea"
+
+    async def fake_fill(page, input_locator, *, prompt, slim_retry=False):
+        fill_calls.append(slim_retry)
+        return {
+            "method": "trusted_paste",
+            "requested_method": "trusted_paste",
+            "verification_passed": True,
+            "trusted_input_used": True,
+            "duration_seconds": 0.01,
+            "slim_retry": slim_retry,
+            "slim_retry_marker_verify_used": slim_retry,
+        }
+
+    async def fake_barrier(page, *, prompt, input_locator, timeout_ms=2000, poll_interval_ms=150, settle_ms=350):
+        return {"used": True, "ready": False, "status": "send_ready_timeout", "timeout_ms": timeout_ms}
+
+    async def fake_confirm(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, submit_network_observer=None, **kwargs):
+        return {
+            "confirmed": True,
+            "confirmed_by": ["network_submit_request"],
+            "confirmation_mode": "network_submit_request",
+            "causal_confirmation_reason": "network_submit_request",
+            "submit_network_evidence": {
+                "status": "submit_network_request_observed",
+                "request_marker_found": True,
+                "message_request_observed": True,
+                "message_request_count": 1,
+            },
+        }
+
+    async def fake_after(page, *, prompt=None):
+        return {"text_length": 0}
+
+    client._find_visible_chat_input_for_submit_variant = fake_find_input
+    client._fill_chat_prompt = fake_fill
+    client._wait_for_retry_send_ready_barrier = fake_barrier
+    client._start_submit_network_observer = lambda page, prompt=None: object()
+    client._stop_submit_network_observer = lambda page, observer: None
+    client._wait_for_submit_confirmation = fake_confirm
+    client._capture_post_submit_composer_state = fake_after
+
+    import asyncio
+
+    page = DummyPage()
+    result = asyncio.run(client._run_keyboard_submit_variant(
+        page,
+        prompt="hello STALE_GUARD_LIVE_OK_2",
+        before_assistant_count=0,
+        before_user_turn_state=None,
+        variant="keyboard_enter_refill_retry",
+        dispatch_key="Enter",
+    ))
+
+    assert result["confirmed"] is True
+    assert result["trusted_refill_retry_slim_fill_used"] is True
+    assert result["trusted_refill_retry_send_ready_barrier"]["ready"] is False
+    assert result["trusted_refill_retry_full_fill_fallback_used"] is True
+    assert fill_calls == [True, False]
+    assert page.keyboard.pressed == ["Enter"]
+
+
 def test_submit_response_body_shape_reports_redacted_prepare_metadata(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
