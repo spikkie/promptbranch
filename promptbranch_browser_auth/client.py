@@ -1181,6 +1181,71 @@ class ChatGPTBrowserClient:
     def driver_name(self) -> str:
         return "patchright" if self.config.use_patchright else "playwright"
 
+    @staticmethod
+    def _chrome_arg_present(args: list[str], option_name: str) -> bool:
+        return any(str(arg) == option_name or str(arg).startswith(f"{option_name}=") for arg in args)
+
+    def _headed_patchright_safe_args_enabled(self) -> bool:
+        value = os.getenv("CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS", "1")
+        return value.strip().lower() not in {"0", "false", "no", "off", "disabled"}
+
+    def _effective_browser_args(self) -> list[str]:
+        args = list(self.config.extra_browser_args)
+        if (
+            self.config.use_patchright
+            and self.config.is_headed
+            and self._headed_patchright_safe_args_enabled()
+        ):
+            # v0.0.278.63: local headed Patchright on Linux/Wayland can crash
+            # before ChatGPT loads with a Vulkan/Ozone error.  Add these only
+            # for headed Patchright sessions; Docker/headless remains unchanged.
+            if not self._chrome_arg_present(args, "--ozone-platform"):
+                args.append("--ozone-platform=x11")
+            if not self._chrome_arg_present(args, "--disable-gpu"):
+                args.append("--disable-gpu")
+            if not self._chrome_arg_present(args, "--disable-vulkan"):
+                args.append("--disable-vulkan")
+        return args
+
+    def _browser_launch_failure_payload(
+        self,
+        exc: Exception,
+        *,
+        stage: str = "launch_persistent_context",
+        retry_attempted: bool = False,
+        removed_singleton_artifacts: list[str] | None = None,
+    ) -> dict[str, Any]:
+        message = str(exc)
+        lower_message = message.lower()
+        likely_linux_gpu_backend = (
+            "network.setcachedisabled" in lower_message
+            or "connection closed while reading from the driver" in lower_message
+            or "ozone-platform=wayland" in lower_message
+            or "vulkan" in lower_message
+        )
+        return {
+            "ok": False,
+            "status": "browser_launch_failed",
+            "error": message,
+            "error_type": type(exc).__name__,
+            "timeout_layer": "browser_launch",
+            "browser_mode": "local_headed_patchright" if self.config.use_patchright and self.config.is_headed else self.driver_name,
+            "browser_driver": self.driver_name,
+            "headless": self.config.headless,
+            "browser_channel": self.config.browser_channel or "default",
+            "profile_dir": self.config.profile_dir,
+            "stage": stage,
+            "retry_attempted": bool(retry_attempted),
+            "removed_singleton_artifacts": list(removed_singleton_artifacts or []),
+            "browser_args": self._effective_browser_args(),
+            "likely_linux_gpu_backend_issue": bool(likely_linux_gpu_backend),
+            "recovery_hint": (
+                "Headed Patchright failed before a browser context became usable. "
+                "v0.0.278.63 applies --ozone-platform=x11 --disable-gpu --disable-vulkan by default for headed Patchright. "
+                "Set CHATGPT_BROWSER_EXTRA_ARGS for additional local Chrome flags or CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS=0 to disable these defaults."
+            ),
+        }
+
     def _clear_profile_singleton_locks(self) -> list[str]:
         if not self.config.clear_singleton_locks:
             return []
@@ -1236,7 +1301,11 @@ class ChatGPTBrowserClient:
             return await chromium.launch_persistent_context(**launch_kwargs)
         except Exception as exc:
             if not self._browser_context_launch_recoverable(exc):
-                raise
+                payload = self._browser_launch_failure_payload(exc, retry_attempted=False)
+                raise BrowserContextUnavailableError(
+                    f"browser_launch_failed: {type(exc).__name__}: {exc}",
+                    payload=payload,
+                ) from exc
             removed = self._clear_profile_singleton_locks()
             self._log(
                 "driver",
@@ -1250,12 +1319,18 @@ class ChatGPTBrowserClient:
             try:
                 return await chromium.launch_persistent_context(**launch_kwargs)
             except Exception as retry_exc:
-                if self._browser_context_launch_recoverable(retry_exc):
-                    raise BrowserContextUnavailableError(
-                        "browser_context_unavailable: failed to launch persistent browser context after cleanup/retry; "
-                        f"original={type(exc).__name__}: {exc}; retry={type(retry_exc).__name__}: {retry_exc}"
-                    ) from retry_exc
-                raise
+                payload = self._browser_launch_failure_payload(
+                    retry_exc,
+                    retry_attempted=True,
+                    removed_singleton_artifacts=removed,
+                )
+                payload["original_error"] = str(exc)
+                payload["original_error_type"] = type(exc).__name__
+                raise BrowserContextUnavailableError(
+                    "browser_context_unavailable: failed to launch persistent browser context after cleanup/retry; "
+                    f"original={type(exc).__name__}: {exc}; retry={type(retry_exc).__name__}: {retry_exc}",
+                    payload=payload,
+                ) from retry_exc
 
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
         respect_history_rate_limit_cooldown = bool(kwargs.pop('respect_history_rate_limit_cooldown', True))
@@ -1268,7 +1343,7 @@ class ChatGPTBrowserClient:
         await self._respect_context_spacing()
         playwright_module = await self._start_driver()
         async with playwright_module as p:
-            browser_args = list(self.config.extra_browser_args)
+            browser_args = self._effective_browser_args()
             if self.config.disable_fedcm:
                 browser_args.extend([
                     "--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics",

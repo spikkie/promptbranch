@@ -840,6 +840,17 @@ def _apply_cli_config_defaults(args: argparse.Namespace, argv: list[str]) -> arg
     return args
 
 
+def _split_browser_args_env(value: Optional[str]) -> tuple[str, ...]:
+    text = str(value or "").strip()
+    if not text:
+        return ()
+    try:
+        import shlex
+        return tuple(shlex.split(text))
+    except ValueError:
+        return tuple(part for part in text.split() if part)
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -881,6 +892,7 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
         pause_before_fill=bool(getattr(args, "pause_before_fill", False)),
         pause_after_fill=bool(getattr(args, "pause_after_fill", False)),
         pause_before_submit=bool(getattr(args, "pause_before_submit", False)),
+        extra_browser_args=_split_browser_args_env(os.getenv("CHATGPT_BROWSER_EXTRA_ARGS")),
     )
     return ChatGPTAutomationService(settings)
 

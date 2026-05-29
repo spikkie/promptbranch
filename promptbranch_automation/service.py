@@ -5,6 +5,7 @@ import fcntl
 import logging
 import os
 import re
+import shlex
 import threading
 import time
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from promptbranch_browser_auth.exceptions import (
     BotChallengeError,
     ManualLoginRequiredError,
     BrowserProfileBusyError,
+    BrowserContextUnavailableError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -24,6 +26,17 @@ from .automation import ChatGPTAutomation
 
 logger = logging.getLogger(__name__)
 
+
+
+
+def _split_browser_args(value: Optional[str]) -> tuple[str, ...]:
+    text = str(value or "").strip()
+    if not text:
+        return ()
+    try:
+        return tuple(shlex.split(text))
+    except ValueError:
+        return tuple(part for part in text.split() if part)
 
 def _mask_email(value: Optional[str]) -> str:
     if not value:
@@ -273,6 +286,7 @@ class ChatGPTAutomationSettings:
     pause_before_fill: bool = False
     pause_after_fill: bool = False
     pause_before_submit: bool = False
+    extra_browser_args: tuple[str, ...] = ()
 
 
 class ChatGPTAutomationService:
@@ -617,6 +631,7 @@ class ChatGPTAutomationService:
             pause_before_fill=self.settings.pause_before_fill,
             pause_after_fill=self.settings.pause_after_fill,
             pause_before_submit=self.settings.pause_before_submit,
+            extra_browser_args=self.settings.extra_browser_args,
         )
 
 
@@ -1098,6 +1113,22 @@ class ChatGPTAutomationService:
                     if attempt >= max_retries + 1:
                         break
                     await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
+                except BrowserContextUnavailableError as exc:
+                    logger.warning("ChatGPT browser launch failed: %s", exc)
+                    payload = exc.to_payload()
+                    payload.setdefault("action", "ask")
+                    payload.setdefault("answer", None)
+                    payload.setdefault("answer_text", "")
+                    payload.setdefault("answer_text_length", 0)
+                    payload.setdefault("partial_result", True)
+                    payload.setdefault("conversation_url", conversation_url or self.settings.project_url)
+                    payload.setdefault("submit_evidence", None)
+                    payload.setdefault("ask_phase_timings", {})
+                    timings = payload.get("ask_phase_timings")
+                    if isinstance(timings, dict):
+                        timings.setdefault("lock_wait_seconds", getattr(profile_lock, "last_waited_seconds", 0.0))
+                        timings.setdefault("submit_method", None)
+                    return payload
                 except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError):
                     raise
                 except Exception as exc:  # pragma: no cover - defensive fallback

@@ -153,7 +153,13 @@ async def main() -> int:
         print("[cli] login test failed", flush=True)
         print(f"[cli] error_type={type(exc).__name__}", flush=True)
         print(f"[cli] error={exc}", flush=True)
-        traceback.print_exc()
+        if hasattr(exc, "to_payload"):
+            try:
+                print(json.dumps(exc.to_payload(), indent=2, ensure_ascii=False), flush=True)
+            except Exception:
+                traceback.print_exc()
+        else:
+            traceback.print_exc()
         return 1
 
     print("[cli] login test succeeded", flush=True)

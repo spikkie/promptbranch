@@ -482,3 +482,72 @@ def test_response_completion_predicate_logging_does_not_block_strong_idle(tmp_pa
 
     assert 'stable_polls_below_required' not in blockers
     assert 'minimum_completion_delay_not_met' not in blockers
+
+
+def test_headed_patchright_uses_linux_x11_vulkan_safe_args(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.headless = False
+    client.config.use_patchright = True
+
+    args = client._effective_browser_args()
+
+    assert "--ozone-platform=x11" in args
+    assert "--disable-gpu" in args
+    assert "--disable-vulkan" in args
+
+
+def test_headless_patchright_does_not_add_headed_safe_args(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.headless = True
+    client.config.use_patchright = True
+
+    args = client._effective_browser_args()
+
+    assert "--ozone-platform=x11" not in args
+    assert "--disable-gpu" not in args
+    assert "--disable-vulkan" not in args
+
+
+def test_run_with_context_wraps_patchright_launch_crash_as_structured_payload(tmp_path: Path, monkeypatch) -> None:
+    from promptbranch_browser_auth.exceptions import BrowserContextUnavailableError
+
+    client = _make_client(tmp_path)
+    client.config.headless = False
+    client.config.use_patchright = True
+
+    class DummyChromium:
+        async def launch_persistent_context(self, **kwargs):
+            raise RuntimeError("Protocol error (Network.setCacheDisabled): Internal server error, session closed")
+
+    class DummyPlaywright:
+        def __init__(self) -> None:
+            self.chromium = DummyChromium()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def fake_start_driver():
+        return DummyPlaywright()
+
+    async def fake_operation(**kwargs):
+        return {"ok": True}
+
+    monkeypatch.setattr(client, "_start_driver", fake_start_driver)
+
+    import asyncio
+
+    try:
+        asyncio.run(client._run_with_context("launch-crash-operation", fake_operation))
+    except BrowserContextUnavailableError as exc:
+        payload = exc.to_payload()
+    else:
+        raise AssertionError("expected BrowserContextUnavailableError")
+
+    assert payload["status"] == "browser_launch_failed"
+    assert payload["browser_driver"] == "patchright"
+    assert payload["browser_mode"] == "local_headed_patchright"
+    assert payload["likely_linux_gpu_backend_issue"] is True
+    assert "--ozone-platform=x11" in payload["browser_args"]

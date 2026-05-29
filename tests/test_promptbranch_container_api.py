@@ -15,14 +15,14 @@ def test_healthz_reports_service_metadata():
     payload = response.json()
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
-    assert payload["version"] == "0.0.278.62"
+    assert payload["version"] == "0.0.278.63"
 
 
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["version"] == "0.0.278.62"
+    assert response.json()["version"] == "0.0.278.63"
 
 
 def test_list_projects_endpoint_uses_service(monkeypatch) -> None:
@@ -338,3 +338,46 @@ def test_add_project_source_passes_profile_lock_wait_seconds(monkeypatch, tmp_pa
 
     assert response.status_code == 200
     assert captured["profile_lock_wait_seconds"] == 120.0
+
+
+def test_browser_context_unavailable_payload_is_returned_from_service_ask(tmp_path, monkeypatch):
+    import asyncio
+
+    from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
+    from promptbranch_browser_auth.exceptions import BrowserContextUnavailableError
+
+    settings = ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/demo/project",
+        email=None,
+        password=None,
+        profile_dir=str(tmp_path / "profile"),
+        headless=False,
+        use_patchright=True,
+        max_retries=0,
+    )
+    service = ChatGPTAutomationService(settings)
+
+    class FailingBot:
+        async def ask_question_result(self, **kwargs):
+            raise BrowserContextUnavailableError(
+                "browser_launch_failed: RuntimeError: Protocol error (Network.setCacheDisabled)",
+                payload={
+                    "ok": False,
+                    "status": "browser_launch_failed",
+                    "error": "Protocol error (Network.setCacheDisabled)",
+                    "error_type": "RuntimeError",
+                    "browser_driver": "patchright",
+                    "browser_mode": "local_headed_patchright",
+                    "headless": False,
+                },
+            )
+
+    monkeypatch.setattr(service, "_build_bot", lambda: FailingBot())
+
+    payload = asyncio.run(service.ask_question_result(prompt="print echo 1", retries=0))
+
+    assert payload["ok"] is False
+    assert payload["status"] == "browser_launch_failed"
+    assert payload["answer"] is None
+    assert payload["browser_driver"] == "patchright"
+    assert payload["ask_phase_timings"]["submit_method"] is None
