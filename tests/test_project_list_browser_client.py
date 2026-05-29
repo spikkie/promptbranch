@@ -4124,6 +4124,117 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
 
 
+def test_submit_prompt_retries_after_primary_prepare_only_fast_fail(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    observer = {"observer": "network"}
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            raise AssertionError("input probing is monkeypatched for this test")
+
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def first_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None, prepare_only_fast_fail=False):
+        return {
+            "status": "submit_confirmation_not_observed",
+            "confirmed": False,
+            "confirmed_by": [],
+            "confirmation_mode": "submit_prepare_only_timeout",
+            "network_submit_request_observed": False,
+            "network_submit_request_status": "submit_prepare_without_message_commit",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": False,
+            "causal_confirmation_reason": "submit_prepare_without_message_commit",
+            "duration_seconds": 0.1,
+            "submit_network_evidence": {
+                "status": "submit_prepare_without_message_commit",
+                "prepare_request_observed": True,
+                "prepare_request_count": 2,
+                "prepare_only": True,
+                "prepare_only_fast_fail_used": True,
+                "message_request_observed": False,
+                "message_request_count": 0,
+                "request_marker_found": False,
+            },
+            "backend_task_message_evidence": {
+                "post_prepare_commit_found": False,
+                "post_prepare_commit_status": "backend_commit_probe_skipped_due_to_prepare_fast_fail",
+            },
+        }
+
+    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key, dispatch_method="keyboard"):
+        return {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "dispatch_method": dispatch_method,
+            "send_button_click_dispatch": {"clicked": dispatch_method == "send_button_click"},
+            "confirmed": True,
+            "network_status": "submit_network_request_observed",
+            "confirmation": {
+                "status": "submit_confirmed",
+                "confirmed": True,
+                "confirmed_by": ["network_submit_request"],
+                "confirmation_mode": "network_submit_request",
+                "backend_task_message_found": False,
+                "causal_confirmation_required": True,
+                "causal_confirmation_verified": True,
+                "causal_confirmation_reason": "network_submit_request",
+                "network_submit_request_observed": True,
+                "network_submit_request_status": "submit_network_request_observed",
+                "submit_network_evidence": {
+                    "status": "submit_network_request_observed",
+                    "request_marker_found": True,
+                    "message_request_observed": True,
+                    "message_request_count": 1,
+                },
+                "backend_task_message_evidence": {},
+            },
+        }
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = first_confirmation
+    client._run_keyboard_submit_variant = retry_variant
+    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((None, None))
+    client._start_submit_network_observer = lambda page, prompt=None: observer
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
+
+    assert page.keyboard.pressed == ["Enter"]
+    assert result["submit_keyboard_enter_retry_used"] is True
+    assert result["submit_keyboard_enter_retry_reason"] == "primary_prepare_only_fast_fail"
+    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_send_button_click_retry"
+    assert result["submit_keyboard_enter_retry_result"]["dispatch_method"] == "send_button_click"
+    assert result["submit_keyboard_enter_retry_result"]["send_button_click_dispatch"]["clicked"] is True
+    assert result["submit_confirmed"] is True
+    assert result["submit_confirmed_by"] == ["network_submit_request"]
+
+
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -4984,7 +5095,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.54_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.55_prepare_only_retry_route"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"

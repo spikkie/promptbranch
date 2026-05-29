@@ -8672,19 +8672,44 @@ class ChatGPTBrowserClient:
         value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled"}
 
-    def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
+    def _submit_confirmation_keyboard_retry_reason(self, confirmation: Any) -> str | None:
         if not isinstance(confirmation, dict) or confirmation.get("confirmed"):
-            return False
+            return None
         network = confirmation.get("submit_network_evidence") if isinstance(confirmation.get("submit_network_evidence"), dict) else {}
         backend = confirmation.get("backend_task_message_evidence") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else {}
-        return bool(
-            network.get("prepare_only_then_idle_without_commit")
-            or network.get("prepare_token_set_not_consumed")
-            or confirmation.get("confirmation_mode") == "submit_backend_detail_temporarily_unavailable_timeout"
-            or confirmation.get("causal_confirmation_reason") == "backend_detail_temporarily_unavailable"
+        network_status = str(network.get("status") or confirmation.get("network_submit_request_status") or "")
+        confirmation_mode = str(confirmation.get("confirmation_mode") or "")
+        causal_reason = str(confirmation.get("causal_confirmation_reason") or "")
+        prepare_only_without_commit = bool(
+            network.get("prepare_only_fast_fail_used")
+            or network_status == "submit_prepare_without_message_commit"
+            or confirmation_mode == "submit_prepare_only_timeout"
+            or causal_reason == "submit_prepare_without_message_commit"
+            or (
+                network.get("prepare_request_observed")
+                and network.get("prepare_only")
+                and not network.get("message_request_observed")
+                and not network.get("request_marker_found")
+            )
+        )
+        if prepare_only_without_commit:
+            return "primary_prepare_only_fast_fail"
+        if network.get("prepare_only_then_idle_without_commit"):
+            return "primary_prepare_only_then_idle_without_commit"
+        if network.get("prepare_token_set_not_consumed"):
+            return "primary_prepare_token_set_not_consumed"
+        backend_transient = bool(
+            confirmation_mode == "submit_backend_detail_temporarily_unavailable_timeout"
+            or causal_reason == "backend_detail_temporarily_unavailable"
             or backend.get("post_prepare_commit_status") == "backend_detail_temporarily_unavailable"
             or backend.get("backend_detail_temporarily_unavailable") is True
         )
+        if backend_transient:
+            return "primary_backend_detail_temporarily_unavailable"
+        return None
+
+    def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
+        return self._submit_confirmation_keyboard_retry_reason(confirmation) is not None
 
     def _submit_variant_network_summary(self, confirmation: Any, *, variant: str, dispatch_key: str | None = None) -> dict[str, Any]:
         network = confirmation.get("submit_network_evidence") if isinstance(confirmation, dict) and isinstance(confirmation.get("submit_network_evidence"), dict) else {}
@@ -9058,7 +9083,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.54_observational_only"
+        result["diagnostic_submit_path"] = "v0.0.278.55_prepare_only_retry_route"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
@@ -9831,7 +9856,8 @@ class ChatGPTBrowserClient:
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
             keyboard_enter_retry_result: dict[str, Any] | None = None
             keyboard_enter_retry_seconds = 0.0
-            if self._keyboard_enter_commit_retry_enabled() and self._submit_confirmation_needs_keyboard_retry(confirmation):
+            keyboard_enter_retry_reason = self._submit_confirmation_keyboard_retry_reason(confirmation)
+            if self._keyboard_enter_commit_retry_enabled() and keyboard_enter_retry_reason:
                 retry_started = time.monotonic()
                 self._log(
                     "submit",
@@ -9840,6 +9866,7 @@ class ChatGPTBrowserClient:
                     causal_reason=confirmation.get("causal_confirmation_reason"),
                     network_status=(confirmation.get("submit_network_evidence") or {}).get("status") if isinstance(confirmation.get("submit_network_evidence"), dict) else None,
                     backend_status=(confirmation.get("backend_task_message_evidence") or {}).get("post_prepare_commit_status") if isinstance(confirmation.get("backend_task_message_evidence"), dict) else None,
+                    retry_reason=keyboard_enter_retry_reason,
                 )
                 keyboard_enter_retry_result = await self._run_keyboard_submit_variant(
                     page,
@@ -9914,6 +9941,7 @@ class ChatGPTBrowserClient:
                 "send_button_retry_seconds": send_button_retry_seconds,
                 "enter_fallback_press_seconds": enter_press_seconds,
                 "submit_keyboard_enter_retry_used": keyboard_enter_retry_result is not None,
+                "submit_keyboard_enter_retry_reason": keyboard_enter_retry_reason if keyboard_enter_retry_result is not None else None,
                 "submit_keyboard_enter_retry_seconds": keyboard_enter_retry_seconds,
                 "submit_keyboard_enter_retry_result": keyboard_enter_retry_result,
                 "submit_wait_seconds": submit_wait_seconds,
