@@ -5559,67 +5559,6 @@ class ChatGPTBrowserClient:
             state["submit_button"] = {"probe_failed": True, "error": str(exc)}
         return state
 
-
-    async def _capture_composer_prompt_marker_state(
-        self,
-        page: Any,
-        *,
-        prompt: str | None = None,
-        input_locator: Any | None = None,
-    ) -> dict[str, Any]:
-        """Minimal composer marker verification for retry pre-fill probes.
-
-        The normal composer probe also inspects submit/stop/idle controls.  In
-        the post-prepare retry path that is expensive and, after v0.0.278.44,
-        insufficient as submit-readiness proof anyway.  This helper is limited
-        to verifying that the currently visible composer contains the requested
-        prompt prefix/marker before the caller continues with the known-good
-        full refill/readiness path.
-        """
-        state: dict[str, Any] = {
-            "input_selector": "#prompt-textarea",
-            "input_count": None,
-            "input_visible": None,
-            "text_length": None,
-            "contains_prompt_prefix": None,
-            "text_preview": "",
-            "submit_button": {"probe_skipped": True, "reason": "trusted_refill_retry_slim_verify"},
-            "current_url": await self._safe_page_url(page),
-            "slim_retry_marker_verify": True,
-        }
-        prompt_prefix = (prompt or "")[:80]
-        item = input_locator
-        if item is None:
-            try:
-                locator = page.locator("#prompt-textarea")
-                state["input_count"] = await locator.count()
-                item = locator.first if state["input_count"] else None
-            except Exception as exc:
-                state["input_probe_error"] = str(exc)
-                return state
-        try:
-            if item is not None:
-                try:
-                    visible = await item.is_visible(timeout=250)
-                except Exception:
-                    visible = False
-                state["input_visible"] = bool(visible)
-                if visible:
-                    text = await self._extract_text_from_locator(item, timeout_ms=250)
-                    if not text:
-                        try:
-                            text = (await item.input_value(timeout=250) or "").strip()
-                        except Exception:
-                            text = ""
-                    state.update({
-                        "text_length": len(text),
-                        "text_preview": text[:160],
-                        "contains_prompt_prefix": bool(prompt_prefix and prompt_prefix in text),
-                    })
-        except Exception as exc:
-            state["input_probe_error"] = str(exc)
-        return state
-
     async def _capture_composer_state(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
         state: dict[str, Any] = {
             "input_selector": None,
@@ -8518,15 +8457,10 @@ class ChatGPTBrowserClient:
             return False
         return preview in prompt or prompt[: min(120, len(prompt))] in preview
 
-    async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any, *, slim_retry: bool = False) -> dict[str, Any]:
-        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None, "slim_retry": bool(slim_retry)}
+    async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any) -> dict[str, Any]:
+        evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None}
         try:
-            await self._click_locator_with_fallback(
-                input_locator,
-                label="ask-question-composer-input-trusted-refill",
-                timeout_ms=1_000 if slim_retry else 5_000,
-                handle_rate_limit=not slim_retry,
-            )
+            await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input-trusted-refill", timeout_ms=5_000)
             await page.keyboard.press("Control+A")
             evidence["control_a"] = True
             await page.keyboard.press("Backspace")
@@ -8536,7 +8470,7 @@ class ChatGPTBrowserClient:
             self._log("composer", "trusted composer clear failed", error=str(exc))
         return evidence
 
-    async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
+    async def _paste_prompt_via_clipboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
         evidence: dict[str, Any] = {
             "attempted": True,
@@ -8545,7 +8479,7 @@ class ChatGPTBrowserClient:
             "error": None,
         }
         try:
-            await self._clear_composer_for_trusted_input(page, input_locator, slim_retry=slim_retry)
+            await self._clear_composer_for_trusted_input(page, input_locator)
             context = getattr(page, "context", None)
             if context is not None and hasattr(context, "grant_permissions"):
                 try:
@@ -8563,11 +8497,11 @@ class ChatGPTBrowserClient:
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
         return evidence
 
-    async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
+    async def _insert_prompt_via_keyboard(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         started = time.monotonic()
         evidence: dict[str, Any] = {"attempted": True, "insert_text_used": False, "error": None}
         try:
-            await self._clear_composer_for_trusted_input(page, input_locator, slim_retry=slim_retry)
+            await self._clear_composer_for_trusted_input(page, input_locator)
             await page.keyboard.insert_text(prompt)
             evidence["insert_text_used"] = True
             await page.wait_for_timeout(100)
@@ -8576,7 +8510,7 @@ class ChatGPTBrowserClient:
         evidence["duration_seconds"] = round(time.monotonic() - started, 3)
         return evidence
 
-    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str, slim_retry: bool = False) -> dict[str, Any]:
+    async def _fill_chat_prompt(self, page: Any, input_locator: Any, *, prompt: str) -> dict[str, Any]:
         """Fill the ChatGPT composer with a trusted-input-first strategy.
 
         v0.0.278.23 stops treating locator.fill as the primary path because a
@@ -8601,18 +8535,12 @@ class ChatGPTBrowserClient:
             "verification_method": "composer_state_prefix",
             "verification_passed": False,
             "attempts": [],
-            "slim_retry": bool(slim_retry),
-            "slim_retry_marker_verify_used": False,
         }
-        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode, slim_retry=bool(slim_retry))
+        self._log("composer", "filling prompt", prompt_length=len(prompt), fill_mode=requested_mode)
 
         async def verify(label: str) -> bool:
             try:
-                if slim_retry:
-                    evidence["slim_retry_marker_verify_used"] = True
-                    state = await self._capture_composer_prompt_marker_state(page, prompt=prompt, input_locator=input_locator)
-                else:
-                    state = await self._capture_composer_state(page, prompt=prompt)
+                state = await self._capture_composer_state(page, prompt=prompt)
             except Exception as exc:
                 state = {"error": str(exc)}
             matched = self._composer_text_matches_prompt(state, prompt=prompt)
@@ -8627,7 +8555,7 @@ class ChatGPTBrowserClient:
             return matched
 
         if requested_mode == "trusted_paste":
-            paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt, slim_retry=slim_retry)
+            paste_evidence = await self._paste_prompt_via_clipboard(page, input_locator, prompt=prompt)
             evidence["attempts"].append({"method": "trusted_paste", **paste_evidence})
             if paste_evidence.get("keyboard_paste_used") and await verify("trusted_paste"):
                 evidence.update({
@@ -8642,7 +8570,7 @@ class ChatGPTBrowserClient:
             evidence["fallback_used"] = True
 
         if requested_mode in {"trusted_paste", "keyboard_insert_text"}:
-            insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt, slim_retry=slim_retry)
+            insert_evidence = await self._insert_prompt_via_keyboard(page, input_locator, prompt=prompt)
             evidence["attempts"].append({"method": "keyboard_insert_text", **insert_evidence})
             if insert_evidence.get("insert_text_used") and await verify("keyboard_insert_text"):
                 evidence.update({
@@ -8752,6 +8680,195 @@ class ChatGPTBrowserClient:
                 continue
         return None, None
 
+
+    async def _capture_keyboard_submit_diagnostics(
+        self,
+        page: Any,
+        *,
+        prompt: str | None,
+        label: str,
+    ) -> dict[str, Any]:
+        # Observational only: no waits, clicks, focus changes, refill, or dispatch.
+        started = time.monotonic()
+        markers = self._prompt_submit_markers(prompt)
+        exact_markers = [str(marker) for marker in (markers.get("exact_markers") or []) if str(marker)]
+        payload = {
+            "label": label,
+            "exact_markers": exact_markers,
+            "prompt_prefix": markers.get("prompt_prefix") or "",
+            "prompt_short_prefix": markers.get("prompt_short_prefix") or "",
+        }
+        script = '''
+(args) => {
+  const exactMarkers = Array.isArray(args.exact_markers) ? args.exact_markers : [];
+  const promptPrefix = args.prompt_prefix || "";
+  const promptShortPrefix = args.prompt_short_prefix || "";
+  const selectors = ["#prompt-textarea", '[data-testid="prompt-textarea"]', 'textarea[data-testid="prompt-textarea"]', 'div[contenteditable="true"]', 'textarea'];
+  function textOf(el) {
+    if (!el) return "";
+    if (typeof el.value === "string") return el.value;
+    if (typeof el.innerText === "string") return el.innerText;
+    if (typeof el.textContent === "string") return el.textContent;
+    return "";
+  }
+  function visible(el) {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    return !!(rect && rect.width >= 0 && rect.height >= 0 && (!style || (style.visibility !== "hidden" && style.display !== "none")));
+  }
+  function markerState(text) {
+    const body = String(text || "");
+    let exact = null;
+    for (const marker of exactMarkers) {
+      if (marker && body.includes(marker)) { exact = marker; break; }
+    }
+    return {
+      exact_marker_found: !!exact,
+      exact_matched_marker: exact,
+      requested_exact_marker_count: exactMarkers.length,
+      prompt_prefix_found: !!(promptPrefix && body.includes(promptPrefix)),
+      prompt_short_prefix_found: !!(promptShortPrefix && body.includes(promptShortPrefix)),
+    };
+  }
+  function summarize(el) {
+    if (!el) return {present: false};
+    const text = textOf(el);
+    const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    const marker = markerState(text);
+    return Object.assign({
+      present: true,
+      tag_name: (el.tagName || "").toLowerCase(),
+      id: el.id || "",
+      role: el.getAttribute ? (el.getAttribute("role") || "") : "",
+      aria_label: el.getAttribute ? (el.getAttribute("aria-label") || "") : "",
+      data_testid: el.getAttribute ? (el.getAttribute("data-testid") || "") : "",
+      class_name: String(el.className || "").slice(0, 160),
+      is_contenteditable: !!el.isContentEditable,
+      visible: visible(el),
+      disabled: !!el.disabled || (el.getAttribute && el.getAttribute("aria-disabled") === "true"),
+      text_length: text.length,
+      text_preview: text.slice(0, 220),
+      rect: rect ? {x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height)} : null,
+    }, marker);
+  }
+  let composer = null;
+  let composer_selector = null;
+  for (const selector of selectors) {
+    const candidate = document.querySelector(selector);
+    if (candidate) { composer = candidate; composer_selector = selector; break; }
+  }
+  const active = document.activeElement;
+  const send = document.querySelector('#composer-submit-button[data-testid="send-button"]');
+  const stop = document.querySelector('button[data-testid="stop-button"], button[aria-label="Stop generating"]');
+  let selection = null;
+  try {
+    const sel = window.getSelection && window.getSelection();
+    selection = sel ? {range_count: sel.rangeCount, text_length: String(sel.toString() || "").length} : null;
+  } catch (err) {
+    selection = {error: String(err && err.name || err)};
+  }
+  const sendSummary = summarize(send);
+  return {
+    status: "captured",
+    label: args.label || "",
+    href: window.location ? window.location.href : "",
+    document_has_focus: document.hasFocus ? document.hasFocus() : null,
+    active_element: summarize(active),
+    composer_selector,
+    composer: summarize(composer),
+    active_within_composer: !!(composer && active && (composer === active || composer.contains(active))),
+    send_button: Object.assign(sendSummary, {send_ready: !!(sendSummary.present && sendSummary.visible && !sendSummary.disabled)}),
+    stop_button: summarize(stop),
+    selection,
+    performance_now_ms: Math.round(performance.now()),
+  };
+}
+'''
+        try:
+            snapshot = await page.evaluate(script, payload)
+            if not isinstance(snapshot, dict):
+                snapshot = {"status": "capture_unexpected_type", "value_type": type(snapshot).__name__}
+        except Exception as exc:
+            snapshot = {"status": "capture_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
+        snapshot.setdefault("label", label)
+        snapshot.setdefault("requested_exact_markers", exact_markers)
+        snapshot.setdefault("requested_exact_marker_count", len(exact_markers))
+        snapshot["duration_seconds"] = round(time.monotonic() - started, 3)
+        return snapshot
+
+    async def _install_keyboard_submit_event_probe(self, page: Any, *, label: str) -> dict[str, Any]:
+        started = time.monotonic()
+        script = '''
+(label) => {
+  const eventKey = "__promptbranchSubmitDiagnosticEvents";
+  const cleanupKey = "__promptbranchSubmitDiagnosticCleanup";
+  try { if (typeof window[cleanupKey] === "function") window[cleanupKey](); } catch (err) {}
+  window[eventKey] = [];
+  const types = ["keydown", "keypress", "keyup", "beforeinput", "input", "submit"];
+  const handler = (ev) => {
+    try {
+      const target = ev.target || null;
+      const text = target && typeof target.value === "string" ? target.value : target && typeof target.innerText === "string" ? target.innerText : target && typeof target.textContent === "string" ? target.textContent : "";
+      if (window[eventKey].length < 40) {
+        window[eventKey].push({
+          type: ev.type,
+          key: ev.key || null,
+          code: ev.code || null,
+          input_type: ev.inputType || null,
+          is_trusted: !!ev.isTrusted,
+          default_prevented: !!ev.defaultPrevented,
+          cancelable: !!ev.cancelable,
+          bubbles: !!ev.bubbles,
+          target_tag: target && target.tagName ? String(target.tagName).toLowerCase() : "",
+          target_id: target && target.id ? String(target.id) : "",
+          target_role: target && target.getAttribute ? (target.getAttribute("role") || "") : "",
+          target_testid: target && target.getAttribute ? (target.getAttribute("data-testid") || "") : "",
+          target_text_length: String(text || "").length,
+          time_stamp: Math.round(ev.timeStamp || 0),
+        });
+      }
+    } catch (err) {}
+  };
+  for (const type of types) document.addEventListener(type, handler, true);
+  window[cleanupKey] = () => {
+    for (const type of types) document.removeEventListener(type, handler, true);
+    window[cleanupKey] = null;
+  };
+  return {installed: true, label: label || "", event_types: types};
+}
+'''
+        try:
+            result = await page.evaluate(script, label)
+            if not isinstance(result, dict):
+                result = {"installed": False, "status": "unexpected_result", "value_type": type(result).__name__}
+        except Exception as exc:
+            result = {"installed": False, "status": "install_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
+        result.setdefault("label", label)
+        result["duration_seconds"] = round(time.monotonic() - started, 3)
+        return result
+
+    async def _collect_keyboard_submit_event_probe(self, page: Any, *, label: str) -> dict[str, Any]:
+        started = time.monotonic()
+        script = '''
+(label) => {
+  const eventKey = "__promptbranchSubmitDiagnosticEvents";
+  const cleanupKey = "__promptbranchSubmitDiagnosticCleanup";
+  const events = Array.isArray(window[eventKey]) ? window[eventKey].slice(0, 40) : [];
+  try { if (typeof window[cleanupKey] === "function") window[cleanupKey](); } catch (err) {}
+  return {collected: true, label: label || "", event_count: events.length, events};
+}
+'''
+        try:
+            result = await page.evaluate(script, label)
+            if not isinstance(result, dict):
+                result = {"collected": False, "status": "unexpected_result", "value_type": type(result).__name__}
+        except Exception as exc:
+            result = {"collected": False, "status": "collect_failed", "error": type(exc).__name__, "error_text": str(exc)[:240]}
+        result.setdefault("label", label)
+        result["duration_seconds"] = round(time.monotonic() - started, 3)
+        return result
+
     async def _run_keyboard_submit_variant(
         self,
         page: Any,
@@ -8780,41 +8897,22 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
+        result["diagnostic_submit_path"] = "v0.0.278.46_observational_only"
+        result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+            page,
+            prompt=prompt,
+            label=f"{variant}:before_fill",
+        )
         fill_started = time.monotonic()
         try:
             result["fill_attempted"] = True
-            slim_prefill_used = variant == "keyboard_enter_refill_retry"
-            result["trusted_refill_retry_slim_prefill_used"] = bool(slim_prefill_used)
-            if slim_prefill_used:
-                slim_started = time.monotonic()
-                slim_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=True)
-                result["trusted_refill_retry_slim_prefill_seconds"] = round(time.monotonic() - slim_started, 3)
-                result["trusted_refill_retry_slim_prefill_evidence"] = {
-                    "method": slim_evidence.get("method"),
-                    "requested_method": slim_evidence.get("requested_method"),
-                    "verification_passed": slim_evidence.get("verification_passed"),
-                    "trusted_input_used": slim_evidence.get("trusted_input_used"),
-                    "duration_seconds": slim_evidence.get("duration_seconds"),
-                    "slim_retry": slim_evidence.get("slim_retry"),
-                    "slim_retry_marker_verify_used": slim_evidence.get("slim_retry_marker_verify_used"),
-                }
-                result["trusted_refill_retry_slim_prefill_verified"] = bool(slim_evidence.get("verification_passed"))
-                result["trusted_refill_retry_dispatch_after_slim_prefill"] = False
-
-            full_started = time.monotonic()
-            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=False)
-            result["trusted_refill_retry_full_fill_after_slim_prefill_used"] = bool(slim_prefill_used)
-            result["trusted_refill_retry_full_fill_after_slim_prefill_seconds"] = (
-                round(time.monotonic() - full_started, 3) if slim_prefill_used else None
-            )
+            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
             result["fill_evidence"] = {
                 "method": fill_evidence.get("method"),
                 "requested_method": fill_evidence.get("requested_method"),
                 "verification_passed": fill_evidence.get("verification_passed"),
                 "trusted_input_used": fill_evidence.get("trusted_input_used"),
                 "duration_seconds": fill_evidence.get("duration_seconds"),
-                "slim_retry": fill_evidence.get("slim_retry"),
-                "slim_retry_marker_verify_used": fill_evidence.get("slim_retry_marker_verify_used"),
             }
             result["fill_verified"] = bool(fill_evidence.get("verification_passed"))
         except Exception as exc:
@@ -8826,16 +8924,34 @@ class ChatGPTBrowserClient:
             })
             return result
         result["fill_seconds"] = round(time.monotonic() - fill_started, 3)
+        result["after_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+            page,
+            prompt=prompt,
+            label=f"{variant}:after_fill",
+        )
         if not result["fill_verified"]:
             result.update({"status": "fill_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
         observer = self._start_submit_network_observer(page, prompt=prompt)
+        result["pre_dispatch_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+            page,
+            prompt=prompt,
+            label=f"{variant}:pre_dispatch",
+        )
+        result["keyboard_event_probe_install"] = await self._install_keyboard_submit_event_probe(
+            page,
+            label=f"{variant}:dispatch_events",
+        )
         dispatch_started = time.monotonic()
         result["attempted"] = True
         try:
             await page.keyboard.press(dispatch_key)
         except Exception as exc:
             self._stop_submit_network_observer(page, observer)
+            result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+                page,
+                label=f"{variant}:dispatch_events",
+            )
             result.update({
                 "status": "keyboard_dispatch_failed",
                 "error": type(exc).__name__,
@@ -8856,6 +8972,15 @@ class ChatGPTBrowserClient:
         finally:
             self._stop_submit_network_observer(page, observer)
         result["confirmation"] = confirmation
+        result["keyboard_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+            page,
+            label=f"{variant}:dispatch_events",
+        )
+        result["post_confirmation_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+            page,
+            prompt=prompt,
+            label=f"{variant}:post_confirmation",
+        )
         result.update(self._submit_variant_network_summary(confirmation, variant=variant, dispatch_key=dispatch_key))
         try:
             after_state = await self._capture_post_submit_composer_state(page, prompt=prompt)
@@ -9421,6 +9546,15 @@ class ChatGPTBrowserClient:
                 before_composer=before_composer,
                 send_button_wait_seconds=send_button_wait_seconds,
             )
+            evidence["submit_keyboard_enter_primary_pre_dispatch_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+                page,
+                prompt=prompt,
+                label="keyboard_enter_primary:pre_dispatch",
+            )
+            evidence["submit_keyboard_enter_primary_event_probe_install"] = await self._install_keyboard_submit_event_probe(
+                page,
+                label="keyboard_enter_primary:dispatch_events",
+            )
             enter_started = time.monotonic()
             enter_dispatch_surface = "page_keyboard"
             enter_input_selector = None
@@ -9442,6 +9576,10 @@ class ChatGPTBrowserClient:
                     await page.keyboard.press("Enter")
             except Exception as exc:
                 self._stop_submit_network_observer(page, submit_network_observer)
+                evidence["submit_keyboard_enter_primary_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+                    page,
+                    label="keyboard_enter_primary:dispatch_events",
+                )
                 evidence.update({
                     "status": "keyboard_enter_dispatch_failed",
                     "submit_method": "keyboard_enter",
@@ -9478,6 +9616,15 @@ class ChatGPTBrowserClient:
             finally:
                 self._stop_submit_network_observer(page, submit_network_observer)
             confirmation_completed = time.monotonic()
+            evidence["submit_keyboard_enter_primary_event_probe_events"] = await self._collect_keyboard_submit_event_probe(
+                page,
+                label="keyboard_enter_primary:dispatch_events",
+            )
+            evidence["submit_keyboard_enter_primary_post_confirmation_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
+                page,
+                prompt=prompt,
+                label="keyboard_enter_primary:post_confirmation",
+            )
             confirmation_seconds = round(confirmation_completed - confirmation_started, 3)
             keyboard_enter_retry_result: dict[str, Any] | None = None
             keyboard_enter_retry_seconds = 0.0
