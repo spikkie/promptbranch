@@ -2045,6 +2045,88 @@ def test_wait_for_submit_confirmation_rejects_backend_prefix_match_after_prepare
     assert result["backend_stale_user_turn_prefix_match_rejected"] is True
     assert result["matched_marker"] is None
 
+def test_wait_for_submit_confirmation_fast_fails_prepare_only_before_retry(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setenv("CHATGPT_SUBMIT_NETWORK_TIMEOUT_MS", "500")
+    monkeypatch.setenv("CHATGPT_SUBMIT_PREPARE_FAST_FAIL_TIMEOUT_MS", "1")
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    observer = {
+        "enabled": True,
+        "started_at_monotonic": 100.0,
+        "markers_count": 1,
+        "events": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "method": "POST",
+                "backend_like": True,
+                "mutating": True,
+                "prepare_request": True,
+                "message_request_candidate": False,
+                "marker_found": False,
+                "post_data_length": 500,
+                "captured_at_monotonic": 100.05,
+            }
+        ],
+        "all_events": [],
+        "responses": [],
+        "all_responses": [
+            {
+                "url": "https://chatgpt.com/backend-api/f/conversation/prepare",
+                "status": 200,
+                "prepare_request": True,
+                "captured_at_monotonic": 100.1,
+                "body_shape": {
+                    "json_parse_ok": True,
+                    "json_type": "dict",
+                    "top_level_keys": ["status", "conduit_token"],
+                    "all_keys_sample": ["status", "conduit_token"],
+                    "status_value": "ok",
+                    "has_error": False,
+                    "conversation_id_present": False,
+                    "message_id_present": False,
+                    "finalization_token_present": True,
+                    "conduit_token_present": True,
+                    "conduit_token_sha256_12": "abc123abc123",
+                    "conduit_token_sha256_12_values": ["abc123abc123"],
+                    "conduit_token_count": 1,
+                },
+            }
+        ],
+        "matched_request": None,
+        "matched_response": None,
+        "status": "submit_network_observer_started",
+    }
+    observer["all_events"] = list(observer["events"])
+
+    async def backend_echo_after_prepare(*args, **kwargs):
+        raise AssertionError("raw Enter prepare-only fast-fail should not run the slow backend commit window")
+
+    client._wait_for_backend_task_message_echo_after_prepare = backend_echo_after_prepare
+
+    import asyncio
+
+    result = asyncio.run(client._wait_for_submit_confirmation(
+        DummyPage(),
+        before_assistant_count=145,
+        prompt="Return exactly this JSON object with STALE_GUARD_LIVE_OK_1234567890",
+        submit_network_observer=observer,
+        prepare_only_fast_fail=True,
+    ))
+
+    assert result["status"] == "submit_confirmation_not_observed"
+    assert result["confirmed"] is False
+    assert result["prepare_only_fast_fail_used"] is True
+    assert result["prepare_only_fast_fail_timeout_ms"] == 250
+    assert result["causal_confirmation_reason"] == "prepare_token_set_not_consumed"
+    assert result["network_submit_request_status"] == "prepare_token_set_not_consumed"
+    assert result["backend_task_message_status"] == "backend_commit_probe_skipped_due_to_prepare_fast_fail"
+    assert result["attempts"][-1]["mode"] == "prepare_only_fast_fail"
+
+
 def test_wait_for_submit_confirmation_accepts_network_submit_marker(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
@@ -3887,8 +3969,7 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
 
 
 
-def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_REFILL_PRIMARY", "0")
+def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
 
@@ -3998,89 +4079,6 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["backend_task_message"]
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
-
-
-def test_submit_prompt_uses_trusted_refill_enter_as_primary_dispatch(tmp_path: Path) -> None:
-    client = _make_client(tmp_path)
-    observer = {"observer": "network"}
-
-    class DummyKeyboard:
-        def __init__(self) -> None:
-            self.pressed: list[str] = []
-
-        async def press(self, key: str):
-            self.pressed.append(key)
-
-    class DummyPage:
-        def __init__(self) -> None:
-            self.keyboard = DummyKeyboard()
-
-    async def fake_composer_state(page, *, prompt=None):
-        return {
-            "contains_prompt_prefix": True,
-            "text_length": len(prompt or ""),
-            "submit_button": {"send_ready": True},
-        }
-
-    async def fake_count_assistant(page):
-        return 0
-
-    async def refill_primary_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
-        return {
-            "variant": variant,
-            "dispatch_key": dispatch_key,
-            "confirmed": True,
-            "input_selector": "#prompt-textarea",
-            "dispatch_started_at_monotonic": 10.0,
-            "dispatch_completed_at_monotonic": 10.2,
-            "dispatch_seconds": 0.2,
-            "confirmation_started_at_monotonic": 10.2,
-            "confirmation_completed_at_monotonic": 11.0,
-            "confirmation_seconds": 0.8,
-            "network_status": "submit_network_request_observed",
-            "confirmation": {
-                "status": "submit_confirmed",
-                "confirmed": True,
-                "confirmed_by": ["network_submit_request"],
-                "confirmation_mode": "network_submit_request",
-                "causal_confirmation_required": True,
-                "causal_confirmation_verified": True,
-                "causal_confirmation_reason": "network_submit_request",
-                "network_submit_request_observed": True,
-                "network_submit_request_status": "submit_network_request_observed",
-                "submit_network_evidence": {
-                    "status": "submit_network_request_observed",
-                    "request_marker_found": True,
-                    "message_request_observed": True,
-                    "message_request_count": 1,
-                },
-                "backend_task_message_evidence": {
-                    "post_prepare_commit_found": False,
-                },
-            },
-        }
-
-    page = DummyPage()
-    client._capture_composer_state = fake_composer_state
-    client._count_assistant_turns = fake_count_assistant
-    client._run_keyboard_submit_variant = refill_primary_variant
-    client._start_submit_network_observer = lambda page, prompt=None: observer
-    client._stop_submit_network_observer = lambda page, observer: None
-
-    import asyncio
-
-    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
-
-    assert page.keyboard.pressed == []
-    assert result["submit_method"] == "keyboard_enter"
-    assert result["submit_keyboard_enter_refill_primary_used"] is True
-    assert result["submit_keyboard_enter_refill_primary_confirmed"] is True
-    assert result["submit_keyboard_enter_refill_primary_result"]["variant"] == "keyboard_enter_refill_primary"
-    assert result["submit_keyboard_enter_raw_fallback_used"] is False
-    assert result["submit_keyboard_enter_retry_used"] is False
-    assert result["submit_keyboard_enter_dispatch_surface"] == "trusted_refill_primary"
-    assert result["submit_confirmed"] is True
-    assert result["submit_network_request_marker_found"] is True
 
 
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
