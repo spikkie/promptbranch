@@ -2168,15 +2168,43 @@ class ChatGPTBrowserClient:
         )
         backend_user_turn_id = backend_task_message_evidence.get("matched_user_turn_id")
         backend_user_turn_index = backend_task_message_evidence.get("matched_user_turn_index")
+        post_submit_dom_delta_confirmation = await self._capture_post_submit_dom_delta_confirmation(
+            page,
+            prompt=prompt,
+            response_context=response_context,
+            post_submit_user_turn_visibility=post_submit_user_turn_visibility,
+        )
+        dom_delta_confirmed = bool(post_submit_dom_delta_confirmation.get("confirmed"))
+        if dom_delta_confirmed and not submit_evidence.get("submit_confirmed"):
+            confirmed_by = list(submit_evidence.get("submit_confirmed_by") or [])
+            if "dom_delta_user_turn" not in confirmed_by:
+                confirmed_by.append("dom_delta_user_turn")
+            submit_evidence.update({
+                "submit_confirmed": True,
+                "submit_confirmed_by": confirmed_by,
+                "submit_causal_confirmation_verified": True,
+                "submit_causal_confirmation_reason": "dom_delta_user_turn",
+                "submit_confirmation_mode": "dom_delta_user_turn",
+                "submit_dom_delta_confirmation_used": True,
+            })
         post_submit_user_turn_visible = bool(
             post_submit_user_turn_visibility.get("visible")
             or submit_evidence.get("submit_user_turn_echo_found")
+            or dom_delta_confirmed
         )
         submit_evidence.update({
             "post_submit_user_turn_visibility_checked": True,
             "post_submit_user_turn_visible": post_submit_user_turn_visible,
-            "post_submit_user_turn_visibility_status": post_submit_user_turn_visibility.get("status"),
+            "post_submit_user_turn_visibility_status": (
+                "dom_delta_user_turn_confirmed"
+                if dom_delta_confirmed and not post_submit_user_turn_visibility.get("visible")
+                else post_submit_user_turn_visibility.get("status")
+            ),
             "post_submit_user_turn_visibility_evidence": post_submit_user_turn_visibility,
+            "post_submit_dom_delta_confirmation": post_submit_dom_delta_confirmation,
+            "submit_dom_delta_confirmed": dom_delta_confirmed,
+            "submit_dom_delta_status": post_submit_dom_delta_confirmation.get("status"),
+            "submit_dom_delta_reason": post_submit_dom_delta_confirmation.get("reason"),
             "backend_confirmed_user_turn_id": backend_user_turn_id,
             "backend_confirmed_user_turn_index": backend_user_turn_index,
             "submit_backend_confirmed_but_user_turn_not_visible": bool(
@@ -2185,7 +2213,9 @@ class ChatGPTBrowserClient:
                 and not post_submit_user_turn_visible
             ),
             "submit_visibility_classification": (
-                "backend_confirmed_but_user_turn_not_visible"
+                "dom_delta_confirmed_user_turn"
+                if dom_delta_confirmed
+                else "backend_confirmed_but_user_turn_not_visible"
                 if submit_evidence.get("submit_confirmed") and backend_confirmed and not post_submit_user_turn_visible
                 else "backend_confirmed_and_user_turn_visible"
                 if submit_evidence.get("submit_confirmed") and backend_confirmed and post_submit_user_turn_visible
@@ -2197,6 +2227,15 @@ class ChatGPTBrowserClient:
         phase_timings["post_submit_user_turn_visibility_checked"] = submit_evidence.get("post_submit_user_turn_visibility_checked")
         phase_timings["post_submit_user_turn_visible"] = submit_evidence.get("post_submit_user_turn_visible")
         phase_timings["post_submit_user_turn_visibility_status"] = submit_evidence.get("post_submit_user_turn_visibility_status")
+        phase_timings["submit_dom_delta_confirmed"] = submit_evidence.get("submit_dom_delta_confirmed")
+        phase_timings["submit_dom_delta_status"] = submit_evidence.get("submit_dom_delta_status")
+        phase_timings["submit_dom_delta_reason"] = submit_evidence.get("submit_dom_delta_reason")
+        phase_timings["submit_dom_delta_assistant_delta_observed"] = (submit_evidence.get("post_submit_dom_delta_confirmation") or {}).get("assistant_delta_observed") if isinstance(submit_evidence.get("post_submit_dom_delta_confirmation"), dict) else None
+        phase_timings["submit_confirmed"] = submit_evidence.get("submit_confirmed")
+        phase_timings["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by")
+        phase_timings["submit_causal_confirmation_verified"] = submit_evidence.get("submit_causal_confirmation_verified")
+        phase_timings["submit_causal_confirmation_reason"] = submit_evidence.get("submit_causal_confirmation_reason")
+        phase_timings["submit_confirmation_mode"] = submit_evidence.get("submit_confirmation_mode")
         phase_timings["backend_confirmed_user_turn_id"] = backend_user_turn_id
         phase_timings["backend_confirmed_user_turn_index"] = backend_user_turn_index
         phase_timings["submit_backend_confirmed_but_user_turn_not_visible"] = submit_evidence.get("submit_backend_confirmed_but_user_turn_not_visible")
@@ -7793,6 +7832,169 @@ class ChatGPTBrowserClient:
             "probe_seconds": round(time.monotonic() - started, 3),
             "state": state,
         }
+
+    def _normalize_dom_delta_text(self, value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip()
+
+    def _post_submit_prompt_delta_from_user_state(
+        self,
+        user_state: Any,
+        *,
+        prompt: str | None,
+        response_context: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Return bounded DOM-delta proof that the submitted prompt became a new user turn.
+
+        This is deliberately stricter than the old prompt-prefix visibility probe.
+        A plain prompt such as ``print echo 111`` has no protocol marker, so marker
+        matching alone cannot prove causality.  We only accept prefix/plain-text
+        evidence when the observed user-turn count is greater than the baseline
+        captured before submit.  That preserves the stale-answer guard while
+        allowing simple ``pb ask 'prompt'`` debugging flows to continue when the
+        network marker observer misses the backend commit.
+        """
+
+        prompt_text = str(prompt or "")
+        prompt_norm = self._normalize_dom_delta_text(prompt_text)
+        if not prompt_norm or not isinstance(user_state, dict):
+            return {
+                "confirmed": False,
+                "status": "dom_delta_prompt_not_available",
+                "reason": "missing_prompt_or_user_state",
+            }
+
+        try:
+            baseline_user_count = int((response_context or {}).get("conversation_user_turn_count") or 0)
+        except (TypeError, ValueError):
+            baseline_user_count = 0
+
+        candidates: list[dict[str, Any]] = []
+        probes = user_state.get("probes") if isinstance(user_state.get("probes"), list) else []
+        for probe in probes:
+            if not isinstance(probe, dict):
+                continue
+            selector = str(probe.get("selector") or "")
+            text = str(probe.get("last_text_preview") or "")
+            text_norm = self._normalize_dom_delta_text(text)
+            try:
+                count = int(probe.get("count") or 0)
+            except (TypeError, ValueError):
+                count = 0
+            prompt_match = bool(
+                probe.get("exact_marker_found")
+                or probe.get("request_id_found")
+                or probe.get("response_marker_found")
+                or text_norm == prompt_norm
+                or (bool(probe.get("prompt_prefix_found")) and text_norm and (text_norm in prompt_norm or prompt_norm.startswith(text_norm) or text_norm.startswith(prompt_norm[: min(len(prompt_norm), 120)])))
+            )
+            delta = count - baseline_user_count
+            role_specific = bool(
+                'data-message-author-role="user"' in selector
+                or '[data-message-author-role="user"]' in selector
+                or '[data-turn="user"]' in selector
+                or 'data-turn="user"' in selector
+            )
+            candidate = {
+                "selector": selector,
+                "count": count,
+                "baseline_user_count": baseline_user_count,
+                "count_delta": delta,
+                "text_preview": text[:240],
+                "text_length": len(text),
+                "prompt_match": prompt_match,
+                "role_specific_user_selector": role_specific,
+            }
+            candidates.append(candidate)
+            if role_specific and prompt_match and delta > 0:
+                return {
+                    "confirmed": True,
+                    "status": "dom_delta_user_turn_confirmed",
+                    "reason": "new_role_specific_user_turn_matches_prompt",
+                    "selector": selector,
+                    "baseline_user_count": baseline_user_count,
+                    "after_user_count": count,
+                    "user_turn_count_delta": delta,
+                    "text_preview": text[:240],
+                    "candidates": candidates[:12],
+                }
+
+        generic = user_state.get("generic_turns") if isinstance(user_state.get("generic_turns"), dict) else {}
+        snippets: list[dict[str, Any]] = []
+        if isinstance(generic, dict):
+            for generic_probe in generic.get("probes") or []:
+                if not isinstance(generic_probe, dict):
+                    continue
+                for snippet in generic_probe.get("snippets") or []:
+                    if isinstance(snippet, dict):
+                        snippets.append(snippet)
+        matched_indices: list[int] = []
+        assistant_after_prompt = False
+        for index, snippet in enumerate(snippets):
+            text_norm = self._normalize_dom_delta_text(snippet.get("text_preview"))
+            if text_norm == prompt_norm or (bool(snippet.get("prompt_prefix_found")) and text_norm and prompt_norm.startswith(text_norm)):
+                matched_indices.append(index)
+                for following in snippets[index + 1:index + 4]:
+                    following_text = self._normalize_dom_delta_text(following.get("text_preview"))
+                    if following_text and following_text != prompt_norm:
+                        assistant_after_prompt = True
+                        break
+        if matched_indices and assistant_after_prompt:
+            return {
+                "confirmed": True,
+                "status": "dom_delta_generic_turn_pair_confirmed",
+                "reason": "generic_turn_prompt_followed_by_new_assistant_turn",
+                "baseline_user_count": baseline_user_count,
+                "matched_generic_indices": matched_indices[:5],
+                "generic_snippet_count": len(snippets),
+                "candidates": candidates[:12],
+            }
+
+        return {
+            "confirmed": False,
+            "status": "dom_delta_user_turn_not_confirmed",
+            "reason": "no_new_prompt_matching_user_turn_delta",
+            "baseline_user_count": baseline_user_count,
+            "candidates": candidates[:12],
+            "generic_snippet_count": len(snippets),
+            "matched_generic_indices": matched_indices[:5],
+        }
+
+    async def _capture_post_submit_dom_delta_confirmation(
+        self,
+        page: Any,
+        *,
+        prompt: str | None,
+        response_context: Optional[dict[str, Any]],
+        post_submit_user_turn_visibility: dict[str, Any],
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        state = (
+            post_submit_user_turn_visibility.get("state")
+            if isinstance(post_submit_user_turn_visibility, dict) and isinstance(post_submit_user_turn_visibility.get("state"), dict)
+            else {}
+        )
+        delta = self._post_submit_prompt_delta_from_user_state(
+            state,
+            prompt=prompt,
+            response_context=response_context,
+        )
+        try:
+            assistant_count = await self._count_assistant_turns(page)
+        except Exception:
+            assistant_count = None
+        try:
+            baseline_assistant_count = int((response_context or {}).get("assistant_count") or 0)
+        except (TypeError, ValueError):
+            baseline_assistant_count = 0
+        assistant_delta = (assistant_count - baseline_assistant_count) if isinstance(assistant_count, int) else None
+        delta.update({
+            "probe_seconds": round(time.monotonic() - started, 3),
+            "baseline_assistant_count": baseline_assistant_count,
+            "after_assistant_count": assistant_count,
+            "assistant_turn_count_delta": assistant_delta,
+            "assistant_delta_observed": bool(isinstance(assistant_delta, int) and assistant_delta > 0),
+        })
+        return delta
 
     def _text_looks_like_prompt_request(self, text: str) -> bool:
         lowered = str(text or "").lower()
