@@ -2458,7 +2458,7 @@ def test_wait_for_submit_confirmation_accepts_backend_commit_after_prepare(tmp_p
     assert result["backend_task_message_status"] == "backend_commit_after_prepare_found"
     assert result["attempts"][-1]["mode"] == "backend_commit_after_prepare"
 
-def test_submit_prompt_fast_one_shot_skips_button_path_and_slow_submit_confirmation(tmp_path: Path) -> None:
+def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_confirmation(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 
     class DummyButton:
@@ -2479,22 +2479,12 @@ def test_submit_prompt_fast_one_shot_skips_button_path_and_slow_submit_confirmat
         def first(self):
             return DummyButton()
 
-    class DummyKeyboard:
-        def __init__(self) -> None:
-            self.pressed: list[str] = []
-
-        async def press(self, key: str):
-            self.pressed.append(key)
-
     class DummyPage:
-        def __init__(self) -> None:
-            self.keyboard = DummyKeyboard()
-
         def locator(self, selector):
-            raise AssertionError("fast one-shot submit must not probe the send button")
+            return DummyLocator()
 
         async def wait_for_timeout(self, ms: int):
-            raise AssertionError("fast one-shot submit must not run button/retry waits")
+            raise AssertionError("button path should not wait after first enabled selector")
 
     async def fake_composer_state(page, *, prompt=None):
         return {
@@ -2531,28 +2521,24 @@ def test_submit_prompt_fast_one_shot_skips_button_path_and_slow_submit_confirmat
     client._wait_for_submit_confirmation = fake_confirmation
     client._wait_for_user_turn_dom_evidence = fail_user_turn_dom
     client._capture_post_submit_composer_state = fail_post_submit_snapshot
-    client._find_visible_chat_input_for_submit_variant = lambda page: _async_tuple((None, None))
 
     import asyncio
 
-    page = DummyPage()
-    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
+    result = asyncio.run(client._submit_prompt(DummyPage(), prompt="hello"))
 
-    assert page.keyboard.pressed == ["Enter"]
-    assert result["submit_method"] == "keyboard_enter"
-    assert result["submit_strategy"] == "keyboard_enter_once"
-    assert result["submit_confirmed"] is None
-    assert result["submit_confirmed_by"] == []
-    assert result["submit_keyboard_enter_retry_used"] is False
+    assert result["submit_method"] == "button"
+    assert result["submit_confirmed"] is True
+    assert result["submit_confirmed_by"] == ["stop_button"]
     assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
     assert result["after_submit_composer_snapshot_seconds"] == 0.0
-    assert result["after_submit_snapshot_mode"] == "skipped_fast_one_shot_default"
-    assert result["after_submit_snapshot_skipped_reason"] == "default_path_does_not_run_submit_diagnostics"
+    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
+    assert result["after_submit_snapshot_skipped_reason"] == "submit_confirmed_without_deep_debug"
+    assert result["after_composer"]["skipped"] is True
     assert "submit_dispatch_to_confirmation_seconds" in result
     assert "submit_accounted_seconds" in result
     assert "submit_unaccounted_seconds" in result
     assert abs(result["submit_unaccounted_seconds"]) < 0.1
-    assert result["submit_wait_seconds"] == result["enter_fallback_press_seconds"]
+    assert result["submit_wait_seconds"] >= result["submit_confirmation_seconds"]
 
 
 def test_extract_last_text_from_selector_avoids_full_historical_evaluate_all(tmp_path: Path) -> None:
@@ -3934,6 +3920,42 @@ def test_keyboard_enter_primary_submit_enabled_defaults_on_and_has_escape_hatch(
     monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "1")
     assert client._keyboard_enter_primary_submit_enabled() is True
 
+def test_keyboard_enter_commit_retry_disabled_by_default_and_has_escape_hatch(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    monkeypatch.delenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", raising=False)
+    assert client._keyboard_enter_commit_retry_enabled() is False
+
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "1")
+    assert client._keyboard_enter_commit_retry_enabled() is True
+
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "0")
+    assert client._keyboard_enter_commit_retry_enabled() is False
+
+
+def test_unconfirmed_primary_keyboard_enter_allows_answer_wait(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    assert client._allow_answer_wait_after_keyboard_enter_once({
+        "submit_method": "keyboard_enter",
+        "submit_keyboard_enter_primary_used": True,
+        "submit_keyboard_enter_dispatch_key": "Enter",
+        "submit_keyboard_enter_retry_used": False,
+        "submit_keyboard_enter_refill_used": False,
+        "send_button_retry_used": False,
+    }) is True
+    assert client._allow_answer_wait_after_keyboard_enter_once({
+        "submit_method": "keyboard_enter",
+        "submit_keyboard_enter_primary_used": True,
+        "submit_keyboard_enter_dispatch_key": "Enter",
+        "submit_keyboard_enter_retry_used": True,
+    }) is False
+    assert client._allow_answer_wait_after_keyboard_enter_once({
+        "submit_method": "button",
+        "submit_keyboard_enter_primary_used": False,
+    }) is False
+
+
 def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
@@ -4011,20 +4033,19 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["submit_method"] == "keyboard_enter"
-    assert result["submit_strategy"] == "keyboard_enter_once"
     assert result["clicked"] is False
     assert result["enter_fallback_used"] is False
     assert result["submit_keyboard_enter_primary_used"] is True
-    assert result["submit_keyboard_enter_submit_confirmed"] is None
+    assert result["submit_keyboard_enter_submit_confirmed"] is True
     assert result["submit_keyboard_enter_fresh_answer_gate_required"] is True
-    assert result["submit_confirmed"] is None
-    assert result["submit_network_request_marker_found"] is None
-    assert result["submit_keyboard_enter_retry_used"] is False
-    assert result["after_submit_snapshot_mode"] == "skipped_fast_one_shot_default"
+    assert result["submit_confirmed"] is True
+    assert result["submit_network_request_marker_found"] is True
+    assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
 
 
 
-def test_submit_prompt_does_not_retry_or_refill_after_enter_in_default_path(tmp_path: Path) -> None:
+def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY", "1")
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
 
@@ -4129,14 +4150,11 @@ def test_submit_prompt_does_not_retry_or_refill_after_enter_in_default_path(tmp_
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["submit_method"] == "keyboard_enter"
-    assert result["submit_strategy"] == "keyboard_enter_once"
-    assert result["submit_keyboard_enter_retry_used"] is False
-    assert result["submit_keyboard_enter_retry_result"] is None
-    assert result["submit_keyboard_enter_refill_used"] is False
-    assert result["submit_retry_disabled_reason"] == "fast_one_shot_default_path"
-    assert result["submit_confirmed"] is None
-    assert result["submit_confirmed_by"] == []
-    assert result["submit_keyboard_enter_backend_commit_confirmed"] is None
+    assert result["submit_keyboard_enter_retry_used"] is True
+    assert result["submit_keyboard_enter_retry_result"]["variant"] == "keyboard_enter_refill_retry"
+    assert result["submit_confirmed"] is True
+    assert result["submit_confirmed_by"] == ["backend_task_message"]
+    assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
 
 
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
@@ -4999,7 +5017,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.57_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
