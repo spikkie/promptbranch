@@ -4966,6 +4966,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
     client._stop_submit_network_observer = lambda page, observer: None
     client._wait_for_submit_confirmation = fake_wait
     client._capture_post_submit_composer_state = fake_after
+    client._keyboard_enter_retry_post_fill_settle_seconds = lambda: 0.0
 
     import asyncio
 
@@ -4980,12 +4981,28 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
-    assert result["fill_call_site_timing"]["diagnostic_timing_path"] == "v0.0.278.52_call_site_only_fill_timing"
-    assert result["fill_call_site_timing"]["duration_seconds"] == result["fill_seconds"]
-    assert "monotonic_timing" not in result["fill_evidence"]
+    assert result["diagnostic_submit_path"] == "v0.0.278.53_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
+    assert result["post_fill_settle"]["diagnostic_timing_path"] == "v0.0.278.53_retry_post_fill_settle"
+    assert result["post_fill_settle"]["requested_seconds"] == 0.0
+    assert result["post_fill_settle"]["applied"] is False
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
     assert result["keyboard_event_probe_install"]["installed"] is True
     assert result["keyboard_event_probe_events"]["event_count"] == 1
+
+
+def test_keyboard_enter_retry_post_fill_settle_seconds_defaults_to_eight_seconds(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+
+    monkeypatch.delenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", raising=False)
+    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 8.0
+
+    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "0")
+    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 0.0
+
+    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "3.5")
+    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 3.5
+
+    monkeypatch.setenv("PROMPTBRANCH_KEYBOARD_ENTER_RETRY_POST_FILL_SETTLE_SECONDS", "invalid")
+    assert client._keyboard_enter_retry_post_fill_settle_seconds() == 8.0
