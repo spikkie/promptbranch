@@ -3887,7 +3887,8 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
 
 
 
-def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:
+def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_REFILL_PRIMARY", "0")
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
 
@@ -3997,6 +3998,89 @@ def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["backend_task_message"]
     assert result["submit_keyboard_enter_backend_commit_confirmed"] is True
+
+
+def test_submit_prompt_uses_trusted_refill_enter_as_primary_dispatch(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    observer = {"observer": "network"}
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def refill_primary_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
+        return {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "confirmed": True,
+            "input_selector": "#prompt-textarea",
+            "dispatch_started_at_monotonic": 10.0,
+            "dispatch_completed_at_monotonic": 10.2,
+            "dispatch_seconds": 0.2,
+            "confirmation_started_at_monotonic": 10.2,
+            "confirmation_completed_at_monotonic": 11.0,
+            "confirmation_seconds": 0.8,
+            "network_status": "submit_network_request_observed",
+            "confirmation": {
+                "status": "submit_confirmed",
+                "confirmed": True,
+                "confirmed_by": ["network_submit_request"],
+                "confirmation_mode": "network_submit_request",
+                "causal_confirmation_required": True,
+                "causal_confirmation_verified": True,
+                "causal_confirmation_reason": "network_submit_request",
+                "network_submit_request_observed": True,
+                "network_submit_request_status": "submit_network_request_observed",
+                "submit_network_evidence": {
+                    "status": "submit_network_request_observed",
+                    "request_marker_found": True,
+                    "message_request_observed": True,
+                    "message_request_count": 1,
+                },
+                "backend_task_message_evidence": {
+                    "post_prepare_commit_found": False,
+                },
+            },
+        }
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._run_keyboard_submit_variant = refill_primary_variant
+    client._start_submit_network_observer = lambda page, prompt=None: observer
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="hello"))
+
+    assert page.keyboard.pressed == []
+    assert result["submit_method"] == "keyboard_enter"
+    assert result["submit_keyboard_enter_refill_primary_used"] is True
+    assert result["submit_keyboard_enter_refill_primary_confirmed"] is True
+    assert result["submit_keyboard_enter_refill_primary_result"]["variant"] == "keyboard_enter_refill_primary"
+    assert result["submit_keyboard_enter_raw_fallback_used"] is False
+    assert result["submit_keyboard_enter_retry_used"] is False
+    assert result["submit_keyboard_enter_dispatch_surface"] == "trusted_refill_primary"
+    assert result["submit_confirmed"] is True
+    assert result["submit_network_request_marker_found"] is True
 
 
 def test_backend_answer_wait_disabled_by_default_and_legacy_dom_first_mode(tmp_path: Path) -> None:
