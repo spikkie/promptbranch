@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from promptbranch_browser_auth import ChatGPTBrowserClient, ChatGPTBrowserConfig
 
@@ -92,6 +93,17 @@ def _resolve_password(password: Optional[str], password_file: Optional[str]) -> 
     return _read_secret_file(resolved_password_file), resolved_password_file
 
 
+
+
+def _split_browser_args(value: Optional[str]) -> tuple[str, ...]:
+    text = str(value or "").strip()
+    if not text:
+        return ()
+    try:
+        return tuple(shlex.split(text))
+    except ValueError:
+        return tuple(part for part in text.split() if part)
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -131,6 +143,7 @@ class ChatGPTAutomation:
         pause_before_fill: Optional[bool] = None,
         pause_after_fill: Optional[bool] = None,
         pause_before_submit: Optional[bool] = None,
+        extra_browser_args: Optional[Sequence[str]] = None,
     ):
         self.project_url = project_url
         self.email = email
@@ -223,6 +236,11 @@ class ChatGPTAutomation:
             if pause_before_submit is None
             else bool(pause_before_submit)
         )
+        self.extra_browser_args = tuple(
+            extra_browser_args
+            if extra_browser_args is not None
+            else _split_browser_args(os.getenv("CHATGPT_BROWSER_EXTRA_ARGS"))
+        )
 
     @property
     def client(self) -> ChatGPTBrowserClient:
@@ -257,6 +275,7 @@ class ChatGPTAutomation:
                 pause_before_fill=self.pause_before_fill,
                 pause_after_fill=self.pause_after_fill,
                 pause_before_submit=self.pause_before_submit,
+                extra_browser_args=self.extra_browser_args,
             )
         )
 

@@ -22,6 +22,19 @@ class UnsupportedOperationError(RuntimeError):
 class BrowserContextUnavailableError(RuntimeError):
     """Raised when the browser persistent context cannot be launched or recovered."""
 
+    def __init__(self, message: str, *, payload: dict | None = None) -> None:
+        super().__init__(message)
+        self.payload = payload or {}
+
+    def to_payload(self) -> dict:
+        payload = dict(self.payload)
+        payload.setdefault("ok", False)
+        payload.setdefault("status", "browser_launch_failed")
+        payload.setdefault("error", str(self))
+        payload.setdefault("error_type", type(self).__name__)
+        payload.setdefault("timeout_layer", "browser_launch")
+        return payload
+
 
 class BrowserProfileBusyError(TimeoutError):
     """Raised when the shared browser profile is already owned by another operation."""
