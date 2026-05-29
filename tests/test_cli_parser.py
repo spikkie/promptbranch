@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.60" in out
+    assert "0.0.278.62" in out
     assert "promptbranch" in out
 
 
@@ -921,3 +921,19 @@ def test_global_options_after_browser_status_are_normalized() -> None:
     normalized = _normalize_global_options(["browser", "status", "--service-timeout-seconds", "1200", "--json"])
     assert normalized[:2] == ["--service-timeout-seconds", "1200"]
     assert normalized[2:4] == ["browser", "status"]
+
+
+def test_parser_accepts_ask_debug_browser_flags() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "ask",
+        "hello",
+        "--debug-browser",
+        "--pause-after-fill",
+        "--pause-before-submit",
+    ])
+    assert args.command == "ask"
+    assert args.debug_browser is True
+    assert args.pause_after_fill is True
+    assert args.pause_before_submit is True
+

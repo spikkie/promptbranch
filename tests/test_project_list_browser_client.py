@@ -5045,7 +5045,7 @@ def test_visibility_promotion_requires_confirmed_submit_and_visible_user_turn(tm
     assert promoted["payload"]["ok"] is True
 
 
-def test_wait_for_composer_ready_before_fill_accepts_idle_send_ready(tmp_path: Path) -> None:
+def test_wait_for_composer_ready_before_fill_accepts_empty_idle_composer_without_send_ready(tmp_path: Path) -> None:
     import asyncio
 
     client = _make_client(tmp_path)
@@ -5055,7 +5055,7 @@ def test_wait_for_composer_ready_before_fill_accepts_idle_send_ready(tmp_path: P
             raise AssertionError("ready state should not wait")
 
     async def fake_submit_state(page):
-        return {"send_ready": True, "stop_visible": False, "idle_visible": True}
+        return {"send_ready": False, "stop_visible": False, "idle_visible": True}
 
     async def fake_thinking_state(page):
         return {"visible": False}
@@ -5070,7 +5070,7 @@ def test_wait_for_composer_ready_before_fill_accepts_idle_send_ready(tmp_path: P
     result = asyncio.run(client._wait_for_composer_ready_before_fill(DummyPage(), timeout_ms=50))
 
     assert result["status"] == "composer_ready"
-    assert result["send_ready"] is True
+    assert result["send_ready"] is False
     assert result["stop_visible"] is False
     assert result["blockers"] == []
 
@@ -5108,7 +5108,7 @@ def test_wait_for_composer_ready_before_fill_rejects_stop_button(tmp_path: Path)
     assert result["status"] in {"composer_not_ready", "composer_not_ready_before_fill"}
     assert result["ok"] is False
     assert "stop_button_visible" in result["blockers"]
-    assert "send_button_not_ready" in result["blockers"]
+    assert "send_button_not_ready" not in result["blockers"]
 
 
 def test_wait_for_composer_ready_before_fill_rejects_interrupted_answer(tmp_path: Path) -> None:

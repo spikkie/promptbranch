@@ -1788,6 +1788,12 @@ class ChatGPTBrowserClient:
             self._record_ask_progress(**result)
             return result
 
+        await self._debug_pause_if_enabled(
+            label="before_fill",
+            enabled=bool(getattr(self.config, "pause_before_fill", False)),
+            prompt="Debug pause before filling the composer. Inspect the browser, then press Enter to continue... ",
+        )
+
         self._log("composer", "chat input resolved and composer ready; clicking")
         phase_started = time.monotonic()
         await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
@@ -1805,6 +1811,12 @@ class ChatGPTBrowserClient:
         phase_timings["prompt_fill_locator_fill_used"] = bool(fill_evidence.get("locator_fill_used"))
         phase_timings["prompt_fill_verification_passed"] = bool(fill_evidence.get("verification_passed"))
         phase_timings["prompt_fill_react_state_probe"] = fill_evidence.get("react_state_probe")
+
+        await self._debug_pause_if_enabled(
+            label="after_fill",
+            enabled=bool(getattr(self.config, "pause_after_fill", False)),
+            prompt="Debug pause after filling the composer. Confirm prompt text and send-button state, then press Enter to continue... ",
+        )
 
         upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
         phase_started = time.monotonic()
@@ -1845,6 +1857,12 @@ class ChatGPTBrowserClient:
             phase_timings["dom_weight_capture_skipped_reason"] = dom_weight.get("capture_skipped_reason")
             phase_timings["historical_scan_used"] = dom_weight.get("historical_scan_used")
             phase_timings["historical_scan_seconds"] = dom_weight.get("historical_scan_seconds")
+
+        await self._debug_pause_if_enabled(
+            label="before_submit",
+            enabled=bool(getattr(self.config, "pause_before_submit", False)),
+            prompt="Debug pause before submit. Inspect focus, send/stop buttons, and network panel, then press Enter to submit... ",
+        )
 
         submit_evidence = await self._submit_prompt(page, prompt=prompt)
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
@@ -4665,6 +4683,15 @@ class ChatGPTBrowserClient:
         result["duration_seconds"] = round(time.monotonic() - started, 3)
         return result
 
+    async def _debug_pause_if_enabled(self, *, label: str, enabled: bool, prompt: str) -> None:
+        if not enabled:
+            return
+        if self.config.headless:
+            self._log("debug-browser", "debug pause skipped in headless mode", label=label)
+            return
+        self._log("debug-browser", "pausing headed browser for operator inspection", label=label)
+        await self._pause_for_keep_open(prompt)
+
     async def _wait_for_composer_ready_before_fill(
         self,
         page: Any,
@@ -4672,7 +4699,12 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 20_000,
         poll_interval_ms: int = 500,
     ) -> dict[str, Any]:
-        """Require a real idle/send-ready composer before mutating prompt text."""
+        """Require an idle editable composer before mutating prompt text.
+
+        The send button is normally disabled while the composer is empty, so
+        send_ready must not be a pre-fill readiness blocker.  Send readiness is
+        validated after prompt text has been inserted.
+        """
 
         started = time.monotonic()
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
@@ -4686,8 +4718,6 @@ class ChatGPTBrowserClient:
             blockers: list[str] = []
             if submit_state.get("stop_visible"):
                 blockers.append("stop_button_visible")
-            if not submit_state.get("send_ready"):
-                blockers.append("send_button_not_ready")
             if thinking_state.get("visible"):
                 blockers.append("thinking_visible")
             if interrupted_state.get("present"):

@@ -231,6 +231,13 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
             clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False),
             profile_lock_wait_seconds=float(os.getenv("PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS", os.getenv("CHATGPT_BROWSER_PROFILE_LOCK_WAIT_SECONDS", "30.0"))),
+            slow_mo_ms=int(os.getenv("CHATGPT_SLOW_MO_MS", "0")),
+            debug=_env_flag("CHATGPT_DEBUG_BROWSER", _env_flag("CHATGPT_DEBUG", False)),
+            debug_artifact_dir=os.getenv("CHATGPT_DEBUG_ARTIFACT_DIR", "debug_artifacts"),
+            dom_diagnostic_mode=os.getenv("CHATGPT_DOM_DIAGNOSTIC_MODE", "light"),
+            pause_before_fill=_env_flag("CHATGPT_PAUSE_BEFORE_FILL", False),
+            pause_after_fill=_env_flag("CHATGPT_PAUSE_AFTER_FILL", False),
+            pause_before_submit=_env_flag("CHATGPT_PAUSE_BEFORE_SUBMIT", False),
         )
     )
 
