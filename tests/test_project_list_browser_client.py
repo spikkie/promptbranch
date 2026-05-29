@@ -3920,6 +3920,67 @@ def test_keyboard_enter_primary_submit_enabled_defaults_on_and_has_escape_hatch(
     monkeypatch.setenv("CHATGPT_KEYBOARD_ENTER_PRIMARY_SUBMIT", "1")
     assert client._keyboard_enter_primary_submit_enabled() is True
 
+
+
+def test_stale_prepare_surface_detector_switches_empty_conversation_to_fresh_task(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    target_url = "https://chatgpt.com/g/g-p-current-demo/c/bad-task"
+
+    async def fake_safe_page_url(page):
+        return target_url
+
+    async def fake_dom_weight(page, *, mode=None):
+        return {
+            "capture_mode": "light",
+            "assistant_turn_count": 0,
+            "user_turn_count": 0,
+            "generic_turn_count": 0,
+        }
+
+    client._safe_page_url = fake_safe_page_url
+    client._capture_conversation_dom_weight = fake_dom_weight
+    monkeypatch.delenv("CHATGPT_FRESH_TASK_ON_STALE_PREPARE_SURFACE", raising=False)
+
+    import asyncio
+
+    result = asyncio.run(client._detect_stale_prepare_only_task_surface(
+        object(),
+        target_url=target_url,
+        hydration={"status": "target_conversation_hydrated_warm_task_reuse", "hydration_reuse_used": True},
+    ))
+
+    assert result["enabled"] is True
+    assert result["switch_to_fresh_task"] is True
+    assert result["reason"] == "target_conversation_zero_turn_surface"
+    assert result["project_home_url"] == "https://chatgpt.com/g/g-p-current-demo/project"
+
+
+def test_stale_prepare_surface_detector_keeps_hydrated_conversation(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    target_url = "https://chatgpt.com/g/g-p-current-demo/c/good-task"
+
+    async def fake_safe_page_url(page):
+        return target_url
+
+    async def fake_dom_weight(page, *, mode=None):
+        return {
+            "capture_mode": "light",
+            "assistant_turn_count": 1,
+            "user_turn_count": 1,
+            "generic_turn_count": 2,
+        }
+
+    client._safe_page_url = fake_safe_page_url
+    client._capture_conversation_dom_weight = fake_dom_weight
+
+    import asyncio
+
+    result = asyncio.run(client._detect_stale_prepare_only_task_surface(object(), target_url=target_url, hydration={}))
+
+    assert result["switch_to_fresh_task"] is False
+    assert result["reason"] == "conversation_turns_present"
+
+
 def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     observer = {"observer": "network"}
@@ -4980,7 +5041,7 @@ def test_keyboard_submit_variant_records_diagnostics_without_changing_dispatch(t
 
     assert page.keyboard.pressed == ["Enter"]
     assert result["confirmed"] is True
-    assert result["diagnostic_submit_path"] == "v0.0.278.48_observational_only"
+    assert result["diagnostic_submit_path"] == "v0.0.278.59_observational_only"
     assert result["before_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:before_fill"
     assert result["after_fill_diagnostics"]["label"] == "keyboard_enter_refill_retry:after_fill"
     assert result["pre_dispatch_diagnostics"]["label"] == "keyboard_enter_refill_retry:pre_dispatch"
