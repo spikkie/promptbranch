@@ -1757,6 +1757,37 @@ class ChatGPTBrowserClient:
             }
 
         phase_started = time.monotonic()
+        stale_task_surface = await self._detect_stale_prepare_only_task_surface(
+            page,
+            target_url=target_url,
+            hydration=hydration if isinstance(hydration, dict) else None,
+        )
+        mark_phase("stale_task_surface_detection_seconds", phase_started)
+        phase_timings["stale_task_surface_detection"] = stale_task_surface
+        phase_timings["fresh_task_fallback_used"] = False
+        phase_timings["fresh_task_fallback_reason"] = stale_task_surface.get("reason")
+        if stale_task_surface.get("switch_to_fresh_task"):
+            fresh_target_url = stale_task_surface.get("project_home_url") or self._project_home_url_from_url(target_url)
+            switch_started = time.monotonic()
+            self._log(
+                "ask",
+                "stale/prepare-only task surface detected before submit; switching to fresh project task",
+                target_url=target_url,
+                fresh_target_url=fresh_target_url,
+                reason=stale_task_surface.get("reason"),
+                assistant_turn_count=stale_task_surface.get("assistant_turn_count"),
+                user_turn_count=stale_task_surface.get("user_turn_count"),
+                generic_turn_count=stale_task_surface.get("generic_turn_count"),
+            )
+            await self._goto(page, fresh_target_url, label="stale-task-fresh-project-home")
+            await page.wait_for_timeout(750)
+            target_url = fresh_target_url
+            phase_timings["fresh_task_fallback_used"] = True
+            phase_timings["fresh_task_fallback_reason"] = stale_task_surface.get("reason")
+            phase_timings["fresh_task_fallback_target_url"] = fresh_target_url
+            phase_timings["fresh_task_fallback_seconds"] = round(time.monotonic() - switch_started, 3)
+
+        phase_started = time.monotonic()
         input_locator = await self._wait_for_chat_input(page)
         mark_phase("input_wait_seconds", phase_started)
 
@@ -8672,6 +8703,95 @@ class ChatGPTBrowserClient:
         value = (os.getenv("CHATGPT_KEYBOARD_ENTER_COMMIT_RETRY") or "1").strip().lower()
         return value not in {"0", "false", "no", "off", "disabled"}
 
+    def _fresh_task_on_stale_prepare_surface_enabled(self) -> bool:
+        """Return whether an empty/stale project conversation may be replaced by a fresh task.
+
+        v0.0.278.59 keeps the proven .48 fill + trusted Enter path intact.  The
+        only default guard added here is before asking: when the selected target
+        is a project conversation URL but the conversation surface has no user,
+        assistant, or generic turn DOM, do not submit into that stale surface.
+        Navigate back to the project home so ChatGPT creates a fresh task for the
+        same one-shot ask.
+        """
+        value = (os.getenv("CHATGPT_FRESH_TASK_ON_STALE_PREPARE_SURFACE") or "1").strip().lower()
+        return value not in {"0", "false", "no", "off", "disabled"}
+
+    def _count_is_zero(self, value: Any) -> bool:
+        try:
+            return int(value or 0) == 0
+        except (TypeError, ValueError):
+            return False
+
+    async def _detect_stale_prepare_only_task_surface(
+        self,
+        page: Any,
+        *,
+        target_url: str,
+        hydration: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Detect a conversation surface that should be avoided before submit.
+
+        The failure pattern seen after .48 was not a bad Enter dispatch: a reused
+        project conversation could show a ready composer but zero hydrated turns,
+        and submitting there only produced /conversation/prepare with no final
+        message commit.  This guard is intentionally conservative and
+        pre-submit only: it switches only for a target conversation URL whose
+        active DOM has zero visible conversation-turn evidence.
+        """
+        started = time.monotonic()
+        current_url = await self._safe_page_url(page)
+        enabled = self._fresh_task_on_stale_prepare_surface_enabled()
+        target_is_conversation = self._is_conversation_url(target_url)
+        current_matches_target = self._normalize_navigation_url(current_url) == self._normalize_navigation_url(target_url)
+        dom_weight: dict[str, Any] = {}
+        if enabled and target_is_conversation:
+            try:
+                dom_weight = await self._capture_conversation_dom_weight(page, mode="light")
+            except Exception as exc:
+                dom_weight = {"error": repr(exc)}
+        user_count = dom_weight.get("user_turn_count")
+        assistant_count = dom_weight.get("assistant_turn_count")
+        generic_count = dom_weight.get("generic_turn_count")
+        no_turns = bool(
+            self._count_is_zero(user_count)
+            and self._count_is_zero(assistant_count)
+            and self._count_is_zero(generic_count)
+        )
+        switch_to_fresh_task = bool(enabled and target_is_conversation and current_matches_target and no_turns)
+        project_home_url = self._project_home_url_from_url(target_url) if target_is_conversation else None
+        reason = None
+        if switch_to_fresh_task:
+            reason = "target_conversation_zero_turn_surface"
+        elif not enabled:
+            reason = "disabled"
+        elif not target_is_conversation:
+            reason = "target_not_conversation_url"
+        elif not current_matches_target:
+            reason = "current_url_not_target_conversation"
+        elif not no_turns:
+            reason = "conversation_turns_present"
+        else:
+            reason = "not_classified_stale"
+        return {
+            "enabled": enabled,
+            "target_url": target_url,
+            "current_url": current_url,
+            "target_is_conversation": target_is_conversation,
+            "current_matches_target": current_matches_target,
+            "switch_to_fresh_task": switch_to_fresh_task,
+            "reason": reason,
+            "project_home_url": project_home_url,
+            "hydration_status": hydration.get("status") if isinstance(hydration, dict) else None,
+            "hydration_mode": hydration.get("hydration_mode") if isinstance(hydration, dict) else None,
+            "hydration_reuse_used": hydration.get("hydration_reuse_used") if isinstance(hydration, dict) else None,
+            "assistant_turn_count": assistant_count,
+            "user_turn_count": user_count,
+            "generic_turn_count": generic_count,
+            "dom_weight_capture_mode": dom_weight.get("capture_mode"),
+            "dom_weight_error": dom_weight.get("error"),
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+
     def _submit_confirmation_needs_keyboard_retry(self, confirmation: Any) -> bool:
         if not isinstance(confirmation, dict) or confirmation.get("confirmed"):
             return False
@@ -8940,7 +9060,7 @@ class ChatGPTBrowserClient:
         if input_locator is None:
             result.update({"status": "skipped_no_visible_input", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        result["diagnostic_submit_path"] = "v0.0.278.48_observational_only"
+        result["diagnostic_submit_path"] = "v0.0.278.59_observational_only"
         result["before_fill_diagnostics"] = await self._capture_keyboard_submit_diagnostics(
             page,
             prompt=prompt,
