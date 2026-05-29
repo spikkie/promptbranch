@@ -5559,6 +5559,7 @@ class ChatGPTBrowserClient:
             state["submit_button"] = {"probe_failed": True, "error": str(exc)}
         return state
 
+
     async def _capture_composer_prompt_marker_state(
         self,
         page: Any,
@@ -5566,12 +5567,14 @@ class ChatGPTBrowserClient:
         prompt: str | None = None,
         input_locator: Any | None = None,
     ) -> dict[str, Any]:
-        """Minimal composer verification for the post-prepare trusted-refill retry.
+        """Minimal composer marker verification for retry pre-fill probes.
 
-        The normal composer probe also inspects submit/stop/idle controls.  In the
-        retry path that is expensive and redundant: the raw Enter attempt has
-        already failed closed, and the retry only needs to prove that the current
-        prompt marker is present in the composer before pressing Enter again.
+        The normal composer probe also inspects submit/stop/idle controls.  In
+        the post-prepare retry path that is expensive and, after v0.0.278.44,
+        insufficient as submit-readiness proof anyway.  This helper is limited
+        to verifying that the currently visible composer contains the requested
+        prompt prefix/marker before the caller continues with the known-good
+        full refill/readiness path.
         """
         state: dict[str, Any] = {
             "input_selector": "#prompt-textarea",
@@ -8518,19 +8521,12 @@ class ChatGPTBrowserClient:
     async def _clear_composer_for_trusted_input(self, page: Any, input_locator: Any, *, slim_retry: bool = False) -> dict[str, Any]:
         evidence: dict[str, Any] = {"attempted": True, "control_a": False, "backspace": False, "error": None, "slim_retry": bool(slim_retry)}
         try:
-            if slim_retry:
-                await self._click_locator_with_fallback(
-                    input_locator,
-                    label="ask-question-composer-input-trusted-refill",
-                    timeout_ms=1_000,
-                    handle_rate_limit=False,
-                )
-            else:
-                await self._click_locator_with_fallback(
-                    input_locator,
-                    label="ask-question-composer-input-trusted-refill",
-                    timeout_ms=5_000,
-                )
+            await self._click_locator_with_fallback(
+                input_locator,
+                label="ask-question-composer-input-trusted-refill",
+                timeout_ms=1_000 if slim_retry else 5_000,
+                handle_rate_limit=not slim_retry,
+            )
             await page.keyboard.press("Control+A")
             evidence["control_a"] = True
             await page.keyboard.press("Backspace")
@@ -8756,133 +8752,6 @@ class ChatGPTBrowserClient:
                 continue
         return None, None
 
-    async def _wait_for_retry_send_ready_barrier(
-        self,
-        page: Any,
-        *,
-        prompt: str,
-        input_locator: Any | None,
-        timeout_ms: int = 2_000,
-        poll_interval_ms: int = 150,
-        settle_ms: int = 350,
-    ) -> dict[str, Any]:
-        """Wait for the minimal post-refill state required before retry Enter.
-
-        v0.0.278.43 proved that the trusted-refill retry can verify the prompt in
-        less than a second, but immediate Enter after that slim verification can
-        trigger `/conversation/prepare` without consuming the conduit token.  This
-        barrier keeps the slim refill but restores an explicit readiness proof:
-
-        * the composer still contains the exact current prompt marker/prefix;
-        * the real send button is visible and enabled; and
-        * a small dwell lets ChatGPT/React settle before Enter dispatch.
-
-        It intentionally avoids the heavier full composer diagnostics from the
-        normal fill path.  If this fast barrier does not prove readiness quickly,
-        the caller falls back to the v0.0.278.42 full trusted-refill behavior.
-        """
-        started = time.monotonic()
-        deadline = started + max(timeout_ms, 0) / 1000.0
-        attempts: list[dict[str, Any]] = []
-        marker_ready = False
-        send_ready = False
-        last_marker_state: dict[str, Any] | None = None
-        last_send_state: dict[str, Any] | None = None
-        send_selectors = [
-            '#composer-submit-button[data-testid="send-button"]',
-            '#thread-bottom #composer-submit-button[data-testid="send-button"]',
-            '#composer-submit-button[aria-label="Send prompt"]',
-            '#thread-bottom #composer-submit-button[aria-label="Send prompt"]',
-        ]
-
-        while True:
-            attempt_started = time.monotonic()
-            marker_state = await self._capture_composer_prompt_marker_state(
-                page,
-                prompt=prompt,
-                input_locator=input_locator,
-            )
-            last_marker_state = marker_state
-            marker_ready = bool(marker_state.get("contains_prompt_prefix"))
-
-            send_state: dict[str, Any] = {
-                "selector": None,
-                "visible": False,
-                "enabled": False,
-                "probe_error": None,
-            }
-            for selector in send_selectors:
-                try:
-                    locator = page.locator(selector)
-                    count = await locator.count()
-                    if not count:
-                        continue
-                    item = locator.first
-                    visible = bool(await item.is_visible(timeout=200))
-                    enabled = bool(await item.is_enabled(timeout=200)) if visible else False
-                    send_state = {
-                        "selector": selector,
-                        "count": count,
-                        "visible": visible,
-                        "enabled": enabled,
-                    }
-                    if visible and enabled:
-                        break
-                except Exception as exc:
-                    send_state = {"selector": selector, "visible": False, "enabled": False, "probe_error": type(exc).__name__}
-                    continue
-            last_send_state = send_state
-            send_ready = bool(send_state.get("visible") and send_state.get("enabled"))
-
-            attempts.append({
-                "attempt": len(attempts) + 1,
-                "elapsed_seconds": round(time.monotonic() - started, 3),
-                "marker_ready": marker_ready,
-                "send_ready": send_ready,
-                "send_selector": send_state.get("selector"),
-                "attempt_seconds": round(time.monotonic() - attempt_started, 3),
-            })
-
-            if marker_ready and send_ready:
-                if settle_ms > 0:
-                    await page.wait_for_timeout(settle_ms)
-                return {
-                    "used": True,
-                    "ready": True,
-                    "status": "send_ready",
-                    "timeout_ms": timeout_ms,
-                    "poll_interval_ms": poll_interval_ms,
-                    "settle_ms": settle_ms,
-                    "attempt_count": len(attempts),
-                    "attempts": attempts[-5:],
-                    "marker_ready": marker_ready,
-                    "send_ready": send_ready,
-                    "marker_state": last_marker_state,
-                    "send_state": last_send_state,
-                    "duration_seconds": round(time.monotonic() - started, 3),
-                }
-
-            now = time.monotonic()
-            if now >= deadline:
-                break
-            await page.wait_for_timeout(min(poll_interval_ms, max(0, int((deadline - now) * 1000))))
-
-        return {
-            "used": True,
-            "ready": False,
-            "status": "send_ready_timeout",
-            "timeout_ms": timeout_ms,
-            "poll_interval_ms": poll_interval_ms,
-            "settle_ms": settle_ms,
-            "attempt_count": len(attempts),
-            "attempts": attempts[-5:],
-            "marker_ready": marker_ready,
-            "send_ready": send_ready,
-            "marker_state": last_marker_state,
-            "send_state": last_send_state,
-            "duration_seconds": round(time.monotonic() - started, 3),
-        }
-
     async def _run_keyboard_submit_variant(
         self,
         page: Any,
@@ -8914,9 +8783,30 @@ class ChatGPTBrowserClient:
         fill_started = time.monotonic()
         try:
             result["fill_attempted"] = True
-            slim_retry_fill = variant == "keyboard_enter_refill_retry"
-            result["trusted_refill_retry_slim_fill_used"] = bool(slim_retry_fill)
-            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=slim_retry_fill)
+            slim_prefill_used = variant == "keyboard_enter_refill_retry"
+            result["trusted_refill_retry_slim_prefill_used"] = bool(slim_prefill_used)
+            if slim_prefill_used:
+                slim_started = time.monotonic()
+                slim_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=True)
+                result["trusted_refill_retry_slim_prefill_seconds"] = round(time.monotonic() - slim_started, 3)
+                result["trusted_refill_retry_slim_prefill_evidence"] = {
+                    "method": slim_evidence.get("method"),
+                    "requested_method": slim_evidence.get("requested_method"),
+                    "verification_passed": slim_evidence.get("verification_passed"),
+                    "trusted_input_used": slim_evidence.get("trusted_input_used"),
+                    "duration_seconds": slim_evidence.get("duration_seconds"),
+                    "slim_retry": slim_evidence.get("slim_retry"),
+                    "slim_retry_marker_verify_used": slim_evidence.get("slim_retry_marker_verify_used"),
+                }
+                result["trusted_refill_retry_slim_prefill_verified"] = bool(slim_evidence.get("verification_passed"))
+                result["trusted_refill_retry_dispatch_after_slim_prefill"] = False
+
+            full_started = time.monotonic()
+            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=False)
+            result["trusted_refill_retry_full_fill_after_slim_prefill_used"] = bool(slim_prefill_used)
+            result["trusted_refill_retry_full_fill_after_slim_prefill_seconds"] = (
+                round(time.monotonic() - full_started, 3) if slim_prefill_used else None
+            )
             result["fill_evidence"] = {
                 "method": fill_evidence.get("method"),
                 "requested_method": fill_evidence.get("requested_method"),
@@ -8939,30 +8829,6 @@ class ChatGPTBrowserClient:
         if not result["fill_verified"]:
             result.update({"status": "fill_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
             return result
-        if variant == "keyboard_enter_refill_retry" and result.get("trusted_refill_retry_slim_fill_used"):
-            barrier_started = time.monotonic()
-            barrier = await self._wait_for_retry_send_ready_barrier(page, prompt=prompt, input_locator=input_locator)
-            result["trusted_refill_retry_send_ready_barrier"] = barrier
-            result["trusted_refill_retry_send_ready_barrier_seconds"] = round(time.monotonic() - barrier_started, 3)
-            if not barrier.get("ready"):
-                fallback_started = time.monotonic()
-                result["trusted_refill_retry_full_fill_fallback_used"] = True
-                fallback_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt, slim_retry=False)
-                result["trusted_refill_retry_full_fill_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
-                result["trusted_refill_retry_full_fill_fallback_evidence"] = {
-                    "method": fallback_evidence.get("method"),
-                    "requested_method": fallback_evidence.get("requested_method"),
-                    "verification_passed": fallback_evidence.get("verification_passed"),
-                    "trusted_input_used": fallback_evidence.get("trusted_input_used"),
-                    "duration_seconds": fallback_evidence.get("duration_seconds"),
-                }
-                result["fill_verified"] = bool(fallback_evidence.get("verification_passed"))
-                result["fill_seconds"] = round(time.monotonic() - fill_started, 3)
-                if not result["fill_verified"]:
-                    result.update({"status": "full_fill_fallback_not_verified", "duration_seconds": round(time.monotonic() - started, 3)})
-                    return result
-            else:
-                result["trusted_refill_retry_full_fill_fallback_used"] = False
         observer = self._start_submit_network_observer(page, prompt=prompt)
         dispatch_started = time.monotonic()
         result["attempted"] = True
