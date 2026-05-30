@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.68" in out
+    assert "0.0.278.69" in out
     assert "promptbranch" in out
 
 
@@ -265,6 +265,9 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert ask_live.json is True
     assert ask_live.run_id == 'UNIT'
     assert ask_live.only == ['plain,prompt_file']
+    assert ask_live.project_name_prefix == 'ask-live-temp'
+    assert ask_live.memory_mode == 'project-only'
+    assert ask_live.keep_project is False
     assert ask_live.debug_browser is True
 
 
