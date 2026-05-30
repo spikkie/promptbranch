@@ -157,3 +157,4 @@ docs/release-v0.0.278.68.md
 docs/release-v0.0.278.67.md
 docs/release-v0.0.278.69.md
 docs/release-v0.0.278.70.md
+docs/release-v0.0.278.71.md

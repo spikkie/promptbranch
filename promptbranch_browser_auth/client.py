@@ -2345,6 +2345,17 @@ class ChatGPTBrowserClient:
             phase_timings["ask_operation_deadline_remaining_ms_at_answer_wait_config"] = response_context.get("ask_operation_deadline_remaining_ms_at_answer_wait_config")
 
         if not bool(submit_evidence.get("submit_confirmed")):
+            attachment_visible_answer_result = await self._try_promote_attachment_visible_answer_after_unconfirmed_submit(
+                page,
+                upload_paths=upload_paths,
+                response_context=response_context,
+                submit_evidence=submit_evidence,
+                phase_timings=phase_timings,
+                operation_started=operation_started,
+            )
+            if attachment_visible_answer_result is not None:
+                return attachment_visible_answer_result
+
             failure_reason = submit_evidence.get("submit_causal_confirmation_reason") or "submit_causality_not_confirmed"
             prepare_failures = {
                 "submit_prepare_without_message_commit",
@@ -2376,13 +2387,14 @@ class ChatGPTBrowserClient:
             phase_timings["response_wait_skipped"] = True
             phase_timings["response_wait_skipped_reason"] = failure_reason
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            current_url_after_unconfirmed_submit = await self._safe_page_url(page)
             return {
                 "ok": False,
                 "action": "ask",
                 "status": failure_status,
                 "error": failure_error,
                 "error_type": failure_status,
-                "conversation_url": target_url if self._is_conversation_url(target_url) else None,
+                "conversation_url": current_url_after_unconfirmed_submit if self._is_conversation_url(current_url_after_unconfirmed_submit) else (target_url if self._is_conversation_url(target_url) else None),
                 "submit_evidence": submit_evidence,
                 "partial_result": True,
                 "ask_phase_timings": phase_timings,
@@ -8443,6 +8455,109 @@ class ChatGPTBrowserClient:
                 "text_preview": self._preview_text(text, 220),
             }
         return None
+
+    async def _try_promote_attachment_visible_answer_after_unconfirmed_submit(
+        self,
+        page: Any,
+        *,
+        upload_paths: list[str],
+        response_context: Optional[dict[str, Any]],
+        submit_evidence: dict[str, Any],
+        phase_timings: dict[str, Any],
+        operation_started: float,
+    ) -> Optional[dict[str, Any]]:
+        """Promote a visible attachment answer when network causality missed it.
+
+        Attachment asks can successfully navigate into a new /c/... conversation
+        and render the assistant answer while the network-only submit observer
+        misses the final message request.  This fallback is deliberately scoped
+        to attachment asks and still requires a fresh visible assistant answer
+        from the post-submit DOM before returning success.
+        """
+        if not upload_paths or not isinstance(submit_evidence, dict):
+            return None
+        if bool(submit_evidence.get("submit_confirmed")):
+            return None
+
+        fallback_started = time.monotonic()
+        current_url = await self._safe_page_url(page)
+        conversation_url = current_url if self._is_conversation_url(current_url) else None
+        phase_timings["attachment_visible_answer_fallback_checked"] = True
+        phase_timings["attachment_visible_answer_fallback_current_url"] = current_url
+        if not conversation_url:
+            phase_timings["attachment_visible_answer_fallback_status"] = "skipped_not_conversation_url"
+            phase_timings["attachment_visible_answer_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
+            return None
+
+        response_wait_started = time.monotonic()
+        if isinstance(response_context, dict):
+            response_context["response_wait_started_at_monotonic"] = response_wait_started
+        try:
+            answer = await self._wait_and_get_response(page, response_context=response_context)
+        except ResponseTimeoutError as exc:
+            phase_timings["attachment_visible_answer_fallback_status"] = "response_timeout"
+            phase_timings["attachment_visible_answer_fallback_error"] = str(exc)
+            phase_timings["attachment_visible_answer_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
+            return None
+
+        response_wait_returned = time.monotonic()
+        if isinstance(response_context, dict):
+            phase_timings.update(self._response_wait_timing_fields(
+                response_context,
+                response_wait_started_at=response_wait_started,
+                response_wait_returned_at=response_wait_returned,
+            ))
+            phase_timings["response_extraction_mode"] = response_context.get("last_response_extraction_mode")
+            phase_timings["response_extraction_seconds"] = response_context.get("last_response_extraction_seconds")
+            phase_timings["response_historical_scan_used"] = response_context.get("last_response_historical_scan_used")
+            phase_timings["response_historical_scan_seconds"] = response_context.get("last_response_historical_scan_seconds")
+
+        confirmed_by = list(submit_evidence.get("submit_confirmed_by") or [])
+        for signal in ("url_conversation", "attachment_visible_answer"):
+            if signal not in confirmed_by:
+                confirmed_by.append(signal)
+        submit_evidence.update({
+            "submit_confirmed": True,
+            "submit_confirmed_by": confirmed_by,
+            "submit_causal_confirmation_verified": True,
+            "submit_causal_confirmation_reason": "attachment_visible_answer_after_unconfirmed_submit",
+            "submit_confirmation_mode": "attachment_visible_answer_after_unconfirmed_submit",
+            "submit_attachment_visible_answer_fallback_used": True,
+            "submit_attachment_visible_answer_fallback_status": "visible_answer_promoted",
+            "submit_attachment_visible_answer_conversation_url": conversation_url,
+            "submit_attachment_visible_answer_text_length": len(str(answer or "")),
+        })
+        phase_timings["submit_confirmed"] = True
+        phase_timings["submit_confirmed_by"] = confirmed_by
+        phase_timings["submit_causal_confirmation_verified"] = True
+        phase_timings["submit_causal_confirmation_reason"] = "attachment_visible_answer_after_unconfirmed_submit"
+        phase_timings["submit_confirmation_mode"] = "attachment_visible_answer_after_unconfirmed_submit"
+        phase_timings["attachment_visible_answer_fallback_status"] = "visible_answer_promoted"
+        phase_timings["attachment_visible_answer_fallback_conversation_url"] = conversation_url
+        phase_timings["attachment_visible_answer_fallback_text_length"] = len(str(answer or ""))
+        phase_timings["attachment_visible_answer_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
+        phase_timings["response_wait_skipped"] = False
+        phase_timings["response_accepted_source"] = "attachment_visible_answer_after_unconfirmed_submit"
+        phase_timings["response_freshness_verified"] = True
+        phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+        result = {
+            "answer": answer,
+            "conversation_url": conversation_url,
+            "submit_evidence": submit_evidence,
+            "ask_phase_timings": phase_timings,
+            "status": "completed",
+            "response_accepted_source": "attachment_visible_answer_after_unconfirmed_submit",
+            "response_freshness_verified": True,
+        }
+        self._record_ask_progress(**result)
+        self._log(
+            "response",
+            "attachment visible answer promoted after unconfirmed submit",
+            conversation_url=conversation_url,
+            answer_text_length=len(str(answer or "")),
+            total_seconds=phase_timings.get("total_seconds"),
+        )
+        return result
 
     async def _capture_submit_confirmation_fast_state(self, page: Any) -> dict[str, Any]:
         started = time.monotonic()

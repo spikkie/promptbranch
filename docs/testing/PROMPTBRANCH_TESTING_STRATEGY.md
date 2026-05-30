@@ -777,3 +777,16 @@ The final state should prove:
 ## v0.0.278.70 ask-live URL normalization
 
 Compare ask-live project membership by canonical ChatGPT Project id and expose expected_project_id/response_project_id in step JSON.
+
+## v0.0.278.71 ask-live attachment result detection
+
+The ask-live attachment repair treats a visible rendered attachment answer as result evidence when the network submit observer misses causality.
+
+This fallback is intentionally narrow:
+
+- attachment paths must have been supplied;
+- the browser must be on a `/c/...` conversation URL;
+- a fresh visible assistant answer must be read from the DOM;
+- non-attachment asks do not use this fallback.
+
+The repair does not change upload, plain ask, or prompt-file submit behavior.
