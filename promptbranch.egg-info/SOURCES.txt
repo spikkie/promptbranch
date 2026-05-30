@@ -152,3 +152,4 @@ docs/release-v0.0.278.62.md
 docs/release-v0.0.278.63.md
 docs/release-v0.0.278.64.md
 docs/release-v0.0.278.65.md
+docs/testing/PROMPTBRANCH_TESTING_STRATEGY.md
