@@ -551,3 +551,76 @@ def test_run_with_context_wraps_patchright_launch_crash_as_structured_payload(tm
     assert payload["browser_mode"] == "local_headed_patchright"
     assert payload["likely_linux_gpu_backend_issue"] is True
     assert "--ozone-platform=x11" in payload["browser_args"]
+
+
+def test_attachment_visible_answer_promotes_after_unconfirmed_submit(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        pass
+
+    async def fake_safe_page_url(page):
+        return "https://chatgpt.com/g/g-p-6a1af3fe64a481919a2cc7de3cff0487-ask-live-temp/c/6a1b"
+
+    async def fake_wait_and_get_response(page, *, response_context=None):
+        if response_context is not None:
+            response_context["last_response_extraction_mode"] = "assistant_selector"
+            response_context["last_response_extraction_seconds"] = 0.123
+        return "ASK_LIVE_FILE_ATTACHMENT_UNIT"
+
+    client._safe_page_url = fake_safe_page_url
+    client._wait_and_get_response = fake_wait_and_get_response
+
+    submit_evidence = {
+        "submit_confirmed": False,
+        "submit_confirmed_by": [],
+        "submit_confirmation_mode": "network_submit_request_timeout",
+    }
+    phase_timings = {}
+    response_context = {"assistant_count": 0}
+
+    result = asyncio.run(client._try_promote_attachment_visible_answer_after_unconfirmed_submit(
+        DummyPage(),
+        upload_paths=["/tmp/ask_live_attachment.txt"],
+        response_context=response_context,
+        submit_evidence=submit_evidence,
+        phase_timings=phase_timings,
+        operation_started=0.0,
+    ))
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["answer"] == "ASK_LIVE_FILE_ATTACHMENT_UNIT"
+    assert result["conversation_url"].endswith("/c/6a1b")
+    assert result["submit_evidence"]["submit_confirmed"] is True
+    assert result["submit_evidence"]["submit_confirmation_mode"] == "attachment_visible_answer_after_unconfirmed_submit"
+    assert "attachment_visible_answer" in result["submit_evidence"]["submit_confirmed_by"]
+    assert phase_timings["attachment_visible_answer_fallback_status"] == "visible_answer_promoted"
+    assert phase_timings["response_freshness_verified"] is True
+
+
+def test_attachment_visible_answer_fallback_skips_non_attachment_unconfirmed_submit(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        pass
+
+    async def fail_wait_and_get_response(*args, **kwargs):
+        raise AssertionError("non-attachment submits must not use attachment fallback")
+
+    client._wait_and_get_response = fail_wait_and_get_response
+
+    result = asyncio.run(client._try_promote_attachment_visible_answer_after_unconfirmed_submit(
+        DummyPage(),
+        upload_paths=[],
+        response_context={},
+        submit_evidence={"submit_confirmed": False},
+        phase_timings={},
+        operation_started=0.0,
+    ))
+
+    assert result is None
