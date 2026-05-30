@@ -6554,7 +6554,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "browser", "agent", "full", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "ask-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -14534,6 +14534,248 @@ async def cmd_test_status(args: argparse.Namespace) -> int:
     return 0 if status.get("ok") else 1
 
 
+ASK_LIVE_DEFAULT_STEPS: tuple[str, ...] = (
+    "plain",
+    "repeated_stale_first",
+    "repeated_stale_second",
+    "prompt_file",
+    "file_attachment",
+    "prompt_file_with_attachment",
+)
+
+
+def _selector_values(raw_values: list[str] | None) -> set[str]:
+    values: set[str] = set()
+    for raw in raw_values or []:
+        for item in str(raw).split(","):
+            value = item.strip()
+            if value:
+                values.add(value)
+    return values
+
+
+def _ask_live_selected_steps(args: argparse.Namespace) -> list[str]:
+    only = _selector_values(getattr(args, "only", None))
+    skip = _selector_values(getattr(args, "skip", None))
+    unknown = sorted((only | skip).difference(ASK_LIVE_DEFAULT_STEPS))
+    if unknown:
+        raise ValueError(f"unknown ask-live step selector(s): {', '.join(unknown)}")
+    steps = list(ASK_LIVE_DEFAULT_STEPS)
+    if only:
+        steps = [step for step in steps if step in only]
+    if skip:
+        steps = [step for step in steps if step not in skip]
+    return steps
+
+
+def _ask_live_sentinel(run_id: str, suffix: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_]+", "_", run_id).strip("_") or "RUN"
+    return f"ASK_LIVE_{suffix.upper()}_{safe}"
+
+
+def _ask_live_answer_text(response: Any) -> str:
+    enriched = _enrich_ask_response_with_canonical_text(response)
+    answer, _ = _split_ask_response(enriched)
+    return _canonical_answer_text(answer)
+
+
+async def _run_ask_live_step(
+    backend: CommandBackend,
+    args: argparse.Namespace,
+    *,
+    name: str,
+    prompt: str,
+    expected_sentinel: str,
+    attachment_paths: list[str] | None = None,
+    forbidden_sentinels: list[str] | None = None,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    response: Any
+    try:
+        response = await backend.ask(
+            prompt=prompt,
+            attachment_paths=list(attachment_paths or []),
+            conversation_url=getattr(args, "conversation_url", None),
+            expect_json=False,
+            keep_open=bool(getattr(args, "keep_open", False)),
+            retries=getattr(args, "retries", None),
+        )
+    except Exception as exc:
+        return {
+            "name": name,
+            "ok": False,
+            "status": "ask_failed",
+            "error": str(exc),
+            "error_type": exc.__class__.__name__,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "expected_sentinel": expected_sentinel,
+            "attachment_paths": [str(path) for path in attachment_paths or []],
+        }
+
+    answer_text = _ask_live_answer_text(response)
+    forbidden = list(forbidden_sentinels or [])
+    contains_expected = expected_sentinel in answer_text
+    forbidden_present = [item for item in forbidden if item and item in answer_text]
+    response_ok = not (isinstance(response, dict) and response.get("ok") is False)
+    ok = bool(response_ok and contains_expected and not forbidden_present)
+    submit_evidence = response.get("submit_evidence") if isinstance(response, dict) and isinstance(response.get("submit_evidence"), dict) else None
+    return {
+        "name": name,
+        "ok": ok,
+        "status": "verified" if ok else "failed",
+        "expected_sentinel": expected_sentinel,
+        "contains_expected_sentinel": contains_expected,
+        "forbidden_sentinels_present": forbidden_present,
+        "answer_text_preview": answer_text[:240],
+        "answer_text_length": len(answer_text),
+        "conversation_url": response.get("conversation_url") if isinstance(response, dict) else None,
+        "submit_confirmed": submit_evidence.get("submit_confirmed") if isinstance(submit_evidence, dict) else None,
+        "submit_confirmation_mode": submit_evidence.get("submit_confirmation_mode") if isinstance(submit_evidence, dict) else None,
+        "attachment_paths": [str(path) for path in attachment_paths or []],
+        "duration_seconds": round(time.monotonic() - started, 3),
+    }
+
+
+async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -> int:
+    """Run a visible/local operator ask workflow smoke profile.
+
+    This profile intentionally exercises the repaired ask path against the
+    operator-selected workspace/task using a local headed browser profile.  It
+    is separate from the full integration suite, which creates temporary
+    projects and may run through the Docker service transport.
+    """
+
+    try:
+        selected_steps = _ask_live_selected_steps(args)
+    except ValueError as exc:
+        payload = {
+            "ok": False,
+            "action": "test_ask_live",
+            "profile": "ask-live",
+            "status": "invalid_step_selector",
+            "error": str(exc),
+            "valid_steps": list(ASK_LIVE_DEFAULT_STEPS),
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False) if args.json else str(payload["error"]))
+        return 2
+
+    run_id = getattr(args, "run_id", None) or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    profile_dir = str(getattr(args, "profile_dir", "") or "")
+    steps: list[dict[str, Any]] = []
+
+    with tempfile.TemporaryDirectory(prefix="promptbranch_ask_live_") as temp_root:
+        temp_dir = Path(temp_root)
+        sentinels = {
+            "plain": _ask_live_sentinel(run_id, "plain"),
+            "repeat_first": _ask_live_sentinel(run_id, "repeat_first"),
+            "repeat_second": _ask_live_sentinel(run_id, "repeat_second"),
+            "prompt_file": _ask_live_sentinel(run_id, "prompt_file"),
+            "file_attachment": _ask_live_sentinel(run_id, "file_attachment"),
+            "prompt_file_with_attachment": _ask_live_sentinel(run_id, "prompt_file_with_attachment"),
+        }
+
+        if "plain" in selected_steps:
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="plain",
+                prompt=f"Return exactly the single token {sentinels['plain']} and nothing else.",
+                expected_sentinel=sentinels["plain"],
+            ))
+
+        if "repeated_stale_first" in selected_steps:
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="repeated_stale_first",
+                prompt=f"Return exactly the single token {sentinels['repeat_first']} and nothing else.",
+                expected_sentinel=sentinels["repeat_first"],
+                forbidden_sentinels=[sentinels["plain"]],
+            ))
+
+        if "repeated_stale_second" in selected_steps:
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="repeated_stale_second",
+                prompt=f"Return exactly the single token {sentinels['repeat_second']} and nothing else.",
+                expected_sentinel=sentinels["repeat_second"],
+                forbidden_sentinels=[sentinels["plain"], sentinels["repeat_first"]],
+            ))
+
+        if "prompt_file" in selected_steps:
+            prompt_file = temp_dir / "prompt_file.md"
+            prompt_file.write_text(
+                f"Return exactly the single token {sentinels['prompt_file']} and nothing else.\n",
+                encoding="utf-8",
+            )
+            prompt = _read_prompt_file(str(prompt_file)).strip()
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="prompt_file",
+                prompt=prompt,
+                expected_sentinel=sentinels["prompt_file"],
+            ))
+
+        if "file_attachment" in selected_steps:
+            attachment = temp_dir / "ask_live_attachment.txt"
+            attachment.write_text(f"sentinel={sentinels['file_attachment']}\n", encoding="utf-8")
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="file_attachment",
+                prompt=f"Read the attached file and return exactly the sentinel token {sentinels['file_attachment']} and nothing else.",
+                expected_sentinel=sentinels["file_attachment"],
+                attachment_paths=[str(attachment)],
+            ))
+
+        if "prompt_file_with_attachment" in selected_steps:
+            attachment = temp_dir / "ask_live_prompt_file_attachment.txt"
+            attachment.write_text(f"sentinel={sentinels['prompt_file_with_attachment']}\n", encoding="utf-8")
+            prompt_file = temp_dir / "read_attachment_prompt.md"
+            prompt_file.write_text(
+                "Read the attached file and return exactly the sentinel token "
+                f"{sentinels['prompt_file_with_attachment']} and nothing else.\n",
+                encoding="utf-8",
+            )
+            prompt = _read_prompt_file(str(prompt_file)).strip()
+            steps.append(await _run_ask_live_step(
+                backend,
+                args,
+                name="prompt_file_with_attachment",
+                prompt=prompt,
+                expected_sentinel=sentinels["prompt_file_with_attachment"],
+                attachment_paths=[str(attachment)],
+            ))
+
+    ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
+    payload = {
+        "ok": ok,
+        "action": "test_ask_live",
+        "profile": "ask-live",
+        "status": "verified" if ok else "failed",
+        "version": f"v{CLI_VERSION}",
+        "run_id": run_id,
+        "mode": "visible_local_debug_browser",
+        "profile_dir": profile_dir,
+        "debug_browser": True,
+        "service_transport_used": False,
+        "selected_steps": selected_steps,
+        "step_count": len(steps),
+        "failure_count": len([step for step in steps if not step.get("ok")]),
+        "steps": steps,
+        "operator_note": "This profile uses a local headed browser profile for the operator workflow; it is distinct from localhost service transport.",
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"ask-live: {payload['status']} steps={payload['step_count']} failures={payload['failure_count']}")
+        for step in steps:
+            print(f"- {step.get('name')}: {step.get('status')}")
+    return 0 if ok else 1
+
+
 async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
     result = package_import_smoke(repo_path=getattr(args, "path", "."), python_executable=getattr(args, "python_executable", None))
     if getattr(args, "json", False):
@@ -14546,13 +14788,14 @@ async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
 
 
 async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
-    del backend
     if args.test_command == "report":
         return await cmd_test_report(args)
     if args.test_command == "status":
         return await cmd_test_status(args)
     if args.test_command == "import-smoke":
         return await cmd_test_import_smoke(args)
+    if args.test_command == "ask-live":
+        return await cmd_test_ask_live(backend, args)
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_smoke(args)
@@ -15656,6 +15899,16 @@ def make_parser() -> argparse.ArgumentParser:
     test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
     _add_test_suite_profile_options(test_full)
 
+    test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile against the selected workspace/task.")
+    test_ask_live.add_argument("--json", action="store_true", help="Emit the ask-live result as JSON.")
+    test_ask_live.add_argument("--run-id", help="Optional run identifier used in sentinels. Defaults to a UTC timestamp.")
+    test_ask_live.add_argument("--conversation-url", help="Optional conversation URL override. Defaults to the remembered/current task.")
+    test_ask_live.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after each ask step.")
+    test_ask_live.add_argument("--retries", type=int, help="Retry count passed to each ask step.")
+    test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")
+    test_ask_live.add_argument("--skip", action="append", default=[], help="Comma-separated ask-live step selectors to skip.")
+    test_ask_live.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
     test_report = test_subparsers.add_parser("report", help="Summarize a pb test-suite / pb test full JSON log.")
     test_report.add_argument("log", help="Path to a log produced by pb test-suite --json or pb test full --json.")
     test_report.add_argument("--service-log", help="Optional Docker/service log to scan for rate-limit modal/429 evidence.")
@@ -16142,6 +16395,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         return help_exit_code
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
+    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) == "ask-live":
+        args.debug_browser = True
+        args.headless = False
+        if not _option_was_provided(normalized_argv, "--profile-dir"):
+            args.profile_dir = "./.pb_profile_local_debug"
     args.profile_dir = str(resolve_profile_dir(args.profile_dir))
     debug_option_provided = _debug_option_was_provided(normalized_argv)
     if _json_output_requested(args) and not debug_option_provided:

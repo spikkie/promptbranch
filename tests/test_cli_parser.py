@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.67" in out
+    assert "0.0.278.68" in out
     assert "promptbranch" in out
 
 
@@ -257,6 +257,15 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert import_smoke.test_command == 'import-smoke'
     assert import_smoke.path == '.'
     assert import_smoke.json is True
+
+
+    ask_live = parser.parse_args(['test', 'ask-live', '--json', '--run-id', 'UNIT', '--only', 'plain,prompt_file'])
+    assert ask_live.command == 'test'
+    assert ask_live.test_command == 'ask-live'
+    assert ask_live.json is True
+    assert ask_live.run_id == 'UNIT'
+    assert ask_live.only == ['plain,prompt_file']
+    assert ask_live.debug_browser is True
 
 
 def test_parser_defaults_project_source_add_type_to_file() -> None:

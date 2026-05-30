@@ -262,6 +262,12 @@ This prevents confusion between direct and localhost results.
 
 ### 8.1 `pb test ask-live --json`
 
+Status:
+
+```text
+Implemented in v0.0.278.68 as an explicit visible/local operator workflow profile.
+```
+
 Purpose:
 
 ```text
@@ -280,26 +286,29 @@ Scope:
 - multiline JSON prompt
 ```
 
-Suggested subtests:
+Implemented default subtests:
 
 ```text
-ask_plain_echo
-ask_repeated_stale_guard
-ask_prompt_file
-ask_file_attachment
-ask_prompt_file_with_attachment
-ask_multiline_json_prompt
+plain
+repeated_stale_first
+repeated_stale_second
+prompt_file
+file_attachment
+prompt_file_with_attachment
 ```
 
-Example manual equivalent:
+Example command:
 
 ```bash
-pb ask 'print echo ASK_LIVE_1'
-pb ask 'print echo ASK_LIVE_2'
-pb ask 'print echo ASK_LIVE_3'
-pb ask --prompt-file .pb_test/prompts/json_prompt.md
-pb ask --file .pb_test/fixtures/sentinel.txt 'Read attached file and return sentinel.'
-pb ask --prompt-file .pb_test/prompts/read_attachment.md --file .pb_test/fixtures/sentinel.txt
+pb test ask-live --json \
+  --profile-dir ./.pb_profile_local_debug \
+  2>&1 | tee pb_test.ask_live.<version>.log
+```
+
+Narrowed command:
+
+```bash
+pb test ask-live --json --only plain,prompt_file
 ```
 
 Expected behavior:
@@ -572,7 +581,13 @@ Acceptance:
 
 ### Phase 3 — Ask-live test profile
 
-Add:
+Status:
+
+```text
+Implemented in v0.0.278.68.
+```
+
+Command:
 
 ```bash
 pb test ask-live --json
