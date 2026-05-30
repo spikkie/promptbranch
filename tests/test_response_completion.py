@@ -601,6 +601,37 @@ def test_attachment_visible_answer_promotes_after_unconfirmed_submit(tmp_path: P
     assert phase_timings["response_freshness_verified"] is True
 
 
+
+def test_attachment_submit_ready_waits_for_enabled_send_button(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.waits = 0
+
+        async def wait_for_timeout(self, ms):
+            self.waits += 1
+
+    page = DummyPage()
+    states = iter([
+        {"send_ready": False, "stop_visible": False, "idle_visible": True, "selector": "button[aria-label=Start Voice]", "aria_label": "Start Voice", "visible": True, "enabled": True},
+        {"send_ready": True, "stop_visible": False, "idle_visible": False, "selector": "#composer-submit-button", "aria_label": "Send prompt", "visible": True, "enabled": True},
+    ])
+
+    async def fake_probe(_page):
+        return next(states)
+
+    client._probe_submit_button_state = fake_probe
+    result = asyncio.run(client._wait_for_attachment_submit_ready(page, timeout_ms=1_000, poll_interval_ms=1))
+
+    assert result["ready"] is True
+    assert result["status"] == "attachment_submit_ready"
+    assert result["attempt_count"] == 2
+    assert page.waits == 1
+
+
 def test_attachment_visible_answer_fallback_skips_non_attachment_unconfirmed_submit(tmp_path: Path) -> None:
     import asyncio
 
