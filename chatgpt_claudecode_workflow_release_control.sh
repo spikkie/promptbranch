@@ -60,6 +60,9 @@ adopt_if_green=0
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
 service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
 test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
+test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
+test_transport_explicit=0
+localhost_base_url="${PROMPTBRANCH_LOCALHOST_BASE_URL:-http://127.0.0.1:8000}"
 workflow_rc=0
 
 default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
@@ -98,6 +101,13 @@ Options:
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
+      --test-transport MODE   Test transport for --run-tests: direct, localhost, or both.
+                              Default: direct. direct preserves the existing pb test full path.
+                              localhost runs pb test full with CHATGPT_SERVICE_BASE_URL set.
+                              both runs direct first, then localhost, and fails if either fails.
+      --localhost-base-url URL
+                              Base URL used by --test-transport localhost/both.
+                              Default: http://127.0.0.1:8000.
       --run-tests             Run pb test full/report. Disabled by default.
                               The test block is wrapped in startlog/stoplog when available,
                               or an internal tee-based session log fallback otherwise.
@@ -138,6 +148,8 @@ Typical use:
   $(basename "$0") --tests-only --adopt-if-green
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
+  $(basename "$0") --run-tests --test-transport localhost --skip-docker-logs
+  $(basename "$0") --run-tests --test-transport both --skip-docker-logs
   $(basename "$0") --skip-zip-import --run-tests
   $(basename "$0") --version v0.0.241 --import-plan
 USAGE
@@ -394,6 +406,23 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
+    --test-transport)
+      [[ $# -ge 2 ]] || fail "--test-transport requires direct, localhost, or both"
+      test_transport="$2"
+      test_transport_explicit=1
+      shift 2
+      ;;
+    --test-transport=*)
+      test_transport="${1#*=}"
+      test_transport_explicit=1
+      shift
+      ;;
+    --localhost-base-url)
+      [[ $# -ge 2 ]] || fail "--localhost-base-url requires a URL"
+      localhost_base_url="$2"
+      shift 2
+      ;;
+    --localhost-base-url=*) localhost_base_url="${1#*=}"; shift ;;
     --run-tests) skip_tests=0; shift ;;
     --tests-only|--run-tests-only)
       tests_only=1
@@ -446,6 +475,11 @@ case "${service_mode}" in
   detached|foreground) ;;
   *) fail "--service-mode must be detached or foreground; got ${service_mode}" ;;
 esac
+case "${test_transport}" in
+  direct|localhost|both) ;;
+  *) fail "--test-transport must be direct, localhost, or both; got ${test_transport}" ;;
+esac
+[[ -n "${localhost_base_url}" ]] || fail "--localhost-base-url must not be empty"
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
 [[ "${release_log_keep}" =~ ^[0-9]+$ ]] || fail "--release-log-keep must be an integer number of version directories"
@@ -491,6 +525,10 @@ release_log_dir="${release_log_root}/${ver}"
 mkdir -p "${release_log_dir}"
 full_log="${release_log_dir}/pb_test.full.${ver}.log"
 report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
+direct_full_log="${release_log_dir}/pb_test.full.direct.${ver}.log"
+direct_report_json="${release_log_dir}/pb_test.full.direct.${ver}.report.json"
+localhost_full_log="${release_log_dir}/pb_test.full.localhost.${ver}.log"
+localhost_report_json="${release_log_dir}/pb_test.full.localhost.${ver}.report.json"
 if [[ -n "${PROMPTBRANCH_TEST_SESSION_LOG:-}" ]]; then
   case "${PROMPTBRANCH_TEST_SESSION_LOG}" in
     /*) test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
@@ -781,6 +819,8 @@ printf 'log_keep:       %s\n' "${release_log_keep}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
+printf 'test_transport: %s\n' "${test_transport}"
+printf 'localhost_url:  %s\n' "${localhost_base_url}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
@@ -1363,36 +1403,97 @@ if [[ ${skip_service} -eq 0 ]]; then
   fi
 fi
 
-# Run full suite and parsed report. Always try to create a report, even if the suite fails.
-if [[ ${skip_tests} -eq 0 ]]; then
-  start_test_session_log
-  test_rc=0
-  report_rc=0
+run_test_transport_once() {
+  local transport="$1"
+  local suite_log="$2"
+  local suite_report="$3"
+  local suite_rc=0
+  local suite_report_rc=0
+
+  echo "== pb test full/report (${transport}) =="
   set +e
 
-  echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
-  timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
-  test_rc=${PIPESTATUS[0]}
-  if [[ ${test_rc} -ne 0 ]]; then
-    echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
-    workflow_rc=${test_rc}
+  if [[ "${transport}" == "localhost" ]]; then
+    echo "+ CHATGPT_SERVICE_BASE_URL=${localhost_base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${suite_log}"
+    CHATGPT_SERVICE_BASE_URL="${localhost_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${suite_log}"
+    suite_rc=${PIPESTATUS[0]}
+  else
+    echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${suite_log}"
+    timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${suite_log}"
+    suite_rc=${PIPESTATUS[0]}
   fi
 
-  echo "+ pb test report ${full_log} --json"
-  pb test report "${full_log}" --json | tee "${report_json}"
-  report_rc=${PIPESTATUS[0]}
-  if [[ ${report_rc} -ne 0 ]]; then
-    echo "WARN: pb test report exited with ${report_rc}." >&2
-    workflow_rc=${report_rc}
+  if [[ ${suite_rc} -ne 0 ]]; then
+    echo "WARN: pb test full (${transport}) exited with ${suite_rc}; continuing to test report." >&2
+    workflow_rc=${suite_rc}
+  fi
+
+  echo "+ pb test report ${suite_log} --json"
+  pb test report "${suite_log}" --json | tee "${suite_report}"
+  suite_report_rc=${PIPESTATUS[0]}
+  if [[ ${suite_report_rc} -ne 0 ]]; then
+    echo "WARN: pb test report (${transport}) exited with ${suite_report_rc}." >&2
+    workflow_rc=${suite_report_rc}
   fi
 
   set -e
 
+  if [[ ${suite_rc} -eq 0 && ${suite_report_rc} -eq 0 ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# Run full suite and parsed report. Always try to create a report, even if the suite fails.
+if [[ ${skip_tests} -eq 0 ]]; then
+  start_test_session_log
+  tests_green=1
+
+  case "${test_transport}" in
+    direct)
+      if [[ ${test_transport_explicit} -eq 1 ]]; then
+        full_log="${direct_full_log}"
+        report_json="${direct_report_json}"
+      fi
+      if ! run_test_transport_once "direct" "${full_log}" "${report_json}"; then
+        tests_green=0
+      fi
+      ;;
+    localhost)
+      full_log="${localhost_full_log}"
+      report_json="${localhost_report_json}"
+      if ! run_test_transport_once "localhost" "${localhost_full_log}" "${localhost_report_json}"; then
+        tests_green=0
+      fi
+      ;;
+    both)
+      full_log="${direct_full_log}"
+      report_json="${direct_report_json}"
+      if ! run_test_transport_once "direct" "${direct_full_log}" "${direct_report_json}"; then
+        tests_green=0
+      fi
+      if ! run_test_transport_once "localhost" "${localhost_full_log}" "${localhost_report_json}"; then
+        tests_green=0
+      fi
+      ;;
+  esac
+
   if [[ ${adopt_if_green} -eq 1 ]]; then
-    if [[ ${test_rc} -ne 0 || ${report_rc} -ne 0 ]]; then
-      echo "WARN: skipping adopt because test/report command failed." >&2
+    if [[ ${tests_green} -ne 1 ]]; then
+      echo "WARN: skipping adopt because one or more test/report commands failed." >&2
     else
-      report_is_green "${report_json}"
+      case "${test_transport}" in
+        direct)
+          report_is_green "${report_json}"
+          ;;
+        localhost)
+          report_is_green "${localhost_report_json}"
+          ;;
+        both)
+          report_is_green "${direct_report_json}"
+          report_is_green "${localhost_report_json}"
+          ;;
+      esac
       adopt_current_artifact
     fi
   fi
@@ -1512,6 +1613,24 @@ docker_log_summary_active=0
 if [[ ${skip_tests} -eq 0 ]]; then
   tests_summary_active=1
 fi
+direct_tests_summary_active=0
+localhost_tests_summary_active=0
+if [[ ${skip_tests} -eq 0 ]]; then
+  case "${test_transport}" in
+    direct)
+      if [[ ${test_transport_explicit} -eq 1 ]]; then
+        direct_tests_summary_active=1
+      fi
+      ;;
+    localhost)
+      localhost_tests_summary_active=1
+      ;;
+    both)
+      direct_tests_summary_active=1
+      localhost_tests_summary_active=1
+      ;;
+  esac
+fi
 if [[ ${skip_service} -eq 0 ]]; then
   service_summary_active=1
 fi
@@ -1526,8 +1645,14 @@ version:       ${ver}
 artifact:      ${artifact_zip}
 release_logs:  ${release_log_dir}
 log_prune:     $(summary_value "${prune_summary_active}" "keep=${release_log_keep}")
+test_transport: ${test_transport}
+localhost_url:  ${localhost_base_url}
 full_log:      $(summary_value "${tests_summary_active}" "${full_log}")
 report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
+direct_log:    $(summary_value "${direct_tests_summary_active}" "${direct_full_log}")
+direct_report: $(summary_value "${direct_tests_summary_active}" "${direct_report_json}")
+localhost_log: $(summary_value "${localhost_tests_summary_active}" "${localhost_full_log}")
+localhost_report: $(summary_value "${localhost_tests_summary_active}" "${localhost_report_json}")
 adopt_current: ${adopt_current}
 adopt_if_green: ${adopt_if_green}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")

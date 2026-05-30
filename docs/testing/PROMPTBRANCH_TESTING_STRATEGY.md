@@ -200,7 +200,7 @@ Add release-control support for explicit test transport selection:
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport direct
 ```
@@ -216,7 +216,7 @@ pb test report <direct-log> --json
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport localhost \
   --localhost-base-url http://127.0.0.1:8000
@@ -235,7 +235,7 @@ pb test report <localhost-log> --json
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport both
 ```
@@ -407,7 +407,7 @@ Expanded release-control examples:
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport direct \
   --skip-docker-logs \
@@ -419,7 +419,7 @@ Expanded release-control examples:
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport both \
   --skip-docker-logs \
@@ -431,7 +431,7 @@ Expanded release-control examples:
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-tests \
   --test-transport both \
   --run-ask-live-tests \
@@ -444,7 +444,7 @@ Expanded release-control examples:
 
 ```bash
 ./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278.66 \
+  --version v0.0.278.67 \
   --run-artifact-download-live-tests \
   --skip-docker-logs \
   --prune-release-logs \
@@ -552,6 +552,8 @@ No behavior change.
 
 ### Phase 2 — Release-control transport support
 
+Status: implemented in `v0.0.278.67`.
+
 Add:
 
 ```text
@@ -639,9 +641,9 @@ Acceptance:
 - artifact-download profile remains opt-in
 ```
 
-## 13. Recommended release sequence
+## 13. Release sequence status
 
-Recommended next release:
+Completed planning release:
 
 ```text
 v0.0.278.66
@@ -650,25 +652,11 @@ v0.0.278.66
 Scope:
 
 ```text
-documentation-only
-```
-
-Changes:
-
-```text
 - add docs/testing/PROMPTBRANCH_TESTING_STRATEGY.md
 - no code behavior changes
-- no release-control behavior changes
 ```
 
-Reason:
-
-```text
-The test expansion should be agreed before implementation.
-The next behavior release can then implement Phase 2 cleanly.
-```
-
-Suggested following release:
+Completed transport release:
 
 ```text
 v0.0.278.67
@@ -681,7 +669,7 @@ Scope:
 - add transport-specific logs/reports
 ```
 
-Then:
+Recommended next behavior release:
 
 ```text
 v0.0.278.68
