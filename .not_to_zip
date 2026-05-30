@@ -42,6 +42,7 @@ venv/
 
 # profile
 .pb_profile/
+.pb_profile_local_debug/
 profile/
 
 # debug files
