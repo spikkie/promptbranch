@@ -14579,6 +14579,54 @@ def _ask_live_answer_text(response: Any) -> str:
     return _canonical_answer_text(answer)
 
 
+def _ask_live_project_id_from_url(url: str | None) -> str | None:
+    """Return the canonical ChatGPT Project id for ask-live comparisons.
+
+    ChatGPT may return either the bare project id URL:
+
+        /g/g-p-<32hex>/project
+
+    or a slugged URL:
+
+        /g/g-p-<32hex>-<project-name>/project
+
+    Both identify the same project.  ask-live must compare the stable
+    project id instead of the full slugged URL so temporary-project checks
+    do not fail when ChatGPT rewrites URLs with a human-readable suffix.
+    """
+    if not url:
+        return None
+    home_url = project_home_url_from_url(url) or url
+    parsed = urllib.parse.urlparse(str(home_url))
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2 or parts[0] != "g":
+        return None
+    slug = parts[1]
+    match = re.match(r"^(g-p-[0-9a-fA-F]{32})(?:-|$)", slug)
+    if match:
+        return match.group(1).lower()
+    return slug or None
+
+
+def _ask_live_in_expected_project(
+    *,
+    expected_project_home_url: str | None,
+    response_project_home_url: str | None,
+) -> tuple[bool, str | None, str | None]:
+    expected_project_id = _ask_live_project_id_from_url(expected_project_home_url)
+    response_project_id = _ask_live_project_id_from_url(response_project_home_url)
+    if expected_project_id and response_project_id:
+        return expected_project_id == response_project_id, expected_project_id, response_project_id
+    if expected_project_home_url:
+        expected_home = project_home_url_from_url(expected_project_home_url) or expected_project_home_url
+        return (
+            bool(response_project_home_url and str(response_project_home_url).rstrip("/") == str(expected_home).rstrip("/")),
+            expected_project_id,
+            response_project_id,
+        )
+    return True, expected_project_id, response_project_id
+
+
 async def _run_ask_live_step(
     backend: CommandBackend,
     args: argparse.Namespace,
@@ -14621,9 +14669,10 @@ async def _run_ask_live_step(
     response_conversation_url = response.get("conversation_url") if isinstance(response, dict) else None
     response_project_home_url = project_home_url_from_url(response_conversation_url)
     expected_home = project_home_url_from_url(expected_project_home_url) or expected_project_home_url
-    in_expected_project = True
-    if expected_home:
-        in_expected_project = bool(response_project_home_url and response_project_home_url.rstrip("/") == str(expected_home).rstrip("/"))
+    in_expected_project, expected_project_id, response_project_id = _ask_live_in_expected_project(
+        expected_project_home_url=expected_home,
+        response_project_home_url=response_project_home_url,
+    )
     ok = bool(response_ok and contains_expected and not forbidden_present and in_expected_project)
     if not response_ok:
         status = "ask_failed"
@@ -14646,6 +14695,8 @@ async def _run_ask_live_step(
         "conversation_url": response_conversation_url,
         "expected_project_home_url": expected_home,
         "response_project_home_url": response_project_home_url,
+        "expected_project_id": expected_project_id,
+        "response_project_id": response_project_id,
         "in_expected_project": in_expected_project,
         "submit_confirmed": submit_evidence.get("submit_confirmed") if isinstance(submit_evidence, dict) else None,
         "submit_confirmation_mode": submit_evidence.get("submit_confirmation_mode") if isinstance(submit_evidence, dict) else None,

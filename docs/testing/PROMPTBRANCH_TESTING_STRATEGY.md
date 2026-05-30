@@ -772,3 +772,8 @@ The final state should prove:
 [ ] Does fresh-profile login bootstrap remain stable across sessions?
 [ ] Does Docker/headless ask path behave like local debug-browser path?
 ```
+
+
+## v0.0.278.70 ask-live URL normalization
+
+Compare ask-live project membership by canonical ChatGPT Project id and expose expected_project_id/response_project_id in step JSON.
