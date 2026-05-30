@@ -110,6 +110,126 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     assert "promptbranch src add" not in call_text
 
 
+
+
+def test_release_control_test_transport_localhost_sets_service_base_url_and_writes_transport_logs(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--tests-only",
+            "--version",
+            "v9.9.9",
+            "--test-transport",
+            "localhost",
+            "--localhost-base-url",
+            "http://127.0.0.1:8123",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.9"
+    localhost_log = log_dir / "pb_test.full.localhost.v9.9.9.log"
+    localhost_report = log_dir / "pb_test.full.localhost.v9.9.9.report.json"
+    assert localhost_log.is_file()
+    assert localhost_report.is_file()
+    assert "test_transport: localhost" in result.stdout
+    assert f"localhost_log: {localhost_log}" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "pb test full --json CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8123" in call_text
+    assert f"pb test report {localhost_log} --json CHATGPT_SERVICE_BASE_URL=" in call_text
+
+
+def test_release_control_test_transport_both_runs_direct_and_localhost(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+
+    subprocess.run(
+        [str(script), "--tests-only", "--version", "v9.9.9", "--test-transport", "both"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.9"
+    assert (log_dir / "pb_test.full.direct.v9.9.9.log").is_file()
+    assert (log_dir / "pb_test.full.direct.v9.9.9.report.json").is_file()
+    assert (log_dir / "pb_test.full.localhost.v9.9.9.log").is_file()
+    assert (log_dir / "pb_test.full.localhost.v9.9.9.report.json").is_file()
+    call_text = calls.read_text(encoding="utf-8")
+    assert call_text.count("pb test full --json") == 2
+    assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
+
 def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version: str = "v9.9.9") -> None:
     artifact = f"chatgpt_claudecode_workflow_{version}.zip"
     (fake_bin / "promptbranch").write_text(
@@ -749,6 +869,8 @@ def test_release_control_writes_generated_logs_under_pb_profile() -> None:
     assert 'release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"' in text
     assert 'release_log_dir="${release_log_root}/${ver}"' in text
     assert 'full_log="${release_log_dir}/pb_test.full.${ver}.log"' in text
+    assert 'direct_full_log="${release_log_dir}/pb_test.full.direct.${ver}.log"' in text
+    assert 'localhost_full_log="${release_log_dir}/pb_test.full.localhost.${ver}.log"' in text
     assert 'service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"' in text
     assert 'service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")' in text
     assert 'service_start: $(summary_value "${service_summary_active}" "${service_start_log}")' in text
