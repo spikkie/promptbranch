@@ -790,3 +790,8 @@ This fallback is intentionally narrow:
 - non-attachment asks do not use this fallback.
 
 The repair does not change upload, plain ask, or prompt-file submit behavior.
+
+
+## v0.0.278.72 ask-live file-attachment submit readiness
+
+Attachment asks now wait for the enabled Send button after upload and prefer a button click over primary Enter dispatch. Failed internal ask dictionaries no longer count as sentinel matches in ask-live step summaries.

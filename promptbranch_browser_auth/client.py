@@ -1743,6 +1743,65 @@ class ChatGPTBrowserClient:
                 await file_input.first.set_input_files(path)
         self._log("upload", "file uploaded to browser input", file_paths=normalized_paths, attachment_count=len(normalized_paths))
 
+    async def _wait_for_attachment_submit_ready(
+        self,
+        page: Any,
+        *,
+        timeout_ms: int = 15_000,
+        poll_interval_ms: int = 250,
+    ) -> dict[str, Any]:
+        """Wait for ChatGPT to finish attachment ingestion enough to enable Send.
+
+        File uploads can put the composer through a transient processing state in
+        which Enter is accepted by the focused editor but does not create a
+        conversation.  For attachment asks, require the real send button to be
+        visible/enabled before dispatching submit.
+        """
+
+        started = time.monotonic()
+        deadline = asyncio.get_running_loop().time() + max(0.1, timeout_ms / 1000.0)
+        attempts: list[dict[str, Any]] = []
+        last_state: dict[str, Any] = {}
+        while asyncio.get_running_loop().time() < deadline:
+            state = await self._probe_submit_button_state(page)
+            last_state = state if isinstance(state, dict) else {}
+            attempt = {
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "send_ready": bool(last_state.get("send_ready")),
+                "stop_visible": bool(last_state.get("stop_visible")),
+                "idle_visible": bool(last_state.get("idle_visible")),
+                "selector": last_state.get("selector"),
+                "aria_label": last_state.get("aria_label"),
+                "data_testid": last_state.get("data_testid"),
+                "visible": last_state.get("visible"),
+                "enabled": last_state.get("enabled"),
+            }
+            if len(attempts) < 20:
+                attempts.append(attempt)
+            if attempt["send_ready"] and not attempt["stop_visible"]:
+                result = {
+                    "status": "attachment_submit_ready",
+                    "ready": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                    "attempt_count": len(attempts),
+                    "last_state": last_state,
+                    "attempts": attempts,
+                }
+                self._log("upload", "attachment submit ready", **{k: v for k, v in result.items() if k != "attempts"})
+                return result
+            await page.wait_for_timeout(poll_interval_ms)
+
+        result = {
+            "status": "attachment_submit_ready_timeout",
+            "ready": False,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "attempt_count": len(attempts),
+            "last_state": last_state,
+            "attempts": attempts,
+        }
+        self._log("upload", "attachment submit readiness timed out", **{k: v for k, v in result.items() if k != "attempts"})
+        return result
+
     async def _ask_question_operation(
         self,
         *,
@@ -1896,8 +1955,15 @@ class ChatGPTBrowserClient:
 
         upload_paths = self._coerce_chat_attachment_paths(file_path=file_path, attachment_paths=attachment_paths)
         phase_started = time.monotonic()
+        attachment_submit_ready_evidence: dict[str, Any] | None = None
         if upload_paths:
             await self._upload_chat_attachments(page, upload_paths)
+            attachment_submit_ready_evidence = await self._wait_for_attachment_submit_ready(page)
+            phase_timings["attachment_submit_ready_status"] = attachment_submit_ready_evidence.get("status")
+            phase_timings["attachment_submit_ready"] = attachment_submit_ready_evidence.get("ready")
+            phase_timings["attachment_submit_ready_seconds"] = attachment_submit_ready_evidence.get("duration_seconds")
+            phase_timings["attachment_submit_ready_attempt_count"] = attachment_submit_ready_evidence.get("attempt_count")
+            phase_timings["attachment_submit_ready_last_state"] = attachment_submit_ready_evidence.get("last_state")
 
         if file_path:
             self._log("upload", "upload requested", file_path=file_path)
@@ -1940,7 +2006,7 @@ class ChatGPTBrowserClient:
             prompt="Debug pause before submit. Inspect focus, send/stop buttons, and network panel, then press Enter to submit... ",
         )
 
-        submit_evidence = await self._submit_prompt(page, prompt=prompt)
+        submit_evidence = await self._submit_prompt(page, prompt=prompt, prefer_button=bool(upload_paths))
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
         # service-log timestamps.  submit_wait_seconds now includes the
         # button/Enter dispatch, post-dispatch composer snapshot, and
@@ -9821,7 +9887,7 @@ class ChatGPTBrowserClient:
         })
         return result
 
-    async def _submit_prompt(self, page: Any, *, prompt: str | None = None) -> dict[str, Any]:
+    async def _submit_prompt(self, page: Any, *, prompt: str | None = None, prefer_button: bool = False) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
         v0.0.278.13 keeps the v0.0.278.9 accounting invariant while
@@ -9867,6 +9933,7 @@ class ChatGPTBrowserClient:
         prompt_present = bool(before_composer.get("contains_prompt_prefix") or (before_composer.get("text_length") or 0) > 0)
         evidence: dict[str, Any] = {
             "status": "submit_not_attempted",
+            "prefer_button_submit": bool(prefer_button),
             "clicked": False,
             "enter_fallback_used": False,
             "submit_method": None,
@@ -10304,7 +10371,7 @@ class ChatGPTBrowserClient:
 
         submit_network_observer = self._start_submit_network_observer(page, prompt=prompt)
 
-        if self._keyboard_enter_primary_submit_enabled() and prompt_present:
+        if (not prefer_button) and self._keyboard_enter_primary_submit_enabled() and prompt_present:
             send_button_wait_seconds = 0.0
             enter_fallback_decision_seconds = 0.0
             evidence["enter_fallback_decision_seconds"] = enter_fallback_decision_seconds

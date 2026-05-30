@@ -14661,11 +14661,12 @@ async def _run_ask_live_step(
             "attachment_paths": [str(path) for path in attachment_paths or []],
         }
 
-    answer_text = _ask_live_answer_text(response)
-    forbidden = list(forbidden_sentinels or [])
-    contains_expected = expected_sentinel in answer_text
-    forbidden_present = [item for item in forbidden if item and item in answer_text]
+    raw_answer_text = _ask_live_answer_text(response)
     response_ok = not (isinstance(response, dict) and response.get("ok") is False)
+    answer_text = raw_answer_text if response_ok else ""
+    forbidden = list(forbidden_sentinels or [])
+    contains_expected = bool(response_ok and expected_sentinel in answer_text)
+    forbidden_present = [item for item in forbidden if item and item in answer_text]
     response_conversation_url = response.get("conversation_url") if isinstance(response, dict) else None
     response_project_home_url = project_home_url_from_url(response_conversation_url)
     expected_home = project_home_url_from_url(expected_project_home_url) or expected_project_home_url
@@ -14690,7 +14691,7 @@ async def _run_ask_live_step(
         "expected_sentinel": expected_sentinel,
         "contains_expected_sentinel": contains_expected,
         "forbidden_sentinels_present": forbidden_present,
-        "answer_text_preview": answer_text[:240],
+        "answer_text_preview": (answer_text if response_ok else raw_answer_text)[:240],
         "answer_text_length": len(answer_text),
         "conversation_url": response_conversation_url,
         "expected_project_home_url": expected_home,
