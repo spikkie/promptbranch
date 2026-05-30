@@ -14588,6 +14588,7 @@ async def _run_ask_live_step(
     expected_sentinel: str,
     attachment_paths: list[str] | None = None,
     forbidden_sentinels: list[str] | None = None,
+    expected_project_home_url: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     response: Any
@@ -14617,18 +14618,35 @@ async def _run_ask_live_step(
     contains_expected = expected_sentinel in answer_text
     forbidden_present = [item for item in forbidden if item and item in answer_text]
     response_ok = not (isinstance(response, dict) and response.get("ok") is False)
-    ok = bool(response_ok and contains_expected and not forbidden_present)
+    response_conversation_url = response.get("conversation_url") if isinstance(response, dict) else None
+    response_project_home_url = project_home_url_from_url(response_conversation_url)
+    expected_home = project_home_url_from_url(expected_project_home_url) or expected_project_home_url
+    in_expected_project = True
+    if expected_home:
+        in_expected_project = bool(response_project_home_url and response_project_home_url.rstrip("/") == str(expected_home).rstrip("/"))
+    ok = bool(response_ok and contains_expected and not forbidden_present and in_expected_project)
+    if not response_ok:
+        status = "ask_failed"
+    elif not in_expected_project:
+        status = "wrong_project"
+    elif not contains_expected or forbidden_present:
+        status = "failed"
+    else:
+        status = "verified"
     submit_evidence = response.get("submit_evidence") if isinstance(response, dict) and isinstance(response.get("submit_evidence"), dict) else None
     return {
         "name": name,
         "ok": ok,
-        "status": "verified" if ok else "failed",
+        "status": status,
         "expected_sentinel": expected_sentinel,
         "contains_expected_sentinel": contains_expected,
         "forbidden_sentinels_present": forbidden_present,
         "answer_text_preview": answer_text[:240],
         "answer_text_length": len(answer_text),
-        "conversation_url": response.get("conversation_url") if isinstance(response, dict) else None,
+        "conversation_url": response_conversation_url,
+        "expected_project_home_url": expected_home,
+        "response_project_home_url": response_project_home_url,
+        "in_expected_project": in_expected_project,
         "submit_confirmed": submit_evidence.get("submit_confirmed") if isinstance(submit_evidence, dict) else None,
         "submit_confirmation_mode": submit_evidence.get("submit_confirmation_mode") if isinstance(submit_evidence, dict) else None,
         "attachment_paths": [str(path) for path in attachment_paths or []],
@@ -14636,13 +14654,32 @@ async def _run_ask_live_step(
     }
 
 
+def _restore_ask_live_state(backend: Any, snapshot: dict[str, Any]) -> None:
+    """Restore the operator-selected workspace/task after an ask-live temp project run."""
+    store = getattr(backend, "_conversation_state", None)
+    if store is None:
+        return
+    project_home_url = snapshot.get("current_project_home_url") or snapshot.get("resolved_project_home_url")
+    conversation_url = snapshot.get("current_conversation_url") or snapshot.get("conversation_url")
+    project_name = snapshot.get("project_name")
+    if isinstance(conversation_url, str) and conversation_url:
+        try:
+            store.remember(project_home_url, conversation_url, project_name=project_name if isinstance(project_name, str) else None)
+        except Exception:
+            return
+    elif isinstance(project_home_url, str) and project_home_url:
+        try:
+            store.remember_project(project_home_url, project_name=project_name if isinstance(project_name, str) else None)
+        except Exception:
+            return
+
+
 async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Run a visible/local operator ask workflow smoke profile.
 
-    This profile intentionally exercises the repaired ask path against the
-    operator-selected workspace/task using a local headed browser profile.  It
-    is separate from the full integration suite, which creates temporary
-    projects and may run through the Docker service transport.
+    This profile exercises the repaired ask path in a temporary ChatGPT Project
+    by default, then removes that project.  It is separate from localhost
+    service transport and must not pollute the operator-selected project/task.
     """
 
     try:
@@ -14661,116 +14698,216 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
 
     run_id = getattr(args, "run_id", None) or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     profile_dir = str(getattr(args, "profile_dir", "") or "")
+    original_snapshot = backend.state_snapshot() if hasattr(backend, "state_snapshot") else {}
+    explicit_conversation_url = getattr(args, "conversation_url", None)
+    test_project_created = False
+    test_project_removed = False
+    test_project_url: str | None = None
+    test_project_name: str | None = None
+    setup_result: dict[str, Any] | None = None
+    cleanup_result: dict[str, Any] | None = None
     steps: list[dict[str, Any]] = []
 
-    with tempfile.TemporaryDirectory(prefix="promptbranch_ask_live_") as temp_root:
-        temp_dir = Path(temp_root)
-        sentinels = {
-            "plain": _ask_live_sentinel(run_id, "plain"),
-            "repeat_first": _ask_live_sentinel(run_id, "repeat_first"),
-            "repeat_second": _ask_live_sentinel(run_id, "repeat_second"),
-            "prompt_file": _ask_live_sentinel(run_id, "prompt_file"),
-            "file_attachment": _ask_live_sentinel(run_id, "file_attachment"),
-            "prompt_file_with_attachment": _ask_live_sentinel(run_id, "prompt_file_with_attachment"),
-        }
-
-        if "plain" in selected_steps:
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="plain",
-                prompt=f"Return exactly the single token {sentinels['plain']} and nothing else.",
-                expected_sentinel=sentinels["plain"],
-            ))
-
-        if "repeated_stale_first" in selected_steps:
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="repeated_stale_first",
-                prompt=f"Return exactly the single token {sentinels['repeat_first']} and nothing else.",
-                expected_sentinel=sentinels["repeat_first"],
-                forbidden_sentinels=[sentinels["plain"]],
-            ))
-
-        if "repeated_stale_second" in selected_steps:
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="repeated_stale_second",
-                prompt=f"Return exactly the single token {sentinels['repeat_second']} and nothing else.",
-                expected_sentinel=sentinels["repeat_second"],
-                forbidden_sentinels=[sentinels["plain"], sentinels["repeat_first"]],
-            ))
-
-        if "prompt_file" in selected_steps:
-            prompt_file = temp_dir / "prompt_file.md"
-            prompt_file.write_text(
-                f"Return exactly the single token {sentinels['prompt_file']} and nothing else.\n",
-                encoding="utf-8",
+    try:
+        if explicit_conversation_url:
+            test_project_url = project_home_url_from_url(explicit_conversation_url) or explicit_conversation_url
+            test_project_name = "explicit-conversation-url"
+        else:
+            safe_run = re.sub(r"[^A-Za-z0-9_-]+", "-", run_id).strip("-") or "run"
+            prefix = str(getattr(args, "project_name_prefix", None) or "ask-live-temp")
+            test_project_name = str(getattr(args, "project_name", None) or f"{prefix}-{safe_run}")
+            setup_result = await backend.ensure_project(
+                name=test_project_name,
+                icon=getattr(args, "project_icon", None),
+                color=getattr(args, "project_color", None),
+                memory_mode=getattr(args, "memory_mode", "project-only"),
+                keep_open=False,
             )
-            prompt = _read_prompt_file(str(prompt_file)).strip()
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="prompt_file",
-                prompt=prompt,
-                expected_sentinel=sentinels["prompt_file"],
-            ))
+            if not setup_result.get("ok"):
+                payload = {
+                    "ok": False,
+                    "action": "test_ask_live",
+                    "profile": "ask-live",
+                    "status": "test_project_setup_failed",
+                    "version": f"v{CLI_VERSION}",
+                    "run_id": run_id,
+                    "mode": "visible_local_debug_browser",
+                    "profile_dir": profile_dir,
+                    "debug_browser": True,
+                    "service_transport_used": False,
+                    "test_project_name": test_project_name,
+                    "test_project_setup": setup_result,
+                    "operator_note": "ask-live creates an isolated temporary ChatGPT Project by default; setup failed before any ask step ran.",
+                }
+                if args.json:
+                    print(json.dumps(payload, indent=2, ensure_ascii=False))
+                else:
+                    print(f"ask-live: {payload['status']}")
+                return 1
+            test_project_created = True
+            test_project_url = setup_result.get("project_url") if isinstance(setup_result.get("project_url"), str) else None
+            if not test_project_url:
+                payload = {
+                    "ok": False,
+                    "action": "test_ask_live",
+                    "profile": "ask-live",
+                    "status": "test_project_url_missing",
+                    "version": f"v{CLI_VERSION}",
+                    "run_id": run_id,
+                    "test_project_name": test_project_name,
+                    "test_project_setup": setup_result,
+                }
+                if args.json:
+                    print(json.dumps(payload, indent=2, ensure_ascii=False))
+                else:
+                    print(f"ask-live: {payload['status']}")
+                return 1
+            setattr(args, "conversation_url", test_project_url)
 
-        if "file_attachment" in selected_steps:
-            attachment = temp_dir / "ask_live_attachment.txt"
-            attachment.write_text(f"sentinel={sentinels['file_attachment']}\n", encoding="utf-8")
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="file_attachment",
-                prompt=f"Read the attached file and return exactly the sentinel token {sentinels['file_attachment']} and nothing else.",
-                expected_sentinel=sentinels["file_attachment"],
-                attachment_paths=[str(attachment)],
-            ))
+        with tempfile.TemporaryDirectory(prefix="promptbranch_ask_live_") as temp_root:
+            temp_dir = Path(temp_root)
+            sentinels = {
+                "plain": _ask_live_sentinel(run_id, "plain"),
+                "repeat_first": _ask_live_sentinel(run_id, "repeat_first"),
+                "repeat_second": _ask_live_sentinel(run_id, "repeat_second"),
+                "prompt_file": _ask_live_sentinel(run_id, "prompt_file"),
+                "file_attachment": _ask_live_sentinel(run_id, "file_attachment"),
+                "prompt_file_with_attachment": _ask_live_sentinel(run_id, "prompt_file_with_attachment"),
+            }
 
-        if "prompt_file_with_attachment" in selected_steps:
-            attachment = temp_dir / "ask_live_prompt_file_attachment.txt"
-            attachment.write_text(f"sentinel={sentinels['prompt_file_with_attachment']}\n", encoding="utf-8")
-            prompt_file = temp_dir / "read_attachment_prompt.md"
-            prompt_file.write_text(
-                "Read the attached file and return exactly the sentinel token "
-                f"{sentinels['prompt_file_with_attachment']} and nothing else.\n",
-                encoding="utf-8",
-            )
-            prompt = _read_prompt_file(str(prompt_file)).strip()
-            steps.append(await _run_ask_live_step(
-                backend,
-                args,
-                name="prompt_file_with_attachment",
-                prompt=prompt,
-                expected_sentinel=sentinels["prompt_file_with_attachment"],
-                attachment_paths=[str(attachment)],
-            ))
+            if "plain" in selected_steps:
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="plain",
+                    prompt=f"Return exactly the single token {sentinels['plain']} and nothing else.",
+                    expected_sentinel=sentinels["plain"],
+                    expected_project_home_url=test_project_url,
+                ))
 
-    ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
+            if "repeated_stale_first" in selected_steps:
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="repeated_stale_first",
+                    prompt=f"Return exactly the single token {sentinels['repeat_first']} and nothing else.",
+                    expected_sentinel=sentinels["repeat_first"],
+                    forbidden_sentinels=[sentinels["plain"]],
+                    expected_project_home_url=test_project_url,
+                ))
+
+            if "repeated_stale_second" in selected_steps:
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="repeated_stale_second",
+                    prompt=f"Return exactly the single token {sentinels['repeat_second']} and nothing else.",
+                    expected_sentinel=sentinels["repeat_second"],
+                    forbidden_sentinels=[sentinels["plain"], sentinels["repeat_first"]],
+                    expected_project_home_url=test_project_url,
+                ))
+
+            if "prompt_file" in selected_steps:
+                prompt_file = temp_dir / "prompt_file.md"
+                prompt_file.write_text(
+                    f"Return exactly the single token {sentinels['prompt_file']} and nothing else.\n",
+                    encoding="utf-8",
+                )
+                prompt = _read_prompt_file(str(prompt_file)).strip()
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="prompt_file",
+                    prompt=prompt,
+                    expected_sentinel=sentinels["prompt_file"],
+                    expected_project_home_url=test_project_url,
+                ))
+
+            if "file_attachment" in selected_steps:
+                attachment = temp_dir / "ask_live_attachment.txt"
+                attachment.write_text(f"sentinel={sentinels['file_attachment']}\n", encoding="utf-8")
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="file_attachment",
+                    prompt=f"Read the attached file and return exactly the sentinel token {sentinels['file_attachment']} and nothing else.",
+                    expected_sentinel=sentinels["file_attachment"],
+                    attachment_paths=[str(attachment)],
+                    expected_project_home_url=test_project_url,
+                ))
+
+            if "prompt_file_with_attachment" in selected_steps:
+                attachment = temp_dir / "ask_live_prompt_file_attachment.txt"
+                attachment.write_text(f"sentinel={sentinels['prompt_file_with_attachment']}\n", encoding="utf-8")
+                prompt_file = temp_dir / "read_attachment_prompt.md"
+                prompt_file.write_text(
+                    "Read the attached file and return exactly the sentinel token "
+                    f"{sentinels['prompt_file_with_attachment']} and nothing else.\n",
+                    encoding="utf-8",
+                )
+                prompt = _read_prompt_file(str(prompt_file)).strip()
+                steps.append(await _run_ask_live_step(
+                    backend,
+                    args,
+                    name="prompt_file_with_attachment",
+                    prompt=prompt,
+                    expected_sentinel=sentinels["prompt_file_with_attachment"],
+                    attachment_paths=[str(attachment)],
+                    expected_project_home_url=test_project_url,
+                ))
+    finally:
+        if test_project_created and not bool(getattr(args, "keep_project", False)):
+            try:
+                cleanup_result = await backend.remove_project(keep_open=False)
+                test_project_removed = bool(cleanup_result.get("ok", True))
+            except Exception as exc:
+                cleanup_result = {"ok": False, "status": "test_project_cleanup_failed", "error": str(exc), "error_type": exc.__class__.__name__}
+        _restore_ask_live_state(backend, original_snapshot if isinstance(original_snapshot, dict) else {})
+        if explicit_conversation_url:
+            setattr(args, "conversation_url", explicit_conversation_url)
+
+    ask_steps_ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
+    cleanup_ok = True
+    if test_project_created and not bool(getattr(args, "keep_project", False)):
+        cleanup_ok = bool(test_project_removed)
+    ok = bool(ask_steps_ok and cleanup_ok)
+    if not ask_steps_ok:
+        status = "failed"
+    elif not cleanup_ok:
+        status = "cleanup_failed"
+    else:
+        status = "verified"
     payload = {
         "ok": ok,
         "action": "test_ask_live",
         "profile": "ask-live",
-        "status": "verified" if ok else "failed",
+        "status": status,
         "version": f"v{CLI_VERSION}",
         "run_id": run_id,
         "mode": "visible_local_debug_browser",
         "profile_dir": profile_dir,
         "debug_browser": True,
         "service_transport_used": False,
+        "uses_temporary_project": not bool(explicit_conversation_url),
+        "test_project_name": test_project_name,
+        "test_project_url": test_project_url,
+        "test_project_created": test_project_created,
+        "test_project_removed": test_project_removed,
+        "test_project_kept": bool(getattr(args, "keep_project", False)),
+        "test_project_setup": setup_result,
+        "test_project_cleanup": cleanup_result,
         "selected_steps": selected_steps,
         "step_count": len(steps),
         "failure_count": len([step for step in steps if not step.get("ok")]),
         "steps": steps,
-        "operator_note": "This profile uses a local headed browser profile for the operator workflow; it is distinct from localhost service transport.",
+        "operator_note": "ask-live creates an isolated temporary ChatGPT Project by default and removes it after the run; pass --keep-project only for debugging.",
     }
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(f"ask-live: {payload['status']} steps={payload['step_count']} failures={payload['failure_count']}")
+        if payload.get("test_project_name"):
+            print(f"test_project={payload.get('test_project_name')} removed={payload.get('test_project_removed')}")
         for step in steps:
             print(f"- {step.get('name')}: {step.get('status')}")
     return 0 if ok else 1
@@ -15899,10 +16036,16 @@ def make_parser() -> argparse.ArgumentParser:
     test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
     _add_test_suite_profile_options(test_full)
 
-    test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile against the selected workspace/task.")
+    test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile in a temporary test project.")
     test_ask_live.add_argument("--json", action="store_true", help="Emit the ask-live result as JSON.")
     test_ask_live.add_argument("--run-id", help="Optional run identifier used in sentinels. Defaults to a UTC timestamp.")
-    test_ask_live.add_argument("--conversation-url", help="Optional conversation URL override. Defaults to the remembered/current task.")
+    test_ask_live.add_argument("--conversation-url", help="Optional existing conversation/project URL override. When omitted, ask-live creates and removes a temporary test project.")
+    test_ask_live.add_argument("--project-name", help="Optional temporary test project name. Defaults to <prefix>-<run-id>.")
+    test_ask_live.add_argument("--project-name-prefix", default="ask-live-temp", help="Prefix for the temporary test project name.")
+    test_ask_live.add_argument("--memory-mode", choices=["default", "project-only"], default="project-only", help="Memory mode for the temporary test project.")
+    test_ask_live.add_argument("--project-icon", help="Optional icon for the temporary test project.")
+    test_ask_live.add_argument("--project-color", help="Optional color for the temporary test project.")
+    test_ask_live.add_argument("--keep-project", action="store_true", help="Keep the temporary test project for debugging instead of removing it.")
     test_ask_live.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after each ask step.")
     test_ask_live.add_argument("--retries", type=int, help="Retry count passed to each ask step.")
     test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")

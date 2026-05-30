@@ -266,6 +266,7 @@ Status:
 
 ```text
 Implemented in v0.0.278.68 as an explicit visible/local operator workflow profile.
+Updated in v0.0.278.69 to create an isolated temporary ChatGPT Project by default and remove it after the run.
 ```
 
 Purpose:
@@ -277,7 +278,9 @@ Validate the actual operator ask workflow repaired in v0.0.278.64 and v0.0.278.6
 Scope:
 
 ```text
-- active project/task routing
+- temporary test project creation and cleanup
+- explicit project isolation for each ask-live step
+- response conversation belongs to the temporary project
 - basic ask
 - repeated ask stale guard
 - prompt file
@@ -314,6 +317,11 @@ pb test ask-live --json --only plain,prompt_file
 Expected behavior:
 
 ```text
+- a temporary ChatGPT Project is created unless --conversation-url is explicitly supplied
+- each ask step is targeted at that temporary project
+- each response conversation URL resolves back to the temporary project
+- the temporary project is removed unless --keep-project is supplied
+- the operator's remembered workspace/task state is restored after cleanup
 - each response is bound to the current submitted prompt
 - no stale assistant answer is returned
 - prompt-file content is preserved
@@ -584,7 +592,7 @@ Acceptance:
 Status:
 
 ```text
-Implemented in v0.0.278.68.
+Implemented in v0.0.278.68 and isolated to a temporary project by default in v0.0.278.69.
 ```
 
 Command:
@@ -596,6 +604,9 @@ pb test ask-live --json
 Acceptance:
 
 ```text
+- creates a temporary ChatGPT Project by default
+- removes the temporary project unless --keep-project is supplied
+- verifies each response conversation belongs to the temporary project
 - tests plain ask
 - tests repeated stale guard
 - tests prompt-file
@@ -684,7 +695,7 @@ Scope:
 - add transport-specific logs/reports
 ```
 
-Recommended next behavior release:
+Completed ask-live release:
 
 ```text
 v0.0.278.68
@@ -694,6 +705,19 @@ Scope:
 
 ```text
 - add pb test ask-live --json
+```
+
+Completed ask-live isolation repair:
+
+```text
+v0.0.278.69
+```
+
+Scope:
+
+```text
+- make pb test ask-live create and remove a temporary test project by default
+- fail ask-live if a response conversation does not belong to the expected test project
 ```
 
 ## 14. Definition of done
