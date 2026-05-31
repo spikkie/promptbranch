@@ -15156,8 +15156,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     run_id = _visual_artifact_roundtrip_run_id(getattr(args, "run_id", None))
     input_entry = Path(str(getattr(args, "input_entry", "input.txt") or "input.txt")).name or "input.txt"
     output_entry = Path(str(getattr(args, "expect_entry", "output.txt") or "output.txt")).name or "output.txt"
-    input_content = str(getattr(args, "input_content", None) or f"ZIP_VISUAL_ROUNDTRIP_INPUT_OK_{run_id}\n")
-    output_content = str(getattr(args, "expect_content", None) or f"ZIP_VISUAL_ROUNDTRIP_OUTPUT_OK_{run_id}\n")
+    input_content = str(getattr(args, "input_content", None) or f"ZIP_VISUAL_ROUNDTRIP_INPUT_OK_{run_id}")
+    output_content = str(getattr(args, "expect_content", None) or f"ZIP_VISUAL_ROUNDTRIP_OUTPUT_OK_{run_id}")
     output_filename = Path(str(getattr(args, "output_filename", None) or f"pb_visual_artifact_roundtrip_{run_id}.zip")).name
     if not output_filename.endswith(".zip"):
         output_filename += ".zip"

@@ -2344,7 +2344,7 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
             expected_prompt = _visual_artifact_roundtrip_prompt(
                 run_id="UNIT",
                 input_entry="input.txt",
-                input_content="ZIP_VISUAL_ROUNDTRIP_INPUT_OK_UNIT\n",
+                input_content="ZIP_VISUAL_ROUNDTRIP_INPUT_OK_UNIT",
                 output_filename="pb_visual_artifact_roundtrip_UNIT.zip",
                 output_entry="output.txt",
                 output_content="ZIP_OK",
