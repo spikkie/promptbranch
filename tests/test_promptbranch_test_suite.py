@@ -499,3 +499,34 @@ def test_agent_profile_includes_artifact_roundtrip(monkeypatch, tmp_path: Path) 
     artifact_step = next(step for step in result["steps"] if step["name"] == "artifact_roundtrip")
     assert artifact_step["ok"] is True
     assert artifact_step["payload"]["docker_safe"] is True
+
+
+def test_browser_profile_summary_counts_cleanup_failures(monkeypatch) -> None:
+    async def fake_run_integration(args):
+        return {
+            "ok": False,
+            "action": "test_suite",
+            "profile": "browser",
+            "steps": [{"name": "login_check", "ok": True, "duration_seconds": 0.1, "details": {"ok": True}}],
+            "cleanup_steps": [
+                {
+                    "name": "project_remove_cleanup",
+                    "ok": False,
+                    "duration_seconds": 30.0,
+                    "details": {
+                        "status": "browser_profile_busy",
+                        "error": "browser profile is busy",
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+
+    result = asyncio.run(suite.run_test_suite_async(profile="browser", rate_limit_safe=True))
+
+    assert result["ok"] is False
+    assert result["failure_count"] == 1
+    assert result["failed_steps"][0]["scope"] == "cleanup"
+    assert result["failed_steps"][0]["name"] == "project_remove_cleanup"
+    assert result["failed_steps"][0]["status"] == "browser_profile_busy"

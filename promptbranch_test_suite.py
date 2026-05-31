@@ -956,6 +956,36 @@ def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[
     }
 
 
+
+def _suite_failed_steps(section_name: str, section: Any) -> list[dict[str, Any]]:
+    if not isinstance(section, dict):
+        return []
+    failures: list[dict[str, Any]] = []
+    for step_key, scope in (("steps", "main"), ("cleanup_steps", "cleanup")):
+        steps = section.get(step_key)
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if not isinstance(step, dict) or bool(step.get("ok")):
+                continue
+            details = step.get("details") if isinstance(step.get("details"), dict) else {}
+            payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
+            failures.append({
+                "section": section_name,
+                "scope": scope,
+                "name": step.get("name"),
+                "status": step.get("status") or details.get("status") or payload.get("status") or details.get("error_type"),
+                "diagnostic": details.get("error") or payload.get("error") or details.get("diagnostic") or payload.get("diagnostic"),
+            })
+    return failures
+
+
+def _attach_suite_failure_summary(summary: dict[str, Any], section_name: str) -> dict[str, Any]:
+    failures = _suite_failed_steps(section_name, summary)
+    summary["failure_count"] = len(failures)
+    summary["failed_steps"] = failures
+    return summary
+
 def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None, package_zip: str | None = None) -> dict[str, Any]:
     root = Path(repo_path).expanduser().resolve()
     steps: list[dict[str, Any]] = []
@@ -1040,11 +1070,13 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
 
     if profile == "agent":
         summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+        _attach_suite_failure_summary(summary, "agent")
         summary["rate_limit_strategy"] = {**rate_limit_strategy, "browser_required": False}
         return summary
 
     browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
     browser_summary = await run_integration(browser_args)
+    _attach_suite_failure_summary(browser_summary, "browser")
     browser_summary["rate_limit_telemetry"] = extract_rate_limit_telemetry(browser_summary)
     browser_summary["rate_limit_summary"] = classify_rate_limit_summary(browser_summary["rate_limit_telemetry"], suite_ok=bool(browser_summary.get("ok")))
     browser_summary["rate_limit_strategy"] = {
@@ -1061,18 +1093,23 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         return browser_summary
 
     agent_summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+    _attach_suite_failure_summary(agent_summary, "agent")
+    full_failures = list(browser_summary.get("failed_steps") or []) + list(agent_summary.get("failed_steps") or [])
+    full_ok = bool(browser_summary.get("ok")) and bool(agent_summary.get("ok"))
     return {
-        "ok": bool(browser_summary.get("ok")) and bool(agent_summary.get("ok")),
+        "ok": full_ok,
         "action": "test_suite",
         "profile": "full",
         "version": _read_version(Path(repo_path).expanduser().resolve()),
         "browser": browser_summary,
         "agent": agent_summary,
+        "failure_count": len(full_failures),
+        "failed_steps": full_failures,
         "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),
         "rate_limit_telemetry": browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
         "rate_limit_summary": classify_rate_limit_summary(
             browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
-            suite_ok=bool(browser_summary.get("ok")) and bool(agent_summary.get("ok")),
+            suite_ok=full_ok,
         ),
         "safety": {
             "write_tools_blocked": bool(agent_summary.get("safety", {}).get("write_tools_blocked")),

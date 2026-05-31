@@ -629,6 +629,187 @@ async def _post_ask_cooldown(steps: list[StepResult], *, seconds: float, reason:
     )
 
 
+
+def _exception_payload(exc: BaseException) -> dict[str, Any]:
+    """Best-effort structured payload extraction from service HTTP errors."""
+    payload: Any = None
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if isinstance(detail, str):
+            stripped = detail.strip()
+            if stripped.startswith("{"):
+                try:
+                    detail_payload = json.loads(stripped)
+                    if isinstance(detail_payload, dict):
+                        return detail_payload
+                except json.JSONDecodeError:
+                    pass
+        return payload
+
+    text = str(exc or "")
+    start = text.find("{")
+    while start >= 0:
+        candidate = text[start:].strip()
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+            continue
+        break
+    return {}
+
+
+def _is_browser_profile_busy_payload(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("status") == "browser_profile_busy":
+        return True
+    if payload.get("error_type") == "BrowserProfileBusyError":
+        return True
+    haystack = " ".join(str(payload.get(key) or "") for key in ("error", "detail", "message"))
+    return "browser_profile_busy" in haystack or "browser profile is busy" in haystack.lower()
+
+
+def _is_browser_profile_busy_exception(exc: BaseException) -> bool:
+    payload = _exception_payload(exc)
+    return _is_browser_profile_busy_payload(payload) or "browser_profile_busy" in str(exc) or "browser profile is busy" in str(exc).lower()
+
+
+def _retry_after_seconds_from_busy_payload(payload: Any, *, default_seconds: float = 10.0, max_seconds: float = 30.0) -> float:
+    if isinstance(payload, dict):
+        for key in ("retry_after_seconds", "waited_seconds"):
+            try:
+                value = float(payload.get(key))
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return min(max_seconds, value)
+    return min(max_seconds, default_seconds)
+
+
+async def _remove_project_cleanup_with_retry(
+    cleanup_steps: list[StepResult],
+    project_service: Any,
+    *,
+    keep_open: bool,
+    step_delay_seconds: float,
+    max_attempts: int = 3,
+) -> dict[str, Any]:
+    """Remove the temporary project, retrying transient shared-profile contention.
+
+    The Docker service can reject cleanup with browser_profile_busy when a prior
+    source operation still owns the shared browser profile. Cleanup is the last
+    live operation in the suite, so retrying is safe and avoids leaking
+    temporary projects on transient lock handoff delays.
+    """
+    attempts = max(1, int(max_attempts or 1))
+    attempt = 1
+    while True:
+        if cleanup_steps and step_delay_seconds > 0:
+            await asyncio.sleep(step_delay_seconds)
+        started = time.perf_counter()
+        try:
+            result = await project_service.remove_project(keep_open=keep_open)
+        except Exception as exc:  # noqa: BLE001 - cleanup must become structured report data
+            payload = _exception_payload(exc)
+            retryable = _is_browser_profile_busy_exception(exc)
+            if retryable and attempt < attempts:
+                delay = _retry_after_seconds_from_busy_payload(payload)
+                cleanup_steps.append(
+                    StepResult(
+                        name="project_remove_cleanup_retry_wait",
+                        ok=True,
+                        duration_seconds=0.0,
+                        details={
+                            "ok": True,
+                            "status": "browser_profile_busy_retry_wait",
+                            "attempt": attempt,
+                            "next_attempt": attempt + 1,
+                            "max_attempts": attempts,
+                            "delay_seconds": delay,
+                            "retryable": True,
+                            "busy_payload": payload,
+                        },
+                    )
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            details = {
+                "ok": False,
+                "status": "project_remove_cleanup_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "attempt": attempt,
+                "max_attempts": attempts,
+                "retryable": retryable,
+                "busy_payload": payload,
+            }
+            cleanup_steps.append(
+                StepResult(
+                    name="project_remove_cleanup",
+                    ok=False,
+                    duration_seconds=round(time.perf_counter() - started, 3),
+                    details=details,
+                )
+            )
+            raise IntegrationAssertionError(f"project_remove cleanup failed: {details}") from exc
+
+        retryable_result = _is_browser_profile_busy_payload(result)
+        result_ok = bool(isinstance(result, dict) and result.get("ok") is True)
+        if result_ok:
+            if isinstance(result, dict):
+                result = {**result, "attempt": attempt, "retry_count": attempt - 1}
+            cleanup_steps.append(
+                StepResult(
+                    name="project_remove_cleanup",
+                    ok=True,
+                    duration_seconds=round(time.perf_counter() - started, 3),
+                    details=result,
+                )
+            )
+            return result
+        if retryable_result and attempt < attempts:
+            delay = _retry_after_seconds_from_busy_payload(result)
+            cleanup_steps.append(
+                StepResult(
+                    name="project_remove_cleanup_retry_wait",
+                    ok=True,
+                    duration_seconds=0.0,
+                    details={
+                        "ok": True,
+                        "status": "browser_profile_busy_retry_wait",
+                        "attempt": attempt,
+                        "next_attempt": attempt + 1,
+                        "max_attempts": attempts,
+                        "delay_seconds": delay,
+                        "retryable": True,
+                        "busy_payload": result,
+                    },
+                )
+            )
+            await asyncio.sleep(delay)
+            attempt += 1
+            continue
+        details = result if isinstance(result, dict) else {"result": result}
+        cleanup_steps.append(
+            StepResult(
+                name="project_remove_cleanup",
+                ok=False,
+                duration_seconds=round(time.perf_counter() - started, 3),
+                details={**details, "attempt": attempt, "max_attempts": attempts},
+            )
+        )
+        raise IntegrationAssertionError(f"project_remove cleanup failed: {details}")
+
 def _run_mcp_smoke(*, repo_path: Path, profile_dir: Optional[str]) -> dict[str, Any]:
     manifest = mcp_tool_manifest()
     tool_names = [tool.get("name") for tool in manifest.get("tools", []) if isinstance(tool, dict)]
@@ -1586,30 +1767,36 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         if project_url and cleanup_enabled:
             try:
                 project_service = build_service(args, project_url=project_url)
-                removal_result = await _run_step(
+                await _remove_project_cleanup_with_retry(
                     cleanup_steps,
-                    "project_remove_cleanup",
-                    project_service.remove_project(keep_open=args.keep_open),
+                    project_service,
+                    keep_open=args.keep_open,
                     step_delay_seconds=args.step_delay_seconds,
+                    max_attempts=3,
                 )
-                if removal_result.get("ok") is not True:
-                    raise IntegrationAssertionError(f"project_remove cleanup failed: {removal_result}")
             except Exception as exc:
-                cleanup_steps.append(
-                    StepResult(
-                        name="project_remove_cleanup_assertion",
-                        ok=False,
-                        duration_seconds=0.0,
-                        details={
-                            "error_type": type(exc).__name__,
-                            "error": str(exc),
-                        },
+                if not cleanup_steps or bool(cleanup_steps[-1].ok):
+                    cleanup_steps.append(
+                        StepResult(
+                            name="project_remove_cleanup_assertion",
+                            ok=False,
+                            duration_seconds=0.0,
+                            details={
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                            },
+                        )
                     )
-                )
                 if summary.get("ok"):
                     summary["ok"] = False
                     summary["cleanup_error"] = str(exc)
 
+        cleanup_failures = [step for step in cleanup_steps if not bool(step.ok)]
+        if cleanup_failures:
+            summary["ok"] = False
+            summary.setdefault("cleanup_error", str(cleanup_failures[-1].details))
+        summary["cleanup_failure_count"] = len(cleanup_failures)
+        summary["cleanup_failed_steps"] = [asdict(step) for step in cleanup_failures]
         summary["cleanup_steps"] = [asdict(step) for step in cleanup_steps]
 
     return summary
