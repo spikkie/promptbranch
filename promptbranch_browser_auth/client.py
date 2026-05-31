@@ -8548,9 +8548,11 @@ class ChatGPTBrowserClient:
         fallback_started = time.monotonic()
         current_url = await self._safe_page_url(page)
         conversation_url = current_url if self._is_conversation_url(current_url) else None
+        project_home_wait_allowed = bool(not conversation_url and self._is_project_home_url(current_url))
         phase_timings["attachment_visible_answer_fallback_checked"] = True
         phase_timings["attachment_visible_answer_fallback_current_url"] = current_url
-        if not conversation_url:
+        phase_timings["attachment_visible_answer_fallback_project_home_wait_allowed"] = project_home_wait_allowed
+        if not conversation_url and not project_home_wait_allowed:
             phase_timings["attachment_visible_answer_fallback_status"] = "skipped_not_conversation_url"
             phase_timings["attachment_visible_answer_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
             return None
@@ -8577,6 +8579,15 @@ class ChatGPTBrowserClient:
             phase_timings["response_extraction_seconds"] = response_context.get("last_response_extraction_seconds")
             phase_timings["response_historical_scan_used"] = response_context.get("last_response_historical_scan_used")
             phase_timings["response_historical_scan_seconds"] = response_context.get("last_response_historical_scan_seconds")
+
+        if not conversation_url:
+            post_response_url = await self._safe_page_url(page)
+            phase_timings["attachment_visible_answer_fallback_post_response_url"] = post_response_url
+            conversation_url = post_response_url if self._is_conversation_url(post_response_url) else None
+        if not conversation_url:
+            phase_timings["attachment_visible_answer_fallback_status"] = "response_without_conversation_url"
+            phase_timings["attachment_visible_answer_fallback_seconds"] = round(time.monotonic() - fallback_started, 3)
+            return None
 
         confirmed_by = list(submit_evidence.get("submit_confirmed_by") or [])
         for signal in ("url_conversation", "attachment_visible_answer"):
