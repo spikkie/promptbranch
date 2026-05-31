@@ -63,7 +63,7 @@ from promptbranch_browser_auth.exceptions import (
     UnsupportedOperationError,
 )
 from promptbranch_service_client import ChatGPTServiceClient
-from promptbranch_test_suite import package_import_smoke, run_test_suite_async
+from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
@@ -6628,7 +6628,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "browser", "agent", "full", "ask-live", "visual-artifact-roundtrip", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -15147,6 +15147,22 @@ def _visual_artifact_roundtrip_prompt(
     )
 
 
+async def cmd_test_artifact_roundtrip(args: argparse.Namespace) -> int:
+    payload = artifact_roundtrip_smoke(
+        repo_path=getattr(args, "path", "."),
+        profile_dir=getattr(args, "profile_dir", None),
+        run_id=getattr(args, "run_id", None),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"artifact-roundtrip: {payload.get('status')} steps={payload.get('step_count')} failures={payload.get('failure_count')}")
+        for step in payload.get("steps", []):
+            if isinstance(step, dict):
+                print(f"- {step.get('name')}: {step.get('status')}")
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Visible local ZIP send/retrieve proof.
 
@@ -15501,6 +15517,8 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_test_import_smoke(args)
     if args.test_command == "ask-live":
         return await cmd_test_ask_live(backend, args)
+    if args.test_command == "artifact-roundtrip":
+        return await cmd_test_artifact_roundtrip(args)
     if args.test_command == "visual-artifact-roundtrip":
         return await cmd_test_visual_artifact_roundtrip(backend, args)
     if args.test_command == "smoke":
@@ -16621,6 +16639,11 @@ def make_parser() -> argparse.ArgumentParser:
     test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")
     test_ask_live.add_argument("--skip", action="append", default=[], help="Comma-separated ask-live step selectors to skip.")
     test_ask_live.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
+    test_artifact_roundtrip = test_subparsers.add_parser("artifact-roundtrip", help="Run deterministic non-visual artifact reply/candidate/ZIP roundtrip smoke.")
+    test_artifact_roundtrip.add_argument("--json", action="store_true", help="Emit the artifact-roundtrip result as JSON.")
+    test_artifact_roundtrip.add_argument("--path", default=".", help="Repo path used for version context and default .pb_profile location.")
+    test_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in synthetic artifact names. Defaults to deterministic.")
 
     test_visual_artifact_roundtrip = test_subparsers.add_parser("visual-artifact-roundtrip", help="Visibly send a local ZIP, retrieve a generated ZIP through artifact intake, and verify smoke contents.")
     test_visual_artifact_roundtrip.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")

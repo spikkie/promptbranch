@@ -29,8 +29,9 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
-from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations
+from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations, sha256_file, verify_zip_artifact
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
+from promptbranch_ask_protocol import BEGIN_REPLY_MARKER, END_REPLY_MARKER, classify_artifact_candidates, parse_promptbranch_reply
 
 
 DEFAULT_ONLY: tuple[str, ...] = ()
@@ -707,6 +708,216 @@ def _src_sync_upload_preflight_plan(*, repo_path: str | Path = ".", profile_dir:
         "verification_plan": preflight["verification_plan"],
     }
 
+
+
+def _artifact_roundtrip_reply_text(reply: dict[str, Any]) -> str:
+    return f"{BEGIN_REPLY_MARKER}\n" + json.dumps(reply, indent=2, ensure_ascii=False) + f"\n{END_REPLY_MARKER}"
+
+
+def _artifact_roundtrip_base_reply(*, run_id: str, output_filename: str, output_url: str) -> dict[str, Any]:
+    return {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": f"artifact-roundtrip-{run_id}",
+        "correlation_id": f"artifact-roundtrip-{run_id}",
+        "status": "completed",
+        "result_type": "diagnostic",
+        "summary": "Synthetic non-visual artifact roundtrip reply for deterministic Promptbranch testing.",
+        "baseline": {
+            "input_artifact": "synthetic-input.zip",
+            "input_version": "v0.0.0",
+            "output_artifact": output_filename,
+            "output_version": "v0.0.0",
+            "release_type": "artifact_roundtrip_smoke",
+        },
+        "changes": [
+            {"path": "output.txt", "kind": "generated", "summary": "Synthetic smoke output file."}
+        ],
+        "artifacts": [
+            {
+                "kind": "zip",
+                "filename": output_filename,
+                "version": None,
+                "role": "smoke_test_artifact",
+                "download": {
+                    "available": True,
+                    "link_text": output_filename,
+                    "url": output_url,
+                    "url_temporary": False,
+                    "requires_browser_context": False,
+                },
+            }
+        ],
+        "validation": {"claimed": ["synthetic local ZIP created"], "not_claimed": ["ChatGPT browser/UI path"]},
+        "next_step": {"operator_action": "none", "recommended_command": "pb test artifact-roundtrip --json"},
+        "confidence": "high",
+    }
+
+
+def _write_artifact_roundtrip_zip(path: Path, *, entry: str, content: str, wrapper: bool = False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    arcname = f"wrapper/{entry}" if wrapper else entry
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(arcname, content)
+
+
+def _verify_artifact_roundtrip_content(zip_path: Path, *, expected_entry: str, expected_content: str) -> dict[str, Any]:
+    zip_check = verify_zip_artifact(zip_path)
+    content_check: dict[str, Any] = {
+        "expected_entry": expected_entry,
+        "expected_content_sha256": None,
+        "actual_content_sha256": None,
+        "expected_size": len(expected_content.encode("utf-8")),
+        "actual_size": None,
+        "content_matches": False,
+    }
+    if not zip_check.get("ok"):
+        return {**zip_check, "content_check": content_check, "status": "zip_verification_failed"}
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            actual = archive.read(expected_entry).decode("utf-8")
+    except KeyError:
+        return {**zip_check, "ok": False, "status": "expected_entry_missing", "content_check": content_check}
+    except (UnicodeDecodeError, zipfile.BadZipFile) as exc:
+        return {**zip_check, "ok": False, "status": "expected_entry_unreadable", "error": str(exc), "content_check": content_check}
+    content_check.update(
+        {
+            "expected_content_sha256": __import__("hashlib").sha256(expected_content.encode("utf-8")).hexdigest(),
+            "actual_content_sha256": __import__("hashlib").sha256(actual.encode("utf-8")).hexdigest(),
+            "actual_size": len(actual.encode("utf-8")),
+            "content_matches": actual == expected_content,
+        }
+    )
+    if actual != expected_content:
+        return {**zip_check, "ok": False, "status": "expected_content_mismatch", "content_check": content_check}
+    return {**zip_check, "ok": True, "status": "smoke_zip_verified", "content_check": content_check}
+
+
+def artifact_roundtrip_smoke(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None, run_id: str | None = None) -> dict[str, Any]:
+    """Run a deterministic, non-browser artifact protocol/intake smoke test.
+
+    This intentionally does not call ChatGPT, launch a browser, require auth, or
+    mutate Project Sources.  It proves the host-side protocol path that must be
+    safe enough for the default full suite: reply parsing, candidate selection,
+    local artifact materialization, ZIP hygiene/smoke verification, and fail-closed
+    negative cases.
+    """
+
+    root = Path(repo_path).expanduser().resolve()
+    version = _read_version(root)
+    safe_run_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(run_id or "").strip()).strip("._-")
+    if not safe_run_id:
+        safe_run_id = "deterministic"
+    profile_root = Path(profile_dir).expanduser().resolve() if profile_dir else root / ".pb_profile"
+    work_dir = profile_root / "test_artifact_roundtrip" / safe_run_id
+    work_dir.mkdir(parents=True, exist_ok=True)
+    expected_entry = "output.txt"
+    expected_content = f"PB_ARTIFACT_ROUNDTRIP_OK_{safe_run_id}"
+    output_filename = f"pb_artifact_roundtrip_{safe_run_id}.zip"
+    source_zip = work_dir / output_filename
+    inbox_zip = work_dir / "artifact_inbox" / output_filename
+    steps: list[dict[str, Any]] = []
+
+    _write_artifact_roundtrip_zip(source_zip, entry=expected_entry, content=expected_content)
+    create_payload = {
+        "ok": source_zip.is_file(),
+        "action": "artifact_roundtrip_create_zip",
+        "status": "created" if source_zip.is_file() else "create_failed",
+        "path": str(source_zip),
+        "filename": output_filename,
+        "sha256": sha256_file(source_zip) if source_zip.is_file() else None,
+        "size_bytes": source_zip.stat().st_size if source_zip.is_file() else None,
+    }
+    steps.append(_step("create_synthetic_zip", create_payload))
+
+    reply = _artifact_roundtrip_base_reply(run_id=safe_run_id, output_filename=output_filename, output_url=source_zip.as_uri())
+    parsed = parse_promptbranch_reply(_artifact_roundtrip_reply_text(reply))
+    steps.append(_step("parse_valid_reply", parsed))
+
+    classification = classify_artifact_candidates(
+        parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else [],
+        expected_filename=output_filename,
+    )
+    steps.append(_step("classify_expected_candidate", classification))
+
+    selected = classification.get("selected_candidate") if isinstance(classification.get("selected_candidate"), dict) else {}
+    download_url = (selected.get("download") or {}).get("url") if isinstance(selected.get("download"), dict) else None
+    download_payload: dict[str, Any]
+    try:
+        if not isinstance(download_url, str) or not download_url.startswith("file://"):
+            raise ValueError("selected candidate does not expose a deterministic file:// URL")
+        src = Path(__import__("urllib.parse").parse.urlparse(download_url).path)
+        inbox_zip.parent.mkdir(parents=True, exist_ok=True)
+        inbox_zip.write_bytes(src.read_bytes())
+        download_payload = {
+            "ok": True,
+            "action": "artifact_roundtrip_local_download",
+            "status": "downloaded",
+            "download_url": download_url,
+            "path": str(inbox_zip),
+            "sha256": sha256_file(inbox_zip),
+            "size_bytes": inbox_zip.stat().st_size,
+        }
+    except Exception as exc:
+        download_payload = {"ok": False, "action": "artifact_roundtrip_local_download", "status": "download_failed", "download_url": download_url, "error": str(exc)}
+    steps.append(_step("local_artifact_download", download_payload))
+
+    verification = _verify_artifact_roundtrip_content(inbox_zip, expected_entry=expected_entry, expected_content=expected_content)
+    steps.append(_step("smoke_zip_verify", verification))
+
+    malformed = parse_promptbranch_reply(f"{BEGIN_REPLY_MARKER}\n{{bad json\n{END_REPLY_MARKER}")
+    steps.append(_step("malformed_reply_fails_closed", malformed, expected_failure=True, expected_status="reply_schema_invalid"))
+
+    wrong_name_reply = _artifact_roundtrip_base_reply(run_id=safe_run_id, output_filename="wrong_artifact.zip", output_url=source_zip.as_uri())
+    wrong_name_parsed = parse_promptbranch_reply(_artifact_roundtrip_reply_text(wrong_name_reply))
+    wrong_name = classify_artifact_candidates(
+        wrong_name_parsed.get("artifact_candidates") if isinstance(wrong_name_parsed.get("artifact_candidates"), list) else [],
+        expected_filename=output_filename,
+    )
+    steps.append(_step("wrong_filename_fails_closed", wrong_name, expected_failure=True, expected_status="artifact_wrong_filename"))
+
+    wrong_content_zip = work_dir / "wrong_content.zip"
+    _write_artifact_roundtrip_zip(wrong_content_zip, entry=expected_entry, content=expected_content + "_WRONG")
+    wrong_content = _verify_artifact_roundtrip_content(wrong_content_zip, expected_entry=expected_entry, expected_content=expected_content)
+    steps.append(_step("wrong_content_fails_closed", wrong_content, expected_failure=True, expected_status="expected_content_mismatch"))
+
+    wrapper_zip = work_dir / "wrapper_folder.zip"
+    _write_artifact_roundtrip_zip(wrapper_zip, entry=expected_entry, content=expected_content, wrapper=True)
+    wrapper_check = _verify_artifact_roundtrip_content(wrapper_zip, expected_entry=expected_entry, expected_content=expected_content)
+    steps.append(_step("wrapper_folder_fails_closed", wrapper_check, expected_failure=True, expected_status="zip_verification_failed"))
+
+    ok = all(bool(step.get("ok")) for step in steps)
+    failed_step = next((step for step in steps if not bool(step.get("ok"))), None)
+    return {
+        "ok": ok,
+        "action": "test_artifact_roundtrip",
+        "profile": "artifact-roundtrip",
+        "status": "verified" if ok else (failed_step.get("status") if failed_step else "failed"),
+        "repo_path": str(root),
+        "version": version,
+        "run_id": safe_run_id,
+        "work_dir": str(work_dir),
+        "browser_required": False,
+        "chatgpt_required": False,
+        "network_required": False,
+        "docker_safe": True,
+        "mutating_actions_executed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "expected_output_filename": output_filename,
+        "expected_entry": expected_entry,
+        "step_count": len(steps),
+        "failure_count": len([step for step in steps if not bool(step.get("ok"))]),
+        "steps": steps,
+        "failed_step": failed_step,
+        "safety": {
+            "browser_required": False,
+            "write_tools_blocked": True,
+            "source_or_artifact_mutation_allowed": False,
+            "uses_synthetic_reply": True,
+        },
+    }
+
 def _package_hygiene(package_zip: str | None, *, repo_path: Path | str) -> dict[str, Any]:
     repo_path = Path(repo_path).expanduser().resolve()
     zip_path, candidates = _find_release_zip(package_zip, repo_path=repo_path)
@@ -773,6 +984,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("version_consistency", source_version_consistency(repo_path=root)))
     steps.append(_step("package_import_metadata", _package_import_metadata(package_zip, repo_path=root)))
     steps.append(_step("package_import_smoke", package_import_smoke(repo_path=root)))
+    steps.append(_step("artifact_roundtrip", artifact_roundtrip_smoke(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_dry_run_plan", _src_sync_dry_run_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_upload_preflight_plan", _src_sync_upload_preflight_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))

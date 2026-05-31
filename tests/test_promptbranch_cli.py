@@ -2193,6 +2193,30 @@ def test_test_suite_full_profile_dispatches_to_runner(monkeypatch, capsys) -> No
     assert payload['profile'] == 'full'
 
 
+def test_artifact_roundtrip_command_dispatches_to_deterministic_runner(monkeypatch, capsys, tmp_path) -> None:
+    def fake_artifact_roundtrip_smoke(**kwargs):
+        assert kwargs["repo_path"] == str(tmp_path)
+        assert kwargs["profile_dir"] == str(tmp_path / ".pb_profile")
+        assert kwargs["run_id"] == "UNIT"
+        return {"ok": True, "action": "test_artifact_roundtrip", "profile": "artifact-roundtrip", "status": "verified", "step_count": 1, "failure_count": 0, "steps": []}
+
+    monkeypatch.setattr("promptbranch_cli.artifact_roundtrip_smoke", fake_artifact_roundtrip_smoke)
+
+    from promptbranch_cli import main
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "artifact-roundtrip", "--json",
+        "--path", str(tmp_path),
+        "--run-id", "UNIT",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "test_artifact_roundtrip"
+    assert payload["profile"] == "artifact-roundtrip"
+
+
 def test_canonical_test_profile_shortcut_dispatches_to_runner(monkeypatch, capsys) -> None:
     async def fake_run_test_suite_async(**kwargs):
         assert kwargs['profile'] == 'agent'

@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.82" in out
+    assert "0.0.278.85" in out
     assert "promptbranch" in out
 
 
@@ -257,6 +257,18 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert import_smoke.test_command == 'import-smoke'
     assert import_smoke.path == '.'
     assert import_smoke.json is True
+
+    artifact_roundtrip = parser.parse_args([
+        '--profile-dir', '.pb_profile_test',
+        'test', 'artifact-roundtrip', '--json', '--path', '.',
+        '--run-id', 'UNIT',
+    ])
+    assert artifact_roundtrip.command == 'test'
+    assert artifact_roundtrip.test_command == 'artifact-roundtrip'
+    assert artifact_roundtrip.json is True
+    assert artifact_roundtrip.path == '.'
+    assert artifact_roundtrip.profile_dir == '.pb_profile_test'
+    assert artifact_roundtrip.run_id == 'UNIT'
 
 
     ask_live = parser.parse_args(['test', 'ask-live', '--json', '--run-id', 'UNIT', '--only', 'plain,prompt_file'])
