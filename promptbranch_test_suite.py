@@ -156,6 +156,25 @@ def _read_pyproject_version(repo_path: Path) -> str | None:
         return None
 
 
+def _read_promptbranch_version_file(repo_path: Path) -> str | None:
+    try:
+        return _extract_package_version_constant((repo_path / "promptbranch_version.py").read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
+def _extract_compose_service_image_version(source: str) -> str | None:
+    match = re.search(r"^\s*image:\s*promptbranch-service:([^\s#]+)", source, flags=re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def _read_compose_service_image_version(repo_path: Path) -> str | None:
+    try:
+        return _extract_compose_service_image_version((repo_path / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
 def _extract_package_version_constant(source: str) -> str | None:
     match = re.search(r'^PACKAGE_VERSION\s*=\s*["\']([^"\']+)["\']', source, flags=re.MULTILINE)
     return match.group(1).strip() if match else None
@@ -409,7 +428,9 @@ def source_version_consistency(*, repo_path: str | Path = ".") -> dict[str, Any]
     observations = [
         _version_observation("VERSION", expected),
         _version_observation("pyproject.project.version", _read_pyproject_version(root)),
-        _version_observation("promptbranch_version.PACKAGE_VERSION", PACKAGE_VERSION),
+        _version_observation("promptbranch_version.py.PACKAGE_VERSION", _read_promptbranch_version_file(root)),
+        _version_observation("runtime.promptbranch_version.PACKAGE_VERSION", PACKAGE_VERSION),
+        _version_observation("docker_compose.chatgpt_service.image", _read_compose_service_image_version(root)),
     ]
     consistency = _summarize_version_consistency(observations, expected_version=expected)
     return {
@@ -448,11 +469,16 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
                 version_module = _extract_package_version_constant(archive.read("promptbranch_version.py").decode("utf-8"))
             except KeyError:
                 version_module = None
+            try:
+                compose_image_version = _extract_compose_service_image_version(archive.read("docker-compose.chatgpt-service.yml").decode("utf-8"))
+            except KeyError:
+                compose_image_version = None
             version_consistency = _summarize_version_consistency(
                 [
                     _version_observation("zip.VERSION", version_file),
                     _version_observation("zip.pyproject.project.version", pyproject_version),
                     _version_observation("zip.promptbranch_version.PACKAGE_VERSION", version_module),
+                    _version_observation("zip.docker_compose.chatgpt_service.image", compose_image_version),
                 ],
                 expected_version=version_file,
             )

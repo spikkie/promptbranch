@@ -1,9 +1,0 @@
-fastapi
-httpx
-patchright
-playwright
-pydantic
-python-dotenv
-python-multipart
-uvicorn
-watchfiles
