@@ -401,3 +401,48 @@ def test_package_hygiene_flags_generated_transcript(tmp_path: Path) -> None:
     assert payload["ok"] is False
     assert payload["status"] == "failed"
     assert payload["bad_entries"] == ["task_69fd0a71-3cb8-8397-bd09-9be7fcccafe1_message.txt"]
+
+
+def test_source_version_consistency_detects_promptbranch_version_file_drift(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / "promptbranch_version.py").write_text('PACKAGE_VERSION = "9.9.8"\n', encoding="utf-8")
+    (tmp_path / "docker-compose.chatgpt-service.yml").write_text("services:\n  chatgpt-service:\n    image: promptbranch-service:9.9.9\n", encoding="utf-8")
+
+    result = suite.source_version_consistency(repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert any(item["name"] == "promptbranch_version.py.PACKAGE_VERSION" for item in result["mismatches"])
+
+
+def test_source_version_consistency_detects_compose_image_tag_drift(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / "promptbranch_version.py").write_text('PACKAGE_VERSION = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / "docker-compose.chatgpt-service.yml").write_text("services:\n  chatgpt-service:\n    image: promptbranch-service:9.9.8\n", encoding="utf-8")
+
+    result = suite.source_version_consistency(repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert any(item["name"] == "docker_compose.chatgpt_service.image" for item in result["mismatches"])
+
+
+def test_package_import_metadata_checks_zip_compose_image_version(tmp_path: Path) -> None:
+    bad_zip = tmp_path / "bad-compose-version.zip"
+    pyproject = """[project]
+version = "9.9.9"
+
+[tool.setuptools]
+py-modules = ["promptbranch_version"]
+"""
+    with zipfile.ZipFile(bad_zip, "w") as archive:
+        archive.writestr("VERSION", "v9.9.9\n")
+        archive.writestr("pyproject.toml", pyproject)
+        archive.writestr("promptbranch_version.py", 'PACKAGE_VERSION = "9.9.9"\n')
+        archive.writestr("docker-compose.chatgpt-service.yml", "services:\n  chatgpt-service:\n    image: promptbranch-service:9.9.8\n")
+
+    result = suite._package_import_metadata(str(bad_zip), repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert result["version_consistency"]["ok"] is False
+    assert any(item["name"] == "zip.docker_compose.chatgpt_service.image" for item in result["version_consistency"]["mismatches"])
