@@ -3042,13 +3042,13 @@ def _manual_import_selected_artifact_candidate(
             "adoption_performed": False,
         }
     role = str(candidate.get("role") or "").strip()
-    if role and role not in {"candidate_release", "repair_candidate"}:
+    if role and role not in {"candidate_release", "repair_candidate", "visual_artifact_roundtrip_output", "smoke_test_artifact"}:
         return {
             **result,
             "ok": False,
             "status": "unsupported_artifact_role",
             "manual_import_performed": False,
-            "manual_import_error": "selected candidate role must be candidate_release or repair_candidate",
+            "manual_import_error": "selected candidate role must be candidate_release, repair_candidate, visual_artifact_roundtrip_output, or smoke_test_artifact",
             "download_performed": False,
             "intake_stage": "manual_import_requested",
             "migration_performed": False,
@@ -3450,13 +3450,13 @@ def _download_selected_artifact_candidate(
             "adoption_performed": False,
         }
     role = str(candidate.get("role") or "").strip()
-    if role and role not in {"candidate_release", "repair_candidate"}:
+    if role and role not in {"candidate_release", "repair_candidate", "visual_artifact_roundtrip_output", "smoke_test_artifact"}:
         return {
             **result,
             "ok": False,
             "status": "unsupported_artifact_role",
             "download_performed": False,
-            "download_error": "selected candidate role must be candidate_release or repair_candidate",
+            "download_error": "selected candidate role must be candidate_release, repair_candidate, visual_artifact_roundtrip_output, or smoke_test_artifact",
             "intake_stage": "download_requested",
             "migration_performed": False,
             "adoption_performed": False,
@@ -6554,7 +6554,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "browser", "agent", "full", "ask-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "ask-live", "visual-artifact-roundtrip", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -14965,6 +14965,283 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
     return 0 if ok else 1
 
 
+
+def _visual_artifact_roundtrip_run_id(value: str | None) -> str:
+    text = str(value or "").strip()
+    if text:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._-")[:64] or "manual"
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _create_visual_roundtrip_input_zip(
+    *,
+    run_id: str,
+    input_entry: str,
+    input_content: str,
+    work_dir: Path,
+) -> Path:
+    safe_entry = Path(str(input_entry or "input.txt")).name or "input.txt"
+    zip_path = work_dir / f"pb_visual_artifact_roundtrip_input_{run_id}.zip"
+    payload_path = work_dir / safe_entry
+    payload_path.write_text(input_content, encoding="utf-8")
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(payload_path, safe_entry)
+    return zip_path
+
+
+def _visual_artifact_roundtrip_prompt(
+    *,
+    run_id: str,
+    input_entry: str,
+    input_content: str,
+    output_filename: str,
+    output_entry: str,
+    output_content: str,
+) -> str:
+    request_id = f"visual-artifact-roundtrip-{run_id}"
+    return f"""Promptbranch visual artifact roundtrip test.
+
+You are testing local visual ZIP send and ZIP retrieval.
+
+Input attachment requirement:
+- Read the attached ZIP.
+- It should contain {input_entry!r} with exactly this UTF-8 text:
+{input_content}
+
+Output artifact requirement:
+- Create a real downloadable ZIP artifact named exactly: {output_filename}
+- The ZIP must contain exactly one file at the ZIP root: {output_entry}
+- {output_entry} must contain exactly this UTF-8 text, with no extra characters:
+{output_content}
+
+Reply protocol requirement:
+- Return one Promptbranch reply envelope after creating the downloadable ZIP.
+- Do not wrap the envelope in a Markdown code fence.
+- The envelope must begin with BEGIN_PROMPTBRANCH_REPLY_JSON and end with END_PROMPTBRANCH_REPLY_JSON.
+- In artifacts[0], use filename {output_filename!r}.
+- In artifacts[0].download.url, set the actual sandbox:/mnt/data/... URL/path for the downloadable ZIP you created.
+- If you cannot create the ZIP, return status "failed" and no artifacts.
+
+BEGIN_PROMPTBRANCH_REPLY_JSON
+{{
+  "schema": "promptbranch.ask.reply",
+  "schema_version": "1.0",
+  "request_id": "{request_id}",
+  "correlation_id": "{request_id}",
+  "status": "completed",
+  "result_type": "test_report",
+  "summary": "Created visual artifact roundtrip ZIP.",
+  "baseline": {{
+    "input_artifact": null,
+    "input_version": null,
+    "output_artifact": "{output_filename}",
+    "output_version": null,
+    "release_type": "visual_artifact_roundtrip"
+  }},
+  "changes": [
+    {{
+      "path": "{output_entry}",
+      "kind": "added",
+      "summary": "Smoke file inside visual artifact roundtrip ZIP."
+    }}
+  ],
+  "artifacts": [
+    {{
+      "kind": "zip",
+      "filename": "{output_filename}",
+      "version": null,
+      "role": "visual_artifact_roundtrip_output",
+      "download": {{
+        "available": true,
+        "link_text": "{output_filename}",
+        "url": "REPLACE_WITH_ACTUAL_SANDBOX_URL"
+      }}
+    }}
+  ],
+  "validation": {{
+    "claimed": [
+      "input ZIP was read",
+      "output ZIP was created",
+      "output ZIP contains {output_entry}"
+    ],
+    "not_claimed": [
+      "release artifact validation",
+      "baseline adoption"
+    ]
+  }},
+  "next_step": {{
+    "operator_action": "artifact_intake_download_verify_smoke_zip",
+    "recommended_command": "pb artifact intake --from-last-answer --download --verify-smoke-zip --expect-entry {output_entry} --expect-content <expected-content> --json"
+  }},
+  "confidence": "medium"
+}}
+END_PROMPTBRANCH_REPLY_JSON
+"""
+
+
+async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argparse.Namespace) -> int:
+    """Visible local ZIP send/retrieve proof.
+
+    This is intentionally a live/manual browser-backed test.  It wraps the two
+    operator steps that have historically been run separately:
+
+    1. ``pb ask --debug-browser --attach <input.zip>`` to visibly send a ZIP.
+    2. ``pb artifact intake --from-last-answer --download --verify-smoke-zip``
+       semantics to retrieve and verify the generated ZIP without release
+       VERSION/baseline requirements.
+    """
+
+    run_id = _visual_artifact_roundtrip_run_id(getattr(args, "run_id", None))
+    input_entry = Path(str(getattr(args, "input_entry", "input.txt") or "input.txt")).name or "input.txt"
+    output_entry = Path(str(getattr(args, "expect_entry", "output.txt") or "output.txt")).name or "output.txt"
+    input_content = str(getattr(args, "input_content", None) or f"ZIP_VISUAL_ROUNDTRIP_INPUT_OK_{run_id}\n")
+    output_content = str(getattr(args, "expect_content", None) or f"ZIP_VISUAL_ROUNDTRIP_OUTPUT_OK_{run_id}\n")
+    output_filename = Path(str(getattr(args, "output_filename", None) or f"pb_visual_artifact_roundtrip_{run_id}.zip")).name
+    if not output_filename.endswith(".zip"):
+        output_filename += ".zip"
+
+    temp_root = Path(tempfile.mkdtemp(prefix="promptbranch_visual_artifact_roundtrip_"))
+    input_zip = _create_visual_roundtrip_input_zip(
+        run_id=run_id,
+        input_entry=input_entry,
+        input_content=input_content,
+        work_dir=temp_root,
+    )
+    prompt = _visual_artifact_roundtrip_prompt(
+        run_id=run_id,
+        input_entry=input_entry,
+        input_content=input_content,
+        output_filename=output_filename,
+        output_entry=output_entry,
+        output_content=output_content,
+    )
+    ask_equivalent_command = (
+        "pb ask --debug-browser "
+        f"--profile-dir {shlex.quote(str(resolve_profile_dir(getattr(args, 'profile_dir', None))))} "
+        f"--attach {shlex.quote(str(input_zip))} "
+        "--keep-open "
+        f"--text {shlex.quote('Promptbranch visual artifact roundtrip prompt')}"
+    )
+    intake_equivalent_command = (
+        "pb artifact intake --from-last-answer --download --verify-smoke-zip "
+        f"--expect-entry {shlex.quote(output_entry)} "
+        f"--expect-content {shlex.quote(output_content)} --json"
+    )
+
+    ask_result: Any = None
+    try:
+        ask_result = await backend.ask(
+            prompt=prompt,
+            attachment_paths=[str(input_zip)],
+            expect_json=False,
+            keep_open=bool(getattr(args, "keep_open", False)),
+            retries=getattr(args, "retries", None),
+        )
+    except Exception as exc:  # noqa: BLE001 - live browser test must report structured failures
+        payload = {
+            "ok": False,
+            "action": "test_visual_artifact_roundtrip",
+            "profile": "visual-artifact-roundtrip",
+            "status": "ask_failed",
+            "version": f"v{CLI_VERSION}",
+            "run_id": run_id,
+            "debug_browser": True,
+            "service_transport_used": False,
+            "input_zip": str(input_zip),
+            "expected_output_filename": output_filename,
+            "expected_entry": output_entry,
+            "expected_content": output_content,
+            "ask_equivalent_command": ask_equivalent_command,
+            "intake_equivalent_command": intake_equivalent_command,
+            "error": str(exc),
+            "error_type": exc.__class__.__name__,
+        }
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"visual-artifact-roundtrip: {payload['status']}")
+            print(f"error={payload['error']}")
+        return 1
+
+    answer_text, conversation_url = _split_ask_response(ask_result)
+    parsed = parse_promptbranch_reply(str(answer_text or ""))
+    intake = _artifact_intake_from_parsed_answer(parsed, expected_filename=output_filename)
+    conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
+    answer_id = parsed.get("answer_id") or "answer_unknown"
+    intake.update({
+        "conversation_url": conversation_url,
+        "conversation_id": conversation_id,
+        "answer_id": answer_id,
+        "reply_request_id": parsed.get("request_id"),
+        "reply_correlation_id": parsed.get("correlation_id"),
+        "source": "visual_artifact_roundtrip_ask_answer",
+    })
+
+    download = await _download_selected_artifact_candidate_via_browser(
+        backend,
+        intake,
+        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+        keep_open=bool(getattr(args, "keep_open", False)),
+    )
+    verified = _verify_intake_smoke_zip_candidate(
+        download,
+        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        expected_entries=[output_entry],
+        expected_content=output_content,
+    )
+    verified = _artifact_intake_no_state_mutation_flags(verified)
+    payload = {
+        "ok": bool(verified.get("ok")),
+        "action": "test_visual_artifact_roundtrip",
+        "profile": "visual-artifact-roundtrip",
+        "status": "verified" if verified.get("ok") else (verified.get("status") or "failed"),
+        "version": f"v{CLI_VERSION}",
+        "run_id": run_id,
+        "debug_browser": True,
+        "service_transport_used": False,
+        "input_zip": str(input_zip),
+        "input_entry": input_entry,
+        "input_content": input_content,
+        "expected_output_filename": output_filename,
+        "expected_entry": output_entry,
+        "expected_content": output_content,
+        "conversation_url": conversation_url,
+        "conversation_id": conversation_id,
+        "answer_text_length": len(str(answer_text or "")),
+        "reply_parse_status": parsed.get("status"),
+        "artifact_candidate_status": intake.get("status"),
+        "download_status": download.get("status"),
+        "verification_status": verified.get("status"),
+        "download_performed": bool(verified.get("download_performed")),
+        "verification_performed": bool(verified.get("smoke_verification_performed") or verified.get("verification_performed")),
+        "download": verified.get("download"),
+        "smoke_verification": verified.get("smoke_verification"),
+        "intake_record_path": verified.get("intake_record_path"),
+        "ask_equivalent_command": ask_equivalent_command,
+        "intake_equivalent_command": intake_equivalent_command,
+        "ask_result_summary": {
+            "type": ask_result.__class__.__name__,
+            "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
+        },
+        "parsed_reply": parsed,
+        "artifact_intake": verified,
+        "operator_note": "This live test sends a local ZIP visibly through ChatGPT, downloads the generated ZIP through artifact intake, and verifies smoke ZIP contents without release adoption.",
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"visual-artifact-roundtrip: {payload['status']}")
+        print(f"conversation_url={conversation_url or 'unknown'}")
+        print(f"input_zip={input_zip}")
+        print(f"downloaded={(verified.get('download') or {}).get('path') if isinstance(verified.get('download'), dict) else 'unknown'}")
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
     result = package_import_smoke(repo_path=getattr(args, "path", "."), python_executable=getattr(args, "python_executable", None))
     if getattr(args, "json", False):
@@ -14985,6 +15262,8 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_test_import_smoke(args)
     if args.test_command == "ask-live":
         return await cmd_test_ask_live(backend, args)
+    if args.test_command == "visual-artifact-roundtrip":
+        return await cmd_test_visual_artifact_roundtrip(backend, args)
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_smoke(args)
@@ -16103,6 +16382,19 @@ def make_parser() -> argparse.ArgumentParser:
     test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")
     test_ask_live.add_argument("--skip", action="append", default=[], help="Comma-separated ask-live step selectors to skip.")
     test_ask_live.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
+    test_visual_artifact_roundtrip = test_subparsers.add_parser("visual-artifact-roundtrip", help="Visibly send a local ZIP, retrieve a generated ZIP through artifact intake, and verify smoke contents.")
+    test_visual_artifact_roundtrip.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")
+    test_visual_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
+    test_visual_artifact_roundtrip.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after the ask/download steps.")
+    test_visual_artifact_roundtrip.add_argument("--retries", type=int, help="Retry count passed to the visual pb ask step.")
+    test_visual_artifact_roundtrip.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for the retrieve step.")
+    test_visual_artifact_roundtrip.add_argument("--input-entry", default="input.txt", help="Filename to place inside the locally generated input ZIP.")
+    test_visual_artifact_roundtrip.add_argument("--input-content", help="Exact UTF-8 content to place in the input ZIP. Defaults to a run-id sentinel.")
+    test_visual_artifact_roundtrip.add_argument("--output-filename", help="Expected generated ZIP filename. Defaults to pb_visual_artifact_roundtrip_<run-id>.zip.")
+    test_visual_artifact_roundtrip.add_argument("--expect-entry", default="output.txt", help="Expected file entry inside the generated ZIP.")
+    test_visual_artifact_roundtrip.add_argument("--expect-content", help="Expected UTF-8 content inside --expect-entry. Defaults to a run-id sentinel.")
+    test_visual_artifact_roundtrip.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
 
     test_report = test_subparsers.add_parser("report", help="Summarize a pb test-suite / pb test full JSON log.")
     test_report.add_argument("log", help="Path to a log produced by pb test-suite --json or pb test full --json.")

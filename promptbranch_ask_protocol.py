@@ -318,7 +318,7 @@ def _candidate_with_classification(
         issues.append("artifact_not_zip")
     if kind and kind != "zip":
         issues.append("unsupported_artifact_type")
-    if role and role not in {"candidate_release", "repair_candidate"}:
+    if role and role not in {"candidate_release", "repair_candidate", "visual_artifact_roundtrip_output", "smoke_test_artifact"}:
         issues.append("unsupported_artifact_role")
     if declared_version and filename_version and str(declared_version) != filename_version:
         issues.append("artifact_declared_version_mismatch")
