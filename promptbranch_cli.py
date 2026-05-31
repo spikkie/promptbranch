@@ -6206,6 +6206,18 @@ def _build_zip_artifact_user_prompt(
     display_baseline = "none" if baseline is None else str(baseline)
     display_current_version = "none" if current_version is None else str(current_version)
     display_target_version = "none" if target_version is None else str(target_version)
+    schema_contract = (
+        "The reply envelope JSON MUST include all required top-level keys: "
+        "schema, schema_version, request_id, correlation_id, status, result_type, summary, "
+        "baseline, changes, artifacts, validation, next_step, confidence. "
+        "schema MUST be exactly promptbranch.ask.reply. "
+        "schema_version MUST be exactly 1.0. "
+        "summary MUST be a non-empty string. "
+        "next_step MUST be an object with operator_action and recommended_command. "
+        "If you cannot create the real downloadable ZIP or cannot produce every required envelope field, "
+        "return status failed with result_type "
+        f"{result_type}, artifacts as an empty array, and a failure summary instead of a success claim. "
+    )
     return (
         f"{request_label}. Create exactly one ZIP artifact named {expected_artifact}.\n"
         f"Input baseline: {display_baseline}\n"
@@ -6213,6 +6225,7 @@ def _build_zip_artifact_user_prompt(
         f"Target version: {display_target_version}\n"
         f"{status_rule}"
         f"{artifact_rule}"
+        f"{schema_contract}"
         f"{no_change_rule}"
         f"{forbidden_claims_rule}\n\n"
         "Requested implementation scope:\n"
