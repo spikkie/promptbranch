@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.79" in out
+    assert "0.0.278.80" in out
     assert "promptbranch" in out
 
 
@@ -283,6 +283,18 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert roundtrip.expect_entry == 'output.txt'
     assert roundtrip.expect_content == 'ZIP_OK'
     assert roundtrip.debug_browser is True
+    assert roundtrip.keep_project is False
+    assert roundtrip.conversation_url is None
+    assert roundtrip.project_name_prefix == 'visual-artifact-roundtrip-temp'
+    assert roundtrip.memory_mode == 'project-only'
+
+    roundtrip_explicit = parser.parse_args([
+        'test', 'visual-artifact-roundtrip', '--conversation-url',
+        'https://chatgpt.com/g/g-p-11111111111111111111111111111111-x/c/y',
+        '--keep-project',
+    ])
+    assert roundtrip_explicit.conversation_url.endswith('/c/y')
+    assert roundtrip_explicit.keep_project is True
 
 
 def test_parser_defaults_project_source_add_type_to_file() -> None:
