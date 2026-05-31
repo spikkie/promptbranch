@@ -601,6 +601,52 @@ def test_attachment_visible_answer_promotes_after_unconfirmed_submit(tmp_path: P
     assert phase_timings["response_freshness_verified"] is True
 
 
+def test_attachment_visible_answer_project_home_waits_for_project_conversation(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        pass
+
+    urls = iter([
+        "https://chatgpt.com/g/g-p-6a1af3fe64a481919a2cc7de3cff0487/project",
+        "https://chatgpt.com/g/g-p-6a1af3fe64a481919a2cc7de3cff0487/c/6a1b",
+    ])
+
+    async def fake_safe_page_url(page):
+        return next(urls)
+
+    async def fake_wait_and_get_response(page, *, response_context=None):
+        if response_context is not None:
+            response_context["last_response_extraction_mode"] = "project_conversation_follow"
+        return "VISUAL_ARTIFACT_ROUNDTRIP_REPLY"
+
+    client._safe_page_url = fake_safe_page_url
+    client._wait_and_get_response = fake_wait_and_get_response
+
+    phase_timings = {}
+    response_context = {"assistant_count": 0}
+    submit_evidence = {"submit_confirmed": False, "submit_confirmed_by": []}
+
+    result = asyncio.run(client._try_promote_attachment_visible_answer_after_unconfirmed_submit(
+        DummyPage(),
+        upload_paths=["/tmp/pb_visual_artifact_roundtrip_input.zip"],
+        response_context=response_context,
+        submit_evidence=submit_evidence,
+        phase_timings=phase_timings,
+        operation_started=0.0,
+    ))
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["conversation_url"].endswith("/c/6a1b")
+    assert result["answer"] == "VISUAL_ARTIFACT_ROUNDTRIP_REPLY"
+    assert phase_timings["attachment_visible_answer_fallback_project_home_wait_allowed"] is True
+    assert phase_timings["attachment_visible_answer_fallback_post_response_url"].endswith("/c/6a1b")
+    assert phase_timings["attachment_visible_answer_fallback_status"] == "visible_answer_promoted"
+
+
 
 def test_attachment_submit_ready_waits_for_enabled_send_button(tmp_path: Path) -> None:
     import asyncio

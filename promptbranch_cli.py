@@ -15309,6 +15309,22 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             retries=getattr(args, "retries", None),
         )
         answer_text, conversation_url = _split_ask_response(ask_result)
+        if isinstance(ask_result, dict) and ask_result.get("ok") is False and not conversation_url:
+            return await emit_failure(
+                "ask_failed",
+                error=str(ask_result.get("error") or ask_result.get("status") or "visual artifact roundtrip ask failed before returning a project conversation_url"),
+                error_type=str(ask_result.get("error_type") or ask_result.get("status") or "AskFailed"),
+                extra={
+                    "answer_text_length": len(str(answer_text or "")),
+                    "ask_result_status": ask_result.get("status"),
+                    "ask_result_conversation_url": ask_result.get("conversation_url"),
+                    "ask_result_submit_confirmed": (ask_result.get("submit_evidence") or {}).get("submit_confirmed") if isinstance(ask_result.get("submit_evidence"), dict) else None,
+                    "ask_result_submit_reason": (ask_result.get("submit_evidence") or {}).get("submit_causal_confirmation_reason") if isinstance(ask_result.get("submit_evidence"), dict) else None,
+                    "ask_result_attachment_fallback_status": (ask_result.get("ask_phase_timings") or {}).get("attachment_visible_answer_fallback_status") if isinstance(ask_result.get("ask_phase_timings"), dict) else None,
+                    "ask_result_attachment_fallback_current_url": (ask_result.get("ask_phase_timings") or {}).get("attachment_visible_answer_fallback_current_url") if isinstance(ask_result.get("ask_phase_timings"), dict) else None,
+                    "ask_result_attachment_fallback_post_response_url": (ask_result.get("ask_phase_timings") or {}).get("attachment_visible_answer_fallback_post_response_url") if isinstance(ask_result.get("ask_phase_timings"), dict) else None,
+                },
+            )
         response_project_home_url = project_home_url_from_url(conversation_url)
         in_expected_project, expected_project_id, response_project_id = _ask_live_in_expected_project(
             expected_project_home_url=project_home_url_from_url(test_project_url) or test_project_url,
