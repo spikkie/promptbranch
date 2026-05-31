@@ -179,7 +179,7 @@ def extract_reply_blocks(text: str) -> list[ReplyBlock]:
     return blocks
 
 
-def _error_payload(status: str, *, detail: str | None = None, block_count: int = 0, json_error: str | None = None) -> dict[str, Any]:
+def _error_payload(status: str, *, detail: str | None = None, block_count: int = 0, json_error: str | None = None, **extra: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "ok": False,
         "action": "promptbranch_reply_parse",
@@ -194,6 +194,9 @@ def _error_payload(status: str, *, detail: str | None = None, block_count: int =
         payload["detail"] = detail
     if json_error:
         payload["json_error"] = json_error
+    for key, value in extra.items():
+        if value is not None:
+            payload[key] = value
     return payload
 
 
@@ -440,11 +443,17 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
     try:
         parsed = json.loads(block.text)
     except json.JSONDecodeError as exc:
+        line_start = max(0, int(getattr(exc, "pos", 0)) - 240)
+        line_end = min(len(block.text), int(getattr(exc, "pos", 0)) + 240)
         return _error_payload(
             "reply_schema_invalid",
             detail="reply block is not valid JSON",
             block_count=1,
             json_error=str(exc),
+            json_error_lineno=getattr(exc, "lineno", None),
+            json_error_colno=getattr(exc, "colno", None),
+            json_error_pos=getattr(exc, "pos", None),
+            json_error_context=block.text[line_start:line_end],
         )
     if not isinstance(parsed, dict):
         return _error_payload(

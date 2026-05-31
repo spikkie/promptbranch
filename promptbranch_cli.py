@@ -15104,7 +15104,10 @@ Reply envelope rules:
 - artifacts[0].role must be "visual_artifact_roundtrip_output".
 - artifacts[0].download.available must be true.
 - artifacts[0].download.link_text must be exactly: {output_filename}
-- artifacts[0].download.url must be exactly the same real downloadable URL/path used in the first-line Markdown link.
+- artifacts[0].download.url must be a JSON string containing exactly the same raw downloadable URL/path used as the first-line Markdown link target.
+- Do not put Markdown link syntax in artifacts[0].download.url. Bad: [name](sandbox:/mnt/data/name.zip). Good JSON value form: "sandbox:/mnt/data/name.zip".
+- Every JSON string value must use double quotes with any inner quotes escaped; do not use Python None/True/False, comments, trailing commas, or unquoted paths.
+- Before returning, verify that the text between BEGIN_PROMPTBRANCH_REPLY_JSON and END_PROMPTBRANCH_REPLY_JSON would parse with Python json.loads.
 - The baseline object must use input_artifact null, input_version null, output_artifact {output_filename!r}, output_version null, release_type "visual_artifact_roundtrip".
 - The changes array must include one added path: {output_entry!r}.
 - validation.claimed may claim ZIP creation only after the ZIP exists and was reopened successfully.

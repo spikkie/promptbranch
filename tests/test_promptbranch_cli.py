@@ -9827,3 +9827,19 @@ def test_ask_live_failed_response_does_not_report_sentinel_match(monkeypatch) ->
     assert result["contains_expected_sentinel"] is False
     assert result["answer_text_length"] == 0
     assert "ASK_LIVE_FILE_ATTACHMENT_UNIT" in result["answer_text_preview"]
+
+def test_visual_artifact_roundtrip_prompt_hardens_download_url_json_syntax() -> None:
+    from promptbranch_cli import _visual_artifact_roundtrip_prompt
+
+    prompt = _visual_artifact_roundtrip_prompt(
+        run_id="URLSYNTAX",
+        input_entry="input.txt",
+        input_content="INPUT",
+        output_filename="pb_visual_artifact_roundtrip_URLSYNTAX.zip",
+        output_entry="output.txt",
+        output_content="OUTPUT",
+    )
+
+    assert "download.url must be a JSON string" in prompt
+    assert "Do not put Markdown link syntax in artifacts[0].download.url" in prompt
+    assert "would parse with Python json.loads" in prompt

@@ -198,3 +198,17 @@ def test_ask_protocol_module_is_declared_for_setuptools_install() -> None:
     assert "promptbranch_ask_protocol" in modules
     package_data = data["tool"]["setuptools"]["package-data"]
     assert "promptbranch_protocol" in package_data
+
+def test_parse_promptbranch_reply_invalid_json_reports_error_context() -> None:
+    from promptbranch_ask_protocol import parse_promptbranch_reply
+
+    text = '''BEGIN_PROMPTBRANCH_REPLY_JSON
+{"schema":"promptbranch.ask.reply","schema_version":"1.0","broken": [name](sandbox:/mnt/data/x.zip)}
+END_PROMPTBRANCH_REPLY_JSON'''
+    payload = parse_promptbranch_reply(text)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "reply_schema_invalid"
+    assert payload["json_error_lineno"] is not None
+    assert payload["json_error_colno"] is not None
+    assert "sandbox:/mnt/data/x.zip" in payload["json_error_context"]
