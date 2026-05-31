@@ -46,8 +46,14 @@ def extract_test_suite_payload(text: str) -> tuple[dict[str, Any] | None, dict[s
 
 
 def _step_count(section: dict[str, Any] | None) -> int:
-    steps = section.get("steps") if isinstance(section, dict) else None
-    return len(steps) if isinstance(steps, list) else 0
+    if not isinstance(section, dict):
+        return 0
+    count = 0
+    for key in ("steps", "cleanup_steps"):
+        steps = section.get(key)
+        if isinstance(steps, list):
+            count += len(steps)
+    return count
 
 
 def _classify_failure_text(text: object) -> str | None:
@@ -64,35 +70,42 @@ def _classify_failure_text(text: object) -> str | None:
 def _failed_steps(section_name: str, section: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(section, dict):
         return []
-    steps = section.get("steps")
-    if not isinstance(steps, list):
-        return []
     failures: list[dict[str, Any]] = []
-    for step in steps:
-        if not isinstance(step, dict):
+    for step_key, scope in (("steps", "main"), ("cleanup_steps", "cleanup")):
+        steps = section.get(step_key)
+        if not isinstance(steps, list):
             continue
-        if bool(step.get("ok")):
-            continue
-        payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
-        diagnostic = payload.get("diagnostic") or payload.get("error")
-        classification = _classify_failure_text(" ".join(str(item or "") for item in (
-            step.get("status"),
-            diagnostic,
-            payload.get("exception"),
-            payload.get("error"),
-            payload.get("message"),
-        )))
-        item = {
-            "section": section_name,
-            "name": step.get("name"),
-            "status": step.get("status") or payload.get("status"),
-            "expected_failure": bool(step.get("expected_failure")),
-            "expected_status": step.get("expected_status"),
-            "diagnostic": diagnostic,
-        }
-        if classification:
-            item["classification"] = classification
-        failures.append(item)
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            if bool(step.get("ok")):
+                continue
+            payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
+            details = step.get("details") if isinstance(step.get("details"), dict) else {}
+            diagnostic = payload.get("diagnostic") or payload.get("error") or details.get("error") or details.get("diagnostic")
+            classification = _classify_failure_text(" ".join(str(item or "") for item in (
+                step.get("status"),
+                diagnostic,
+                payload.get("exception"),
+                payload.get("error"),
+                payload.get("message"),
+                details.get("exception"),
+                details.get("error"),
+                details.get("message"),
+                details.get("status"),
+            )))
+            item = {
+                "section": section_name,
+                "scope": scope,
+                "name": step.get("name"),
+                "status": step.get("status") or payload.get("status") or details.get("status") or details.get("error_type"),
+                "expected_failure": bool(step.get("expected_failure")),
+                "expected_status": step.get("expected_status"),
+                "diagnostic": diagnostic,
+            }
+            if classification:
+                item["classification"] = classification
+            failures.append(item)
     return failures
 
 

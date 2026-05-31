@@ -253,3 +253,33 @@ def test_report_classifies_browser_navigation_network_failure(tmp_path: Path) ->
     report = build_test_report(log)
 
     assert report["suite"]["failed_steps"][0]["classification"] == "browser_navigation_unavailable"
+
+
+def test_build_test_report_counts_cleanup_failures(tmp_path):
+    log = tmp_path / "suite_cleanup_fail.log"
+    payload = {
+        "ok": False,
+        "action": "test_suite",
+        "profile": "browser",
+        "version": "v0.0.test",
+        "steps": [{"name": "login_check", "ok": True, "details": {"ok": True}}],
+        "cleanup_steps": [
+            {
+                "name": "project_remove_cleanup",
+                "ok": False,
+                "details": {
+                    "status": "browser_profile_busy",
+                    "error": "browser profile is busy",
+                },
+            }
+        ],
+    }
+    log.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    report = build_test_report(log)
+
+    assert report["ok"] is False
+    assert report["suite"]["failure_count"] == 1
+    assert report["suite"]["failed_steps"][0]["scope"] == "cleanup"
+    assert report["suite"]["failed_steps"][0]["name"] == "project_remove_cleanup"
+    assert report["suite"]["failed_steps"][0]["status"] == "browser_profile_busy"

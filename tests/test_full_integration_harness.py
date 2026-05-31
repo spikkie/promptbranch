@@ -417,3 +417,87 @@ def test_extract_conversation_url_from_ask_result_can_build_from_project_and_id(
 
     assert _extract_conversation_url_from_ask_result(result) == "https://chatgpt.com/g/g-p-demo/c/abc123"
 
+
+
+def test_project_remove_cleanup_retries_browser_profile_busy(monkeypatch) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def remove_project(self, *, keep_open: bool = False):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "ok": False,
+                    "status": "browser_profile_busy",
+                    "error_type": "BrowserProfileBusyError",
+                    "retry_after_seconds": 0.25,
+                    "active_operation": "add_project_source",
+                }
+            return {"ok": True, "status": "removed"}
+
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            FakeService(),
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=2,
+        )
+    )
+
+    assert result["ok"] is True
+    assert sleeps == [0.25]
+    assert [step.name for step in cleanup_steps] == [
+        "project_remove_cleanup_retry_wait",
+        "project_remove_cleanup",
+    ]
+    assert cleanup_steps[-1].ok is True
+    assert cleanup_steps[-1].details["retry_count"] == 1
+
+
+def test_project_remove_cleanup_reports_final_browser_profile_busy(monkeypatch) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            return {
+                "ok": False,
+                "status": "browser_profile_busy",
+                "error_type": "BrowserProfileBusyError",
+                "retry_after_seconds": 0.01,
+                "active_operation": "add_project_source",
+            }
+
+    cleanup_steps = []
+    with pytest.raises(IntegrationAssertionError):
+        asyncio.run(
+            _remove_project_cleanup_with_retry(
+                cleanup_steps,
+                FakeService(),
+                keep_open=False,
+                step_delay_seconds=0.0,
+                max_attempts=1,
+            )
+        )
+
+    assert cleanup_steps[-1].name == "project_remove_cleanup"
+    assert cleanup_steps[-1].ok is False
+    assert cleanup_steps[-1].details["status"] == "browser_profile_busy"
