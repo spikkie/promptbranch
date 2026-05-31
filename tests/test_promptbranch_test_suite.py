@@ -446,3 +446,56 @@ py-modules = ["promptbranch_version"]
     assert result["ok"] is False
     assert result["version_consistency"]["ok"] is False
     assert any(item["name"] == "zip.docker_compose.chatgpt_service.image" for item in result["version_consistency"]["mismatches"])
+
+
+def test_artifact_roundtrip_smoke_is_deterministic_and_docker_safe(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+
+    result = suite.artifact_roundtrip_smoke(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile", run_id="UNIT")
+
+    assert result["ok"] is True
+    assert result["status"] == "verified"
+    assert result["profile"] == "artifact-roundtrip"
+    assert result["browser_required"] is False
+    assert result["chatgpt_required"] is False
+    assert result["network_required"] is False
+    assert result["docker_safe"] is True
+    assert result["mutating_actions_executed"] is False
+    names = [step["name"] for step in result["steps"]]
+    assert "parse_valid_reply" in names
+    assert "classify_expected_candidate" in names
+    assert "smoke_zip_verify" in names
+    assert "malformed_reply_fails_closed" in names
+    assert "wrong_filename_fails_closed" in names
+    assert "wrong_content_fails_closed" in names
+    assert "wrapper_folder_fails_closed" in names
+
+
+def test_agent_profile_includes_artifact_roundtrip(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
+    (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
+
+    monkeypatch.setattr(suite, "mcp_host_smoke", lambda **kwargs: _ok("mcp_host_smoke"))
+    monkeypatch.setattr(suite, "mcp_tool_call_via_stdio", lambda *args, **kwargs: _ok("mcp_tool_call"))
+    monkeypatch.setattr(suite, "skill_list", lambda **kwargs: _ok("skill_list"))
+    monkeypatch.setattr(suite, "skill_show", lambda *args, **kwargs: _ok("skill_show"))
+    monkeypatch.setattr(suite, "skill_validate", lambda *args, **kwargs: _ok("skill_validate", "valid"))
+    monkeypatch.setattr(suite, "agent_tool_call", lambda *args, **kwargs: _ok("agent_tool_call"))
+    monkeypatch.setattr(suite, "agent_summarize_log", lambda *args, **kwargs: _ok("agent_summarize_log"))
+    monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
+    monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
+
+    def fake_agent_run(request: str, **kwargs) -> dict:
+        if request in {"sync sources", "create artifact release", "run pytest"}:
+            return {"ok": False, "action": "agent_run", "status": "risk_rejected"}
+        return _ok("agent_run")
+
+    monkeypatch.setattr(suite, "agent_run", fake_agent_run)
+
+    result = suite._run_agent_profile_sync(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+
+    names = [step["name"] for step in result["steps"]]
+    assert "artifact_roundtrip" in names
+    artifact_step = next(step for step in result["steps"] if step["name"] == "artifact_roundtrip")
+    assert artifact_step["ok"] is True
+    assert artifact_step["payload"]["docker_safe"] is True
