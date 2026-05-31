@@ -171,7 +171,7 @@ def test_parser_version_option_outputs_release(capsys) -> None:
     except SystemExit as exc:
         assert exc.code == 0
     out = capsys.readouterr().out
-    assert "0.0.278.74" in out
+    assert "0.0.278.75" in out
     assert "promptbranch" in out
 
 
@@ -269,6 +269,20 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert ask_live.memory_mode == 'project-only'
     assert ask_live.keep_project is False
     assert ask_live.debug_browser is True
+
+    roundtrip = parser.parse_args([
+        'test', 'visual-artifact-roundtrip', '--json', '--run-id', 'UNIT',
+        '--output-filename', 'pb_visual_artifact_roundtrip_UNIT.zip',
+        '--expect-entry', 'output.txt', '--expect-content', 'ZIP_OK',
+    ])
+    assert roundtrip.command == 'test'
+    assert roundtrip.test_command == 'visual-artifact-roundtrip'
+    assert roundtrip.json is True
+    assert roundtrip.run_id == 'UNIT'
+    assert roundtrip.output_filename == 'pb_visual_artifact_roundtrip_UNIT.zip'
+    assert roundtrip.expect_entry == 'output.txt'
+    assert roundtrip.expect_content == 'ZIP_OK'
+    assert roundtrip.debug_browser is True
 
 
 def test_parser_defaults_project_source_add_type_to_file() -> None:
