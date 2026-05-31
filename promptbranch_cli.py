@@ -15214,6 +15214,19 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     )
 
     async def emit_failure(status: str, *, error: str | None = None, error_type: str | None = None, extra: dict[str, Any] | None = None) -> int:
+        nonlocal cleanup_result, test_project_removed
+        if test_project_created and not bool(getattr(args, "keep_project", False)) and not test_project_removed:
+            try:
+                cleanup_result = await backend.remove_project(keep_open=False)
+                test_project_removed = bool(cleanup_result.get("ok", True))
+            except Exception as exc:  # noqa: BLE001 - cleanup failure must be included in the emitted failure payload
+                cleanup_result = {
+                    "ok": False,
+                    "status": "test_project_cleanup_failed",
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                }
+                test_project_removed = False
         cleanup_ok = True
         if test_project_created and not bool(getattr(args, "keep_project", False)):
             cleanup_ok = bool(test_project_removed)
@@ -15376,7 +15389,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             error_type=exc.__class__.__name__,
         )
     finally:
-        if test_project_created and not bool(getattr(args, "keep_project", False)):
+        if test_project_created and not bool(getattr(args, "keep_project", False)) and not test_project_removed:
             try:
                 cleanup_result = await backend.remove_project(keep_open=False)
                 test_project_removed = bool(cleanup_result.get("ok", True))
