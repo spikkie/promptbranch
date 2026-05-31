@@ -2274,6 +2274,29 @@ def test_ask_live_profile_runs_visible_operator_steps_in_temp_project(monkeypatc
 
 
 
+def test_visual_artifact_roundtrip_prompt_requires_full_reply_schema() -> None:
+    from promptbranch_cli import _visual_artifact_roundtrip_prompt
+
+    prompt = _visual_artifact_roundtrip_prompt(
+        run_id="UNITSCHEMA",
+        input_entry="input.txt",
+        input_content="ZIP_VISUAL_ROUNDTRIP_INPUT_OK_UNITSCHEMA\n",
+        output_filename="pb_visual_artifact_roundtrip_UNITSCHEMA.zip",
+        output_entry="output.txt",
+        output_content="ZIP_VISUAL_ROUNDTRIP_OUTPUT_OK_UNITSCHEMA",
+    )
+
+    assert "schema MUST be exactly promptbranch.ask.reply" in prompt
+    assert "schema_version MUST be exactly 1.0" in prompt
+    assert "summary MUST be a non-empty string" in prompt
+    assert "next_step MUST be an object with operator_action and recommended_command" in prompt
+    assert "schema, schema_version, request_id, correlation_id, status, result_type, summary" in prompt
+    assert "baseline, changes, artifacts, validation, next_step, confidence" in prompt
+    assert "If you cannot create the real downloadable ZIP or cannot produce every required envelope field" in prompt
+    assert '"status": "completed"' not in prompt
+    assert "BEGIN_PROMPTBRANCH_REPLY_JSON\n{" not in prompt
+
+
 def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, capsys, tmp_path) -> None:
     output_zip = tmp_path / "pb_visual_artifact_roundtrip_UNIT.zip"
     with zipfile.ZipFile(output_zip, "w") as zf:
@@ -2304,6 +2327,11 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
             assert "Visual artifact roundtrip request. Create exactly one ZIP artifact named" in prompt
             assert "This is a real artifact-creation test" in prompt
             assert "First line of the final response must be a Markdown download link" in prompt
+            assert "schema MUST be exactly promptbranch.ask.reply" in prompt
+            assert "schema_version MUST be exactly 1.0" in prompt
+            assert "summary MUST be a non-empty string" in prompt
+            assert "next_step MUST be an object with operator_action and recommended_command" in prompt
+            assert "schema, schema_version, request_id, correlation_id, status, result_type, summary" in prompt
             assert "REPLACE_WITH_ACTUAL_SANDBOX_URL" not in prompt
             assert "THE_REAL_DOWNLOAD_URL_FROM_THE_MARKDOWN_LINK" not in prompt
             assert '"status": "completed"' not in prompt
