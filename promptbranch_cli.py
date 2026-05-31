@@ -15147,13 +15147,10 @@ def _visual_artifact_roundtrip_prompt(
 async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Visible local ZIP send/retrieve proof.
 
-    This is intentionally a live/manual browser-backed test.  It wraps the two
-    operator steps that have historically been run separately:
-
-    1. ``pb ask --debug-browser --attach <input.zip>`` to visibly send a ZIP.
-    2. ``pb artifact intake --from-last-answer --download --verify-smoke-zip``
-       semantics to retrieve and verify the generated ZIP without release
-       VERSION/baseline requirements.
+    The live browser-backed test runs in an isolated temporary ChatGPT Project by
+    default.  The project-scoped conversation URL is important: ChatGPT artifact
+    links are conversation/project scoped, and the browser-assisted downloader
+    cannot reliably retrieve a generated ZIP from a plain chatgpt.com task.
     """
 
     run_id = _visual_artifact_roundtrip_run_id(getattr(args, "run_id", None))
@@ -15180,9 +15177,32 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         output_entry=output_entry,
         output_content=output_content,
     )
+
+    profile_dir = str(getattr(args, "profile_dir", "") or "")
+    resolved_profile_dir = resolve_profile_dir(getattr(args, "profile_dir", None))
+    original_snapshot = backend.state_snapshot() if hasattr(backend, "state_snapshot") else {}
+    explicit_conversation_url = getattr(args, "conversation_url", None)
+    test_project_created = False
+    test_project_removed = False
+    test_project_url: str | None = None
+    test_project_name: str | None = None
+    setup_result: dict[str, Any] | None = None
+    cleanup_result: dict[str, Any] | None = None
+    ask_result: Any = None
+    answer_text: str | None = None
+    conversation_url: str | None = None
+    parsed: dict[str, Any] | None = None
+    intake: dict[str, Any] | None = None
+    download: dict[str, Any] | None = None
+    verified: dict[str, Any] | None = None
+    response_project_home_url: str | None = None
+    in_expected_project = True
+    expected_project_id: str | None = None
+    response_project_id: str | None = None
+
     ask_equivalent_command = (
         "pb ask --debug-browser "
-        f"--profile-dir {shlex.quote(str(resolve_profile_dir(getattr(args, 'profile_dir', None))))} "
+        f"--profile-dir {shlex.quote(str(resolved_profile_dir))} "
         f"--attach {shlex.quote(str(input_zip))} "
         "--keep-open "
         f"--text {shlex.quote('Promptbranch visual artifact roundtrip prompt')}"
@@ -15193,82 +15213,190 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         f"--expect-content {shlex.quote(output_content)} --json"
     )
 
-    ask_result: Any = None
-    try:
-        ask_result = await backend.ask(
-            prompt=prompt,
-            attachment_paths=[str(input_zip)],
-            expect_json=False,
-            keep_open=bool(getattr(args, "keep_open", False)),
-            retries=getattr(args, "retries", None),
-        )
-    except Exception as exc:  # noqa: BLE001 - live browser test must report structured failures
+    async def emit_failure(status: str, *, error: str | None = None, error_type: str | None = None, extra: dict[str, Any] | None = None) -> int:
+        cleanup_ok = True
+        if test_project_created and not bool(getattr(args, "keep_project", False)):
+            cleanup_ok = bool(test_project_removed)
         payload = {
             "ok": False,
             "action": "test_visual_artifact_roundtrip",
             "profile": "visual-artifact-roundtrip",
-            "status": "ask_failed",
+            "status": status if cleanup_ok else "cleanup_failed",
             "version": f"v{CLI_VERSION}",
             "run_id": run_id,
             "debug_browser": True,
             "service_transport_used": False,
+            "mode": "visible_local_debug_browser",
+            "profile_dir": profile_dir,
             "input_zip": str(input_zip),
+            "input_entry": input_entry,
+            "input_content": input_content,
             "expected_output_filename": output_filename,
             "expected_entry": output_entry,
             "expected_content": output_content,
+            "conversation_url": conversation_url,
+            "response_project_home_url": response_project_home_url,
+            "expected_project_home_url": project_home_url_from_url(test_project_url) or test_project_url,
+            "expected_project_id": expected_project_id,
+            "response_project_id": response_project_id,
+            "in_expected_project": in_expected_project,
+            "uses_temporary_project": not bool(explicit_conversation_url),
+            "test_project_name": test_project_name,
+            "test_project_url": test_project_url,
+            "test_project_created": test_project_created,
+            "test_project_removed": test_project_removed,
+            "test_project_kept": bool(getattr(args, "keep_project", False)),
+            "test_project_setup": setup_result,
+            "test_project_cleanup": cleanup_result,
             "ask_equivalent_command": ask_equivalent_command,
             "intake_equivalent_command": intake_equivalent_command,
-            "error": str(exc),
-            "error_type": exc.__class__.__name__,
+            "error": error,
+            "error_type": error_type,
+            "ask_result_summary": {
+                "type": ask_result.__class__.__name__ if ask_result is not None else None,
+                "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
+            },
+            "operator_note": "visual-artifact-roundtrip creates an isolated temporary ChatGPT Project by default and removes it after download/verification; pass --keep-project only for debugging.",
         }
+        if isinstance(extra, dict):
+            payload.update(extra)
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
             print(f"visual-artifact-roundtrip: {payload['status']}")
-            print(f"error={payload['error']}")
+            if payload.get("error"):
+                print(f"error={payload['error']}")
         return 1
 
-    answer_text, conversation_url = _split_ask_response(ask_result)
-    parsed = parse_promptbranch_reply(str(answer_text or ""))
-    intake = _artifact_intake_from_parsed_answer(parsed, expected_filename=output_filename)
-    conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
-    answer_id = parsed.get("answer_id") or "answer_unknown"
-    intake.update({
-        "conversation_url": conversation_url,
-        "conversation_id": conversation_id,
-        "answer_id": answer_id,
-        "reply_request_id": parsed.get("request_id"),
-        "reply_correlation_id": parsed.get("correlation_id"),
-        "source": "visual_artifact_roundtrip_ask_answer",
-    })
+    try:
+        if explicit_conversation_url:
+            test_project_url = project_home_url_from_url(explicit_conversation_url) or explicit_conversation_url
+            test_project_name = "explicit-conversation-url"
+            setattr(args, "conversation_url", explicit_conversation_url)
+        else:
+            safe_run = re.sub(r"[^A-Za-z0-9_-]+", "-", run_id).strip("-") or "run"
+            prefix = str(getattr(args, "project_name_prefix", None) or "visual-artifact-roundtrip-temp")
+            test_project_name = str(getattr(args, "project_name", None) or f"{prefix}-{safe_run}")
+            setup_result = await backend.ensure_project(
+                name=test_project_name,
+                icon=getattr(args, "project_icon", None),
+                color=getattr(args, "project_color", None),
+                memory_mode=getattr(args, "memory_mode", "project-only"),
+                keep_open=False,
+            )
+            if not setup_result.get("ok"):
+                return await emit_failure(
+                    "test_project_setup_failed",
+                    error=str(setup_result.get("error") or setup_result.get("status") or "test project setup failed"),
+                    error_type=str(setup_result.get("error_type") or "ProjectSetupFailed"),
+                )
+            test_project_created = True
+            test_project_url = setup_result.get("project_url") if isinstance(setup_result.get("project_url"), str) else None
+            if not test_project_url:
+                return await emit_failure(
+                    "test_project_url_missing",
+                    error="temporary project setup did not return project_url",
+                    error_type="ProjectUrlMissing",
+                )
+            setattr(args, "conversation_url", test_project_url)
 
-    download = await _download_selected_artifact_candidate_via_browser(
-        backend,
-        intake,
-        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-        conversation_id=conversation_id,
-        answer_id=answer_id,
-        timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
-        keep_open=bool(getattr(args, "keep_open", False)),
-    )
-    verified = _verify_intake_smoke_zip_candidate(
-        download,
-        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-        conversation_id=conversation_id,
-        answer_id=answer_id,
-        expected_entries=[output_entry],
-        expected_content=output_content,
-    )
-    verified = _artifact_intake_no_state_mutation_flags(verified)
+        ask_result = await backend.ask(
+            prompt=prompt,
+            attachment_paths=[str(input_zip)],
+            conversation_url=getattr(args, "conversation_url", None),
+            expect_json=False,
+            keep_open=bool(getattr(args, "keep_open", False)),
+            retries=getattr(args, "retries", None),
+        )
+        answer_text, conversation_url = _split_ask_response(ask_result)
+        response_project_home_url = project_home_url_from_url(conversation_url)
+        in_expected_project, expected_project_id, response_project_id = _ask_live_in_expected_project(
+            expected_project_home_url=project_home_url_from_url(test_project_url) or test_project_url,
+            response_project_home_url=response_project_home_url,
+        )
+        if not in_expected_project:
+            return await emit_failure(
+                "wrong_project",
+                error="visual artifact roundtrip answer came from a conversation outside the expected project",
+                error_type="WrongProject",
+                extra={"answer_text_length": len(str(answer_text or ""))},
+            )
+
+        parsed = parse_promptbranch_reply(str(answer_text or ""))
+        intake = _artifact_intake_from_parsed_answer(parsed, expected_filename=output_filename)
+        conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
+        answer_id = parsed.get("answer_id") or "answer_unknown"
+        intake.update({
+            "conversation_url": conversation_url,
+            "conversation_id": conversation_id,
+            "answer_id": answer_id,
+            "reply_request_id": parsed.get("request_id"),
+            "reply_correlation_id": parsed.get("correlation_id"),
+            "source": "visual_artifact_roundtrip_ask_answer",
+        })
+
+        download = await _download_selected_artifact_candidate_via_browser(
+            backend,
+            intake,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=conversation_id,
+            answer_id=answer_id,
+            timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+            keep_open=bool(getattr(args, "keep_open", False)),
+        )
+        verified = _verify_intake_smoke_zip_candidate(
+            download,
+            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+            conversation_id=conversation_id,
+            answer_id=answer_id,
+            expected_entries=[output_entry],
+            expected_content=output_content,
+        )
+        verified = _artifact_intake_no_state_mutation_flags(verified)
+    except Exception as exc:  # noqa: BLE001 - live browser test must report structured failures
+        return await emit_failure(
+            "ask_or_intake_failed",
+            error=str(exc),
+            error_type=exc.__class__.__name__,
+        )
+    finally:
+        if test_project_created and not bool(getattr(args, "keep_project", False)):
+            try:
+                cleanup_result = await backend.remove_project(keep_open=False)
+                test_project_removed = bool(cleanup_result.get("ok", True))
+            except Exception as exc:  # noqa: BLE001 - cleanup failure must be reported, not raised
+                cleanup_result = {
+                    "ok": False,
+                    "status": "test_project_cleanup_failed",
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                }
+        _restore_ask_live_state(backend, original_snapshot if isinstance(original_snapshot, dict) else {})
+        if explicit_conversation_url:
+            setattr(args, "conversation_url", explicit_conversation_url)
+
+    cleanup_ok = True
+    if test_project_created and not bool(getattr(args, "keep_project", False)):
+        cleanup_ok = bool(test_project_removed)
+    ok = bool(verified and verified.get("ok") and cleanup_ok)
+    if not cleanup_ok:
+        status = "cleanup_failed"
+    elif verified and verified.get("ok"):
+        status = "verified"
+    else:
+        status = (verified or {}).get("status") or "failed"
+    conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
     payload = {
-        "ok": bool(verified.get("ok")),
+        "ok": ok,
         "action": "test_visual_artifact_roundtrip",
         "profile": "visual-artifact-roundtrip",
-        "status": "verified" if verified.get("ok") else (verified.get("status") or "failed"),
+        "status": status,
         "version": f"v{CLI_VERSION}",
         "run_id": run_id,
         "debug_browser": True,
         "service_transport_used": False,
+        "mode": "visible_local_debug_browser",
+        "profile_dir": profile_dir,
         "input_zip": str(input_zip),
         "input_entry": input_entry,
         "input_content": input_content,
@@ -15277,33 +15405,47 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "expected_content": output_content,
         "conversation_url": conversation_url,
         "conversation_id": conversation_id,
+        "response_project_home_url": response_project_home_url,
+        "expected_project_home_url": project_home_url_from_url(test_project_url) or test_project_url,
+        "expected_project_id": expected_project_id,
+        "response_project_id": response_project_id,
+        "in_expected_project": in_expected_project,
+        "uses_temporary_project": not bool(explicit_conversation_url),
+        "test_project_name": test_project_name,
+        "test_project_url": test_project_url,
+        "test_project_created": test_project_created,
+        "test_project_removed": test_project_removed,
+        "test_project_kept": bool(getattr(args, "keep_project", False)),
+        "test_project_setup": setup_result,
+        "test_project_cleanup": cleanup_result,
         "answer_text_length": len(str(answer_text or "")),
-        "reply_parse_status": parsed.get("status"),
-        "artifact_candidate_status": intake.get("status"),
-        "download_status": download.get("status"),
-        "verification_status": verified.get("status"),
-        "download_performed": bool(verified.get("download_performed")),
-        "verification_performed": bool(verified.get("smoke_verification_performed") or verified.get("verification_performed")),
-        "download": verified.get("download"),
-        "smoke_verification": verified.get("smoke_verification"),
-        "intake_record_path": verified.get("intake_record_path"),
+        "reply_parse_status": (parsed or {}).get("status"),
+        "artifact_candidate_status": (intake or {}).get("status"),
+        "download_status": (download or {}).get("status"),
+        "verification_status": (verified or {}).get("status"),
+        "download_performed": bool((verified or {}).get("download_performed")),
+        "verification_performed": bool((verified or {}).get("smoke_verification_performed") or (verified or {}).get("verification_performed")),
+        "download": (verified or {}).get("download"),
+        "smoke_verification": (verified or {}).get("smoke_verification"),
+        "intake_record_path": (verified or {}).get("intake_record_path"),
         "ask_equivalent_command": ask_equivalent_command,
         "intake_equivalent_command": intake_equivalent_command,
         "ask_result_summary": {
-            "type": ask_result.__class__.__name__,
+            "type": ask_result.__class__.__name__ if ask_result is not None else None,
             "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
         },
         "parsed_reply": parsed,
         "artifact_intake": verified,
-        "operator_note": "This live test sends a local ZIP visibly through ChatGPT, downloads the generated ZIP through artifact intake, and verifies smoke ZIP contents without release adoption.",
+        "operator_note": "This live test creates an isolated temporary ChatGPT Project by default, sends a local ZIP visibly through that project, downloads the generated ZIP through artifact intake, verifies smoke ZIP contents, and removes the temporary project unless --keep-project is used.",
     }
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(f"visual-artifact-roundtrip: {payload['status']}")
         print(f"conversation_url={conversation_url or 'unknown'}")
+        print(f"test_project={test_project_name or 'none'} removed={test_project_removed}")
         print(f"input_zip={input_zip}")
-        print(f"downloaded={(verified.get('download') or {}).get('path') if isinstance(verified.get('download'), dict) else 'unknown'}")
+        print(f"downloaded={((verified or {}).get('download') or {}).get('path') if isinstance((verified or {}).get('download'), dict) else 'unknown'}")
     return 0 if payload.get("ok") else 1
 
 
@@ -16452,6 +16594,13 @@ def make_parser() -> argparse.ArgumentParser:
     test_visual_artifact_roundtrip.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")
     test_visual_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
     test_visual_artifact_roundtrip.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after the ask/download steps.")
+    test_visual_artifact_roundtrip.add_argument("--keep-project", action="store_true", help="Keep the temporary ChatGPT Project for debugging instead of removing it after the run.")
+    test_visual_artifact_roundtrip.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of creating a temporary project.")
+    test_visual_artifact_roundtrip.add_argument("--project-name", help="Explicit temporary ChatGPT Project name. Defaults to <prefix>-<run-id>.")
+    test_visual_artifact_roundtrip.add_argument("--project-name-prefix", default="visual-artifact-roundtrip-temp", help="Temporary ChatGPT Project name prefix.")
+    test_visual_artifact_roundtrip.add_argument("--project-icon", help="Optional temporary project icon passed to project creation.")
+    test_visual_artifact_roundtrip.add_argument("--project-color", help="Optional temporary project color passed to project creation.")
+    test_visual_artifact_roundtrip.add_argument("--memory-mode", default="project-only", help="Temporary project memory mode. Defaults to project-only.")
     test_visual_artifact_roundtrip.add_argument("--retries", type=int, help="Retry count passed to the visual pb ask step.")
     test_visual_artifact_roundtrip.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for the retrieve step.")
     test_visual_artifact_roundtrip.add_argument("--input-entry", default="input.txt", help="Filename to place inside the locally generated input ZIP.")
