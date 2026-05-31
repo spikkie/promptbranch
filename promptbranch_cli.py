@@ -6160,6 +6160,66 @@ def _augment_release_candidate_request(envelope: dict[str, Any], expected: dict[
     return enriched
 
 
+def _build_zip_artifact_user_prompt(
+    *,
+    request_label: str,
+    expected_artifact: Any,
+    baseline: Any,
+    current_version: Any,
+    target_version: Any,
+    result_type: str,
+    expected_role: str,
+    prompt_text: str,
+    artifact_version_required: bool = True,
+    no_change_disallowed: bool = True,
+    forbidden_claims: str | None = None,
+) -> str:
+    """Build the canonical user prompt for requests that must create a ZIP.
+
+    Release-candidate asks and live visual artifact tests both depend on the
+    same prompt contract shape: state the expected ZIP, state the baseline or
+    test context, then provide the concrete implementation scope.  Keeping this
+    text generation in one helper prevents test fixtures from drifting away from
+    production prompt wording.
+    """
+
+    role_clause = f"role {expected_role}"
+    if artifact_version_required:
+        artifact_rule = (
+            "The reply envelope artifacts array MUST contain exactly one ZIP candidate "
+            f"with the expected filename, version, {role_clause}, and a real downloadable ChatGPT attachment/link. "
+        )
+    else:
+        artifact_rule = (
+            "The reply envelope artifacts array MUST contain exactly one ZIP candidate "
+            f"with the expected filename, {role_clause}, and a real downloadable ChatGPT attachment/link. "
+        )
+
+    status_rule = f"The reply envelope MUST use status completed and result_type {result_type}. "
+    no_change_rule = (
+        "Do not return status no_artifact or result_type no_change for this command. "
+        if no_change_disallowed
+        else ""
+    )
+    forbidden_claims_rule = f"{forbidden_claims.strip()} " if forbidden_claims else ""
+    prompt_body = str(prompt_text or "").strip()
+    display_baseline = "none" if baseline is None else str(baseline)
+    display_current_version = "none" if current_version is None else str(current_version)
+    display_target_version = "none" if target_version is None else str(target_version)
+    return (
+        f"{request_label}. Create exactly one ZIP artifact named {expected_artifact}.\n"
+        f"Input baseline: {display_baseline}\n"
+        f"Input version: {display_current_version}\n"
+        f"Target version: {display_target_version}\n"
+        f"{status_rule}"
+        f"{artifact_rule}"
+        f"{no_change_rule}"
+        f"{forbidden_claims_rule}\n\n"
+        "Requested implementation scope:\n"
+        f"{prompt_body}"
+    )
+
+
 def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], envelope: dict[str, Any]) -> str:
     artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
     baseline = artifact.get("current_baseline")
@@ -6172,17 +6232,18 @@ def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], e
             f"Build {expected_artifact} from accepted baseline {baseline}. "
             f"Implement the target version {target_version} as requested by the current project plan."
         )
-    return (
-        f"Release-candidate request. Create exactly one ZIP artifact named {expected_artifact}.\n"
-        f"Input baseline: {baseline}\n"
-        f"Input version: {current_version}\n"
-        f"Target version: {target_version}\n"
-        "The reply envelope MUST use status completed and result_type release_candidate. "
-        "The reply envelope artifacts array MUST contain exactly one ZIP candidate with the expected filename, version, role candidate_release, and a downloadable ChatGPT attachment/link when available. "
-        "Do not return status no_artifact or result_type no_change for this command. "
-        "Do not claim adoption, Project Source mutation, Git commit, or Git push.\n\n"
-        "Requested implementation scope:\n"
-        f"{prompt_text}"
+    return _build_zip_artifact_user_prompt(
+        request_label="Release-candidate request",
+        expected_artifact=expected_artifact,
+        baseline=baseline,
+        current_version=current_version,
+        target_version=target_version,
+        result_type="release_candidate",
+        expected_role="candidate_release",
+        prompt_text=prompt_text,
+        artifact_version_required=True,
+        no_change_disallowed=True,
+        forbidden_claims="Do not claim adoption, Project Source mutation, Git commit, or Git push.",
     )
 
 
@@ -14989,7 +15050,7 @@ def _create_visual_roundtrip_input_zip(
     return zip_path
 
 
-def _visual_artifact_roundtrip_prompt(
+def _visual_artifact_roundtrip_scope(
     *,
     run_id: str,
     input_entry: str,
@@ -14999,84 +15060,75 @@ def _visual_artifact_roundtrip_prompt(
     output_content: str,
 ) -> str:
     request_id = f"visual-artifact-roundtrip-{run_id}"
-    return f"""Promptbranch visual artifact roundtrip test.
-
-You are testing local visual ZIP send and ZIP retrieval.
+    return f"""This is a real artifact-creation test, not a text-only protocol test.
+The run fails if you only print a path or only claim that a ZIP exists.
+Do not copy or invent a success envelope; construct the reply only after the downloadable ZIP exists.
 
 Input attachment requirement:
 - Read the attached ZIP.
 - It should contain {input_entry!r} with exactly this UTF-8 text:
 {input_content}
 
-Output artifact requirement:
-- Create a real downloadable ZIP artifact named exactly: {output_filename}
-- The ZIP must contain exactly one file at the ZIP root: {output_entry}
-- {output_entry} must contain exactly this UTF-8 text, with no extra characters:
+Hard execution rules:
+1. Before writing the reply envelope, create an actual downloadable ZIP file using the available file/artifact creation capability.
+2. The real downloadable file name must be exactly: {output_filename}
+3. The ZIP must contain exactly one file at the ZIP root: {output_entry}
+4. {output_entry} must contain exactly this UTF-8 text, with no extra characters:
 {output_content}
+5. Reopen the ZIP after creating it and verify the entry list and file content before claiming success.
+6. First line of the final response must be a Markdown download link to the actual created ZIP. The link target must be copied from the real downloadable artifact link exposed by the environment.
+7. Do not put only a guessed local path in the JSON. A download candidate is valid only when the first-line Markdown link can be used to retrieve the file.
 
-Reply protocol requirement:
-- Return one Promptbranch reply envelope after creating the downloadable ZIP.
+Reply envelope rules:
+- Return exactly one Promptbranch reply envelope after the Markdown download link.
 - Do not wrap the envelope in a Markdown code fence.
-- The envelope must begin with BEGIN_PROMPTBRANCH_REPLY_JSON and end with END_PROMPTBRANCH_REPLY_JSON.
-- In artifacts[0], use filename {output_filename!r}.
-- In artifacts[0].download.url, set the actual sandbox:/mnt/data/... URL/path for the downloadable ZIP you created.
-- If you cannot create the ZIP, return status "failed" and no artifacts.
-
-BEGIN_PROMPTBRANCH_REPLY_JSON
-{{
-  "schema": "promptbranch.ask.reply",
-  "schema_version": "1.0",
-  "request_id": "{request_id}",
-  "correlation_id": "{request_id}",
-  "status": "completed",
-  "result_type": "test_report",
-  "summary": "Created visual artifact roundtrip ZIP.",
-  "baseline": {{
-    "input_artifact": null,
-    "input_version": null,
-    "output_artifact": "{output_filename}",
-    "output_version": null,
-    "release_type": "visual_artifact_roundtrip"
-  }},
-  "changes": [
-    {{
-      "path": "{output_entry}",
-      "kind": "added",
-      "summary": "Smoke file inside visual artifact roundtrip ZIP."
-    }}
-  ],
-  "artifacts": [
-    {{
-      "kind": "zip",
-      "filename": "{output_filename}",
-      "version": null,
-      "role": "visual_artifact_roundtrip_output",
-      "download": {{
-        "available": true,
-        "link_text": "{output_filename}",
-        "url": "REPLACE_WITH_ACTUAL_SANDBOX_URL"
-      }}
-    }}
-  ],
-  "validation": {{
-    "claimed": [
-      "input ZIP was read",
-      "output ZIP was created",
-      "output ZIP contains {output_entry}"
-    ],
-    "not_claimed": [
-      "release artifact validation",
-      "baseline adoption"
-    ]
-  }},
-  "next_step": {{
-    "operator_action": "artifact_intake_download_verify_smoke_zip",
-    "recommended_command": "pb artifact intake --from-last-answer --download --verify-smoke-zip --expect-entry {output_entry} --expect-content <expected-content> --json"
-  }},
-  "confidence": "medium"
-}}
-END_PROMPTBRANCH_REPLY_JSON
+- The envelope must begin with the line BEGIN_PROMPTBRANCH_REPLY_JSON and end with the line END_PROMPTBRANCH_REPLY_JSON.
+- The JSON inside the envelope must be valid JSON.
+- request_id must be exactly: {request_id}
+- correlation_id must be exactly: {request_id}
+- artifacts[0].kind must be "zip".
+- artifacts[0].filename must be exactly: {output_filename}
+- artifacts[0].role must be "visual_artifact_roundtrip_output".
+- artifacts[0].download.available must be true.
+- artifacts[0].download.link_text must be exactly: {output_filename}
+- artifacts[0].download.url must be exactly the same real downloadable URL/path used in the first-line Markdown link.
+- The baseline object must use input_artifact null, input_version null, output_artifact {output_filename!r}, output_version null, release_type "visual_artifact_roundtrip".
+- The changes array must include one added path: {output_entry!r}.
+- validation.claimed may claim ZIP creation only after the ZIP exists and was reopened successfully.
+- If you cannot create a real downloadable ZIP, return status "failed", result_type "test_report", artifacts: [], and do not claim that the ZIP was created.
+- Do not use placeholder URLs, example paths, or guessed artifact locations.
 """
+
+
+def _visual_artifact_roundtrip_prompt(
+    *,
+    run_id: str,
+    input_entry: str,
+    input_content: str,
+    output_filename: str,
+    output_entry: str,
+    output_content: str,
+) -> str:
+    return _build_zip_artifact_user_prompt(
+        request_label="Visual artifact roundtrip request",
+        expected_artifact=output_filename,
+        baseline=None,
+        current_version=None,
+        target_version=None,
+        result_type="test_report",
+        expected_role="visual_artifact_roundtrip_output",
+        prompt_text=_visual_artifact_roundtrip_scope(
+            run_id=run_id,
+            input_entry=input_entry,
+            input_content=input_content,
+            output_filename=output_filename,
+            output_entry=output_entry,
+            output_content=output_content,
+        ),
+        artifact_version_required=False,
+        no_change_disallowed=True,
+        forbidden_claims="Do not claim release validation, baseline adoption, Project Source mutation, Git commit, or Git push.",
+    )
 
 
 async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argparse.Namespace) -> int:
