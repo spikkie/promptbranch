@@ -8091,6 +8091,26 @@ def _artifact_version_from_filename(filename: str) -> str | None:
     return version if valid_version_text(version) else None
 
 
+def _artifact_prefix_from_filename(filename: str) -> str | None:
+    """Return the artifact identity prefix before the final _VERSION.zip suffix.
+
+    Worktree/transport artifact lines may intentionally use prefixes such as
+    ``chatgpt_claudecode_workflow-2``. Release diagnostics must report that
+    prefix explicitly instead of silently collapsing it to the canonical project
+    slug.
+    """
+
+    value = Path(str(filename or "")).name
+    match = re.match(r"^(?P<prefix>.+)_(?P<version>v?\d+\.\d+\.\d+(?:\.\d+)?)\.zip$", value)
+    if not match:
+        return None
+    version = match.group("version")
+    if not valid_version_text(version):
+        return None
+    prefix = match.group("prefix").strip()
+    return prefix or None
+
+
 def _read_zip_version_file(path: str | Path) -> str | None:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -8510,10 +8530,17 @@ def _release_doctor_artifact_summary(artifact_arg: str | None, *, repo_root: Pat
 
     filename = resolved.name
     filename_version = _artifact_version_from_filename(filename)
+    artifact_prefix = _artifact_prefix_from_filename(filename)
+    filename_has_version_suffix = bool(filename_version)
     payload: dict[str, Any] = {
         "attempted": True,
         "path": str(resolved),
         "filename": filename,
+        "artifact_prefix": artifact_prefix,
+        "artifact_identity": artifact_prefix,
+        "artifact_line": artifact_prefix,
+        "zip_suffix": ".zip",
+        "filename_has_version_suffix": filename_has_version_suffix,
         "present": resolved.is_file(),
         "filename_version": filename_version,
         "filename_version_normalized": _candidate_version_normalized(filename_version),
@@ -8544,6 +8571,20 @@ def _release_doctor_artifact_summary(artifact_arg: str | None, *, repo_root: Pat
         blocking_errors.append("artifact_version_file_missing_or_invalid")
     if version_mismatch:
         blocking_errors.append("artifact_filename_version_mismatch")
+    if filename.lower().endswith(".zip") and not filename_has_version_suffix:
+        blocking_errors.append("artifact_filename_version_missing_or_invalid")
+
+    layout_checks = {
+        "zip_opens": verification.get("error") != "bad_zip",
+        "has_version_file": bool(verification.get("has_version_file")),
+        "version_file_valid": bool(normalized_zip_version),
+        "filename_version_valid": bool(normalized_filename_version),
+        "version_file_matches_filename": not version_mismatch,
+        "root_has_no_wrapper_folder": verification.get("wrapper_folder") is None,
+        "no_unsafe_entries": not bool(verification.get("unsafe_entries")),
+        "no_hygiene_violations": int(verification.get("hygiene_violation_count") or 0) == 0,
+        "no_nested_zip_entries": int(verification.get("nested_zip_count") or 0) == 0,
+    }
 
     payload.update({
         "verification": verification,
@@ -8558,6 +8599,7 @@ def _release_doctor_artifact_summary(artifact_arg: str | None, *, repo_root: Pat
         "wrapper_folder": verification.get("wrapper_folder"),
         "hygiene_violation_count": verification.get("hygiene_violation_count"),
         "nested_zip_count": verification.get("nested_zip_count"),
+        "layout_checks": layout_checks,
         "blocking_errors": blocking_errors,
         "ok": not blocking_errors,
         "status": "verified" if not blocking_errors else "blocked",
@@ -8588,6 +8630,8 @@ def _release_doctor_artifact_consistency(
         }
 
     runtime_version = expected.get("runtime_version_normalized")
+    requested_version = expected.get("requested_version_normalized")
+    target_version = expected.get("target_version_normalized")
     version_file_value = version_file.get("normalized_version")
     artifact_version = artifact.get("normalized_version")
     baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
@@ -8610,6 +8654,10 @@ def _release_doctor_artifact_consistency(
 
     if artifact_version and runtime_version and artifact_version != runtime_version:
         warn("artifact_runtime_version_mismatch", "Candidate ZIP version differs from runtime code version.", artifact_version=artifact_version, runtime_version=runtime_version, version_relation=_compare_operator_versions(runtime_version, artifact_version))
+    if artifact_version and requested_version and artifact_version != requested_version:
+        warn("artifact_requested_version_mismatch", "Candidate ZIP version differs from the requested release-doctor --version value.", artifact_version=artifact_version, requested_version=requested_version, version_relation=_compare_operator_versions(requested_version, artifact_version))
+    if artifact_version and target_version and artifact_version != target_version:
+        warn("artifact_target_version_mismatch", "Candidate ZIP version differs from the requested release-doctor --target-version value.", artifact_version=artifact_version, target_version=target_version, version_relation=_compare_operator_versions(target_version, artifact_version))
     if artifact_version and version_file_value and artifact_version != version_file_value:
         warn("artifact_version_file_mismatch", "Candidate ZIP version differs from working-tree VERSION file.", artifact_version=artifact_version, version_file_version=version_file_value)
     if project_sources.get("attempted") and artifact_version and artifact_version not in source_versions:
@@ -8618,11 +8666,15 @@ def _release_doctor_artifact_consistency(
     checks = {
         "artifact_zip_verified": bool(artifact.get("ok")),
         "artifact_matches_runtime": not artifact_version or not runtime_version or artifact_version == runtime_version,
+        "artifact_matches_requested_version": not artifact_version or not requested_version or artifact_version == requested_version,
+        "artifact_matches_target_version": not artifact_version or not target_version or artifact_version == target_version,
         "artifact_matches_version_file": not artifact_version or not version_file_value or artifact_version == version_file_value,
         "artifact_visible_in_project_sources": (not project_sources.get("attempted")) or (not artifact_version) or artifact_version in source_versions,
         "artifact_matches_adopted_source": not artifact_version or not adopted_source or artifact_version == adopted_source,
         "artifact_matches_adopted_artifact": not artifact_version or not adopted_artifact or artifact_version == adopted_artifact,
         "artifact_matches_registry_current": not artifact_version or not registry_current or artifact_version == registry_current,
+        "artifact_prefix_present": bool(artifact.get("artifact_prefix")),
+        "artifact_filename_version_valid": bool(artifact.get("filename_version_normalized")),
     }
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
@@ -8684,6 +8736,8 @@ def _release_doctor_lifecycle_phase(
         "phase": phase,
         "blocked": phase == "lifecycle_blocked",
         "artifact_version": artifact_version,
+        "artifact_prefix": artifact.get("artifact_prefix") if artifact.get("attempted") else None,
+        "artifact_filename": artifact.get("filename") if artifact.get("attempted") else None,
         "runtime_version": runtime_version,
         "adopted_source_version": adopted_source,
         "adopted_artifact_version": adopted_artifact,
@@ -8691,6 +8745,7 @@ def _release_doctor_lifecycle_phase(
         "project_source_versions": source_versions,
         "artifact_requested": bool(artifact.get("attempted")),
         "artifact_verified": bool(artifact.get("ok")) if artifact.get("attempted") else None,
+        "artifact_matches_adopted": artifact_version in {adopted_source, adopted_artifact, registry_current} if artifact_version else None,
         "artifact_visible_in_project_sources": (artifact_version in source_versions) if artifact_version and project_sources.get("attempted") else None,
     }
 
