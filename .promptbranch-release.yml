@@ -1,7 +1,7 @@
 schema_version: 1
 
 artifact:
-  prefix: chatgpt_claudecode_workflow_
+  prefix: chatgpt_claudecode_workflow-2_
   suffix: .zip
   version_file: VERSION
   policy_file: .promptbranch-project.json
