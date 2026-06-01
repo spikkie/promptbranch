@@ -6243,6 +6243,70 @@ hooks:
     assert payload["blocker_codes"] == []
 
 
+
+def test_release_install_plan_reports_add_replace_preserve_and_baseline_context(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+    - .env
+    - .pb_profile/
+git:
+  unsafe_paths:
+    - .env
+    - .pb_profile/
+    - '*.zip'
+hooks:
+  doctor:
+    command: pb release doctor --version {version} --artifact {artifact} --repo-path {repo_path} --json
+""".lstrip(), encoding="utf-8")
+    (repo / "VERSION").write_text("v0.0.257\n", encoding="utf-8")
+    (repo / "README.md").write_text("old readme\n", encoding="utf-8")
+    (repo / ".env").write_text("SECRET=keep\n", encoding="utf-8")
+    artifact = repo / "chatgpt_claudecode_workflow_v0.0.258.zip"
+    _write_test_release_zip(artifact, "v0.0.258")
+    args = argparse.Namespace(
+        artifact=str(artifact),
+        version="v0.0.258",
+        target_version="v0.0.258",
+        config=str(config),
+        repo_path=str(repo),
+        plan=True,
+        upload_source=False,
+        keep_open=False,
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_install(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["read_only"] is True
+    assert payload["mutating_actions_executed"] is False
+    target_plan = payload["install_target_plan"]
+    assert target_plan["read_only"] is True
+    assert target_plan["would_replace_count"] == 2
+    assert set(target_plan["would_replace_sample"]) == {"README.md", "VERSION"}
+    assert target_plan["would_add_count"] == 0
+    assert {item["path"] for item in target_plan["preserve_status"]} == {".git/", ".env", ".pb_profile/"}
+    install_plan = payload["install_plan"]
+    assert install_plan["target_plan"] == target_plan
+    assert install_plan["artifact_layout_checks"]["root_has_no_wrapper_folder"] is True
+    assert install_plan["artifact_unsafe_entry_count"] == 0
+    assert install_plan["baseline_comparison"]["read_only"] is True
+    assert install_plan["baseline_comparison"]["candidate_version"] == "v0.0.258"
+
+
 def test_release_install_blocks_preserved_entries_before_mutation(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6977,6 +7041,66 @@ hooks:
     assert [item["phase"] for item in payload["phase_plan"]] == ["doctor", "install", "test", "adopt", "policy_sync", "git_sync"]
     assert not (repo / ".promptbranch-project.json").exists()
 
+
+
+
+def test_release_lifecycle_plan_embeds_read_only_install_planning(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+    - .pb_profile/
+hooks:
+  preflight:
+    command: python -c "print('preflight')"
+""".lstrip(), encoding="utf-8")
+    (repo / "VERSION").write_text("v0.0.257\n", encoding="utf-8")
+    (repo / "README.md").write_text("old\n", encoding="utf-8")
+    artifact = repo / "chatgpt_claudecode_workflow_v0.0.258.zip"
+    _write_test_release_zip(artifact, "v0.0.258")
+    args = argparse.Namespace(
+        artifact=str(artifact),
+        version="v0.0.258",
+        target_version="v0.0.258",
+        config=str(config),
+        repo_path=str(repo),
+        plan=True,
+        commit=False,
+        push=False,
+        message=None,
+        keep_open=False,
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_lifecycle(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "planned"
+    assert payload["read_only"] is True
+    assert payload["would_mutate"] is False
+    assert payload["mutating_actions_executed"] is False
+    assert all(item["will_execute"] is False for item in payload["phase_plan"])
+    planning = payload["lifecycle_planning"]
+    assert planning["read_only"] is True
+    assert planning["would_mutate"] is False
+    assert planning["install_plan_status"] == "planned"
+    assert planning["install_plan_ok"] is True
+    assert planning["install_target_plan"]["would_replace_count"] == 2
+    assert planning["baseline_comparison"]["candidate_version"] == "v0.0.258"
 
 
 def test_release_lifecycle_executes_guarded_phases_through_policy_sync(capsys, tmp_path) -> None:
