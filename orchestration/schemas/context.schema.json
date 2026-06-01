@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.orchestration.context.schema.json",
+  "title": "Promptbranch Orchestration Context",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "request_id",
+    "correlation_id",
+    "project",
+    "current_state",
+    "user_intent",
+    "allowed_reply_types",
+    "constraints"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.orchestration.context"},
+    "schema_version": {"const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "project": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "type": {"const": "software_engineering"}
+      },
+      "additionalProperties": true
+    },
+    "current_state": {"type": "object"},
+    "user_intent": {"type": "object"},
+    "allowed_reply_types": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["model_may_execute", "promptbranch_validates"],
+      "properties": {
+        "model_may_execute": {"const": false},
+        "promptbranch_validates": {"const": true}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

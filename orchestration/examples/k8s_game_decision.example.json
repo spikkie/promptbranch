@@ -1,0 +1,31 @@
+{
+  "schema": "promptbranch.orchestration.decision",
+  "schema_version": "1.0",
+  "request_id": "req_k8s_game_mvp_0001",
+  "correlation_id": "req_k8s_game_mvp_0001",
+  "stage": "grill_me",
+  "decision": "go_with_constraints",
+  "proposed_transition": {
+    "from": "intake_accepted",
+    "to": "grill_me_accepted"
+  },
+  "required_agents": [
+    "workflow_orchestrator_agent",
+    "grill_me_agent",
+    "design_boundary_agent"
+  ],
+  "risks": [
+    "scope creep into game product",
+    "unclear Kubernetes target",
+    "deployment assumptions before evidence exists"
+  ],
+  "next_action": {
+    "kind": "create_planning_artifact",
+    "target": "orchestration/docs/k8s_game_mvp_contract.md",
+    "target_version": "v0.1.0"
+  },
+  "execution_authority": {
+    "model_may_execute": false,
+    "promptbranch_must_validate": true
+  }
+}
