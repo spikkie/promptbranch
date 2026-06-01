@@ -31,10 +31,17 @@ repo_basename="$(basename "${repo_root}")"
 # derived from --install-from-zip. Defaulting to the repo/worktree basename keeps
 # worktree artifact lines such as chatgpt_claudecode_workflow-2_vX.zip stable.
 artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
-# Runtime/Docker identity is instance-specific and may be derived from COMPOSE_PROJECT_NAME
-# or the worktree directory name when COMPOSE_PROJECT_NAME is not set.
-compose_project_name="${COMPOSE_PROJECT_NAME:-${PROMPTBRANCH_COMPOSE_PROJECT_NAME:-${repo_basename}}}"
-service_port="${PROMPTBRANCH_SERVICE_PORT:-8000}"
+# Runtime/Docker identity is intentionally single-default per machine.
+# Installing from another branch/worktree replaces the active local runtime; it
+# must not create a second Compose stack or alternate service port. Artifact
+# identity may still be branch/worktree-specific and is handled separately below.
+runtime_mode="single_default"
+compose_project_name="${PROMPTBRANCH_DEFAULT_COMPOSE_PROJECT_NAME:-${project_name}}"
+service_port="${PROMPTBRANCH_DEFAULT_SERVICE_PORT:-8000}"
+service_base_url="http://localhost:${service_port}"
+export COMPOSE_PROJECT_NAME="${compose_project_name}"
+export PROMPTBRANCH_SERVICE_PORT="${service_port}"
+export CHATGPT_SERVICE_BASE_URL="${service_base_url}"
 version_file="${repo_root}/VERSION"
 downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
 work_parent="${TMPDIR:-/tmp}/${repo_basename}_release_import"
@@ -1307,7 +1314,7 @@ compose_service_container_id() {
   if ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
-  COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}"     docker compose -p "${compose_project_name}" -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
+  COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
 }
 
 write_container_inspect_json() {
@@ -1402,18 +1409,20 @@ deploy_promptbranch_service_detached() {
   {
     echo "== Docker service recreate =="
     echo "compose_file: ${compose_file}"
+    echo "runtime_mode: ${runtime_mode}"
     echo "compose_project_name: ${compose_project_name}"
     echo "service_port: ${service_port}"
+    echo "service_base_url: ${service_base_url}"
     echo "expected_version: ${ver#v}"
     echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
     echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} build --pull"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --pull
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --pull
     echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
     echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
   } >"${service_start_log}" 2>&1
 
   container_id="$(compose_service_container_id)"
@@ -1455,16 +1464,16 @@ if [[ ${skip_tests} -eq 0 ]]; then
   report_rc=0
   set +e
 
-  echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
-  timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
+  echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
     workflow_rc=${test_rc}
   fi
 
-  echo "+ pb test report ${full_log} --json"
-  pb test report "${full_log}" --json | tee "${report_json}"
+  echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} pb test report ${full_log} --json"
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" pb test report "${full_log}" --json | tee "${report_json}"
   report_rc=${PIPESTATUS[0]}
   if [[ ${report_rc} -ne 0 ]]; then
     echo "WARN: pb test report exited with ${report_rc}." >&2
@@ -1619,8 +1628,10 @@ adopt_if_green: ${adopt_if_green}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")
 service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")
 service_start: $(summary_value "${service_summary_active}" "${service_start_log}")
+runtime_mode:   ${runtime_mode}
 compose_name:   ${compose_project_name}
 service_port:   ${service_port}
+service_base:   ${service_base_url}
 service_health: $(summary_value "${service_summary_active}" "${service_health_json}")
 compose_ps:     $(summary_value "${service_summary_active}" "${service_compose_ps_json}")
 service_pid:   $(summary_value "${service_summary_active}" "${service_pid_file}")

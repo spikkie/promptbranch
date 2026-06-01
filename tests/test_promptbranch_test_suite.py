@@ -415,6 +415,37 @@ def test_source_version_consistency_detects_promptbranch_version_file_drift(tmp_
     assert any(item["name"] == "promptbranch_version.py.PACKAGE_VERSION" for item in result["mismatches"])
 
 
+
+def test_source_version_consistency_accepts_parameterized_compose_default(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.1.1.1\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.1.1"\n', encoding="utf-8")
+    (tmp_path / "promptbranch_version.py").write_text('PACKAGE_VERSION = "0.1.1.1"\n', encoding="utf-8")
+    (tmp_path / "docker-compose.chatgpt-service.yml").write_text(
+        "services:\n  chatgpt-service:\n    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-0.1.1.1}}\n",
+        encoding="utf-8",
+    )
+
+    result = suite.source_version_consistency(repo_path=tmp_path)
+
+    assert result["ok"] is True
+    assert not result["missing"]
+    assert not result["mismatches"]
+
+
+def test_source_version_consistency_detects_parameterized_compose_default_drift(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / "promptbranch_version.py").write_text('PACKAGE_VERSION = "9.9.9"\n', encoding="utf-8")
+    (tmp_path / "docker-compose.chatgpt-service.yml").write_text(
+        "services:\n  chatgpt-service:\n    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-9.9.8}}\n",
+        encoding="utf-8",
+    )
+
+    result = suite.source_version_consistency(repo_path=tmp_path)
+
+    assert result["ok"] is False
+    assert any(item["name"] == "docker_compose.chatgpt_service.image" for item in result["mismatches"])
+
 def test_source_version_consistency_detects_compose_image_tag_drift(tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "9.9.9"\n', encoding="utf-8")
