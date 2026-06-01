@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.orchestration.decision.schema.json",
+  "title": "Promptbranch Orchestration Decision Proposal",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "request_id",
+    "correlation_id",
+    "stage",
+    "decision",
+    "proposed_transition",
+    "required_agents",
+    "risks",
+    "next_action",
+    "execution_authority"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.orchestration.decision"},
+    "schema_version": {"const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "stage": {
+      "enum": [
+        "intake",
+        "grill_me",
+        "architecture",
+        "slice_plan",
+        "implementation",
+        "artifact",
+        "release",
+        "deployment",
+        "maintenance"
+      ]
+    },
+    "decision": {
+      "enum": ["go", "no_go", "go_with_constraints", "needs_more_input", "blocked"]
+    },
+    "proposed_transition": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"type": "string"},
+        "to": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "required_agents": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "risks": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "next_action": {"type": "object"},
+    "execution_authority": {
+      "type": "object",
+      "required": ["model_may_execute", "promptbranch_must_validate"],
+      "properties": {
+        "model_may_execute": {"const": false},
+        "promptbranch_must_validate": {"const": true}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

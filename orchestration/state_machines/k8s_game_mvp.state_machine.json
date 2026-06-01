@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kind": "promptbranch_orchestration_state_machine",
+  "project_id": "k8s-game-mvp",
+  "initial_state": "draft",
+  "states": [
+    "draft",
+    "intake_accepted",
+    "grill_me_accepted",
+    "architecture_accepted",
+    "slice_plan_accepted",
+    "implementation_candidate",
+    "artifact_verified",
+    "release_adopted",
+    "deployment_smoke_passed",
+    "maintenance_ready"
+  ],
+  "transitions": [
+    {
+      "from": "draft",
+      "to": "intake_accepted",
+      "required_decision": "go_with_constraints"
+    },
+    {
+      "from": "intake_accepted",
+      "to": "grill_me_accepted",
+      "required_decision": "go_with_constraints"
+    },
+    {
+      "from": "grill_me_accepted",
+      "to": "architecture_accepted",
+      "required_decision": "go_with_constraints"
+    },
+    {
+      "from": "architecture_accepted",
+      "to": "slice_plan_accepted",
+      "required_decision": "go_with_constraints"
+    },
+    {
+      "from": "slice_plan_accepted",
+      "to": "implementation_candidate",
+      "required_decision": "go_with_constraints"
+    },
+    {
+      "from": "implementation_candidate",
+      "to": "artifact_verified",
+      "required_evidence": "artifact_candidate_verified"
+    },
+    {
+      "from": "artifact_verified",
+      "to": "release_adopted",
+      "required_evidence": "release_adopted"
+    },
+    {
+      "from": "release_adopted",
+      "to": "deployment_smoke_passed",
+      "required_evidence": "deployment_smoke_passed"
+    },
+    {
+      "from": "deployment_smoke_passed",
+      "to": "maintenance_ready",
+      "required_evidence": "maintenance_reviewed"
+    }
+  ],
+  "forbidden_capabilities": [
+    "model_executes_tools",
+    "model_adopts_artifacts",
+    "model_deploys",
+    "model_mutates_source"
+  ]
+}

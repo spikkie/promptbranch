@@ -1,0 +1,32 @@
+{
+  "schema": "promptbranch.orchestration.context",
+  "schema_version": "1.0",
+  "request_id": "req_k8s_game_mvp_0001",
+  "correlation_id": "req_k8s_game_mvp_0001",
+  "project": {
+    "name": "k8s-game-mvp",
+    "type": "software_engineering",
+    "mvp_track": "json_orchestration_state"
+  },
+  "current_state": {
+    "stage": "draft",
+    "accepted_baseline": null,
+    "latest_event": null
+  },
+  "user_intent": {
+    "summary": "Define the first orchestration contract for the K8s game MVP test vehicle."
+  },
+  "allowed_reply_types": [
+    "stage_decision",
+    "grill_me_result",
+    "architecture_proposal",
+    "slice_plan",
+    "release_candidate"
+  ],
+  "constraints": {
+    "model_may_execute": false,
+    "promptbranch_validates": true,
+    "no_game_implementation_in_v0_1_0": true,
+    "no_deployment_in_v0_1_0": true
+  }
+}
