@@ -8913,6 +8913,8 @@ def _parse_release_config_yaml_subset(text: str) -> dict[str, Any]:
         value = value.strip()
         if not key:
             raise ValueError(f"empty key near: {stripped}")
+        if key in parent:
+            raise ValueError(f"duplicate key near: {stripped}")
         if value:
             parent[key] = _parse_release_config_scalar(value)
         else:
@@ -8942,6 +8944,92 @@ def _release_config_command_placeholders(command: str) -> set[str]:
     return names
 
 
+def _release_config_artifact_token_status(value: Any, *, field: str) -> tuple[bool, str | None]:
+    text = str(value or "").strip()
+    if not text:
+        return False, "token_empty"
+    if text.startswith(("/", "~")):
+        return False, "token_must_not_be_absolute_or_home_relative"
+    if any(sep in text for sep in ("/", "\\")):
+        return False, "token_must_not_contain_path_separator"
+    if ".." in text:
+        return False, "token_must_not_contain_parent_reference"
+    if any(char in text for char in "*?[]{}"):
+        return False, "token_must_not_contain_glob_or_template_chars"
+    if field == "artifact.suffix" and not text.startswith("."):
+        return True, "suffix_without_dot"
+    return True, None
+
+
+def _release_config_hook_name_status(value: Any) -> tuple[bool, str | None]:
+    text = str(value or "").strip()
+    if not text:
+        return False, "hook_name_empty"
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", text):
+        return False, "hook_name_must_be_identifier"
+    return True, None
+
+
+def _release_config_summary(config: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
+    artifact = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    install = config.get("install") if isinstance(config.get("install"), dict) else {}
+    git = config.get("git") if isinstance(config.get("git"), dict) else {}
+    hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
+
+    prefix = str(artifact.get("prefix") or "")
+    suffix = str(artifact.get("suffix") or "")
+    preserve = install.get("preserve") if isinstance(install.get("preserve"), list) else []
+    unsafe_paths = git.get("unsafe_paths") if isinstance(git.get("unsafe_paths"), list) else []
+
+    hook_summaries: list[dict[str, Any]] = []
+    if isinstance(hooks, dict):
+        for name in sorted(hooks):
+            hook = hooks.get(name)
+            command = hook.get("command") if isinstance(hook, dict) else None
+            placeholders = sorted(_release_config_command_placeholders(command)) if isinstance(command, str) else []
+            hook_summaries.append({
+                "name": name,
+                "command": command,
+                "placeholders": placeholders,
+                "placeholder_count": len(placeholders),
+                "known_placeholders_only": not bool(set(placeholders) - _RELEASE_CONFIG_ALLOWED_PLACEHOLDERS),
+            })
+
+    return {
+        "ok": bool(validation.get("ok")),
+        "status": validation.get("status"),
+        "severity": validation.get("severity"),
+        "schema_version": config.get("schema_version"),
+        "artifact": {
+            "prefix": prefix,
+            "suffix": suffix,
+            "filename_pattern": f"{prefix}<version>{suffix}" if prefix or suffix else None,
+            "version_file": artifact.get("version_file"),
+            "policy_file": artifact.get("policy_file"),
+        },
+        "install": {
+            "preserve": preserve,
+            "preserve_count": len(preserve),
+        },
+        "git": {
+            "commit_release": bool(git.get("commit_release")),
+            "push_release": bool(git.get("push_release")),
+            "unsafe_paths": unsafe_paths,
+            "unsafe_path_count": len(unsafe_paths),
+        },
+        "hooks": hook_summaries,
+        "hook_count": len(hook_summaries),
+        "read_only_contract": {
+            "config_parsed": True,
+            "hooks_executed": False,
+            "install_executed": False,
+            "source_mutated": False,
+            "adoption_performed": False,
+            "git_mutated": False,
+        },
+    }
+
+
 def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
     warnings: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
@@ -8969,13 +9057,18 @@ def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
     for key in ["prefix", "suffix", "version_file", "policy_file"]:
         if not str(artifact.get(key) or "").strip():
             block("release_config_artifact_field_missing", f"artifact.{key} is required.", field=f"artifact.{key}")
+    for key in ["prefix", "suffix"]:
+        if artifact.get(key) is not None:
+            ok, reason = _release_config_artifact_token_status(artifact.get(key), field=f"artifact.{key}")
+            if not ok:
+                block("release_config_artifact_token_invalid", f"artifact.{key} must be a safe filename token, not a path or template.", field=f"artifact.{key}", reason=reason)
+            elif reason == "suffix_without_dot":
+                warn("release_config_suffix_without_dot", "artifact.suffix usually starts with a dot, for example .zip.", suffix=artifact.get("suffix"))
     for key in ["version_file", "policy_file"]:
         if artifact.get(key) is not None:
             ok, reason = _release_config_path_status(artifact.get(key))
             if not ok:
                 block("release_config_artifact_path_invalid", f"artifact.{key} must be a safe repo-relative path.", field=f"artifact.{key}", reason=reason)
-    if artifact.get("suffix") and not str(artifact.get("suffix")).startswith("."):
-        warn("release_config_suffix_without_dot", "artifact.suffix usually starts with a dot, for example .zip.", suffix=artifact.get("suffix"))
 
     install = config.get("install") if isinstance(config.get("install"), dict) else {}
     if not isinstance(config.get("install"), dict):
@@ -9006,6 +9099,9 @@ def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
         block("release_config_hooks_not_mapping", "hooks section must be a mapping.")
     if isinstance(hooks, dict):
         for name, hook in hooks.items():
+            hook_name_ok, hook_name_reason = _release_config_hook_name_status(name)
+            if not hook_name_ok:
+                block("release_config_hook_name_invalid", "Hook names must be safe identifiers.", hook=name, reason=hook_name_reason)
             if not isinstance(hook, dict):
                 block("release_config_hook_not_mapping", "Each hook must be a mapping.", hook=name)
                 continue
@@ -9058,11 +9154,13 @@ def _load_release_config(config_arg: str | None, *, repo_root: Path) -> dict[str
         payload.update({"ok": False, "status": "parse_error", "error": str(exc), "config": None})
         return payload
     validation = _validate_release_config(config)
+    config_summary = _release_config_summary(config, validation)
     payload.update({
         "ok": validation["ok"],
         "status": validation["status"],
         "severity": validation["severity"],
         "config": config,
+        "config_summary": config_summary,
         "validation": validation,
         "warning_codes": validation["warning_codes"],
         "blocker_codes": validation["blocker_codes"],
@@ -9076,6 +9174,8 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
     payload.update({
+        "schema": "promptbranch.release.config.report",
+        "schema_version": "1.0",
         "action": "release_config",
         "repo_path": str(repo_root),
         "download_performed": False,

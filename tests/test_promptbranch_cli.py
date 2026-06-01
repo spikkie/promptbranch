@@ -6056,8 +6056,14 @@ hooks:
     assert payload["mutating_actions_executed"] is False
     assert payload["project_source_mutated"] is False
     assert payload["git_commit_performed"] is False
+    assert payload["schema"] == "promptbranch.release.config.report"
     assert payload["config"]["artifact"]["prefix"] == "chatgpt_claudecode_workflow_"
     assert payload["config"]["install"]["preserve"] == [".git/", ".env", ".pb_profile/"]
+    assert payload["config_summary"]["artifact"]["filename_pattern"] == "chatgpt_claudecode_workflow_<version>.zip"
+    assert payload["config_summary"]["hook_count"] == 1
+    assert payload["config_summary"]["hooks"][0]["name"] == "doctor"
+    assert payload["config_summary"]["hooks"][0]["placeholders"] == ["artifact", "repo_path", "version"]
+    assert payload["config_summary"]["read_only_contract"]["hooks_executed"] is False
     assert payload["blocker_codes"] == []
 
 
@@ -6101,6 +6107,79 @@ hooks:
     assert payload["mutating_actions_executed"] is False
 
 
+def test_release_config_rejects_artifact_path_tokens_and_unsafe_hook_names(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: ../bad_
+  suffix: '{version}.zip'
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - .env
+hooks:
+  '../bad-hook':
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    args = argparse.Namespace(
+        config=str(config),
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_config(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "release_config_artifact_token_invalid" in payload["blocker_codes"]
+    assert "release_config_hook_name_invalid" in payload["blocker_codes"]
+    assert payload["config_summary"]["read_only_contract"]["git_mutated"] is False
+
+
+def test_release_config_rejects_duplicate_yaml_keys_read_only(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - .env
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    args = argparse.Namespace(
+        config=str(config),
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_config(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "parse_error"
+    assert "duplicate key" in payload["error"]
+    assert payload["mutating_actions_executed"] is False
 
 
 def test_release_install_plan_reports_read_only_install_contract(capsys, tmp_path) -> None:
