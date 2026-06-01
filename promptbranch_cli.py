@@ -9428,6 +9428,231 @@ def _release_install_baseline_comparison(
     }
 
 
+
+def _release_dev_status_candidate_entries(
+    *,
+    repo_root: Path,
+    artifact_prefix: str | None,
+    artifact_suffix: str | None,
+) -> list[dict[str, Any]]:
+    """Return local release ZIP candidates for the configured artifact line.
+
+    This is intentionally local and read-only.  It lets operators distinguish
+    the accepted Promptbranch baseline from the currently installed development
+    head without requiring browser, Project Source, or adoption checks.
+    """
+
+    prefix = str(artifact_prefix or "")
+    suffix = str(artifact_suffix or ".zip")
+    candidates: list[dict[str, Any]] = []
+    try:
+        paths = sorted(repo_root.glob("*.zip"))
+    except OSError:
+        paths = []
+    for path in paths:
+        filename = path.name
+        if prefix and not filename.startswith(prefix):
+            continue
+        if suffix and not filename.endswith(suffix):
+            continue
+        version = _candidate_version_normalized(_artifact_version_from_filename(filename))
+        if not version:
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            size_bytes = None
+            mtime = None
+        else:
+            size_bytes = int(stat.st_size)
+            mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z")
+        candidates.append({
+            "filename": filename,
+            "path": str(path),
+            "version": version,
+            "version_shape": _release_version_shape(version),
+            "artifact_prefix": _artifact_prefix_from_filename(filename),
+            "size_bytes": size_bytes,
+            "modified_at": mtime,
+        })
+    candidates.sort(key=lambda item: _version_tuple_for_operator_order(item.get("version")) or tuple(), reverse=True)
+    return candidates
+
+
+def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    registry = _artifact_registry_from_args(args)
+    current_payload = _artifact_current_payload(backend, registry)
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    artifact_prefix = str(artifact_cfg.get("prefix") or f"{repo_root.name}_")
+    artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
+    runtime_version = _candidate_version_normalized((current_payload.get("runtime") or {}).get("version"))
+    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    accepted_version = _candidate_version_normalized(baseline_roles.get("adopted_source_version") or baseline_roles.get("registry_current_version"))
+    accepted_ref = baseline_roles.get("adopted_source_ref") or baseline_roles.get("registry_current_ref")
+    local_candidates = _release_dev_status_candidate_entries(
+        repo_root=repo_root,
+        artifact_prefix=artifact_prefix,
+        artifact_suffix=artifact_suffix,
+    )
+
+    explicit_artifact_summary = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root) if getattr(args, "artifact", None) else {"attempted": False}
+    explicit_version = _candidate_version_normalized(explicit_artifact_summary.get("version") or explicit_artifact_summary.get("version_file") or explicit_artifact_summary.get("filename_version")) if explicit_artifact_summary.get("attempted") else None
+
+    version_to_candidates: dict[str, list[dict[str, Any]]] = {}
+    for candidate in local_candidates:
+        version = str(candidate.get("version") or "")
+        version_to_candidates.setdefault(version, []).append(candidate)
+    duplicate_versions = [
+        {"version": version, "count": len(items), "filenames": [item.get("filename") for item in items]}
+        for version, items in sorted(version_to_candidates.items())
+        if version and len(items) > 1
+    ]
+
+    dev_head = None
+    if explicit_version:
+        dev_head = {
+            "selection": "explicit_artifact",
+            "filename": explicit_artifact_summary.get("filename"),
+            "path": explicit_artifact_summary.get("path"),
+            "version": explicit_version,
+            "version_shape": _release_version_shape(explicit_version),
+            "artifact_verified": bool(explicit_artifact_summary.get("ok")),
+        }
+    elif local_candidates:
+        dev_head = {**local_candidates[0], "selection": "latest_local_candidate"}
+    elif runtime_version:
+        dev_head = {"selection": "runtime_only", "filename": None, "path": None, "version": runtime_version, "version_shape": _release_version_shape(runtime_version)}
+
+    dev_head_version = _candidate_version_normalized((dev_head or {}).get("version")) if dev_head else None
+    runtime_relation_to_accepted = _compare_operator_versions(accepted_version, runtime_version) if accepted_version and runtime_version else "unknown"
+    dev_head_relation_to_accepted = _compare_operator_versions(accepted_version, dev_head_version) if accepted_version and dev_head_version else "unknown"
+    runtime_relation_to_dev_head = _compare_operator_versions(runtime_version, dev_head_version) if runtime_version and dev_head_version else "unknown"
+    expected_next_from_accepted = _release_expected_next_normal_version(accepted_version)
+    next_development_version = _release_expected_next_normal_version(dev_head_version or runtime_version or accepted_version)
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not config_payload.get("ok"):
+        warn("release_dev_status_config_invalid", "Lifecycle config could not be fully validated; artifact scanning used fallback/defaults.", config_status=config_payload.get("status"), blocker_codes=config_payload.get("blocker_codes") or [])
+    if duplicate_versions:
+        warn("release_dev_status_duplicate_local_candidate_versions", "Multiple local release ZIPs share the same version; avoid rewriting or reusing version numbers.", duplicate_versions=duplicate_versions)
+    if explicit_artifact_summary.get("attempted") and not explicit_artifact_summary.get("ok"):
+        block("release_dev_status_explicit_artifact_invalid", "Explicit development artifact failed ZIP verification.", artifact_status=explicit_artifact_summary.get("status"), blocking_errors=explicit_artifact_summary.get("blocking_errors") or [])
+    if accepted_version and runtime_version and runtime_relation_to_accepted == "right_newer":
+        warn("runtime_ahead_of_accepted_baseline", "Runtime code is newer than the adopted Project Source baseline; this is expected during development but must be full-tested before adoption.", accepted_version=accepted_version, runtime_version=runtime_version)
+    if accepted_version and dev_head_version and dev_head_relation_to_accepted == "right_newer" and expected_next_from_accepted and dev_head_version != expected_next_from_accepted:
+        warn("dev_head_skips_next_normal_from_accepted", "Development head is ahead of the accepted baseline by more than one normal version. This can be acceptable during CI-style development, but adoption should target the latest full-test-green candidate deliberately.", accepted_version=accepted_version, expected_next_normal_version=expected_next_from_accepted, dev_head_version=dev_head_version)
+
+    if blockers:
+        status = "blocked"
+    elif accepted_version and dev_head_version and dev_head_version == accepted_version and runtime_version == accepted_version:
+        status = "accepted_current"
+    elif accepted_version and dev_head_version and dev_head_relation_to_accepted == "right_newer":
+        status = "development_head_ahead_of_accepted"
+    elif accepted_version and runtime_version and runtime_relation_to_accepted == "right_newer":
+        status = "runtime_ahead_without_local_candidate"
+    else:
+        status = "development_status_available"
+
+    recommended_next_action = {
+        "kind": "continue_development" if status in {"development_head_ahead_of_accepted", "runtime_ahead_without_local_candidate", "development_status_available"} else "inspect",
+        "base_version": dev_head_version or runtime_version or accepted_version,
+        "next_development_version": next_development_version,
+        "command": (f"Build {next_development_version} from {dev_head_version or runtime_version}" if next_development_version else "inspect release dev-status"),
+        "full_test_required_before_adoption": True,
+        "adoption_target_should_be_latest_green_dev_head": True,
+    }
+
+    return {
+        "ok": not blockers,
+        "schema": "promptbranch.release.dev_status",
+        "schema_version": "1.0",
+        "action": "release_dev_status",
+        "status": status,
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "config": config_payload,
+        "artifact_line": {
+            "prefix": artifact_prefix,
+            "suffix": artifact_suffix,
+        },
+        "accepted_baseline": {
+            "artifact_ref": baseline_roles.get("adopted_artifact_ref"),
+            "artifact_version": _candidate_version_normalized(baseline_roles.get("adopted_artifact_version")),
+            "source_ref": accepted_ref,
+            "source_version": accepted_version,
+            "registry_current_ref": baseline_roles.get("registry_current_ref"),
+            "registry_current_version": _candidate_version_normalized(baseline_roles.get("registry_current_version")),
+            "registry_current_kind": baseline_roles.get("registry_current_kind"),
+        },
+        "runtime": {
+            "version": runtime_version,
+            "package_version": (current_payload.get("runtime") or {}).get("package_version"),
+            "relation_to_accepted": runtime_relation_to_accepted,
+        },
+        "development_head": dev_head,
+        "development_head_version": dev_head_version,
+        "local_candidate_count": len(local_candidates),
+        "local_candidates": local_candidates[:20],
+        "local_candidates_truncated": len(local_candidates) > 20,
+        "explicit_artifact": explicit_artifact_summary,
+        "version_relations": {
+            "runtime_to_accepted": runtime_relation_to_accepted,
+            "dev_head_to_accepted": dev_head_relation_to_accepted,
+            "runtime_to_dev_head": runtime_relation_to_dev_head,
+        },
+        "version_plan": {
+            "expected_next_normal_from_accepted": expected_next_from_accepted,
+            "next_development_version": next_development_version,
+            "continue_monotonic_development": bool(next_development_version),
+            "do_not_rewrite_existing_versions": True,
+        },
+        "recommended_next_action": recommended_next_action,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
+        "operator_instruction": "Read-only development-head status. Continue from development_head during focused-test development; run full release-control once before adopting the latest green candidate.",
+    }
+
+
+async def cmd_release_dev_status(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_dev_status_payload(backend, args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"accepted={((payload.get('accepted_baseline') or {}).get('source_version') or 'none')}")
+        print(f"runtime={((payload.get('runtime') or {}).get('version') or 'none')}")
+        print(f"dev_head={payload.get('development_head_version') or 'none'}")
+        print(f"next_development_version={((payload.get('version_plan') or {}).get('next_development_version') or 'none')}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
 def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
@@ -12351,6 +12576,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "dev-status":
+        return await cmd_release_dev_status(backend, args)
     if args.release_command == "lifecycle-status":
         return await cmd_release_lifecycle_status(backend, args)
     if args.release_command == "doctor":
@@ -16623,6 +16850,12 @@ def make_parser() -> argparse.ArgumentParser:
     release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
     release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
     release_git_sync.add_argument("--json", action="store_true")
+
+    release_dev_status = release_subparsers.add_parser("dev-status", help="Read-only accepted-baseline versus development-head status for CI-style development.")
+    release_dev_status.add_argument("--artifact", help="Optional development candidate ZIP to inspect as the explicit dev head.")
+    release_dev_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse for artifact prefix/suffix. Defaults to .promptbranch-release.yml.")
+    release_dev_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_dev_status.add_argument("--json", action="store_true")
 
     release_lifecycle_status = release_subparsers.add_parser("lifecycle-status", help="Read-only local-first lifecycle status cockpit.")
     release_lifecycle_status.add_argument("--version", help="Expected current runtime/release version. Defaults to the running Promptbranch version.")
