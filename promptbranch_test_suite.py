@@ -165,8 +165,26 @@ def _read_promptbranch_version_file(repo_path: Path) -> str | None:
 
 
 def _extract_compose_service_image_version(source: str) -> str | None:
+    """Return the declared/default promptbranch-service image tag from Compose YAML.
+
+    Supports both the single-default runtime form::
+
+        image: promptbranch-service:0.1.1.1
+
+    and the historical parameterized v0.1.1 form::
+
+        image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-0.1.1}}
+
+    The validator only needs the default declared version. Runtime overrides are
+    intentionally not treated as source version declarations.
+    """
     match = re.search(r"^\s*image:\s*promptbranch-service:([^\s#]+)", source, flags=re.MULTILINE)
-    return match.group(1).strip() if match else None
+    if match:
+        return match.group(1).strip().strip('"\'') or None
+    match = re.search(r"promptbranch-service:\$\{PROMPTBRANCH_SERVICE_IMAGE_TAG:-([^}]+)\}", source)
+    if match:
+        return match.group(1).strip().strip('"\'') or None
+    return None
 
 
 def _read_compose_service_image_version(repo_path: Path) -> str | None:
