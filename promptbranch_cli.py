@@ -9252,6 +9252,182 @@ def _release_install_zip_entries(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _release_install_existing_path_kind(path: Path) -> str:
+    if path.is_symlink():
+        return "symlink"
+    if path.is_dir():
+        return "directory"
+    if path.is_file():
+        return "file"
+    if path.exists():
+        return "other"
+    return "missing"
+
+
+def _release_install_target_plan(
+    *,
+    repo_root: Path,
+    install_entries: list[str],
+    preserve_paths: list[Any],
+    sample_limit: int = 30,
+) -> dict[str, Any]:
+    """Classify a candidate ZIP install without mutating the repository."""
+
+    would_add: list[str] = []
+    would_replace: list[str] = []
+    parent_dirs_to_create: set[str] = set()
+    target_samples: list[dict[str, Any]] = []
+
+    for entry in install_entries:
+        rel = str(entry).strip("/")
+        if not rel:
+            continue
+        target = (repo_root / rel).resolve()
+        try:
+            target.relative_to(repo_root)
+        except ValueError:
+            # This should already be caught by ZIP safety checks, but keep the
+            # read-only planner defensive and explicit.
+            action = "blocked_outside_repo"
+            exists = target.exists()
+        else:
+            exists = target.exists()
+            action = "replace" if exists else "add"
+            if not target.parent.exists():
+                try:
+                    parent_dirs_to_create.add(str(target.parent.relative_to(repo_root)).replace("\\", "/"))
+                except ValueError:
+                    parent_dirs_to_create.add(str(target.parent))
+        if action == "replace":
+            would_replace.append(rel)
+        elif action == "add":
+            would_add.append(rel)
+        if len(target_samples) < sample_limit:
+            target_samples.append({
+                "path": rel,
+                "action": action,
+                "target_exists": exists,
+                "target_kind": _release_install_existing_path_kind(target),
+            })
+
+    preserve_status: list[dict[str, Any]] = []
+    for raw in preserve_paths:
+        rel = _release_install_normalize_preserve_path(raw).strip("/")
+        if not rel:
+            continue
+        path = (repo_root / rel).resolve()
+        try:
+            path.relative_to(repo_root)
+            repo_bound = True
+        except ValueError:
+            repo_bound = False
+        preserve_status.append({
+            "path": rel + ("/" if str(raw).strip().endswith("/") else ""),
+            "repo_bound": repo_bound,
+            "exists": path.exists(),
+            "kind": _release_install_existing_path_kind(path),
+        })
+
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "would_add_count": len(would_add),
+        "would_add_sample": would_add[:sample_limit],
+        "would_replace_count": len(would_replace),
+        "would_replace_sample": would_replace[:sample_limit],
+        "would_create_parent_dir_count": len(parent_dirs_to_create),
+        "would_create_parent_dir_sample": sorted(parent_dirs_to_create)[:sample_limit],
+        "target_sample": target_samples,
+        "target_sample_truncated": len(install_entries) > len(target_samples),
+        "preserve_status": preserve_status,
+        "preserve_status_count": len(preserve_status),
+    }
+
+
+def _release_expected_next_normal_version(value: Any) -> str | None:
+    normalized = _candidate_version_normalized(value)
+    if not normalized:
+        return None
+    parts = normalized.removeprefix("v").split(".")
+    if len(parts) < 3:
+        return None
+    try:
+        major, minor, patch = (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+    return f"v{major}.{minor}.{patch + 1}"
+
+
+def _release_version_shape(value: Any) -> str:
+    normalized = _candidate_version_normalized(value)
+    if not normalized:
+        return "invalid"
+    parts = normalized.removeprefix("v").split(".")
+    if len(parts) == 3:
+        return "normal"
+    if len(parts) == 4:
+        return "repair"
+    return "unknown"
+
+
+def _release_install_baseline_comparison(
+    *,
+    args: argparse.Namespace,
+    artifact_version: str | None,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Compare a candidate ZIP with the locally registered accepted baseline.
+
+    This is intentionally read-only and registry-based so it can run during
+    development without requiring a browser or service backend.
+    """
+
+    registry = _artifact_registry_from_args(args)
+    current = registry.current()
+    current_version = _candidate_version_normalized((current or {}).get("version")) if current else None
+    current_ref = (current or {}).get("filename") if current else None
+    artifact_version = _candidate_version_normalized(artifact_version)
+    expected_next_normal = _release_expected_next_normal_version(current_version)
+    relation = _compare_operator_versions(current_version, artifact_version) if current_version and artifact_version else "unknown"
+    candidate_shape = _release_version_shape(artifact_version)
+    warnings: list[dict[str, Any]] = []
+    if current_version and artifact_version and relation == "left_newer":
+        warnings.append({
+            "code": "release_install_candidate_older_than_current",
+            "severity": "warning",
+            "message": "Candidate artifact version is older than the current registered baseline.",
+            "current_version": current_version,
+            "candidate_version": artifact_version,
+        })
+    if current_version and artifact_version and expected_next_normal and candidate_shape == "normal" and artifact_version != expected_next_normal and relation == "right_newer":
+        warnings.append({
+            "code": "release_install_candidate_not_next_normal_version",
+            "severity": "warning",
+            "message": "Candidate normal version is newer than current baseline but is not the immediate next normal version.",
+            "current_version": current_version,
+            "expected_next_normal_version": expected_next_normal,
+            "candidate_version": artifact_version,
+        })
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "registry_file": str(registry.path),
+        "current_ref": current_ref,
+        "current_version": current_version,
+        "current_kind": (current or {}).get("kind") if current else None,
+        "candidate_version": artifact_version,
+        "candidate_version_shape": candidate_shape,
+        "expected_next_normal_version": expected_next_normal,
+        "candidate_relation_to_current": relation,
+        "candidate_matches_current": bool(current_version and artifact_version and current_version == artifact_version),
+        "candidate_is_newer_than_current": relation == "right_newer",
+        "candidate_is_older_than_current": relation == "left_newer",
+        "warning_codes": [item["code"] for item in warnings],
+        "warnings": warnings,
+    }
+
+
 def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
@@ -9303,6 +9479,9 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     entries = [str(item) for item in zip_entry_payload.get("entries") or []]
     preserved_conflicts = [entry for entry in entries if _release_install_entry_under_preserve(entry, preserve_paths)]
     install_entries = [entry for entry in entries if entry not in preserved_conflicts]
+    target_plan = _release_install_target_plan(repo_root=repo_root, install_entries=install_entries, preserve_paths=preserve_paths)
+    baseline_comparison = _release_install_baseline_comparison(args=args, artifact_version=artifact_version, repo_root=repo_root)
+    warnings.extend(baseline_comparison.get("warnings") or [])
     if preserved_conflicts:
         block(
             "release_install_artifact_contains_preserved_path",
@@ -9342,6 +9521,17 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "preserve_paths": preserve_paths,
         "preserved_conflict_count": len(preserved_conflicts),
         "preserved_conflict_sample": preserved_conflicts[:20],
+        "target_plan": target_plan,
+        "would_add_count": target_plan.get("would_add_count"),
+        "would_replace_count": target_plan.get("would_replace_count"),
+        "would_create_parent_dir_count": target_plan.get("would_create_parent_dir_count"),
+        "artifact_layout_checks": artifact_payload.get("layout_checks"),
+        "artifact_unsafe_entry_count": len(((artifact_payload.get("verification") or {}).get("unsafe_entries") or [])),
+        "artifact_unsafe_entry_sample": (((artifact_payload.get("verification") or {}).get("unsafe_entries") or [])[:20]),
+        "artifact_hygiene_violation_count": artifact_payload.get("hygiene_violation_count"),
+        "artifact_nested_zip_count": artifact_payload.get("nested_zip_count"),
+        "artifact_wrapper_folder": artifact_payload.get("wrapper_folder"),
+        "baseline_comparison": baseline_comparison,
         "verification_plan": [
             "validate release config",
             "verify candidate ZIP immutability and hygiene",
@@ -9369,6 +9559,8 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
         "version_file": version_file,
         "git": git_status,
         "install_plan": plan,
+        "install_target_plan": target_plan,
+        "baseline_comparison": baseline_comparison,
         "upload_source_requested": upload_source_requested,
         "warnings": warnings,
         "blockers": blockers,
@@ -10796,6 +10988,7 @@ async def cmd_release_policy_sync(backend: Any, args: argparse.Namespace) -> int
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
         "state_source_updated": False,
+        "would_mutate": False if plan_only else True,
         "mutating_actions_executed": False,
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
@@ -11138,6 +11331,18 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     target_version = _candidate_version_normalized(getattr(args, "target_version", None))
     artifact_filename = str(artifact_payload.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name)
     artifact_version = _candidate_version_normalized(artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version"))
+    install_plan_payload = _release_install_plan_payload(_release_lifecycle_namespace(
+        args,
+        artifact=str(artifact_payload.get("path") or getattr(args, "artifact", "") or ""),
+        version=requested_version or artifact_version,
+        target_version=target_version,
+        config=getattr(args, "config", ".promptbranch-release.yml"),
+        repo_path=str(repo_root),
+        plan=True,
+        upload_source=True,
+        keep_open=bool(getattr(args, "keep_open", False)),
+        json=True,
+    ))
     policy_path = _release_policy_file_path(config_payload, repo_root)
     try:
         policy_rel = str(policy_path.relative_to(repo_root)).replace("\\", "/")
@@ -11161,6 +11366,14 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         block("release_lifecycle_version_mismatch", "Requested version differs from candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
     if not plan_only and backend is None:
         block("release_lifecycle_backend_unavailable", "guarded lifecycle execution requires a Promptbranch backend for Project Source upload and adoption verification")
+    for item in install_plan_payload.get("warnings") or []:
+        if isinstance(item, dict) and item.get("code") not in {w.get("code") for w in warnings}:
+            warnings.append(item)
+    existing_blocker_codes = {item.get("code") for item in blockers}
+    for item in install_plan_payload.get("blockers") or []:
+        if isinstance(item, dict) and item.get("code") not in existing_blocker_codes:
+            blockers.append(item)
+            existing_blocker_codes.add(item.get("code"))
 
     phase_plan = [
         {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
@@ -11168,7 +11381,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         {"phase": "test", "command": "pb release test --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
         {"phase": "adopt", "command": "pb release adopt --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
         {"phase": "policy_sync", "command": "pb release policy-sync --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
-        {"phase": "git_sync", "command": "pb release git-sync --artifact {artifact} --version {version} --target-version {target_version} --plan --json", "will_execute_in_plan": True, "will_execute": True},
+        {"phase": "git_sync", "command": "pb release git-sync --artifact {artifact} --version {version} --target-version {target_version} --plan --json", "will_execute_in_plan": False, "will_execute": not plan_only},
     ]
     rendered_commands = []
     for item in phase_plan:
@@ -11199,6 +11412,19 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "policy_file": str(policy_path),
         "policy_file_repo_relative": policy_rel,
         "git_safety_plan": git_plan,
+        "lifecycle_planning": {
+            "schema_version": 1,
+            "read_only": True,
+            "install_plan_status": install_plan_payload.get("status"),
+            "install_plan_ok": install_plan_payload.get("ok"),
+            "install_plan_blocker_codes": install_plan_payload.get("blocker_codes") or [],
+            "install_plan_warning_codes": install_plan_payload.get("warning_codes") or [],
+            "install_plan": install_plan_payload.get("install_plan"),
+            "install_target_plan": install_plan_payload.get("install_target_plan"),
+            "baseline_comparison": install_plan_payload.get("baseline_comparison"),
+            "would_mutate": False,
+            "mutating_actions_executed": False,
+        },
         "phase_plan": rendered_commands,
         "phase_count": len(rendered_commands),
         "phase_results": [],
@@ -11220,6 +11446,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "state_source_updated": False,
         "git_commit_performed": False,
         "git_push_performed": False,
+        "would_mutate": False if plan_only else True,
         "mutating_actions_executed": False,
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
