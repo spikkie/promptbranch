@@ -1,14 +1,16 @@
+name: ${COMPOSE_PROJECT_NAME:-promptbranch_chatgpt_service}
+
 services:
   chatgpt-service:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.0.278.86
+    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-0.1.1}}
     pull_policy: build
     init: true
     user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"
     ports:
-      - "8000:8000"
+      - "${PROMPTBRANCH_SERVICE_PORT:-8000}:8000"
     environment:
       HOME: ${PROMPTBRANCH_CONTAINER_HOME:-/tmp/promptbranch-home}
       XDG_CACHE_HOME: ${PROMPTBRANCH_CONTAINER_XDG_CACHE_HOME:-/tmp/promptbranch-cache}
@@ -27,13 +29,12 @@ services:
       CHATGPT_SERVICE_TOKEN: ${CHATGPT_SERVICE_TOKEN:-}
       CHATGPT_MAX_RETRIES: ${CHATGPT_MAX_RETRIES:-2}
       CHATGPT_RETRY_BACKOFF_SECONDS: ${CHATGPT_RETRY_BACKOFF_SECONDS:-2.0}
-      CHATGPT_RESPONSE_TIMEOUT_MS: ${CHATGPT_RESPONSE_TIMEOUT_MS:-1200000}
       CHATGPT_MIN_CONTEXT_SPACING_SECONDS: ${CHATGPT_MIN_CONTEXT_SPACING_SECONDS:-8.0}
       CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS: ${CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS:-120.0}
       CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS: ${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}
     volumes:
-      - ./.pb_profile:/app/.pb_profile
-      - ./debug_artifacts:/app/debug_artifacts
+      - ${PROMPTBRANCH_PROFILE_DIR:-./.pb_profile}:/app/.pb_profile
+      - ${PROMPTBRANCH_DEBUG_ARTIFACTS_DIR:-./debug_artifacts}:/app/debug_artifacts
     secrets:
       - chatgpt_password
     healthcheck:
