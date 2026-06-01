@@ -26,9 +26,18 @@ if [[ -n "${PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT:-}" ]]; then
 else
   repo_root="$(pwd)"
 fi
+repo_basename="$(basename "${repo_root}")"
+# Artifact identity is release-line specific. It can be pinned explicitly or
+# derived from --install-from-zip. Defaulting to the repo/worktree basename keeps
+# worktree artifact lines such as chatgpt_claudecode_workflow-2_vX.zip stable.
+artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
+# Runtime/Docker identity is instance-specific and may be derived from COMPOSE_PROJECT_NAME
+# or the worktree directory name when COMPOSE_PROJECT_NAME is not set.
+compose_project_name="${COMPOSE_PROJECT_NAME:-${PROMPTBRANCH_COMPOSE_PROJECT_NAME:-${repo_basename}}}"
+service_port="${PROMPTBRANCH_SERVICE_PORT:-8000}"
 version_file="${repo_root}/VERSION"
 downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
-work_parent="${TMPDIR:-/tmp}/${project_name}_release_import"
+work_parent="${TMPDIR:-/tmp}/${repo_basename}_release_import"
 container_id="${PROMPTBRANCH_CONTAINER_ID:-}"
 owner_user="${PROMPTBRANCH_OWNER_USER:-${SUDO_USER:-${USER}}}"
 owner_group="${PROMPTBRANCH_OWNER_GROUP:-$(id -gn "${owner_user}" 2>/dev/null || printf '%s' "${owner_user}")}"
@@ -60,9 +69,6 @@ adopt_if_green=0
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
 service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
 test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
-test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
-test_transport_explicit=0
-localhost_base_url="${PROMPTBRANCH_LOCALHOST_BASE_URL:-http://127.0.0.1:8000}"
 workflow_rc=0
 
 default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
@@ -78,7 +84,7 @@ Usage:
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or ${project_name}_v0.0.239.zip.
+                              Accepts v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or <artifact-prefix>_v0.0.239.zip.
       --downloads-dir DIR     Directory containing the downloaded candidate ZIP. Default: ~/Downloads.
       --install-from-zip ZIP   Install this candidate ZIP into the working tree before commit/package.
       --skip-zip-import       Do not install a candidate ZIP; operate on the current working tree.
@@ -101,13 +107,6 @@ Options:
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
-      --test-transport MODE   Test transport for --run-tests: direct, localhost, or both.
-                              Default: direct. direct preserves the existing pb test full path.
-                              localhost runs pb test full with CHATGPT_SERVICE_BASE_URL set.
-                              both runs direct first, then localhost, and fails if either fails.
-      --localhost-base-url URL
-                              Base URL used by --test-transport localhost/both.
-                              Default: http://127.0.0.1:8000.
       --run-tests             Run pb test full/report. Disabled by default.
                               The test block is wrapped in startlog/stoplog when available,
                               or an internal tee-based session log fallback otherwise.
@@ -148,8 +147,6 @@ Typical use:
   $(basename "$0") --tests-only --adopt-if-green
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
-  $(basename "$0") --run-tests --test-transport localhost --skip-docker-logs
-  $(basename "$0") --run-tests --test-transport both --skip-docker-logs
   $(basename "$0") --skip-zip-import --run-tests
   $(basename "$0") --version v0.0.241 --import-plan
 USAGE
@@ -170,8 +167,21 @@ normalize_version() {
   raw="${raw%.zip}"
   raw="${raw#${project_name}_}"
   raw="${raw#${project_name}}"
+  raw="${raw#${artifact_project_name}_}"
+  raw="${raw#${artifact_project_name}}"
   raw="${raw#_}"
+  raw="${raw#-}"
   if [[ "${raw}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+    raw="${raw#v}"
+    printf 'v%s\n' "${raw}"
+    return 0
+  fi
+  # Accept noncanonical transport filenames such as
+  # chatgpt_claudecode_workflow-2_v0.1.0.zip by extracting only the trailing
+  # version token. This keeps input ZIP handling flexible while release output
+  # uses the selected artifact identity.
+  if [[ "${raw}" =~ (^|[_-])(v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
+    raw="${BASH_REMATCH[2]}"
     raw="${raw#v}"
     printf 'v%s\n' "${raw}"
     return 0
@@ -180,11 +190,25 @@ normalize_version() {
 }
 
 
+artifact_prefix_from_zip_name() {
+  local raw="$1"
+  raw="${raw##*/}"
+  raw="${raw%.zip}"
+  if [[ "${raw}" =~ ^(.+)[_-]v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  printf '%s\n' "${artifact_project_name}"
+}
+
 resolve_download_zip() {
   local ver_value="$1"
   local dir="$2"
-  local canonical="${dir}/${project_name}_${ver_value}.zip"
+  local canonical="${dir}/${artifact_project_name}_${ver_value}.zip"
+  local legacy_canonical="${dir}/${project_name}_${ver_value}.zip"
   local fallback="${dir}/${ver_value}.zip"
+  local matches=()
+  local candidate
 
   if [[ -f "${canonical}" ]]; then
     printf '%s\n' "${canonical}"
@@ -194,6 +218,26 @@ resolve_download_zip() {
     printf '%s\n' "${fallback}"
     return 0
   fi
+
+  # Tolerate noncanonical transport artifacts from worktree-local packagers,
+  # for example chatgpt_claudecode_workflow-2_v0.1.0.zip. Ambiguity fails
+  # closed so the operator must pass --install-from-zip explicitly.
+  shopt -s nullglob
+  for candidate in "${dir}"/*_"${ver_value}".zip "${dir}"/*-"${ver_value}".zip; do
+    [[ -f "${candidate}" ]] || continue
+    matches+=("${candidate}")
+  done
+  shopt -u nullglob
+  if [[ ${#matches[@]} -eq 1 ]]; then
+    printf '%s\n' "${matches[0]}"
+    return 0
+  fi
+  if [[ ${#matches[@]} -gt 1 ]]; then
+    printf 'ambiguous candidate ZIPs for %s in %s:\n' "${ver_value}" "${dir}" >&2
+    printf '  %s\n' "${matches[@]}" >&2
+    return 1
+  fi
+
   printf '%s\n' "${canonical}"
   return 1
 }
@@ -406,23 +450,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
-    --test-transport)
-      [[ $# -ge 2 ]] || fail "--test-transport requires direct, localhost, or both"
-      test_transport="$2"
-      test_transport_explicit=1
-      shift 2
-      ;;
-    --test-transport=*)
-      test_transport="${1#*=}"
-      test_transport_explicit=1
-      shift
-      ;;
-    --localhost-base-url)
-      [[ $# -ge 2 ]] || fail "--localhost-base-url requires a URL"
-      localhost_base_url="$2"
-      shift 2
-      ;;
-    --localhost-base-url=*) localhost_base_url="${1#*=}"; shift ;;
     --run-tests) skip_tests=0; shift ;;
     --tests-only|--run-tests-only)
       tests_only=1
@@ -475,11 +502,6 @@ case "${service_mode}" in
   detached|foreground) ;;
   *) fail "--service-mode must be detached or foreground; got ${service_mode}" ;;
 esac
-case "${test_transport}" in
-  direct|localhost|both) ;;
-  *) fail "--test-transport must be direct, localhost, or both; got ${test_transport}" ;;
-esac
-[[ -n "${localhost_base_url}" ]] || fail "--localhost-base-url must not be empty"
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
 [[ "${release_log_keep}" =~ ^[0-9]+$ ]] || fail "--release-log-keep must be an integer number of version directories"
@@ -509,26 +531,28 @@ if [[ -z "${version_arg}" ]]; then
   fi
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or ${project_name}_v0.0.239.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or <artifact-prefix>_v0.0.239.zip; got '${version_arg}'"
 ver_plain="${ver#v}"
-artifact_zip="${project_name}_${ver}.zip"
 if [[ ${install_from_zip} -eq 1 ]]; then
   [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"
   [[ -f "${install_zip}" ]] || fail "install ZIP not found: ${install_zip}"
+  artifact_project_name="$(artifact_prefix_from_zip_name "${install_zip}")"
+elif [[ -n "${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-}" ]]; then
+  artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME}"
 else
+  artifact_project_name="${repo_basename}"
+fi
+artifact_zip="${artifact_project_name}_${ver}.zip"
+if [[ ${install_from_zip} -eq 0 ]]; then
   install_zip="$(resolve_download_zip "${ver}" "${downloads_dir}" 2>/dev/null || true)"
 fi
 download_zip="${install_zip}"
-work_dir="${work_parent}/${project_name}_${ver}"
+work_dir="${work_parent}/${artifact_project_name}_${ver}"
 release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"
 release_log_dir="${release_log_root}/${ver}"
 mkdir -p "${release_log_dir}"
 full_log="${release_log_dir}/pb_test.full.${ver}.log"
 report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
-direct_full_log="${release_log_dir}/pb_test.full.direct.${ver}.log"
-direct_report_json="${release_log_dir}/pb_test.full.direct.${ver}.report.json"
-localhost_full_log="${release_log_dir}/pb_test.full.localhost.${ver}.log"
-localhost_report_json="${release_log_dir}/pb_test.full.localhost.${ver}.report.json"
 if [[ -n "${PROMPTBRANCH_TEST_SESSION_LOG:-}" ]]; then
   case "${PROMPTBRANCH_TEST_SESSION_LOG}" in
     /*) test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
@@ -812,6 +836,9 @@ printf 'repo_root:      %s\n' "${repo_root}"
 printf 'version:        %s\n' "${ver}"
 printf 'artifact_zip:   %s\n' "${artifact_zip}"
 printf 'download_zip:   %s\n' "${download_zip}"
+printf 'repo_basename:  %s\n' "${repo_basename}"
+printf 'compose_name:   %s\n' "${compose_project_name}"
+printf 'service_port:   %s\n' "${service_port}"
 printf 'work_dir:       %s\n' "${work_dir}"
 printf 'release_logs:   %s\n' "${release_log_dir}"
 printf 'log_prune:      %s\n' "${prune_release_logs}"
@@ -819,8 +846,6 @@ printf 'log_keep:       %s\n' "${release_log_keep}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
-printf 'test_transport: %s\n' "${test_transport}"
-printf 'localhost_url:  %s\n' "${localhost_base_url}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
@@ -857,7 +882,7 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   normalize_generated_ownership "pre-import"
   find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
@@ -896,6 +921,9 @@ if [[ ${skip_commit} -eq 0 ]]; then
 fi
 
 # Build canonical release ZIP. Prefer your existing packager, but provide a strict fallback.
+# Remove transported/canonical release ZIPs before packaging so verification cannot
+# accidentally validate the input ZIP instead of the newly packaged output.
+rm -f "${artifact_zip}" "${repo_basename}_${ver}.zip" "${repo_basename}_${ver_plain}.zip" "${project_name}_${ver}.zip" "${project_name}_${ver_plain}.zip" "${artifact_project_name}_${ver}.zip" "${artifact_project_name}_${ver_plain}.zip"
 if [[ -x "${packager}" ]]; then
   "${packager}"
 else
@@ -974,46 +1002,61 @@ print(f"created {out}")
 PY
 fi
 
-# Normalize possible packager output names to canonical artifact name.
+# Normalize possible packager output names to the selected artifact identity.
+# The packager may derive its output name from the worktree directory basename;
+# release-control normalizes that to ${artifact_project_name}_${ver}.zip.
 matched_packager_output=0
-for candidate in \
-  "source_${ver}.zip" \
-  "source_${ver_plain}.zip" \
-  "source_${project_name}_${ver}.zip" \
+current_git_short="$(git rev-parse --short HEAD 2>/dev/null || true)"
+packager_candidates=(
+  "${artifact_zip}"
+  "${artifact_project_name}_${ver}.zip"
+  "${artifact_project_name}_${ver_plain}.zip"
+  "${repo_basename}_${ver}.zip"
+  "${repo_basename}_${ver_plain}.zip"
+  "source_${ver}.zip"
+  "source_${ver_plain}.zip"
+  "source_${artifact_project_name}_${ver}.zip"
+  "source_${artifact_project_name}_${ver_plain}.zip"
+  "source_${project_name}_${ver}.zip"
   "source_${project_name}_${ver_plain}.zip"
-do
+  "source_${repo_basename}_${ver}.zip"
+  "source_${repo_basename}_${ver_plain}.zip"
+)
+if [[ -n "${current_git_short}" ]]; then
+  packager_candidates+=(
+    "${artifact_project_name}-${current_git_short}.zip"
+    "${artifact_project_name}_${current_git_short}.zip"
+    "${project_name}-${current_git_short}.zip"
+    "${project_name}_${current_git_short}.zip"
+    "${repo_basename}-${current_git_short}.zip"
+    "${repo_basename}_${current_git_short}.zip"
+  )
+fi
+for candidate in "${packager_candidates[@]}"; do
   if [[ -f "${candidate}" ]]; then
-    mv -f "${candidate}" "${artifact_zip}"
+    if [[ "${candidate}" != "${artifact_zip}" ]]; then
+      mv -f "${candidate}" "${artifact_zip}"
+    fi
     matched_packager_output=1
     break
   fi
 done
 
-# Some legacy packagers only understand three-component VERSION values. When
-# VERSION is a numeric repair release such as v0.0.198.1, they may fall back to a
-# git-hash artifact name like chatgpt_claudecode_workflow-f8f6bf5.zip. Accept
-# that transport filename only when it matches the current git HEAD hash; the
-# canonical ZIP verification below still validates the embedded VERSION before
-# the artifact is used. This check runs even when a copied install ZIP already
-# exists at the canonical path, because a packager output must supersede the
-# transported input artifact.
 if [[ ${matched_packager_output} -eq 0 ]]; then
-  current_git_short="$(git rev-parse --short HEAD 2>/dev/null || true)"
-  if [[ -n "${current_git_short}" ]]; then
-    for candidate in \
-      "${project_name}-${current_git_short}.zip" \
-      "${project_name}_${current_git_short}.zip"
-    do
-      if [[ -f "${candidate}" ]]; then
-        mv -f "${candidate}" "${artifact_zip}"
-        matched_packager_output=1
-        break
-      fi
-    done
+  shopt -s nullglob
+  generated_version_zips=("${repo_basename}"*_"${ver}".zip "${repo_basename}"*-"${ver}".zip "${artifact_project_name}"*_"${ver}".zip "${artifact_project_name}"*-"${ver}".zip)
+  shopt -u nullglob
+  if [[ ${#generated_version_zips[@]} -eq 1 ]]; then
+    mv -f "${generated_version_zips[0]}" "${artifact_zip}"
+    matched_packager_output=1
+  elif [[ ${#generated_version_zips[@]} -gt 1 ]]; then
+    printf 'ERROR: ambiguous packager outputs for version %s:\n' "${ver}" >&2
+    printf '  %s\n' "${generated_version_zips[@]}" >&2
+    fail "ambiguous packager output; refusing to choose release artifact"
   fi
 fi
 
-[[ -f "${artifact_zip}" ]] || fail "could not find packaging output for version ${ver}; expected ${artifact_zip}, source_* variants, or ${project_name}-<current-git-sha>.zip"
+[[ -f "${artifact_zip}" ]] || fail "could not find packaging output for version ${ver}; expected ${artifact_zip}, source_* variants, ${repo_basename}_${ver}.zip, or git-sha variants"
 
 # Verify ZIP hygiene before using it.
 python3 - "${artifact_zip}" "${ver}" <<'PY'
@@ -1264,7 +1307,7 @@ compose_service_container_id() {
   if ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
-  docker compose -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
+  COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}"     docker compose -p "${compose_project_name}" -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
 }
 
 write_container_inspect_json() {
@@ -1285,7 +1328,7 @@ write_container_inspect_json() {
 
 service_health_probe() {
   local expected_version_plain="${ver#v}"
-  python3 - "${expected_version_plain}" "${service_health_json}" <<'INNERPY'
+  python3 - "${expected_version_plain}" "${service_health_json}" "${service_port}" <<'INNERPY'
 import json
 import sys
 import urllib.request
@@ -1294,7 +1337,7 @@ expected = sys.argv[1]
 out_path = sys.argv[2]
 last_error = None
 for path in ("/healthz", "/health"):
-    url = "http://127.0.0.1:8000" + path
+    url = f"http://127.0.0.1:{sys.argv[3]}" + path
     try:
         with urllib.request.urlopen(url, timeout=2.0) as response:
             raw = response.read().decode("utf-8", errors="replace")
@@ -1359,16 +1402,18 @@ deploy_promptbranch_service_detached() {
   {
     echo "== Docker service recreate =="
     echo "compose_file: ${compose_file}"
+    echo "compose_project_name: ${compose_project_name}"
+    echo "service_port: ${service_port}"
     echo "expected_version: ${ver#v}"
-    echo "+ docker compose -f ${compose_file} down --remove-orphans"
-    docker compose -f "${compose_file}" down --remove-orphans
-    echo "+ docker compose -f ${compose_file} build --pull"
-    docker compose -f "${compose_file}" build --pull
-    echo "+ docker compose -f ${compose_file} up -d --force-recreate --remove-orphans"
-    docker compose -f "${compose_file}" up -d --force-recreate --remove-orphans
-    echo "+ docker compose -f ${compose_file} ps"
-    docker compose -f "${compose_file}" ps
-    docker compose -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
+    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} build --pull"
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --pull
+    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
+    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} ps"
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
+    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
   } >"${service_start_log}" 2>&1
 
   container_id="$(compose_service_container_id)"
@@ -1403,97 +1448,36 @@ if [[ ${skip_service} -eq 0 ]]; then
   fi
 fi
 
-run_test_transport_once() {
-  local transport="$1"
-  local suite_log="$2"
-  local suite_report="$3"
-  local suite_rc=0
-  local suite_report_rc=0
-
-  echo "== pb test full/report (${transport}) =="
+# Run full suite and parsed report. Always try to create a report, even if the suite fails.
+if [[ ${skip_tests} -eq 0 ]]; then
+  start_test_session_log
+  test_rc=0
+  report_rc=0
   set +e
 
-  if [[ "${transport}" == "localhost" ]]; then
-    echo "+ CHATGPT_SERVICE_BASE_URL=${localhost_base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${suite_log}"
-    CHATGPT_SERVICE_BASE_URL="${localhost_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${suite_log}"
-    suite_rc=${PIPESTATUS[0]}
-  else
-    echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${suite_log}"
-    timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${suite_log}"
-    suite_rc=${PIPESTATUS[0]}
+  echo "+ timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
+  timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
+  test_rc=${PIPESTATUS[0]}
+  if [[ ${test_rc} -ne 0 ]]; then
+    echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
+    workflow_rc=${test_rc}
   fi
 
-  if [[ ${suite_rc} -ne 0 ]]; then
-    echo "WARN: pb test full (${transport}) exited with ${suite_rc}; continuing to test report." >&2
-    workflow_rc=${suite_rc}
-  fi
-
-  echo "+ pb test report ${suite_log} --json"
-  pb test report "${suite_log}" --json | tee "${suite_report}"
-  suite_report_rc=${PIPESTATUS[0]}
-  if [[ ${suite_report_rc} -ne 0 ]]; then
-    echo "WARN: pb test report (${transport}) exited with ${suite_report_rc}." >&2
-    workflow_rc=${suite_report_rc}
+  echo "+ pb test report ${full_log} --json"
+  pb test report "${full_log}" --json | tee "${report_json}"
+  report_rc=${PIPESTATUS[0]}
+  if [[ ${report_rc} -ne 0 ]]; then
+    echo "WARN: pb test report exited with ${report_rc}." >&2
+    workflow_rc=${report_rc}
   fi
 
   set -e
 
-  if [[ ${suite_rc} -eq 0 && ${suite_report_rc} -eq 0 ]]; then
-    return 0
-  fi
-  return 1
-}
-
-# Run full suite and parsed report. Always try to create a report, even if the suite fails.
-if [[ ${skip_tests} -eq 0 ]]; then
-  start_test_session_log
-  tests_green=1
-
-  case "${test_transport}" in
-    direct)
-      if [[ ${test_transport_explicit} -eq 1 ]]; then
-        full_log="${direct_full_log}"
-        report_json="${direct_report_json}"
-      fi
-      if ! run_test_transport_once "direct" "${full_log}" "${report_json}"; then
-        tests_green=0
-      fi
-      ;;
-    localhost)
-      full_log="${localhost_full_log}"
-      report_json="${localhost_report_json}"
-      if ! run_test_transport_once "localhost" "${localhost_full_log}" "${localhost_report_json}"; then
-        tests_green=0
-      fi
-      ;;
-    both)
-      full_log="${direct_full_log}"
-      report_json="${direct_report_json}"
-      if ! run_test_transport_once "direct" "${direct_full_log}" "${direct_report_json}"; then
-        tests_green=0
-      fi
-      if ! run_test_transport_once "localhost" "${localhost_full_log}" "${localhost_report_json}"; then
-        tests_green=0
-      fi
-      ;;
-  esac
-
   if [[ ${adopt_if_green} -eq 1 ]]; then
-    if [[ ${tests_green} -ne 1 ]]; then
-      echo "WARN: skipping adopt because one or more test/report commands failed." >&2
+    if [[ ${test_rc} -ne 0 || ${report_rc} -ne 0 ]]; then
+      echo "WARN: skipping adopt because test/report command failed." >&2
     else
-      case "${test_transport}" in
-        direct)
-          report_is_green "${report_json}"
-          ;;
-        localhost)
-          report_is_green "${localhost_report_json}"
-          ;;
-        both)
-          report_is_green "${direct_report_json}"
-          report_is_green "${localhost_report_json}"
-          ;;
-      esac
+      report_is_green "${report_json}"
       adopt_current_artifact
     fi
   fi
@@ -1613,24 +1597,6 @@ docker_log_summary_active=0
 if [[ ${skip_tests} -eq 0 ]]; then
   tests_summary_active=1
 fi
-direct_tests_summary_active=0
-localhost_tests_summary_active=0
-if [[ ${skip_tests} -eq 0 ]]; then
-  case "${test_transport}" in
-    direct)
-      if [[ ${test_transport_explicit} -eq 1 ]]; then
-        direct_tests_summary_active=1
-      fi
-      ;;
-    localhost)
-      localhost_tests_summary_active=1
-      ;;
-    both)
-      direct_tests_summary_active=1
-      localhost_tests_summary_active=1
-      ;;
-  esac
-fi
 if [[ ${skip_service} -eq 0 ]]; then
   service_summary_active=1
 fi
@@ -1643,21 +1609,18 @@ cat <<DONE
 Release workflow completed.
 version:       ${ver}
 artifact:      ${artifact_zip}
+artifact_name: ${artifact_project_name}
 release_logs:  ${release_log_dir}
 log_prune:     $(summary_value "${prune_summary_active}" "keep=${release_log_keep}")
-test_transport: ${test_transport}
-localhost_url:  ${localhost_base_url}
 full_log:      $(summary_value "${tests_summary_active}" "${full_log}")
 report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
-direct_log:    $(summary_value "${direct_tests_summary_active}" "${direct_full_log}")
-direct_report: $(summary_value "${direct_tests_summary_active}" "${direct_report_json}")
-localhost_log: $(summary_value "${localhost_tests_summary_active}" "${localhost_full_log}")
-localhost_report: $(summary_value "${localhost_tests_summary_active}" "${localhost_report_json}")
 adopt_current: ${adopt_current}
 adopt_if_green: ${adopt_if_green}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")
 service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")
 service_start: $(summary_value "${service_summary_active}" "${service_start_log}")
+compose_name:   ${compose_project_name}
+service_port:   ${service_port}
 service_health: $(summary_value "${service_summary_active}" "${service_health_json}")
 compose_ps:     $(summary_value "${service_summary_active}" "${service_compose_ps_json}")
 service_pid:   $(summary_value "${service_summary_active}" "${service_pid_file}")
