@@ -483,6 +483,23 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
 
 
+def test_parser_accepts_release_dev_status_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "dev-status",
+        "--artifact", "chatgpt_claudecode_workflow-2_v0.1.5.zip",
+        "--config", ".promptbranch-release.yml",
+        "--repo-path", "/tmp/repo",
+        "--json",
+    ])
+    assert args.command == "release"
+    assert args.release_command == "dev-status"
+    assert args.artifact == "chatgpt_claudecode_workflow-2_v0.1.5.zip"
+    assert args.config == ".promptbranch-release.yml"
+    assert args.repo_path == "/tmp/repo"
+    assert args.json is True
+
+
 def test_parser_accepts_release_lifecycle_status_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
