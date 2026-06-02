@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: promptbranch-service:0.1.12
+    image: promptbranch-service:0.1.13
     pull_policy: build
     init: true
     user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"

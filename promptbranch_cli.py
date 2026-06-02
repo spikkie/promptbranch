@@ -9370,6 +9370,10 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
         print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
         print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        context = payload.get("release_status_context") if isinstance(payload.get("release_status_context"), dict) else {}
+        print(f"baseline_status_applicable={str(context.get('baseline_status_applicable')).lower() if 'baseline_status_applicable' in context else 'unknown'}")
+        if context.get("primary_read_command"):
+            print(f"primary_read_command={context.get('primary_read_command')}")
         suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
         if payload.get("ok") is not True and suggested.get("development_checkpoint"):
             print(f"use_checkpoint={suggested.get('development_checkpoint')}")
@@ -10373,6 +10377,26 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
     if runtime_version and adopted_source_version and runtime_version != adopted_source_version:
         dev_candidate_detected = True
 
+    accepted_version = adopted_source_version or adopted_artifact_version or registry_current_version
+    detected_context = "development_candidate_ahead_of_accepted_baseline" if dev_candidate_detected else "post_adoption_baseline_check"
+    next_development_version = _release_expected_next_normal_version(expected_version or runtime_version or adopted_source_version)
+    checkpoint_version = expected_version or dev_candidate_version or runtime_version or adopted_source_version
+    checkpoint_artifact = getattr(args, "artifact", None) or (f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip")
+    development_checkpoint_command = (
+        f"pb release checkpoint --artifact {checkpoint_artifact} --version {checkpoint_version} "
+        f"--target-version {checkpoint_version} --mode continue --json"
+        if checkpoint_version else "pb release checkpoint --artifact ./<candidate>.zip --version <version> --mode continue --json"
+    )
+
+    if dev_candidate_detected:
+        warn(
+            "release_baseline_status_post_adoption_only_context",
+            "baseline-status is a post-adoption verifier; this looks like an installed development candidate, so checkpoint/dev-status is the correct read-only command path.",
+            development_candidate_version=dev_candidate_version,
+            accepted_version=accepted_version,
+            suggested_command=development_checkpoint_command,
+        )
+
     baseline_status_usage = {
         "intended_use": "post_adoption_only",
         "question_answered": "Is the currently accepted baseline aligned across runtime, adopted source, registry, and optional accepted ZIP?",
@@ -10383,16 +10407,24 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         ],
         "use_checkpoint_for_development_candidates": True,
         "use_dev_status_for_development_overview": True,
-        "detected_context": "development_candidate_ahead_of_accepted_baseline" if dev_candidate_detected else "post_adoption_baseline_check",
+        "detected_context": detected_context,
         "development_candidate_version": dev_candidate_version,
-        "accepted_version": adopted_source_version or adopted_artifact_version or registry_current_version,
+        "accepted_version": accepted_version,
+    }
+    release_status_context = {
+        "context": "development_candidate" if dev_candidate_detected else "post_adoption_baseline",
+        "baseline_status_applicable": not dev_candidate_detected,
+        "primary_read_command": development_checkpoint_command if dev_candidate_detected else "pb release baseline-status --json",
+        "secondary_read_command": "pb release dev-status --json" if dev_candidate_detected else "pb artifact current --json",
+        "explanation": (
+            "Installed runtime/candidate appears ahead of the adopted baseline. baseline-status intentionally verifies only accepted post-adoption state; use checkpoint or dev-status for focused development."
+            if dev_candidate_detected
+            else "Accepted baseline appears to be the active status context; baseline-status is the correct verifier."
+        ),
     }
 
     status = "baseline_current_verified" if not blockers else "baseline_current_blocked"
     severity = "blocked" if blockers else ("warning" if warnings else "ok")
-    next_development_version = _release_expected_next_normal_version(expected_version or runtime_version or adopted_source_version)
-    checkpoint_version = expected_version or dev_candidate_version or runtime_version or adopted_source_version
-    checkpoint_artifact = getattr(args, "artifact", None) or (f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip")
 
     return {
         "ok": not blockers,
@@ -10420,16 +10452,13 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "explicit_artifact": explicit_artifact,
         "docs_status": docs_status,
         "baseline_status_usage": baseline_status_usage,
+        "release_status_context": release_status_context,
         "post_adoption_only": True,
         "development_candidate_detected": dev_candidate_detected,
         "next_development_version": next_development_version,
         "suggested_commands": {
             "development_overview": "pb release dev-status --json",
-            "development_checkpoint": (
-                f"pb release checkpoint --artifact {checkpoint_artifact} --version {checkpoint_version} "
-                f"--target-version {checkpoint_version} --mode continue --json"
-                if checkpoint_version else "pb release checkpoint --artifact ./<candidate>.zip --version <version> --mode continue --json"
-            ),
+            "development_checkpoint": development_checkpoint_command,
             "continue_development": f"Build {next_development_version} from current development head" if next_development_version else None,
             "verify_current": "pb artifact current --json",
             "verify_docs": f"pb release docs-status --version {expected_version} --json" if expected_version else "pb release docs-status --json",
@@ -10474,6 +10503,10 @@ async def cmd_release_baseline_status(backend: Any, args: argparse.Namespace) ->
         usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
         print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
         print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        context = payload.get("release_status_context") if isinstance(payload.get("release_status_context"), dict) else {}
+        print(f"baseline_status_applicable={str(context.get('baseline_status_applicable')).lower() if 'baseline_status_applicable' in context else 'unknown'}")
+        if context.get("primary_read_command"):
+            print(f"primary_read_command={context.get('primary_read_command')}")
         suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
         if payload.get("ok") is not True and suggested.get("development_checkpoint"):
             print(f"use_checkpoint={suggested.get('development_checkpoint')}")

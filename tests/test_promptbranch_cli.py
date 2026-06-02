@@ -6261,6 +6261,8 @@ hooks:
     assert payload["consistency"]["code_version_matches_state_source"] is True
     assert payload["local_accepted_artifact"]["exists"] is True
     assert payload["explicit_artifact"]["ok"] is True
+    assert payload["release_status_context"]["context"] == "post_adoption_baseline"
+    assert payload["release_status_context"]["baseline_status_applicable"] is True
     assert payload["next_development_version"] is not None
     assert payload["warning_codes"] == []
     assert payload["blocker_codes"] == []
@@ -6323,6 +6325,8 @@ def test_release_baseline_status_blocks_runtime_source_drift(capsys, tmp_path) -
     assert "release_baseline_code_not_matching_adopted_source" in payload["blocker_codes"]
     assert payload["baseline_status_usage"]["intended_use"] == "post_adoption_only"
     assert payload["baseline_status_usage"]["use_checkpoint_for_development_candidates"] is True
+    assert payload["release_status_context"]["baseline_status_applicable"] is False
+    assert payload["release_status_context"]["primary_read_command"].startswith("pb release checkpoint ")
     assert payload["suggested_commands"]["development_overview"] == "pb release dev-status --json"
     assert "pb release checkpoint" in payload["suggested_commands"]["development_checkpoint"]
     assert payload["mutating_actions_executed"] is False
@@ -6386,6 +6390,10 @@ def test_release_baseline_status_guides_dev_candidate_to_checkpoint(capsys, tmp_
     assert payload["baseline_status_usage"]["detected_context"] == "development_candidate_ahead_of_accepted_baseline"
     assert payload["baseline_status_usage"]["development_candidate_version"] == dev_version
     assert payload["baseline_status_usage"]["accepted_version"] == accepted_version
+    assert payload["release_status_context"]["context"] == "development_candidate"
+    assert payload["release_status_context"]["baseline_status_applicable"] is False
+    assert payload["release_status_context"]["primary_read_command"] == payload["suggested_commands"]["development_checkpoint"]
+    assert "release_baseline_status_post_adoption_only_context" in payload["warning_codes"]
     assert payload["suggested_commands"]["development_overview"] == "pb release dev-status --json"
     assert "--mode continue" in payload["suggested_commands"]["development_checkpoint"]
     assert dev_version in payload["suggested_commands"]["development_checkpoint"]
