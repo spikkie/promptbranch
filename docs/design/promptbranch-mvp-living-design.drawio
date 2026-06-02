@@ -1,107 +1,99 @@
-<mxfile host="app.diagrams.net" modified="2026-06-02T09:30:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-02T10:05:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1230" pageHeight="1380" math="0" shadow="0">
+    <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
-        <mxCell id="0"/>
-        <mxCell id="1" parent="0"/>
-        <mxCell id="title" value="Promptbranch MVP Living Design
-editable source: docs/design/promptbranch-mvp-living-design.drawio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=18;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="20" width="1160" height="70" as="geometry"/></mxCell><mxCell id="vision_sec" value="1. Vision / Target Architecture" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="120" width="360" height="40" as="geometry"/></mxCell><mxCell id="core_sec" value="2. Core State Model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="420" y="120" width="360" height="40" as="geometry"/></mxCell><mxCell id="done_sec" value="3. Done / Current Surface" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="810" y="120" width="380" height="40" as="geometry"/></mxCell><mxCell id="vision" value="Promptbranch local control plane
-
-Goal:
-- ChatGPT Project = workspace
-- ChatGPT chat = task/session
-- Project Sources = repo/spec/log bundles
-- ZIP artifacts = release outputs
-- Promptbranch CLI owns workflow state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="30" y="180" width="360" height="160" as="geometry"/></mxCell><mxCell id="state" value="Three independent scopes
-
-Workspace
-- project_home_url
-- project_name
-
-Task
-- conversation_id
-- title
-
-Artifact
-- adopted artifact/source
-- dev head candidate
-
-Rule: do not conflate runtime code with adopted source baseline." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="420" y="180" width="360" height="210" as="geometry"/></mxCell><mxCell id="done" value="Implemented / proven surfaces
-
-- canonical pb shell grammar
-- pb test smoke
-- read-only MCP server/client paths
-- skills / repo-inspection model
-- ask/reply protocol design
-- artifact intake design
-- release doctor/config/install/lifecycle plan
-- dev-status + checkpoint flow
-- docs-status living design validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="180" width="380" height="210" as="geometry"/></mxCell><mxCell id="flow_sec" value="4. CI-style Development / Adoption Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="430" width="760" height="40" as="geometry"/></mxCell><mxCell id="next_sec" value="5. Remaining MVP Tracks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="810" y="430" width="380" height="40" as="geometry"/></mxCell><mxCell id="accepted" value="Accepted baseline
-
-pb artifact current
-kind=adopted_release
-full release-control already passed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="30" y="500" width="200" height="110" as="geometry"/></mxCell><mxCell id="dev1" value="Development candidate N
-
-install ZIP
-focused tests
-pb test smoke
-no adoption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="280" y="500" width="200" height="110" as="geometry"/></mxCell><mxCell id="dev2" value="Development candidate N+1
-
-monotonic version
-previous candidate + new change
-focused checks only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="530" y="500" width="220" height="110" as="geometry"/></mxCell><mxCell id="gate" value="Adoption checkpoint
-
-full release-control
-Project Source verification
-adopt only if green
-pb artifact current verifies new baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="280" y="660" width="280" height="130" as="geometry"/></mxCell><mxCell id="e1" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="accepted" target="dev1"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e2" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="dev1" target="dev2"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e3" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="dev2" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e4" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="gate" target="accepted"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="remaining" value="Remaining / planned
-
-Ask/Reply
-- prove real artifact roundtrip
-
-Artifact intake
-- download/verify/migrate from answer
-
-Native lifecycle
-- controlled install/source/test/adopt
-- policy sync
-- git safety
-
-Agent/MCP
-- harden host loop
-- keep writes blocked until transactional proof exists" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="500" width="380" height="290" as="geometry"/></mxCell><mxCell id="refs_sec" value="6. Documentation References" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="840" width="1160" height="40" as="geometry"/></mxCell><mxCell id="refs_a" value="Operating model
-
-- Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt
-- promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md
-
-MCP / skills / agent plan
-
-- promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="30" y="900" width="360" height="190" as="geometry"/></mxCell><mxCell id="refs_b" value="Ask/reply + artifact intake
-
-- docs/promptbranch_ask_reply_protocol_design_and_mvp_plan.md
-
-Native lifecycle
-
-- promptbranch_native_release_lifecycle_todo.md
-- docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="420" y="900" width="360" height="190" as="geometry"/></mxCell><mxCell id="refs_c" value="Recent release notes
-
-- docs/release-v0.1.3.md
-- docs/release-v0.1.4.md
-- docs/release-v0.1.5.md
-- docs/release-v0.1.6.md
-- docs/release-v0.1.7.md
-- docs/repair-v0.1.7.1.md
-- docs/release-v0.1.8.md
-
-Definition of done
-- docs/mvp-definition-of-done.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="900" width="380" height="190" as="geometry"/></mxCell><mxCell id="update_sec" value="7. Update Protocol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="1140" width="1160" height="40" as="geometry"/></mxCell><mxCell id="update" value="After each release slice:
-- run pb release docs-status --json
-1. Update this diagram source, not a screenshot.
-2. Move completed items only after focused/full validation evidence exists.
-3. Keep references repo-relative.
-4. Add new command surfaces to Done / Current Surface.
-5. Keep remaining work in MVP tracks.
-6. Do not treat the diagram as proof; proof remains tests, logs, and validated JSON outputs." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#666666;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="30" y="1200" width="1160" height="140" as="geometry"/></mxCell>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Promptbranch MVP Living Design&#10;ACTUAL MVP: json_orchestration_state_mvp&#10;editable source: docs/design/promptbranch-mvp-living-design.drawio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="20" width="1480" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="actual_sec" value="1. Actual MVP identity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="130" width="470" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="loop_sec" value="2. JSON orchestration control loop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="535" y="130" width="470" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="pb_sec" value="3. Promptbranch operating shell" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="130" width="470" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="actual_mvp" value="ACTUAL MVP&#10;json_orchestration_state_mvp&#10;&#10;Source of truth:&#10;- orchestration/docs/json_orchestration_state_mvp.md&#10;- high-level canvas&#10;- low-level canvas&#10;&#10;This diagram is a living map around that MVP, not a competing MVP." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;align=left;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="190" width="470" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="actual_docs" value="Core MVP docs&#10;&#10;High-level canvas:&#10;orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md&#10;&#10;Low-level canvas:&#10;orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md&#10;&#10;Use high-level for intent/architecture.&#10;Use low-level for repo layout/scope/setup." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2f0d9;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="450" width="470" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="loop" value="Typed orchestration loop&#10;&#10;Intent&#10;→ ChatGPT grill proposal&#10;→ Promptbranch schema/policy validation&#10;→ accepted/rejected JSON event&#10;→ evidence collection&#10;→ release artifact candidate&#10;→ artifact intake verification&#10;→ guarded adoption&#10;→ next task from known state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="535" y="190" width="470" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="authority" value="Authority split&#10;&#10;ChatGPT = deliberation + grilling engine&#10;JSON = typed proposal/event/evidence contract&#10;Promptbranch = deterministic control-plane state machine&#10;Tools/tests/deployment = evidence producers&#10;Artifact intake = release ingress/adoption gate&#10;&#10;Rule: proposal is not authority." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="535" y="470" width="470" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="shell" value="Promptbranch shell model&#10;&#10;Workspace = ChatGPT Project&#10;Task = ChatGPT chat/session&#10;Artifact = repo/source bundle/release ZIP&#10;&#10;Canonical grammar:&#10;pb ws / pb task / pb src / pb artifact / pb test / pb debug / pb doctor / pb ask / pb agent / pb mcp / pb skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="190" width="470" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp" value="Local execution architecture&#10;&#10;Promptbranch CLI/local host&#10;→ deterministic planner/policy gate&#10;→ MCP client&#10;→ pb mcp serve&#10;→ read-only tools first&#10;→ controlled process tools later&#10;→ transactional writes only after verified" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="450" width="470" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="e_actual_loop" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="actual_mvp" target="loop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_loop_shell" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#d6b656;" edge="1" parent="1" source="loop" target="shell">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_shell_mcp" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="shell" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_actual_docs" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="actual_mvp" target="actual_docs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="evidence_sec" value="4. Evidence and artifact intake gate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="760" width="720" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="dev_sec" value="5. Development / adoption flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="790" y="760" width="720" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="evidence" value="Evidence model&#10;&#10;JSON surfaces:&#10;- context.schema.json&#10;- decision.schema.json&#10;- evidence.schema.json&#10;&#10;Examples + state machines prove the contract shape.&#10;&#10;Evidence is produced by tools/tests/deployment, not by assistant prose." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="820" width="340" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="artifact_gate" value="Artifact intake gate&#10;&#10;structured ask&#10;→ structured reply&#10;→ candidate artifact&#10;→ download only when explicit&#10;→ verify ZIP/layout/hygiene/version&#10;→ migrate as candidate&#10;→ full test/adopt only after green validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="410" y="820" width="340" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="devflow" value="CI-style development flow&#10;&#10;accepted baseline may remain behind runtime/dev head&#10;&#10;focused dev:&#10;v0.1.7.1 → v0.1.8 → v0.1.9&#10;&#10;full release-control only at adoption checkpoint&#10;&#10;Do not rewrite issued versions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="790" y="820" width="340" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="checkpoint" value="Checkpoint decision&#10;&#10;Continue mode:&#10;- focused tests&#10;- smoke&#10;- docs-status&#10;- no source/adopt mutation&#10;&#10;Adopt mode:&#10;- full release-control&#10;- Project Source verification&#10;- artifact current verified&#10;- policy/Git sync only when safe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="820" width="340" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="e_loop_evidence" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#d6b656;" edge="1" parent="1" source="loop" target="evidence">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_evidence_artifact" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450;" edge="1" parent="1" source="evidence" target="artifact_gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_artifact_dev" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="artifact_gate" target="devflow">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dev_checkpoint" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1" source="devflow" target="checkpoint">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="current_sec" value="6. Current implemented surface / remaining movement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="1130" width="1480" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="done" value="Done / current surface&#10;&#10;- canonical shell grammar&#10;- read-only MCP server/client paths&#10;- skill registry / repo-inspection model&#10;- pb test smoke&#10;- ask/reply + artifact intake design&#10;- release doctor/config/install/lifecycle planning&#10;- dev-status/checkpoint&#10;- docs-status validation&#10;- living design + draw.io source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="1190" width="470" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="remaining" value="Remaining / planned&#10;&#10;JSON orchestration state MVP:&#10;- add more schema-backed proof examples&#10;- prove real artifact roundtrip&#10;- connect candidate intake to guarded adoption&#10;&#10;Lifecycle:&#10;- controlled source upload/test/adopt&#10;- policy sync + git safety&#10;&#10;Agent/MCP:&#10;- harden host loop&#10;- writes remain blocked until transactional proof exists" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="535" y="1190" width="470" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="docs_refs" value="Documentation references&#10;&#10;Actual MVP:&#10;- orchestration/docs/json_orchestration_state_mvp.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md&#10;&#10;Support docs:&#10;- operating model&#10;- MCP/skills plan&#10;- ask/reply artifact intake&#10;- native release lifecycle TODO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1190" width="470" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="update_sec" value="7. Update protocol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="1530" width="1480" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="update" value="After each release slice:&#10;1. Keep ACTUAL MVP: json_orchestration_state_mvp visible unless the MVP line changes.&#10;2. Update this Markdown and the editable .drawio together.&#10;3. Keep references repo-relative.&#10;4. Move items to Done only after focused tests or full release-control evidence exists.&#10;5. Run: pb release docs-status --json.&#10;6. Do not export images unless explicitly requested." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="1590" width="1480" height="120" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
