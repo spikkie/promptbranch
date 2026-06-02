@@ -9367,6 +9367,14 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         print(f"config_path={payload.get('path')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 
@@ -9976,6 +9984,14 @@ async def cmd_release_dev_status(backend: Any, args: argparse.Namespace) -> int:
         print(f"next_development_version={((payload.get('version_plan') or {}).get('next_development_version') or 'none')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 
@@ -10200,6 +10216,14 @@ async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
         print(f"next_development_version={((payload.get('checkpoint_decision') or {}).get('next_development_version') or 'none')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
@@ -10340,9 +10364,35 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
                 docs_warning_code=warning_code,
             )
 
+    dev_candidate_detected = False
+    dev_candidate_version = explicit_artifact_version or runtime_version
+    accepted_versions = [value for value in [adopted_artifact_version, adopted_source_version, registry_current_version] if value]
+    if expected_version and accepted_versions and any(value != expected_version for value in accepted_versions):
+        if dev_candidate_version and dev_candidate_version == expected_version:
+            dev_candidate_detected = True
+    if runtime_version and adopted_source_version and runtime_version != adopted_source_version:
+        dev_candidate_detected = True
+
+    baseline_status_usage = {
+        "intended_use": "post_adoption_only",
+        "question_answered": "Is the currently accepted baseline aligned across runtime, adopted source, registry, and optional accepted ZIP?",
+        "not_for": [
+            "installed-but-not-adopted development candidates",
+            "continue-development decisions",
+            "pre-adoption candidate checks",
+        ],
+        "use_checkpoint_for_development_candidates": True,
+        "use_dev_status_for_development_overview": True,
+        "detected_context": "development_candidate_ahead_of_accepted_baseline" if dev_candidate_detected else "post_adoption_baseline_check",
+        "development_candidate_version": dev_candidate_version,
+        "accepted_version": adopted_source_version or adopted_artifact_version or registry_current_version,
+    }
+
     status = "baseline_current_verified" if not blockers else "baseline_current_blocked"
     severity = "blocked" if blockers else ("warning" if warnings else "ok")
     next_development_version = _release_expected_next_normal_version(expected_version or runtime_version or adopted_source_version)
+    checkpoint_version = expected_version or dev_candidate_version or runtime_version or adopted_source_version
+    checkpoint_artifact = getattr(args, "artifact", None) or (f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip")
 
     return {
         "ok": not blockers,
@@ -10369,11 +10419,21 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "local_accepted_artifact": local_accepted_artifact,
         "explicit_artifact": explicit_artifact,
         "docs_status": docs_status,
+        "baseline_status_usage": baseline_status_usage,
+        "post_adoption_only": True,
+        "development_candidate_detected": dev_candidate_detected,
         "next_development_version": next_development_version,
         "suggested_commands": {
-            "continue_development": f"Build {next_development_version} from {state.get('artifact_ref') or accepted_filename}" if next_development_version else None,
+            "development_overview": "pb release dev-status --json",
+            "development_checkpoint": (
+                f"pb release checkpoint --artifact {checkpoint_artifact} --version {checkpoint_version} "
+                f"--target-version {checkpoint_version} --mode continue --json"
+                if checkpoint_version else "pb release checkpoint --artifact ./<candidate>.zip --version <version> --mode continue --json"
+            ),
+            "continue_development": f"Build {next_development_version} from current development head" if next_development_version else None,
             "verify_current": "pb artifact current --json",
             "verify_docs": f"pb release docs-status --version {expected_version} --json" if expected_version else "pb release docs-status --json",
+            "post_adoption_baseline_check": f"pb release baseline-status --version {adopted_source_version or expected_version or '<accepted-version>'} --json",
         },
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
@@ -10393,7 +10453,10 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "git_push_performed": False,
         "would_mutate": False,
         "mutating_actions_executed": False,
-        "operator_instruction": "Read-only post-adoption baseline verifier. Use this after adoption to prove runtime/source/artifact alignment before starting the next development slice.",
+        "operator_instruction": (
+            "baseline-status is post-adoption only. Use it after adoption to prove runtime/source/artifact alignment. "
+            "For installed but not yet adopted development candidates, use pb release checkpoint --mode continue or pb release dev-status --json."
+        ),
     }
 
 
@@ -10408,6 +10471,14 @@ async def cmd_release_baseline_status(backend: Any, args: argparse.Namespace) ->
         print(f"next_development_version={payload.get('next_development_version') or 'none'}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 
@@ -10894,6 +10965,14 @@ async def cmd_release_install(backend: Any, args: argparse.Namespace) -> int:
         print(f"install_entry_count={((payload.get('install_plan') or {}).get('install_entry_count')) or 0}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 
@@ -13330,6 +13409,14 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         print(f"lifecycle_phase={payload.get('lifecycle_phase')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+        usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
+        print(f"intended_use={usage.get('intended_use') or 'post_adoption_only'}")
+        print(f"detected_context={usage.get('detected_context') or 'unknown'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if payload.get("ok") is not True and suggested.get("development_checkpoint"):
+            print(f"use_checkpoint={suggested.get('development_checkpoint')}")
+        if payload.get("ok") is not True and suggested.get("development_overview"):
+            print(f"use_dev_status={suggested.get('development_overview')}")
     return 0 if payload.get("ok") else 1
 
 
