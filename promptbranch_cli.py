@@ -10202,6 +10202,215 @@ async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
 
+def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only verifier for the currently accepted release baseline.
+
+    This differs from dev-status/checkpoint: it answers the post-adoption
+    question "is the accepted baseline actually aligned now?" without running
+    tests, uploading sources, adopting, or mutating Git state.
+    """
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    expected_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
+    registry = _artifact_registry_from_args(args)
+    current_payload = _artifact_current_payload(backend, registry)
+    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
+    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+
+    runtime_version = _candidate_version_normalized(runtime.get("version"))
+    adopted_artifact_version = _candidate_version_normalized(baseline_roles.get("adopted_artifact_version") or state.get("artifact_version"))
+    adopted_source_version = _candidate_version_normalized(baseline_roles.get("adopted_source_version") or state.get("source_version"))
+    registry_current_version = _candidate_version_normalized(baseline_roles.get("registry_current_version") or registry_current.get("version"))
+
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    if expected_version:
+        for label, value in [
+            ("runtime", runtime_version),
+            ("adopted_artifact", adopted_artifact_version),
+            ("adopted_source", adopted_source_version),
+            ("registry_current", registry_current_version),
+        ]:
+            if value and value != expected_version:
+                block(
+                    f"release_baseline_{label}_version_mismatch",
+                    f"{label} version does not match expected accepted baseline version.",
+                    expected_version=expected_version,
+                    actual_version=value,
+                )
+            if not value:
+                block(
+                    f"release_baseline_{label}_version_missing",
+                    f"{label} version is missing from current baseline state.",
+                    expected_version=expected_version,
+                )
+
+    for key in [
+        "registry_current_matches_state_artifact",
+        "state_source_matches_state_artifact",
+        "code_version_matches_state_source",
+        "project_home_url_present",
+    ]:
+        if consistency.get(key) is not True:
+            block(
+                f"release_baseline_consistency_{key}_false",
+                "Artifact current consistency check is not true.",
+                consistency_key=key,
+                value=consistency.get(key),
+            )
+
+    if baseline_roles.get("code_matches_adopted_source") is not True:
+        block(
+            "release_baseline_code_not_matching_adopted_source",
+            "Runtime code version does not match the adopted Project Source baseline.",
+            runtime_code_version=baseline_roles.get("runtime_code_version"),
+            adopted_source_version=baseline_roles.get("adopted_source_version"),
+        )
+
+    accepted_filename = str(registry_current.get("filename") or state.get("artifact_ref") or "")
+    accepted_path = Path(str(registry_current.get("path") or repo_root / accepted_filename)).expanduser() if accepted_filename else None
+    local_accepted_artifact = {
+        "filename": accepted_filename or None,
+        "path": str(accepted_path) if accepted_path else None,
+        "exists": bool(accepted_path and accepted_path.is_file()),
+        "sha256": registry_current.get("sha256"),
+        "size_bytes": registry_current.get("size_bytes"),
+        "file_count": registry_current.get("file_count"),
+    }
+    if accepted_filename and accepted_path and not accepted_path.is_file():
+        warn(
+            "release_baseline_local_artifact_missing",
+            "Accepted registry artifact path does not exist locally. Registry state is still readable, but local artifact reuse may fail.",
+            filename=accepted_filename,
+            path=str(accepted_path),
+        )
+
+    explicit_artifact = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root) if getattr(args, "artifact", None) else {"attempted": False}
+    explicit_artifact_version = _candidate_version_normalized(explicit_artifact.get("version") or explicit_artifact.get("version_file") or explicit_artifact.get("filename_version")) if explicit_artifact.get("attempted") else None
+    if explicit_artifact.get("attempted") and not explicit_artifact.get("ok"):
+        block(
+            "release_baseline_explicit_artifact_invalid",
+            "Explicit accepted artifact failed ZIP verification.",
+            artifact_status=explicit_artifact.get("status"),
+            blocking_errors=explicit_artifact.get("blocking_errors") or [],
+        )
+    if explicit_artifact_version and expected_version and explicit_artifact_version != expected_version:
+        block(
+            "release_baseline_explicit_artifact_version_mismatch",
+            "Explicit artifact version does not match expected accepted baseline version.",
+            expected_version=expected_version,
+            artifact_version=explicit_artifact_version,
+        )
+    if explicit_artifact.get("attempted") and accepted_filename and explicit_artifact.get("filename") != accepted_filename:
+        warn(
+            "release_baseline_explicit_artifact_filename_differs_from_registry",
+            "Explicit artifact filename differs from registry current filename.",
+            explicit_filename=explicit_artifact.get("filename"),
+            registry_filename=accepted_filename,
+        )
+
+    docs_status: dict[str, Any] | None = None
+    if bool(getattr(args, "include_docs", False)):
+        docs_status = _living_design_status(
+            repo_root=repo_root,
+            design_doc=getattr(args, "design_doc", None) or "docs/design/promptbranch-mvp-living-design.md",
+            drawio=getattr(args, "drawio", None) or "docs/design/promptbranch-mvp-living-design.drawio",
+            expected_version=expected_version,
+        )
+        if not docs_status.get("ok"):
+            block(
+                "release_baseline_docs_status_blocked",
+                "Living design documentation validation is blocked.",
+                blocker_codes=docs_status.get("blocker_codes") or [],
+            )
+        for warning_code in docs_status.get("warning_codes") or []:
+            warn(
+                "release_baseline_docs_status_warning",
+                "Living design documentation validation emitted a warning.",
+                docs_warning_code=warning_code,
+            )
+
+    status = "baseline_current_verified" if not blockers else "baseline_current_blocked"
+    severity = "blocked" if blockers else ("warning" if warnings else "ok")
+    next_development_version = _release_expected_next_normal_version(expected_version or runtime_version or adopted_source_version)
+
+    return {
+        "ok": not blockers,
+        "schema": "promptbranch.release.baseline_status",
+        "schema_version": "1.0",
+        "action": "release_baseline_status",
+        "status": status,
+        "severity": severity,
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "expected_version": expected_version,
+        "runtime": runtime,
+        "accepted_baseline": {
+            "artifact_ref": state.get("artifact_ref"),
+            "artifact_version": adopted_artifact_version,
+            "source_ref": state.get("source_ref"),
+            "source_version": adopted_source_version,
+            "registry_current_ref": registry_current.get("filename"),
+            "registry_current_version": registry_current_version,
+            "registry_current_kind": registry_current.get("kind"),
+        },
+        "baseline_roles": baseline_roles,
+        "consistency": consistency,
+        "local_accepted_artifact": local_accepted_artifact,
+        "explicit_artifact": explicit_artifact,
+        "docs_status": docs_status,
+        "next_development_version": next_development_version,
+        "suggested_commands": {
+            "continue_development": f"Build {next_development_version} from {state.get('artifact_ref') or accepted_filename}" if next_development_version else None,
+            "verify_current": "pb artifact current --json",
+            "verify_docs": f"pb release docs-status --version {expected_version} --json" if expected_version else "pb release docs-status --json",
+        },
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "full_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "would_mutate": False,
+        "mutating_actions_executed": False,
+        "operator_instruction": "Read-only post-adoption baseline verifier. Use this after adoption to prove runtime/source/artifact alignment before starting the next development slice.",
+    }
+
+
+async def cmd_release_baseline_status(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_baseline_status_payload(backend, args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"expected_version={payload.get('expected_version') or 'none'}")
+        print(f"next_development_version={payload.get('next_development_version') or 'none'}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
 def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
@@ -13125,6 +13334,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "baseline-status":
+        return await cmd_release_baseline_status(backend, args)
     if args.release_command == "docs-status":
         return await cmd_release_docs_status(backend, args)
     if args.release_command == "dev-status":
@@ -17403,6 +17614,16 @@ def make_parser() -> argparse.ArgumentParser:
     release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
     release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
     release_git_sync.add_argument("--json", action="store_true")
+
+    release_baseline_status = release_subparsers.add_parser("baseline-status", help="Read-only post-adoption accepted-baseline alignment verifier.")
+    release_baseline_status.add_argument("--version", help="Expected accepted baseline version. Defaults to the running Promptbranch version.")
+    release_baseline_status.add_argument("--artifact", help="Optional accepted release ZIP to verify against the current baseline.")
+    release_baseline_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file for operator context. Defaults to .promptbranch-release.yml.")
+    release_baseline_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_baseline_status.add_argument("--include-docs", action="store_true", help="Also validate the living MVP design Markdown and draw.io source.")
+    release_baseline_status.add_argument("--design-doc", default="docs/design/promptbranch-mvp-living-design.md", help="Repo-relative living design Markdown path when --include-docs is used.")
+    release_baseline_status.add_argument("--drawio", default="docs/design/promptbranch-mvp-living-design.drawio", help="Repo-relative editable draw.io source path when --include-docs is used.")
+    release_baseline_status.add_argument("--json", action="store_true")
 
     release_docs_status = release_subparsers.add_parser("docs-status", help="Read-only living MVP design document and draw.io source validator.")
     release_docs_status.add_argument("--version", help="Expected version marker to check in the living design document. Defaults to the running Promptbranch version.")

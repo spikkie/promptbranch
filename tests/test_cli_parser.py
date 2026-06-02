@@ -483,6 +483,25 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
 
 
+def test_parser_accepts_release_baseline_status_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "baseline-status",
+        "--version", "v0.1.10",
+        "--artifact", "chatgpt_claudecode_workflow-2_v0.1.10.zip",
+        "--include-docs",
+        "--repo-path", "/tmp/repo",
+        "--json",
+    ])
+    assert args.command == "release"
+    assert args.release_command == "baseline-status"
+    assert args.version == "v0.1.10"
+    assert args.artifact == "chatgpt_claudecode_workflow-2_v0.1.10.zip"
+    assert args.include_docs is True
+    assert args.repo_path == "/tmp/repo"
+    assert args.json is True
+
+
 def test_parser_accepts_release_docs_status_command() -> None:
     parser = make_parser()
     args = parser.parse_args([

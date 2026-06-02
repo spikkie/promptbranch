@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_docs_status, cmd_release_dev_status, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_baseline_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -6181,6 +6181,147 @@ hooks:
     assert "duplicate key" in payload["error"]
     assert payload["mutating_actions_executed"] is False
 
+
+
+def test_release_baseline_status_verifies_post_adoption_alignment(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    runtime_version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{runtime_version}.zip"
+    _write_test_release_zip(accepted, runtime_version)
+    (repo / "VERSION").write_text(runtime_version + "\n", encoding="utf-8")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=runtime_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": runtime_version,
+                "source_ref": accepted.name,
+                "source_version": runtime_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version=runtime_version,
+        artifact=str(accepted),
+        config=str(config),
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "release_baseline_status"
+    assert payload["status"] == "baseline_current_verified"
+    assert payload["severity"] == "ok"
+    assert payload["accepted_baseline"]["source_version"] == runtime_version
+    assert payload["accepted_baseline"]["registry_current_version"] == runtime_version
+    assert payload["runtime"]["version"] == runtime_version
+    assert payload["baseline_roles"]["code_matches_adopted_source"] is True
+    assert payload["consistency"]["code_version_matches_state_source"] is True
+    assert payload["local_accepted_artifact"]["exists"] is True
+    assert payload["explicit_artifact"]["ok"] is True
+    assert payload["next_development_version"] is not None
+    assert payload["warning_codes"] == []
+    assert payload["blocker_codes"] == []
+    assert payload["mutating_actions_executed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+
+
+def test_release_baseline_status_blocks_runtime_source_drift(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    accepted = repo / "chatgpt_claudecode_workflow-2_v0.1.10.zip"
+    _write_test_release_zip(accepted, "v0.1.10")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version="v0.1.10",
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": "v0.1.10",
+                "source_ref": accepted.name,
+                "source_version": "v0.1.9",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version="v0.1.10",
+        artifact=None,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "baseline_current_blocked"
+    assert "release_baseline_adopted_source_version_mismatch" in payload["blocker_codes"]
+    assert "release_baseline_consistency_state_source_matches_state_artifact_false" in payload["blocker_codes"]
+    assert "release_baseline_code_not_matching_adopted_source" in payload["blocker_codes"]
+    assert payload["mutating_actions_executed"] is False
 
 
 def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
