@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.13`  
+Release: `v0.1.14`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -219,6 +219,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.9.md`
 - `docs/release-v0.1.10.md`
 - `docs/release-v0.1.11.md`
+- `docs/release-v0.1.14.md`
 - `docs/release-v0.1.13.md`
 
 ## Editing the draw.io source
@@ -230,3 +231,15 @@ docs/design/promptbranch-mvp-living-design.drawio
 ```
 
 in diagrams.net/draw.io. Update only the region affected by the current release when possible. Keep the actual MVP identity box prominent so future readers do not confuse the generic Promptbranch shell work with the `json_orchestration_state_mvp` line.
+
+
+## Release-status UX
+
+`pb release status-guide --json` is the read-only command chooser for release-state inspection. It does not verify or mutate state; it tells the operator whether the current context should use:
+
+- `pb release baseline-status --json` after adoption, when runtime/source/artifact are expected to align.
+- `pb release checkpoint --mode continue --json` for installed-but-not-adopted development candidates.
+- `pb release dev-status --json` for inventory and baseline-versus-development-head inspection.
+
+This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable.
+

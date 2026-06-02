@@ -9999,6 +9999,186 @@ async def cmd_release_dev_status(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only command chooser for release status inspection.
+
+    This is intentionally advisory.  It does not verify a baseline by itself;
+    instead it tells the operator which read-only status command is appropriate
+    for the current lifecycle context.
+    """
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    artifact_arg = str(getattr(args, "artifact", "") or "")
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None) or requested_version)
+
+    dev_status_args = _release_lifecycle_namespace(
+        args,
+        artifact=artifact_arg or None,
+        config=getattr(args, "config", ".promptbranch-release.yml"),
+        repo_path=str(repo_root),
+        json=True,
+    )
+    dev_status = _release_dev_status_payload(backend, dev_status_args)
+    accepted = dev_status.get("accepted_baseline") if isinstance(dev_status.get("accepted_baseline"), dict) else {}
+    runtime = dev_status.get("runtime") if isinstance(dev_status.get("runtime"), dict) else {}
+    version_plan = dev_status.get("version_plan") if isinstance(dev_status.get("version_plan"), dict) else {}
+    complexity = dev_status.get("complexity_summary") if isinstance(dev_status.get("complexity_summary"), dict) else {}
+
+    accepted_version = _candidate_version_normalized(accepted.get("source_version") or accepted.get("artifact_version"))
+    runtime_version = _candidate_version_normalized(runtime.get("version"))
+    dev_head_version = _candidate_version_normalized(dev_status.get("development_head_version"))
+    selected_version = requested_version or dev_head_version or runtime_version or accepted_version
+    selected_artifact = artifact_arg
+    if not selected_artifact:
+        dev_head = dev_status.get("development_head") if isinstance(dev_status.get("development_head"), dict) else {}
+        selected_artifact = str(dev_head.get("filename") or "")
+        if selected_artifact and not selected_artifact.startswith("/"):
+            selected_artifact = f"./{selected_artifact}"
+
+    accepted_aligned = bool(
+        accepted_version
+        and runtime_version == accepted_version
+        and (not dev_head_version or dev_head_version == accepted_version)
+    )
+    development_candidate = bool(
+        accepted_version
+        and (runtime.get("relation_to_accepted") == "right_newer" or (dev_status.get("version_relations") or {}).get("dev_head_to_accepted") == "right_newer")
+    )
+
+    if development_candidate:
+        context = "development_candidate"
+        primary_kind = "checkpoint"
+        primary_command = (
+            f"pb release checkpoint --artifact {selected_artifact or './<candidate>.zip'} "
+            f"--version {selected_version or '<candidate-version>'} "
+            f"--target-version {target_version or selected_version or '<candidate-version>'} "
+            "--mode continue --json"
+        )
+        explanation = "Runtime or selected development head is ahead of the accepted baseline; use checkpoint for focused development decisions."
+        baseline_status_applicable = False
+    elif accepted_aligned:
+        context = "post_adoption_baseline"
+        primary_kind = "baseline-status"
+        primary_command = f"pb release baseline-status --version {accepted_version} --json"
+        explanation = "Runtime, development head, and accepted baseline appear aligned; baseline-status is the correct post-adoption verifier."
+        baseline_status_applicable = True
+    else:
+        context = "needs_inspection"
+        primary_kind = "dev-status"
+        primary_command = "pb release dev-status --json"
+        explanation = "Release state is not clearly an adopted baseline or a selected dev candidate; inspect dev-status first."
+        baseline_status_applicable = False
+
+    commands = {
+        "baseline_status": f"pb release baseline-status --version {accepted_version or selected_version or '<accepted-version>'} --json",
+        "dev_status": "pb release dev-status --json",
+        "checkpoint": (
+            f"pb release checkpoint --artifact {selected_artifact or './<candidate>.zip'} "
+            f"--version {selected_version or '<candidate-version>'} "
+            f"--target-version {target_version or selected_version or '<candidate-version>'} "
+            "--mode continue --json"
+        ),
+    }
+    if artifact_arg:
+        commands["dev_status_with_artifact"] = f"pb release dev-status --artifact {artifact_arg} --json"
+
+    warnings = list(dev_status.get("warnings") or [])
+    blockers = list(dev_status.get("blockers") or [])
+    if development_candidate:
+        warnings.append({
+            "code": "release_status_guide_dev_candidate_use_checkpoint",
+            "severity": "warning",
+            "message": "Installed runtime or selected artifact is a development candidate; baseline-status is post-adoption only.",
+            "accepted_version": accepted_version,
+            "development_head_version": dev_head_version,
+        })
+    if complexity.get("full_test_recommended_now") is True:
+        warnings.append({
+            "code": "release_status_guide_full_test_checkpoint_advised",
+            "severity": "warning",
+            "message": "Accumulated development complexity indicates that a full-test/adoption checkpoint should be considered soon.",
+        })
+
+    return {
+        "ok": not blockers,
+        "schema": "promptbranch.release.status_guide",
+        "schema_version": "1.0",
+        "action": "release_status_guide",
+        "status": "release_status_guidance_available" if not blockers else "release_status_guidance_blocked",
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "detected_context": context,
+        "primary_read_command_kind": primary_kind,
+        "primary_read_command": primary_command,
+        "secondary_read_command": "pb release dev-status --json" if primary_kind != "dev-status" else commands["baseline_status"],
+        "baseline_status_applicable": baseline_status_applicable,
+        "explanation": explanation,
+        "accepted_baseline": accepted,
+        "runtime": runtime,
+        "development_head": dev_status.get("development_head"),
+        "development_head_version": dev_head_version,
+        "version_plan": version_plan,
+        "complexity_summary": complexity,
+        "command_guide": {
+            "post_adoption_verifier": commands["baseline_status"],
+            "development_overview": commands["dev_status"],
+            "development_checkpoint": commands["checkpoint"],
+        },
+        "decision_matrix": [
+            {
+                "context": "post_adoption_baseline",
+                "use": "baseline-status",
+                "when": "runtime/source/artifact are expected to match the accepted baseline after adoption",
+            },
+            {
+                "context": "development_candidate",
+                "use": "checkpoint",
+                "when": "runtime or selected artifact is ahead of the accepted baseline during focused development",
+            },
+            {
+                "context": "unclear_or_inventory_review",
+                "use": "dev-status",
+                "when": "you need to inspect accepted baseline, runtime, local candidates, and next monotonic development version",
+            },
+        ],
+        "warnings": warnings,
+        "warning_codes": [item.get("code") for item in warnings if isinstance(item, dict)],
+        "blockers": blockers,
+        "blocker_codes": [item.get("code") for item in blockers if isinstance(item, dict)],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
+        "operator_instruction": "Read-only release status guide. It chooses the correct status command; it does not install, test, adopt, upload, or mutate Git.",
+    }
+
+
+async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_status_guide_payload(backend, args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"detected_context={payload.get('detected_context')}")
+        print(f"primary_read_command_kind={payload.get('primary_read_command_kind')}")
+        print(f"baseline_status_applicable={str(payload.get('baseline_status_applicable')).lower()}")
+        print(f"primary_read_command={payload.get('primary_read_command')}")
+        print(f"secondary_read_command={payload.get('secondary_read_command')}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
 def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
     """Read-only checkpoint planner for CI-style development releases.
 
@@ -13460,6 +13640,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_docs_status(backend, args)
     if args.release_command == "dev-status":
         return await cmd_release_dev_status(backend, args)
+    if args.release_command == "status-guide":
+        return await cmd_release_status_guide(backend, args)
     if args.release_command == "checkpoint":
         return await cmd_release_checkpoint(backend, args)
     if args.release_command == "lifecycle-status":
@@ -17757,6 +17939,14 @@ def make_parser() -> argparse.ArgumentParser:
     release_dev_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse for artifact prefix/suffix. Defaults to .promptbranch-release.yml.")
     release_dev_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_dev_status.add_argument("--json", action="store_true")
+
+    release_status_guide = release_subparsers.add_parser("status-guide", help="Read-only guide for choosing baseline-status, checkpoint, or dev-status in the current release context.")
+    release_status_guide.add_argument("--artifact", help="Optional development candidate ZIP to use when building checkpoint guidance.")
+    release_status_guide.add_argument("--version", help="Optional candidate or accepted version for command guidance.")
+    release_status_guide.add_argument("--target-version", help="Optional target version for checkpoint guidance. Defaults to --version where applicable.")
+    release_status_guide.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse for artifact prefix/suffix. Defaults to .promptbranch-release.yml.")
+    release_status_guide.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_status_guide.add_argument("--json", action="store_true")
 
     release_checkpoint = release_subparsers.add_parser("checkpoint", help="Read-only CI-style release checkpoint planner for continue-development versus full-test/adopt decisions.")
     release_checkpoint.add_argument("--artifact", required=True, help="Development candidate ZIP to inspect as the checkpoint candidate.")
