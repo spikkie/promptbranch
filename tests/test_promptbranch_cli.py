@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_dev_status, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_docs_status, cmd_release_dev_status, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -6181,6 +6181,99 @@ hooks:
     assert "duplicate key" in payload["error"]
     assert payload["mutating_actions_executed"] is False
 
+
+
+def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    design_dir = repo / "docs" / "design"
+    design_dir.mkdir(parents=True)
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs" / "release-v0.1.8.md").write_text("# release\n", encoding="utf-8")
+    (repo / "README.md").write_text("# readme\n", encoding="utf-8")
+    design_doc = design_dir / "promptbranch-mvp-living-design.md"
+    drawio = design_dir / "promptbranch-mvp-living-design.drawio"
+    drawio.write_text(
+        '<mxfile host="app.diagrams.net"><diagram name="Promptbranch MVP Living Design"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    design_doc.write_text(
+        """
+# Promptbranch MVP Living Design
+
+Release: `v0.1.8`
+Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
+
+After each release slice:
+
+## Referenced documentation
+
+- `README.md`
+- `docs/release-v0.1.8.md`
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    args = argparse.Namespace(
+        version="v0.1.8",
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_docs_status(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "release_docs_status"
+    assert payload["status"] == "verified"
+    assert payload["severity"] == "ok"
+    assert payload["drawio"]["xml_parsed"] is True
+    assert payload["drawio"]["diagram_count"] == 1
+    assert payload["missing_reference_count"] == 0
+    assert payload["blocker_codes"] == []
+    assert payload["mutating_actions_executed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+
+
+def test_release_docs_status_blocks_missing_reference(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    design_dir = repo / "docs" / "design"
+    design_dir.mkdir(parents=True)
+    drawio = design_dir / "promptbranch-mvp-living-design.drawio"
+    drawio.write_text(
+        '<mxfile><diagram name="Promptbranch MVP Living Design"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-mvp-living-design.md").write_text(
+        """
+# Promptbranch MVP Living Design
+Release: `v0.1.8`
+Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
+After each release slice:
+- `docs/missing.md`
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    args = argparse.Namespace(
+        version="v0.1.8",
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_docs_status(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert "living_design_reference_missing" in payload["blocker_codes"]
+    assert payload["mutating_actions_executed"] is False
 
 
 def test_release_dev_status_separates_accepted_baseline_from_dev_head(capsys, tmp_path) -> None:

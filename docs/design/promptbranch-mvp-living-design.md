@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.7`  
+Release: `v0.1.8`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -46,7 +46,7 @@ The most important design invariant is that these scopes must be tracked indepen
 - Skill registry and repo-inspection style skills exist for read-only guidance.
 - `pb test smoke` provides a cheap regression gate.
 - Ask/reply and artifact-intake design exists, including candidate-before-accepted-baseline semantics.
-- Release doctor/config/install/lifecycle/checkpoint commands now have read-only planning/diagnostic surfaces.
+- Release doctor/config/install/lifecycle/checkpoint/docs-status commands now have read-only planning/diagnostic surfaces.
 - CI-style development flow is now explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 
 ### Current development-line reality
@@ -109,7 +109,8 @@ After each release slice:
 4. Keep references repo-relative so links remain meaningful in ZIP releases.
 5. Add newly completed commands to the `Done / Current Surface` area.
 6. Move next work from `Next / Planned` into `Done` only after focused tests or release-control evidence exists.
-7. Do not use the diagram as proof by itself; proof remains tests, release logs, and validated JSON outputs.
+7. Run `pb release docs-status --json` after changing the Markdown or draw.io source.
+8. Do not use the diagram as proof by itself; proof remains tests, release logs, and validated JSON outputs.
 
 ## Referenced documentation
 
@@ -126,6 +127,9 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.4.md`
 - `docs/release-v0.1.5.md`
 - `docs/release-v0.1.6.md`
+- `docs/release-v0.1.7.md`
+- `docs/repair-v0.1.7.1.md`
+- `docs/release-v0.1.8.md`
 
 ## Editing the draw.io source
 
