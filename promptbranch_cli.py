@@ -10079,9 +10079,76 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             f"--target-version {target_version or selected_version or '<candidate-version>'} "
             "--mode continue --json"
         ),
+        "smoke": "pb test smoke --json",
     }
     if artifact_arg:
         commands["dev_status_with_artifact"] = f"pb release dev-status --artifact {artifact_arg} --json"
+
+    if development_candidate:
+        recommended_sequence = [
+            {
+                "step": "continue_development_decision",
+                "command_kind": "checkpoint",
+                "command": commands["checkpoint"],
+                "required": True,
+                "read_only": True,
+                "purpose": "Decide whether focused development may continue or whether a full-test/adoption checkpoint is now advised.",
+            },
+            {
+                "step": "focused_runtime_smoke",
+                "command_kind": "smoke",
+                "command": commands["smoke"],
+                "required": True,
+                "read_only": True,
+                "purpose": "Confirm the installed runtime still passes the cheap smoke suite after the focused install.",
+            },
+            {
+                "step": "development_inventory",
+                "command_kind": "dev-status",
+                "command": commands["dev_status"],
+                "required": False,
+                "read_only": True,
+                "purpose": "Inspect accepted baseline, runtime, and candidate inventory when context is unclear.",
+            },
+        ]
+    elif accepted_aligned:
+        recommended_sequence = [
+            {
+                "step": "post_adoption_alignment",
+                "command_kind": "baseline-status",
+                "command": commands["baseline_status"],
+                "required": True,
+                "read_only": True,
+                "purpose": "Verify runtime/source/artifact/registry alignment after adoption.",
+            },
+            {
+                "step": "current_artifact_snapshot",
+                "command_kind": "artifact-current",
+                "command": "pb artifact current --json",
+                "required": False,
+                "read_only": True,
+                "purpose": "Capture the accepted artifact state as handoff evidence.",
+            },
+        ]
+    else:
+        recommended_sequence = [
+            {
+                "step": "inspect_release_state",
+                "command_kind": "dev-status",
+                "command": commands["dev_status"],
+                "required": True,
+                "read_only": True,
+                "purpose": "Inventory accepted baseline, runtime, and development-head candidates before choosing a lifecycle command.",
+            },
+            {
+                "step": "rerun_status_guide_with_artifact",
+                "command_kind": "status-guide",
+                "command": "pb release status-guide --artifact ./<candidate>.zip --version <candidate-version> --target-version <candidate-version> --json",
+                "required": False,
+                "read_only": True,
+                "purpose": "Re-run the guide with an explicit candidate when the initial context is ambiguous.",
+            },
+        ]
 
     warnings = list(dev_status.get("warnings") or [])
     blockers = list(dev_status.get("blockers") or [])
@@ -10125,6 +10192,13 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "post_adoption_verifier": commands["baseline_status"],
             "development_overview": commands["dev_status"],
             "development_checkpoint": commands["checkpoint"],
+            "focused_smoke": commands["smoke"],
+        },
+        "recommended_sequence": recommended_sequence,
+        "operator_runbook": {
+            "description": "Read-only status-guide runbook. Execute the required recommended_sequence commands for the detected context before deciding whether to continue, full-test/adopt, or inspect further.",
+            "required_step_count": sum(1 for step in recommended_sequence if step.get("required")),
+            "mutating_actions_executed": False,
         },
         "decision_matrix": [
             {
@@ -10174,6 +10248,13 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
         print(f"baseline_status_applicable={str(payload.get('baseline_status_applicable')).lower()}")
         print(f"primary_read_command={payload.get('primary_read_command')}")
         print(f"secondary_read_command={payload.get('secondary_read_command')}")
+        runbook = payload.get("operator_runbook") if isinstance(payload.get("operator_runbook"), dict) else {}
+        print(f"required_step_count={runbook.get('required_step_count') if runbook else 'unknown'}")
+        sequence = payload.get("recommended_sequence") if isinstance(payload.get("recommended_sequence"), list) else []
+        for index, step in enumerate(sequence, start=1):
+            if isinstance(step, dict):
+                required_flag = "required" if step.get("required") else "optional"
+                print(f"recommended_step_{index}={required_flag}:{step.get('command_kind') or 'unknown'}:{step.get('command') or ''}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
