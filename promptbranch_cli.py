@@ -9633,6 +9633,10 @@ def _release_dev_complexity_summary(
         if _release_version_shape(item.get("version")) == "repair"
     ]
     normal_gap = _release_normal_version_gap(accepted_version, candidate_version)
+    normal_versions_until_threshold = None
+    if normal_gap is not None:
+        normal_versions_until_threshold = max(max_normal_gap_before_full_test - normal_gap, 0)
+    newer_candidates_until_threshold = max(max_newer_candidates_before_full_test - len(newer_candidates), 0)
     reason_items: list[dict[str, Any]] = []
 
     if normal_gap is not None and normal_gap >= max_normal_gap_before_full_test:
@@ -9678,9 +9682,22 @@ def _release_dev_complexity_summary(
         "repair_candidate_versions": [item.get("version") for item in repair_candidates[:20]],
         "max_normal_gap_before_full_test": max_normal_gap_before_full_test,
         "max_newer_candidates_before_full_test": max_newer_candidates_before_full_test,
+        "normal_versions_until_full_test_threshold": normal_versions_until_threshold,
+        "newer_candidates_until_full_test_threshold": newer_candidates_until_threshold,
+        "full_test_recommended_at_normal_versions_ahead": max_normal_gap_before_full_test,
+        "full_test_recommended_at_newer_candidate_count": max_newer_candidates_before_full_test,
         "full_test_recommended_now": full_test_recommended,
         "continue_development_allowed": True,
         "recommendation": "consider_full_test_checkpoint" if full_test_recommended else "continue_development",
+        "threshold_meter": {
+            "accepted_version": accepted_version,
+            "candidate_version": candidate_version,
+            "normal_versions_ahead": normal_gap,
+            "normal_versions_until_full_test_threshold": normal_versions_until_threshold,
+            "newer_candidate_count": len(newer_candidates),
+            "newer_candidates_until_full_test_threshold": newer_candidates_until_threshold,
+            "full_test_recommended_now": full_test_recommended,
+        },
         "reason_codes": [item["code"] for item in reason_items],
         "reasons": reason_items,
     }
@@ -10085,6 +10102,9 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         commands["dev_status_with_artifact"] = f"pb release dev-status --artifact {artifact_arg} --json"
 
     if development_candidate:
+        threshold_meter = complexity.get("threshold_meter") if isinstance(complexity.get("threshold_meter"), dict) else {}
+        normal_remaining = threshold_meter.get("normal_versions_until_full_test_threshold")
+        candidate_remaining = threshold_meter.get("newer_candidates_until_full_test_threshold")
         recommended_sequence = [
             {
                 "step": "continue_development_decision",
@@ -10109,6 +10129,16 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "required": False,
                 "read_only": True,
                 "purpose": "Inspect accepted baseline, runtime, and candidate inventory when context is unclear.",
+            },
+            {
+                "step": "adoption_threshold_watch",
+                "command_kind": "status-guide",
+                "command": f"pb release status-guide --artifact {selected_artifact or './<candidate>.zip'} --version {selected_version or '<candidate-version>'} --target-version {target_version or selected_version or '<candidate-version>'} --json",
+                "required": False,
+                "read_only": True,
+                "purpose": "Show how many focused development releases remain before the guide recommends a full-test/adoption checkpoint.",
+                "normal_versions_until_full_test_threshold": normal_remaining,
+                "newer_candidates_until_full_test_threshold": candidate_remaining,
             },
         ]
     elif accepted_aligned:
@@ -10188,6 +10218,15 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         "development_head_version": dev_head_version,
         "version_plan": version_plan,
         "complexity_summary": complexity,
+        "checkpoint_threshold": {
+            "full_test_recommended_now": bool(complexity.get("full_test_recommended_now")),
+            "normal_versions_ahead": (complexity.get("threshold_meter") or {}).get("normal_versions_ahead") if isinstance(complexity.get("threshold_meter"), dict) else complexity.get("normal_versions_ahead"),
+            "normal_versions_until_full_test_threshold": (complexity.get("threshold_meter") or {}).get("normal_versions_until_full_test_threshold") if isinstance(complexity.get("threshold_meter"), dict) else complexity.get("normal_versions_until_full_test_threshold"),
+            "newer_candidate_count": (complexity.get("threshold_meter") or {}).get("newer_candidate_count") if isinstance(complexity.get("threshold_meter"), dict) else complexity.get("newer_candidate_count"),
+            "newer_candidates_until_full_test_threshold": (complexity.get("threshold_meter") or {}).get("newer_candidates_until_full_test_threshold") if isinstance(complexity.get("threshold_meter"), dict) else complexity.get("newer_candidates_until_full_test_threshold"),
+            "full_test_recommended_at_normal_versions_ahead": complexity.get("full_test_recommended_at_normal_versions_ahead"),
+            "full_test_recommended_at_newer_candidate_count": complexity.get("full_test_recommended_at_newer_candidate_count"),
+        },
         "command_guide": {
             "post_adoption_verifier": commands["baseline_status"],
             "development_overview": commands["dev_status"],
@@ -10198,6 +10237,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         "operator_runbook": {
             "description": "Read-only status-guide runbook. Execute the required recommended_sequence commands for the detected context before deciding whether to continue, full-test/adopt, or inspect further.",
             "required_step_count": sum(1 for step in recommended_sequence if step.get("required")),
+            "next_full_test_threshold_visible": development_candidate,
             "mutating_actions_executed": False,
         },
         "decision_matrix": [
@@ -10250,6 +10290,11 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
         print(f"secondary_read_command={payload.get('secondary_read_command')}")
         runbook = payload.get("operator_runbook") if isinstance(payload.get("operator_runbook"), dict) else {}
         print(f"required_step_count={runbook.get('required_step_count') if runbook else 'unknown'}")
+        threshold = payload.get("checkpoint_threshold") if isinstance(payload.get("checkpoint_threshold"), dict) else {}
+        if threshold:
+            print(f"full_test_recommended_now={str(threshold.get('full_test_recommended_now')).lower()}")
+            print(f"normal_versions_ahead={threshold.get('normal_versions_ahead')}")
+            print(f"normal_versions_until_full_test_threshold={threshold.get('normal_versions_until_full_test_threshold')}")
         sequence = payload.get("recommended_sequence") if isinstance(payload.get("recommended_sequence"), list) else []
         for index, step in enumerate(sequence, start=1):
             if isinstance(step, dict):
