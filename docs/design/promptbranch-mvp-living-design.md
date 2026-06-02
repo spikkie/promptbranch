@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.12`  
+Release: `v0.1.13`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -219,7 +219,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.9.md`
 - `docs/release-v0.1.10.md`
 - `docs/release-v0.1.11.md`
-- `docs/release-v0.1.12.md`
+- `docs/release-v0.1.13.md`
 
 ## Editing the draw.io source
 
