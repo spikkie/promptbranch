@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.10`  
+Release: `v0.1.11`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -105,9 +105,10 @@ Tools/tests/deployment = evidence producers
 - Skill registry and repo-inspection style skills exist for read-only guidance.
 - `pb test smoke` provides a cheap regression gate.
 - Ask/reply and artifact-intake design exists, including candidate-before-accepted-baseline semantics.
-- Release doctor/config/install/lifecycle/checkpoint/docs-status commands now have read-only planning/diagnostic surfaces.
+- Release doctor/config/install/lifecycle/checkpoint/docs-status/baseline-status commands now have read-only planning/diagnostic surfaces.
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
+- Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
 
 ### Current development-line reality
 
@@ -160,7 +161,7 @@ Promptbranch CLI
 | Ask/reply protocol | Machine-readable ChatGPT replies | design and partial implementation exist | prove real artifact roundtrip end-to-end |
 | Artifact intake | Candidate download/verify/migrate/adopt | mature but needs repeated live proof | guarded adoption from verified candidate |
 | Native release lifecycle | Move repo-local lifecycle into Promptbranch | read-only doctor/config/install/lifecycle planning exists | controlled install/source/test/adopt in separate slices |
-| CI-style dev flow | Focused tests during dev, full test at checkpoint | explicit dev-status/checkpoint commands exist | keep monotonic dev versions, no version rewrites |
+| CI-style dev flow | Focused tests during dev, full test at checkpoint | explicit dev-status/checkpoint/baseline-status commands exist | keep monotonic dev versions, no version rewrites |
 
 ## How to update the draw.io source
 
@@ -217,6 +218,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.8.md`
 - `docs/release-v0.1.9.md`
 - `docs/release-v0.1.10.md`
+- `docs/release-v0.1.11.md`
 
 ## Editing the draw.io source
 

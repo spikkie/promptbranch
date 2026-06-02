@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-02T10:05:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-02T12:35:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
@@ -58,7 +58,7 @@
         <mxCell id="artifact_gate" value="Artifact intake gate&#10;&#10;structured ask&#10;→ structured reply&#10;→ candidate artifact&#10;→ download only when explicit&#10;→ verify ZIP/layout/hygiene/version&#10;→ migrate as candidate&#10;→ full test/adopt only after green validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="410" y="820" width="340" height="250" as="geometry" />
         </mxCell>
-        <mxCell id="devflow" value="CI-style development flow&#10;&#10;accepted baseline may remain behind runtime/dev head&#10;&#10;focused dev:&#10;v0.1.7.1 → v0.1.8 → v0.1.9 → v0.1.10&#10;&#10;full release-control only at adoption checkpoint&#10;&#10;Do not rewrite issued versions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+        <mxCell id="devflow" value="CI-style development flow&#10;&#10;accepted baseline may remain behind runtime/dev head&#10;&#10;focused dev:&#10;v0.1.7.1 → v0.1.8 → v0.1.9 → v0.1.10 → v0.1.11&#10;&#10;full release-control at adoption checkpoint; baseline-status verifies reset&#10;&#10;Do not rewrite issued versions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="790" y="820" width="340" height="250" as="geometry" />
         </mxCell>
         <mxCell id="checkpoint" value="Checkpoint decision&#10;&#10;Continue mode:&#10;- focused tests&#10;- smoke&#10;- docs-status&#10;- no source/adopt mutation&#10;&#10;Adopt mode:&#10;- full release-control&#10;- Project Source verification&#10;- artifact current verified&#10;- policy/Git sync only when safe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
@@ -79,7 +79,7 @@
         <mxCell id="current_sec" value="6. Current implemented surface / remaining movement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="30" y="1130" width="1480" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="done" value="Done / current surface&#10;&#10;- canonical shell grammar&#10;- read-only MCP server/client paths&#10;- skill registry / repo-inspection model&#10;- pb test smoke&#10;- ask/reply + artifact intake design&#10;- release doctor/config/install/lifecycle planning&#10;- dev-status/checkpoint&#10;- docs-status validation&#10;- living design + draw.io source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+        <mxCell id="done" value="Done / current surface&#10;&#10;- canonical shell grammar&#10;- read-only MCP server/client paths&#10;- skill registry / repo-inspection model&#10;- pb test smoke&#10;- ask/reply + artifact intake design&#10;- release doctor/config/install/lifecycle planning&#10;- dev-status/checkpoint&#10;- baseline-status after adoption&#10;- docs-status validation&#10;- living design + draw.io source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="30" y="1190" width="470" height="290" as="geometry" />
         </mxCell>
         <mxCell id="remaining" value="Remaining / planned&#10;&#10;JSON orchestration state MVP:&#10;- add more schema-backed proof examples&#10;- prove real artifact roundtrip&#10;- connect candidate intake to guarded adoption&#10;&#10;Lifecycle:&#10;- controlled source upload/test/adopt&#10;- policy sync + git safety&#10;&#10;Agent/MCP:&#10;- harden host loop&#10;- writes remain blocked until transactional proof exists" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
@@ -91,7 +91,7 @@
         <mxCell id="update_sec" value="7. Update protocol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="30" y="1530" width="1480" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="update" value="After each release slice:&#10;1. Keep ACTUAL MVP: json_orchestration_state_mvp visible unless the MVP line changes.&#10;2. Update this Markdown and the editable .drawio together.&#10;3. Keep references repo-relative.&#10;4. Move items to Done only after focused tests or full release-control evidence exists.&#10;5. Run: pb release docs-status --json.&#10;6. Do not export images unless explicitly requested." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="update" value="After each release slice:&#10;1. Keep ACTUAL MVP: json_orchestration_state_mvp visible unless the MVP line changes.&#10;2. Update this Markdown and the editable .drawio together.&#10;3. Keep references repo-relative.&#10;4. Move items to Done only after focused tests or full release-control evidence exists.&#10;5. Run: pb release docs-status --json.&#10;6. After adoption, run: pb release baseline-status --json.&#10;7. Do not export images unless explicitly requested." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="30" y="1590" width="1480" height="120" as="geometry" />
         </mxCell>
       </root>
