@@ -6458,6 +6458,13 @@ def test_release_status_guide_selects_checkpoint_for_dev_candidate(capsys, tmp_p
     assert "--mode continue" in payload["primary_read_command"]
     assert dev_version in payload["primary_read_command"]
     assert payload["command_guide"]["development_overview"] == "pb release dev-status --json"
+    assert payload["command_guide"]["focused_smoke"] == "pb test smoke --json"
+    assert payload["recommended_sequence"][0]["step"] == "continue_development_decision"
+    assert payload["recommended_sequence"][0]["required"] is True
+    assert payload["recommended_sequence"][0]["command"] == payload["primary_read_command"]
+    assert payload["recommended_sequence"][1]["command"] == "pb test smoke --json"
+    assert payload["operator_runbook"]["required_step_count"] == 2
+    assert payload["operator_runbook"]["mutating_actions_executed"] is False
     assert "release_status_guide_dev_candidate_use_checkpoint" in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
 
@@ -6512,6 +6519,9 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["primary_read_command_kind"] == "baseline-status"
     assert payload["baseline_status_applicable"] is True
     assert payload["primary_read_command"] == f"pb release baseline-status --version {version} --json"
+    assert payload["recommended_sequence"][0]["step"] == "post_adoption_alignment"
+    assert payload["recommended_sequence"][0]["command"] == f"pb release baseline-status --version {version} --json"
+    assert payload["operator_runbook"]["required_step_count"] == 1
     assert "release_status_guide_dev_candidate_use_checkpoint" not in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
 

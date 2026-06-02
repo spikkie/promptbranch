@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.14`  
+Release: `v0.1.15`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -109,6 +109,7 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
+- `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
 ### Current development-line reality
 
@@ -161,7 +162,7 @@ Promptbranch CLI
 | Ask/reply protocol | Machine-readable ChatGPT replies | design and partial implementation exist | prove real artifact roundtrip end-to-end |
 | Artifact intake | Candidate download/verify/migrate/adopt | mature but needs repeated live proof | guarded adoption from verified candidate |
 | Native release lifecycle | Move repo-local lifecycle into Promptbranch | read-only doctor/config/install/lifecycle planning exists | controlled install/source/test/adopt in separate slices |
-| CI-style dev flow | Focused tests during dev, full test at checkpoint | explicit dev-status/checkpoint/baseline-status commands exist | keep monotonic dev versions, no version rewrites |
+| CI-style dev flow | Focused tests during dev, full test at checkpoint | explicit dev-status/checkpoint/baseline-status/status-guide commands exist | keep monotonic dev versions, no version rewrites |
 
 ## How to update the draw.io source
 
@@ -220,6 +221,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.10.md`
 - `docs/release-v0.1.11.md`
 - `docs/release-v0.1.14.md`
+- `docs/release-v0.1.15.md`
 - `docs/release-v0.1.13.md`
 
 ## Editing the draw.io source
@@ -235,11 +237,12 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 
 ## Release-status UX
 
-`pb release status-guide --json` is the read-only command chooser for release-state inspection. It does not verify or mutate state; it tells the operator whether the current context should use:
+`pb release status-guide --json` is the read-only command chooser for release-state inspection. It does not verify or mutate state; it tells the operator whether the current context should use the correct command, and it now includes a `recommended_sequence` runbook so operators can run the required read-only checks in order:
 
 - `pb release baseline-status --json` after adoption, when runtime/source/artifact are expected to align.
 - `pb release checkpoint --mode continue --json` for installed-but-not-adopted development candidates.
 - `pb release dev-status --json` for inventory and baseline-versus-development-head inspection.
+- `pb test smoke --json` as the required cheap runtime smoke after focused dev-candidate installs.
 
-This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable.
+This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 
