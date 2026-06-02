@@ -9653,6 +9653,212 @@ async def cmd_release_dev_status(backend: Any, args: argparse.Namespace) -> int:
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
 
+
+def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only checkpoint planner for CI-style development releases.
+
+    The command intentionally does not install, test, adopt, upload sources, sync
+    policy, or touch Git.  It composes the local development-head status with the
+    candidate install plan so the operator can decide whether to keep doing
+    focused development or spend time on a full test/adoption checkpoint.
+    """
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    checkpoint_mode = str(getattr(args, "mode", "continue") or "continue").strip().lower()
+    if checkpoint_mode not in {"continue", "adopt"}:
+        checkpoint_mode = "continue"
+    artifact_arg = str(getattr(args, "artifact", "") or "")
+
+    dev_status_args = _release_lifecycle_namespace(
+        args,
+        artifact=artifact_arg or None,
+        config=getattr(args, "config", ".promptbranch-release.yml"),
+        repo_path=str(repo_root),
+        json=True,
+    )
+    dev_status = _release_dev_status_payload(backend, dev_status_args)
+
+    install_plan: dict[str, Any]
+    if artifact_arg:
+        install_plan_args = _release_lifecycle_namespace(
+            args,
+            artifact=artifact_arg,
+            version=requested_version,
+            target_version=target_version or requested_version,
+            config=getattr(args, "config", ".promptbranch-release.yml"),
+            repo_path=str(repo_root),
+            plan=True,
+            upload_source=True,
+            keep_open=False,
+            json=True,
+        )
+        install_plan = _release_install_plan_payload(install_plan_args)
+    else:
+        install_plan = {
+            "ok": False,
+            "status": "blocked",
+            "blocker_codes": ["release_checkpoint_artifact_required"],
+            "blockers": [{
+                "code": "release_checkpoint_artifact_required",
+                "severity": "blocked",
+                "message": "release checkpoint requires --artifact ZIP so the candidate can be planned read-only.",
+            }],
+            "warning_codes": [],
+            "warnings": [],
+        }
+
+    artifact_payload = install_plan.get("artifact") if isinstance(install_plan.get("artifact"), dict) else {}
+    artifact_version = _candidate_version_normalized(
+        artifact_payload.get("version") or artifact_payload.get("version_file") or artifact_payload.get("filename_version") or requested_version
+    )
+    accepted_version = _candidate_version_normalized(((dev_status.get("accepted_baseline") or {}).get("source_version")))
+    dev_head_version = _candidate_version_normalized(dev_status.get("development_head_version"))
+    expected_next_from_dev_head = _release_expected_next_normal_version(dev_head_version or artifact_version)
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not dev_status.get("ok"):
+        block("release_checkpoint_dev_status_blocked", "Development status is blocked; inspect release dev-status first.", blocker_codes=dev_status.get("blocker_codes") or [])
+    if not install_plan.get("ok"):
+        block("release_checkpoint_install_plan_blocked", "Candidate install plan is blocked; resolve install-plan blockers before checkpointing.", blocker_codes=install_plan.get("blocker_codes") or [])
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("release_checkpoint_version_mismatch", "Requested version does not match candidate artifact version.", requested_version=requested_version, artifact_version=artifact_version)
+    if accepted_version and artifact_version and _compare_operator_versions(accepted_version, artifact_version) != "right_newer":
+        warn("release_checkpoint_candidate_not_ahead_of_accepted", "Candidate is not newer than the accepted baseline; this is unusual for a development checkpoint.", accepted_version=accepted_version, candidate_version=artifact_version)
+    if checkpoint_mode == "adopt":
+        warn("release_checkpoint_full_test_required", "Adoption checkpoint selected; run full release-control before adoption. This command did not run full tests.", candidate_version=artifact_version)
+    else:
+        warn("release_checkpoint_continuing_without_full_test", "Continue-development checkpoint selected; full release-control is intentionally deferred.", candidate_version=artifact_version)
+
+    inherited_warning_codes = set()
+    for source in (dev_status, install_plan):
+        for item in source.get("warnings") or []:
+            if isinstance(item, dict) and item.get("code") not in inherited_warning_codes:
+                warnings.append(item)
+                inherited_warning_codes.add(item.get("code"))
+
+    if blockers:
+        status = "blocked"
+        recommendation_kind = "fix_checkpoint_blockers"
+    elif checkpoint_mode == "adopt":
+        status = "full_test_required_before_adoption"
+        recommendation_kind = "run_full_test_then_adopt_if_green"
+    else:
+        status = "continue_development_ready"
+        recommendation_kind = "continue_development"
+
+    next_dev_version = _release_expected_next_normal_version(artifact_version or dev_head_version)
+    candidate_filename = str(artifact_payload.get("filename") or Path(artifact_arg).name or "")
+    full_test_command = None
+    if candidate_filename and artifact_version:
+        full_test_command = (
+            "./chatgpt_claudecode_workflow_release_control.sh "
+            f"--version {artifact_version} "
+            f"--install-from-zip ~/Downloads/{candidate_filename} "
+            "--skip-source-add --run-tests --prune-release-logs --release-log-keep 12"
+        )
+
+    return {
+        "ok": not blockers,
+        "schema": "promptbranch.release.checkpoint",
+        "schema_version": "1.0",
+        "action": "release_checkpoint",
+        "status": status,
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "read_only": True,
+        "mode": checkpoint_mode,
+        "repo_path": str(repo_root),
+        "version": requested_version or artifact_version,
+        "target_version": target_version,
+        "accepted_baseline": dev_status.get("accepted_baseline") or {},
+        "runtime": dev_status.get("runtime") or {},
+        "development_head": dev_status.get("development_head") or {},
+        "development_head_version": dev_head_version,
+        "candidate": {
+            "artifact_ref": candidate_filename or None,
+            "artifact_version": artifact_version,
+            "path": artifact_payload.get("path") or str(Path(artifact_arg).expanduser()) if artifact_arg else None,
+            "verified": bool(artifact_payload.get("ok")),
+        },
+        "dev_status_summary": {
+            "status": dev_status.get("status"),
+            "warning_codes": dev_status.get("warning_codes") or [],
+            "blocker_codes": dev_status.get("blocker_codes") or [],
+            "version_plan": dev_status.get("version_plan") or {},
+        },
+        "install_plan_summary": {
+            "status": install_plan.get("status"),
+            "ok": install_plan.get("ok"),
+            "warning_codes": install_plan.get("warning_codes") or [],
+            "blocker_codes": install_plan.get("blocker_codes") or [],
+            "baseline_comparison": install_plan.get("baseline_comparison") or {},
+            "install_target_plan": install_plan.get("install_target_plan") or {},
+        },
+        "checkpoint_decision": {
+            "recommendation": recommendation_kind,
+            "continue_development": recommendation_kind == "continue_development",
+            "run_full_test_now": recommendation_kind == "run_full_test_then_adopt_if_green",
+            "adopt_now": False,
+            "full_test_required_before_adoption": True,
+            "adoption_requires_green_full_test": True,
+            "next_development_version": next_dev_version,
+            "next_development_base_version": artifact_version or dev_head_version,
+        },
+        "suggested_commands": {
+            "focused_checks": [
+                "pb release dev-status --json",
+                f"pb release install --artifact ./{candidate_filename} --version {artifact_version or requested_version or ''} --target-version {target_version or artifact_version or requested_version or ''} --plan --json".strip(),
+                f"pb release lifecycle --artifact ./{candidate_filename} --version {artifact_version or requested_version or ''} --target-version {target_version or artifact_version or requested_version or ''} --plan --json".strip(),
+                "pb test smoke --json",
+            ],
+            "continue_development": (f"Build {next_dev_version} from {artifact_version or dev_head_version}" if next_dev_version else None),
+            "full_test_before_adoption": full_test_command,
+        },
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "full_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "would_mutate": False,
+        "mutating_actions_executed": False,
+        "operator_instruction": "Read-only development checkpoint. Use mode=continue during focused development; use mode=adopt only when deciding to spend time on full release-control before adoption.",
+    }
+
+
+async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_checkpoint_payload(backend, args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"mode={payload.get('mode')}")
+        print(f"candidate={((payload.get('candidate') or {}).get('artifact_version') or 'none')}")
+        print(f"recommendation={((payload.get('checkpoint_decision') or {}).get('recommendation') or 'none')}")
+        print(f"next_development_version={((payload.get('checkpoint_decision') or {}).get('next_development_version') or 'none')}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
 def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
@@ -12578,6 +12784,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
     if args.release_command == "dev-status":
         return await cmd_release_dev_status(backend, args)
+    if args.release_command == "checkpoint":
+        return await cmd_release_checkpoint(backend, args)
     if args.release_command == "lifecycle-status":
         return await cmd_release_lifecycle_status(backend, args)
     if args.release_command == "doctor":
@@ -16856,6 +17064,15 @@ def make_parser() -> argparse.ArgumentParser:
     release_dev_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse for artifact prefix/suffix. Defaults to .promptbranch-release.yml.")
     release_dev_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_dev_status.add_argument("--json", action="store_true")
+
+    release_checkpoint = release_subparsers.add_parser("checkpoint", help="Read-only CI-style release checkpoint planner for continue-development versus full-test/adopt decisions.")
+    release_checkpoint.add_argument("--artifact", required=True, help="Development candidate ZIP to inspect as the checkpoint candidate.")
+    release_checkpoint.add_argument("--version", help="Expected candidate version such as v0.1.6.")
+    release_checkpoint.add_argument("--target-version", help="Optional target/adoption version for operator context. Defaults to candidate version where applicable.")
+    release_checkpoint.add_argument("--mode", choices=["continue", "adopt"], default="continue", help="Checkpoint intent. continue keeps focused dev moving; adopt marks that full release-control should be run before adoption.")
+    release_checkpoint.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
+    release_checkpoint.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_checkpoint.add_argument("--json", action="store_true")
 
     release_lifecycle_status = release_subparsers.add_parser("lifecycle-status", help="Read-only local-first lifecycle status cockpit.")
     release_lifecycle_status.add_argument("--version", help="Expected current runtime/release version. Defaults to the running Promptbranch version.")
