@@ -6509,6 +6509,86 @@ hooks:
     assert payload["full_test_performed"] is False
 
 
+def test_release_checkpoint_continue_mode_advises_full_test_when_dev_line_is_complex(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    accepted = repo / "chatgpt_claudecode_workflow-2_v0.1.2.zip"
+    _write_test_release_zip(accepted, "v0.1.2")
+    for patch in range(3, 11):
+        _write_test_release_zip(repo / f"chatgpt_claudecode_workflow-2_v0.1.{patch}.zip", f"v0.1.{patch}")
+    _write_test_release_zip(repo / "chatgpt_claudecode_workflow-2_v0.1.7.1.zip", "v0.1.7.1")
+    candidate = repo / "chatgpt_claudecode_workflow-2_v0.1.10.zip"
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version="v0.1.2",
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-01T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": "v0.1.2",
+                "source_ref": accepted.name,
+                "source_version": "v0.1.2",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version="v0.1.10",
+        target_version="v0.1.10",
+        mode="continue",
+        config=str(config),
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_checkpoint(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "full_test_checkpoint_recommended"
+    assert payload["checkpoint_decision"]["recommendation"] == "consider_full_test_checkpoint"
+    assert payload["checkpoint_decision"]["continue_development"] is True
+    assert payload["checkpoint_decision"]["full_test_recommended_now"] is True
+    assert payload["checkpoint_decision"]["adopt_now"] is False
+    assert "release_checkpoint_full_test_advised_by_complexity" in payload["warning_codes"]
+    assert payload["complexity_summary"]["full_test_recommended_now"] is True
+    assert "release_dev_complexity_normal_gap_threshold_reached" in payload["complexity_summary"]["reason_codes"]
+    assert "release_dev_complexity_contains_repair_release" in payload["complexity_summary"]["reason_codes"]
+    assert payload["mutating_actions_executed"] is False
+
+
 def test_release_checkpoint_adopt_mode_requires_full_test_without_adopting(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

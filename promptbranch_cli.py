@@ -9568,6 +9568,112 @@ def _release_expected_next_normal_version(value: Any) -> str | None:
     return f"v{major}.{minor}.{patch + 1}"
 
 
+def _release_normal_version_gap(left: Any, right: Any) -> int | None:
+    """Return normal-version patch distance when versions share major/minor.
+
+    Repair components are ignored for the normal-line distance because the
+    operator decision is about how many normal development slices have
+    accumulated since the accepted baseline.  Unknown or cross-line versions
+    return None instead of guessing.
+    """
+
+    left_tuple = _version_tuple_for_operator_order(left)
+    right_tuple = _version_tuple_for_operator_order(right)
+    if not left_tuple or not right_tuple:
+        return None
+    if len(left_tuple) < 3 or len(right_tuple) < 3:
+        return None
+    if left_tuple[:2] != right_tuple[:2]:
+        return None
+    return int(right_tuple[2]) - int(left_tuple[2])
+
+
+def _release_candidate_versions_newer_than(
+    candidates: list[dict[str, Any]],
+    accepted_version: str | None,
+) -> list[dict[str, Any]]:
+    newer: list[dict[str, Any]] = []
+    for candidate in candidates:
+        version = _candidate_version_normalized(candidate.get("version"))
+        if not version:
+            continue
+        if not accepted_version or _compare_operator_versions(accepted_version, version) == "right_newer":
+            newer.append(candidate)
+    newer.sort(key=lambda item: _version_tuple_for_operator_order(item.get("version")) or tuple())
+    return newer
+
+
+def _release_dev_complexity_summary(
+    *,
+    accepted_version: str | None,
+    candidate_version: str | None,
+    local_candidates: list[dict[str, Any]],
+    max_normal_gap_before_full_test: int = 8,
+    max_newer_candidates_before_full_test: int = 8,
+) -> dict[str, Any]:
+    """Classify accumulated focused-development drift without mutating state."""
+
+    accepted_version = _candidate_version_normalized(accepted_version)
+    candidate_version = _candidate_version_normalized(candidate_version)
+    newer_candidates = _release_candidate_versions_newer_than(local_candidates, accepted_version)
+    repair_candidates = [
+        item for item in newer_candidates
+        if _release_version_shape(item.get("version")) == "repair"
+    ]
+    normal_gap = _release_normal_version_gap(accepted_version, candidate_version)
+    reason_items: list[dict[str, Any]] = []
+
+    if normal_gap is not None and normal_gap >= max_normal_gap_before_full_test:
+        reason_items.append({
+            "code": "release_dev_complexity_normal_gap_threshold_reached",
+            "severity": "warning",
+            "message": "Development head is many normal versions ahead of the accepted baseline; run one full release-control/adoption checkpoint before adding much more scope.",
+            "accepted_version": accepted_version,
+            "candidate_version": candidate_version,
+            "normal_versions_ahead": normal_gap,
+            "threshold": max_normal_gap_before_full_test,
+        })
+    if len(newer_candidates) >= max_newer_candidates_before_full_test:
+        reason_items.append({
+            "code": "release_dev_complexity_candidate_count_threshold_reached",
+            "severity": "warning",
+            "message": "Many local development candidates exist beyond the accepted baseline; a full-test/adoption checkpoint will reduce drift and ambiguity.",
+            "accepted_version": accepted_version,
+            "candidate_version": candidate_version,
+            "newer_candidate_count": len(newer_candidates),
+            "threshold": max_newer_candidates_before_full_test,
+        })
+    if repair_candidates:
+        reason_items.append({
+            "code": "release_dev_complexity_contains_repair_release",
+            "severity": "warning",
+            "message": "The focused-development line contains at least one repair release; verify the accumulated line with full release-control before adoption.",
+            "repair_candidate_count": len(repair_candidates),
+            "repair_versions": [item.get("version") for item in repair_candidates[:10]],
+        })
+
+    full_test_recommended = bool(reason_items)
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "accepted_version": accepted_version,
+        "candidate_version": candidate_version,
+        "normal_versions_ahead": normal_gap,
+        "newer_candidate_count": len(newer_candidates),
+        "newer_candidate_versions": [item.get("version") for item in newer_candidates[:20]],
+        "newer_candidate_versions_truncated": len(newer_candidates) > 20,
+        "repair_candidate_count": len(repair_candidates),
+        "repair_candidate_versions": [item.get("version") for item in repair_candidates[:20]],
+        "max_normal_gap_before_full_test": max_normal_gap_before_full_test,
+        "max_newer_candidates_before_full_test": max_newer_candidates_before_full_test,
+        "full_test_recommended_now": full_test_recommended,
+        "continue_development_allowed": True,
+        "recommendation": "consider_full_test_checkpoint" if full_test_recommended else "continue_development",
+        "reason_codes": [item["code"] for item in reason_items],
+        "reasons": reason_items,
+    }
+
+
 def _release_version_shape(value: Any) -> str:
     normalized = _candidate_version_normalized(value)
     if not normalized:
@@ -9742,6 +9848,11 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
     runtime_relation_to_dev_head = _compare_operator_versions(runtime_version, dev_head_version) if runtime_version and dev_head_version else "unknown"
     expected_next_from_accepted = _release_expected_next_normal_version(accepted_version)
     next_development_version = _release_expected_next_normal_version(dev_head_version or runtime_version or accepted_version)
+    complexity_summary = _release_dev_complexity_summary(
+        accepted_version=accepted_version,
+        candidate_version=dev_head_version or runtime_version,
+        local_candidates=local_candidates,
+    )
 
     warnings: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
@@ -9762,6 +9873,9 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
         warn("runtime_ahead_of_accepted_baseline", "Runtime code is newer than the adopted Project Source baseline; this is expected during development but must be full-tested before adoption.", accepted_version=accepted_version, runtime_version=runtime_version)
     if accepted_version and dev_head_version and dev_head_relation_to_accepted == "right_newer" and expected_next_from_accepted and dev_head_version != expected_next_from_accepted:
         warn("dev_head_skips_next_normal_from_accepted", "Development head is ahead of the accepted baseline by more than one normal version. This can be acceptable during CI-style development, but adoption should target the latest full-test-green candidate deliberately.", accepted_version=accepted_version, expected_next_normal_version=expected_next_from_accepted, dev_head_version=dev_head_version)
+    for item in complexity_summary.get("reasons") or []:
+        if isinstance(item, dict):
+            warn(str(item.get("code") or "release_dev_complexity_warning"), str(item.get("message") or "Accumulated development complexity suggests a full-test checkpoint."), **{k: v for k, v in item.items() if k not in {"code", "severity", "message"}})
 
     if blockers:
         status = "blocked"
@@ -9828,6 +9942,7 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
             "continue_monotonic_development": bool(next_development_version),
             "do_not_rewrite_existing_versions": True,
         },
+        "complexity_summary": complexity_summary,
         "recommended_next_action": recommended_next_action,
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
@@ -9926,6 +10041,11 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
     accepted_version = _candidate_version_normalized(((dev_status.get("accepted_baseline") or {}).get("source_version")))
     dev_head_version = _candidate_version_normalized(dev_status.get("development_head_version"))
     expected_next_from_dev_head = _release_expected_next_normal_version(dev_head_version or artifact_version)
+    complexity_summary = _release_dev_complexity_summary(
+        accepted_version=accepted_version,
+        candidate_version=artifact_version or dev_head_version,
+        local_candidates=(dev_status.get("local_candidates") or []) if isinstance(dev_status.get("local_candidates"), list) else [],
+    )
 
     warnings: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
@@ -9948,6 +10068,14 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         warn("release_checkpoint_full_test_required", "Adoption checkpoint selected; run full release-control before adoption. This command did not run full tests.", candidate_version=artifact_version)
     else:
         warn("release_checkpoint_continuing_without_full_test", "Continue-development checkpoint selected; full release-control is intentionally deferred.", candidate_version=artifact_version)
+        if complexity_summary.get("full_test_recommended_now"):
+            warn(
+                "release_checkpoint_full_test_advised_by_complexity",
+                "Accumulated focused-development complexity is high enough that a full release-control/adoption checkpoint is recommended before much more development.",
+                accepted_version=accepted_version,
+                candidate_version=artifact_version,
+                reason_codes=complexity_summary.get("reason_codes") or [],
+            )
 
     inherited_warning_codes = set()
     for source in (dev_status, install_plan):
@@ -9962,6 +10090,9 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
     elif checkpoint_mode == "adopt":
         status = "full_test_required_before_adoption"
         recommendation_kind = "run_full_test_then_adopt_if_green"
+    elif complexity_summary.get("full_test_recommended_now"):
+        status = "full_test_checkpoint_recommended"
+        recommendation_kind = "consider_full_test_checkpoint"
     else:
         status = "continue_development_ready"
         recommendation_kind = "continue_development"
@@ -10015,14 +10146,16 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         },
         "checkpoint_decision": {
             "recommendation": recommendation_kind,
-            "continue_development": recommendation_kind == "continue_development",
+            "continue_development": recommendation_kind in {"continue_development", "consider_full_test_checkpoint"},
             "run_full_test_now": recommendation_kind == "run_full_test_then_adopt_if_green",
+            "full_test_recommended_now": recommendation_kind in {"run_full_test_then_adopt_if_green", "consider_full_test_checkpoint"},
             "adopt_now": False,
             "full_test_required_before_adoption": True,
             "adoption_requires_green_full_test": True,
             "next_development_version": next_dev_version,
             "next_development_base_version": artifact_version or dev_head_version,
         },
+        "complexity_summary": complexity_summary,
         "suggested_commands": {
             "focused_checks": [
                 "pb release dev-status --json",
