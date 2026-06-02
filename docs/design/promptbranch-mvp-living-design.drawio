@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-02T00:00:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-02T09:30:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1230" pageHeight="1380" math="0" shadow="0">
       <root>
@@ -35,7 +35,8 @@ Rule: do not conflate runtime code with adopted source baseline." style="rounded
 - ask/reply protocol design
 - artifact intake design
 - release doctor/config/install/lifecycle plan
-- dev-status + checkpoint flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="180" width="380" height="210" as="geometry"/></mxCell><mxCell id="flow_sec" value="4. CI-style Development / Adoption Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="430" width="760" height="40" as="geometry"/></mxCell><mxCell id="next_sec" value="5. Remaining MVP Tracks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="810" y="430" width="380" height="40" as="geometry"/></mxCell><mxCell id="accepted" value="Accepted baseline
+- dev-status + checkpoint flow
+- docs-status living design validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="180" width="380" height="210" as="geometry"/></mxCell><mxCell id="flow_sec" value="4. CI-style Development / Adoption Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="430" width="760" height="40" as="geometry"/></mxCell><mxCell id="next_sec" value="5. Remaining MVP Tracks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="810" y="430" width="380" height="40" as="geometry"/></mxCell><mxCell id="accepted" value="Accepted baseline
 
 pb artifact current
 kind=adopted_release
@@ -89,9 +90,12 @@ Native lifecycle
 - docs/release-v0.1.5.md
 - docs/release-v0.1.6.md
 - docs/release-v0.1.7.md
+- docs/repair-v0.1.7.1.md
+- docs/release-v0.1.8.md
 
 Definition of done
 - docs/mvp-definition-of-done.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1"><mxGeometry x="810" y="900" width="380" height="190" as="geometry"/></mxCell><mxCell id="update_sec" value="7. Update Protocol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="30" y="1140" width="1160" height="40" as="geometry"/></mxCell><mxCell id="update" value="After each release slice:
+- run pb release docs-status --json
 1. Update this diagram source, not a screenshot.
 2. Move completed items only after focused/full validation evidence exists.
 3. Keep references repo-relative.

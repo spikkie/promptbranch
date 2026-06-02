@@ -483,6 +483,25 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
 
 
+def test_parser_accepts_release_docs_status_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release", "docs-status",
+        "--version", "v0.1.8",
+        "--design-doc", "docs/design/promptbranch-mvp-living-design.md",
+        "--drawio", "docs/design/promptbranch-mvp-living-design.drawio",
+        "--repo-path", "/tmp/repo",
+        "--json",
+    ])
+    assert args.command == "release"
+    assert args.release_command == "docs-status"
+    assert args.version == "v0.1.8"
+    assert args.design_doc == "docs/design/promptbranch-mvp-living-design.md"
+    assert args.drawio == "docs/design/promptbranch-mvp-living-design.drawio"
+    assert args.repo_path == "/tmp/repo"
+    assert args.json is True
+
+
 def test_parser_accepts_release_dev_status_command() -> None:
     parser = make_parser()
     args = parser.parse_args([

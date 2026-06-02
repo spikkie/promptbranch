@@ -20,6 +20,7 @@ import time
 import tempfile
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime, timezone
 from contextlib import redirect_stdout
@@ -9168,6 +9169,161 @@ def _load_release_config(config_arg: str | None, *, repo_root: Path) -> dict[str
     return payload
 
 
+def _extract_markdown_code_values(text: str) -> list[str]:
+    values: list[str] = []
+    in_fence = False
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for match in re.finditer(r"`([^`]+)`", line):
+            value = (match.group(1) or "").strip()
+            if value:
+                values.append(value)
+    return values
+
+
+def _extract_design_reference_paths(text: str) -> list[str]:
+    """Extract repo-relative documentation references from the living design markdown."""
+
+    references: list[str] = []
+    seen: set[str] = set()
+    for value in _extract_markdown_code_values(text):
+        if not value or "\n" in value:
+            continue
+        if value.startswith(("http://", "https://", "#")):
+            continue
+        if value.startswith(("/", "~", ".")) or ".." in Path(value).parts:
+            continue
+        if not any(value.endswith(suffix) for suffix in (".md", ".txt", ".drawio")):
+            continue
+        if value not in seen:
+            references.append(value)
+            seen.add(value)
+    return references
+
+
+def _parse_drawio_source(path: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "present": path.is_file(),
+        "xml_parsed": False,
+        "diagram_count": 0,
+        "diagram_names": [],
+        "cell_count": 0,
+        "error": None,
+    }
+    if not path.is_file():
+        payload["error"] = "drawio_missing"
+        return payload
+    try:
+        root = ET.parse(path).getroot()
+    except ET.ParseError as exc:
+        payload["error"] = f"drawio_xml_parse_error: {exc}"
+        return payload
+    except OSError as exc:
+        payload["error"] = f"drawio_read_error: {exc}"
+        return payload
+    diagrams = root.findall("diagram")
+    cells = root.findall(".//mxCell")
+    payload.update({
+        "xml_parsed": True,
+        "diagram_count": len(diagrams),
+        "diagram_names": [str(item.attrib.get("name") or "") for item in diagrams],
+        "cell_count": len(cells),
+        "host": root.attrib.get("host"),
+        "modified": root.attrib.get("modified"),
+    })
+    return payload
+
+
+def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expected_version: str | None) -> dict[str, Any]:
+    doc_path = (repo_root / design_doc).resolve()
+    drawio_path = (repo_root / drawio).resolve()
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    try:
+        doc_path.relative_to(repo_root)
+    except ValueError:
+        block("living_design_doc_not_repo_bound", "Design document path must stay inside the repository.", path=str(doc_path))
+    try:
+        drawio_path.relative_to(repo_root)
+    except ValueError:
+        block("living_design_drawio_not_repo_bound", "draw.io source path must stay inside the repository.", path=str(drawio_path))
+
+    doc_text = ""
+    if not doc_path.is_file():
+        block("living_design_doc_missing", "Living design Markdown document is missing.", path=design_doc)
+    else:
+        try:
+            doc_text = doc_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("living_design_doc_read_error", "Living design Markdown document could not be read.", path=design_doc, error=str(exc))
+
+    drawio_status = _parse_drawio_source(drawio_path)
+    if not drawio_status.get("present"):
+        block("living_design_drawio_missing", "Editable draw.io source file is missing.", path=drawio)
+    elif not drawio_status.get("xml_parsed"):
+        block("living_design_drawio_xml_invalid", "Editable draw.io source file is not valid XML.", path=drawio, error=drawio_status.get("error"))
+    elif int(drawio_status.get("diagram_count") or 0) < 1:
+        block("living_design_drawio_no_diagrams", "Editable draw.io source contains no diagrams.", path=drawio)
+
+    references = _extract_design_reference_paths(doc_text)
+    reference_status: list[dict[str, Any]] = []
+    for reference in references:
+        ref_path = (repo_root / reference).resolve()
+        try:
+            ref_path.relative_to(repo_root)
+            repo_bound = True
+        except ValueError:
+            repo_bound = False
+        exists = ref_path.is_file()
+        if not repo_bound:
+            block("living_design_reference_not_repo_bound", "Living design reference leaves the repository.", reference=reference)
+        elif not exists:
+            block("living_design_reference_missing", "Living design reference is missing.", reference=reference)
+        reference_status.append({"path": reference, "repo_bound": repo_bound, "exists": exists})
+
+    if drawio not in references and doc_text:
+        warn("living_design_drawio_not_listed_as_reference", "The draw.io source is not listed among extracted repo-relative references.", drawio=drawio)
+    if expected_version and doc_text and expected_version not in doc_text:
+        warn("living_design_release_marker_mismatch", "Expected version is not mentioned in the living design document.", expected_version=expected_version)
+    if doc_text and "After each release slice" not in doc_text:
+        warn("living_design_update_protocol_missing", "Living design document does not include the expected update protocol phrase.")
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "design_doc": {
+            "path": design_doc,
+            "present": doc_path.is_file(),
+            "size_bytes": doc_path.stat().st_size if doc_path.is_file() else None,
+        },
+        "drawio": drawio_status,
+        "reference_count": len(references),
+        "references": reference_status,
+        "missing_reference_count": sum(1 for item in reference_status if not item.get("exists")),
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
+
 async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
     """Read-only parser/validator for .promptbranch-release.yml."""
 
@@ -9210,6 +9366,60 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
         print(f"severity={payload.get('severity') or 'unknown'}")
         print(f"config_path={payload.get('path')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
+async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int:
+    """Read-only status/validation for the living MVP design document and draw.io source."""
+
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    expected_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
+    payload = _living_design_status(
+        repo_root=repo_root,
+        design_doc=getattr(args, "design_doc", None) or "docs/design/promptbranch-mvp-living-design.md",
+        drawio=getattr(args, "drawio", None) or "docs/design/promptbranch-mvp-living-design.drawio",
+        expected_version=expected_version,
+    )
+    payload.update({
+        "schema": "promptbranch.release.docs_status",
+        "schema_version": "1.0",
+        "action": "release_docs_status",
+        "repo_path": str(repo_root),
+        "expected_version": expected_version,
+        "download_performed": False,
+        "migration_performed": False,
+        "candidate_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "project_source_mutation": "not_requested",
+        "source_upload_verification": None,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "not_performed": [
+            "artifact_download",
+            "candidate_migration",
+            "candidate_test_execution",
+            "candidate_adoption",
+            "project_source_mutation",
+            "artifact_registry_update",
+            "state_artifact_update",
+            "state_source_update",
+            "git_commit",
+            "git_push",
+        ],
+        "operator_instruction": "Read-only living design validation. Keep the Markdown and editable draw.io source updated together after each MVP/release slice.",
+    })
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"references={payload.get('reference_count')}")
+        print(f"missing_references={payload.get('missing_reference_count')}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
     return 0 if payload.get("ok") else 1
 
@@ -12782,6 +12992,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "docs-status":
+        return await cmd_release_docs_status(backend, args)
     if args.release_command == "dev-status":
         return await cmd_release_dev_status(backend, args)
     if args.release_command == "checkpoint":
@@ -17058,6 +17270,13 @@ def make_parser() -> argparse.ArgumentParser:
     release_git_sync.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit and upstream prechecks.")
     release_git_sync.add_argument("--message", help="Commit message for --commit. Defaults to a release message.")
     release_git_sync.add_argument("--json", action="store_true")
+
+    release_docs_status = release_subparsers.add_parser("docs-status", help="Read-only living MVP design document and draw.io source validator.")
+    release_docs_status.add_argument("--version", help="Expected version marker to check in the living design document. Defaults to the running Promptbranch version.")
+    release_docs_status.add_argument("--design-doc", default="docs/design/promptbranch-mvp-living-design.md", help="Repo-relative living design Markdown path.")
+    release_docs_status.add_argument("--drawio", default="docs/design/promptbranch-mvp-living-design.drawio", help="Repo-relative editable draw.io source path.")
+    release_docs_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_docs_status.add_argument("--json", action="store_true")
 
     release_dev_status = release_subparsers.add_parser("dev-status", help="Read-only accepted-baseline versus development-head status for CI-style development.")
     release_dev_status.add_argument("--artifact", help="Optional development candidate ZIP to inspect as the explicit dev head.")
