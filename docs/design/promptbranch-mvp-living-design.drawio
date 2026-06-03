@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-03T18:55:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-03T20:10:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
@@ -58,7 +58,7 @@
         <mxCell id="artifact_gate" value="Artifact intake gate&#10;&#10;structured ask&#10;→ structured reply&#10;→ candidate artifact&#10;→ download only when explicit&#10;→ verify ZIP/layout/hygiene/version&#10;→ migrate as candidate&#10;→ full test/adopt only after green validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="410" y="820" width="340" height="250" as="geometry" />
         </mxCell>
-        <mxCell id="devflow" value="CI-style development flow&#10;&#10;accepted baseline may remain behind runtime/dev head&#10;&#10;focused dev:&#10;v0.1.7.1 → v0.1.8 → v0.1.9 → v0.1.10 → v0.1.12 → v0.1.14 → v0.1.15 → v0.1.16 → v0.1.17 → v0.1.18 → v0.1.18.1 → v0.1.19 → v0.1.20 → v0.1.21 → v0.1.22 → v0.1.23 → v0.1.24 → v0.1.25&#10;&#10;full release-control at adoption checkpoint; baseline-status verifies reset; status-guide selects checkpoint/dev-status/baseline-status, emits a read-only runbook, shows the full-test threshold meter, and warns when the next release is expected to trigger full-test/adoption and, at threshold, gives an actionable full-test/adopt-current preparation runbook and then continues with post-adoption next-normal plus next-candidate checkpoint/status-guide handoff, with JSON and plain-text outputs both showing the next artifact and after-build commands, and smoke validating the non-JSON status-guide handoff contract and pre-threshold full-test countdown fields, with v0.1.25 correcting expected_threshold_version so it projects the actual threshold candidate instead of always naming the immediate next candidate&#10;&#10;Do not rewrite issued versions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+        <mxCell id="devflow" value="CI-style development flow&#10;&#10;accepted baseline may remain behind runtime/dev head&#10;&#10;focused dev:&#10;v0.1.7.1 → v0.1.8 → v0.1.9 → v0.1.10 → v0.1.12 → v0.1.14 → v0.1.15 → v0.1.16 → v0.1.17 → v0.1.18 → v0.1.18.1 → v0.1.19 → v0.1.20 → v0.1.21 → v0.1.22 → v0.1.23 → v0.1.24 → v0.1.25 → v0.1.26&#10;&#10;full release-control at adoption checkpoint; baseline-status verifies reset; status-guide selects checkpoint/dev-status/baseline-status, emits a read-only runbook, shows the full-test threshold meter, and warns when the next release is expected to trigger full-test/adoption and, at threshold, gives an actionable full-test/adopt-current preparation runbook and then continues with post-adoption next-normal plus next-candidate checkpoint/status-guide handoff, with JSON and plain-text outputs both showing the next artifact and after-build commands, and smoke validating the non-JSON status-guide handoff contract and pre-threshold full-test countdown fields, with v0.1.25 correcting expected_threshold_version so it projects the actual threshold candidate instead of always naming the immediate next candidate&#10;&#10;v0.1.26 adds an ask/reply JSON data-flow diagram page and keeps the threshold candidate intentionally documentation/data-flow focused.&#10;&#10;Do not rewrite issued versions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="790" y="820" width="340" height="250" as="geometry" />
         </mxCell>
         <mxCell id="checkpoint" value="Checkpoint decision&#10;&#10;Continue mode:&#10;- focused tests&#10;- smoke&#10;- docs-status&#10;- no source/adopt mutation&#10;&#10;Adopt mode:&#10;- full release-control&#10;- Project Source verification&#10;- artifact current verified&#10;- policy/Git sync only when safe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
@@ -79,13 +79,13 @@
         <mxCell id="current_sec" value="6. Current implemented surface / remaining movement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="30" y="1130" width="1480" height="42" as="geometry" />
         </mxCell>
-        <mxCell id="done" value="Done / current surface&#10;&#10;- canonical shell grammar&#10;- read-only MCP server/client paths&#10;- skill registry / repo-inspection model&#10;- pb test smoke&#10;- ask/reply + artifact intake design&#10;- release doctor/config/install/lifecycle planning&#10;- dev-status/checkpoint&#10;- baseline-status after adoption&#10;- docs-status validation&#10;- living design + draw.io source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+        <mxCell id="done" value="Done / current surface&#10;&#10;- canonical shell grammar&#10;- read-only MCP server/client paths&#10;- skill registry / repo-inspection model&#10;- pb test smoke&#10;- ask/reply + artifact intake design&#10;- release doctor/config/install/lifecycle planning&#10;- dev-status/checkpoint&#10;- baseline-status after adoption&#10;- docs-status validation&#10;- living design + draw.io source&amp;#10;- ask/reply JSON data-flow diagram page documents operational JSON handoffs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="30" y="1190" width="470" height="290" as="geometry" />
         </mxCell>
         <mxCell id="remaining" value="Remaining / planned&#10;&#10;JSON orchestration state MVP:&#10;- add more schema-backed proof examples&#10;- prove real artifact roundtrip&#10;- connect candidate intake to guarded adoption&#10;&#10;Lifecycle:&#10;- controlled source upload/test/adopt&#10;- policy sync + git safety&#10;&#10;Agent/MCP:&#10;- harden host loop&#10;- writes remain blocked until transactional proof exists" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="535" y="1190" width="470" height="290" as="geometry" />
         </mxCell>
-        <mxCell id="docs_refs" value="Documentation references&#10;&#10;Actual MVP:&#10;- orchestration/docs/json_orchestration_state_mvp.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md&#10;&#10;Support docs:&#10;- operating model&#10;- MCP/skills plan&#10;- ask/reply artifact intake&#10;- native release lifecycle TODO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+        <mxCell id="docs_refs" value="Documentation references&#10;&#10;Actual MVP:&#10;- orchestration/docs/json_orchestration_state_mvp.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md&#10;- orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md&#10;&#10;Support docs:&#10;- operating model&#10;- MCP/skills plan&#10;- ask/reply artifact intake&#10;- native release lifecycle TODO&amp;#10;- Ask Reply JSON Data Flow page in this draw.io source&amp;#10;- docs/release-v0.1.26.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="1040" y="1190" width="470" height="290" as="geometry" />
         </mxCell>
         <mxCell id="update_sec" value="7. Update protocol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;align=center;verticalAlign=top;spacing=8;fontStyle=1;" vertex="1" parent="1">
@@ -96,6 +96,113 @@
         </mxCell>
         <mxCell id="threshold_projection_v0125" value="v0.1.25 threshold projection clarification&#10;&#10;If current dev head is near threshold but the next release does not reach it yet, expected_threshold_version = projected threshold candidate.&#10;&#10;Example: accepted v0.1.18.1, dev v0.1.24, remaining 2 → expected threshold v0.1.26; v0.1.25 can still be focused development." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
           <mxGeometry x="535" y="1510" width="470" height="150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="ask-reply-json-data-flow" name="Ask Reply JSON Data Flow">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="df_title" value="Ask/Reply JSON Data Flow&amp;#10;JSON is operational; prose is advisory; Promptbranch validates before state or artifact mutation" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="20" width="1740" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="operator" value="Operator / release workflow&amp;#10;requests next focused slice" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="210" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="pb_ask" value="pb ask --protocol --json&amp;#10;builds structured request envelope" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="300" y="140" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="ask_json" value="promptbranch.ask.request JSON&amp;#10;request_id / correlation_id&amp;#10;workspace / task / artifact&amp;#10;baseline + target version&amp;#10;constraints + expected reply schema" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="590" y="115" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="chatgpt" value="ChatGPT Project task/chat&amp;#10;deliberation + grilling surface&amp;#10;produces human text + one reply envelope" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="950" y="120" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="reply_json" value="promptbranch.ask.reply JSON&amp;#10;status + summary&amp;#10;baseline input/output&amp;#10;changes[]&amp;#10;artifacts[] candidates&amp;#10;validation claimed/not claimed&amp;#10;next_step" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="105" width="330" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="parse" value="pb task answer parse&amp;#10;extract exactly one protocol block&amp;#10;parse JSON" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="340" width="250" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="schema_gate" value="Host validation gates&amp;#10;schema version&amp;#10;request/correlation match&amp;#10;baseline continuity&amp;#10;artifact filename/version&amp;#10;fail closed on ambiguity" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="980" y="315" width="270" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="parsed_record" value="Parsed reply record JSON&amp;#10;.pb_profile/ask_records/...&amp;#10;raw + parsed + validation report" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="640" y="330" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="candidate_json" value="Artifact candidate JSON&amp;#10;role=candidate_release&amp;#10;filename/version/sha/source answer metadata&amp;#10;accepted=false" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="310" y="330" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="intake" value="pb artifact intake&amp;#10;--download --verify --migrate&amp;#10;explicit operator action only" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="350" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="zip_verify" value="ZIP verification JSON&amp;#10;opens successfully&amp;#10;VERSION matches filename&amp;#10;no wrapper folder&amp;#10;hygiene + baseline checks" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="40" y="550" width="250" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="candidate_registry" value="Candidate registry/state JSON&amp;#10;verified candidate stored&amp;#10;accepted baseline unchanged" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="340" y="560" width="270" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="release_control" value="Full release-control/adoption checkpoint&amp;#10;run tests&amp;#10;adopt only if green&amp;#10;Project Source/current verification" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="680" y="540" width="310" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="artifact_current" value="pb artifact current JSON&amp;#10;adopted_release baseline&amp;#10;source_ref/artifact_ref&amp;#10;used by next structured ask" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="560" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="next_ask" value="Next pb ask from accepted baseline&amp;#10;no stale memory baseline&amp;#10;repair/normal version policy respected" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="560" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="trust" value="Trust boundary rule&amp;#10;Untrusted: prose, assistant links, claimed validation&amp;#10;Trusted after: schema validation, ZIP verification, green release-control/adoption" style="rounded=1;whiteSpace=wrap;html=1;fontSize=12;align=center;verticalAlign=middle;spacing=8;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="780" width="560" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="request" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="operator" target="pb_ask" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="serialize" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="pb_ask" target="ask_json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="send" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="ask_json" target="chatgpt" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="reply envelope" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="chatgpt" target="reply_json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="extract" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="reply_json" target="parse" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="parse" target="schema_gate" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="schema_gate" target="parsed_record" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="artifacts[]" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="parsed_record" target="candidate_json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="explicit intake" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="candidate_json" target="intake" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="download/verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="intake" target="zip_verify" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="verified" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="zip_verify" target="candidate_registry" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="candidate test/adopt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="candidate_registry" target="release_control" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="adopted if green" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="release_control" target="artifact_current" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="baseline" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="artifact_current" target="next_ask" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="continue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="next_ask" target="pb_ask" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_trust" value="policy gate owns authority" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="schema_gate" target="trust" parent="1">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
