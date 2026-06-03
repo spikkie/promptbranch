@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.22`  
+Release: `v0.1.23`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -231,6 +231,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.20.md`
 - `docs/release-v0.1.21.md`
 - `docs/release-v0.1.22.md`
+- `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
 
@@ -269,3 +270,7 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.22 — plain-text next-candidate handoff
 
 `v0.1.22` adds the same next-development handoff to non-JSON `pb release status-guide` and `pb release checkpoint --mode continue` output. JSON automation already had these fields; the plain text path now also shows the next artifact and the after-build status-guide/checkpoint commands, reducing copy/paste risk during operator-driven focused development.
+
+### v0.1.23 — smoke-tested plain-text status-guide handoff
+
+`v0.1.23` extends `pb test smoke --json` with a bounded non-JSON `pb release status-guide` substep. The smoke runner now validates required stdout markers for the plain-text operator handoff, including the next development artifact and after-build status-guide/checkpoint commands. This turns the v0.1.22 plain-text UX into recurring smoke evidence instead of relying on manual log inspection.

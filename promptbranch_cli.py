@@ -6817,6 +6817,7 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
     """
 
     promptbranch_cmd = _promptbranch_command_path()
+    version = (repo_path / "VERSION").read_text(encoding="utf-8").strip() if (repo_path / "VERSION").is_file() else CLI_VERSION
     return [
         {
             "name": "version",
@@ -6841,6 +6842,19 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
             "kind": "promptbranch_cli",
             "command": [sys.executable, promptbranch_cmd, "artifact", "current", "--json"],
             "description": "Verify artifact current-state inspection remains read-only and JSON-producing.",
+        },
+        {
+            "name": "release_status_guide_plain_readonly",
+            "kind": "promptbranch_cli",
+            "command": [sys.executable, promptbranch_cmd, "release", "status-guide", "--version", version, "--target-version", version],
+            "description": "Verify the non-JSON release status guide emits operator handoff fields without mutation.",
+            "required_stdout_contains": [
+                "status=release_status_guidance_available",
+                "next_development_artifact=",
+                "next_development_status_guide_after_build=",
+                "next_development_checkpoint_after_build=",
+                "blocker_codes=",
+            ],
         },
     ]
 
@@ -6915,10 +6929,15 @@ def _run_bounded_smoke_subprocess(
                 "stdout_tail": _tail_text_file(stdout_log),
                 "stderr_tail": _tail_text_file(stderr_log),
             }
+        stdout_text = stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else ""
+        required_stdout = [str(item) for item in (spec.get("required_stdout_contains") or [])]
+        missing_stdout = [item for item in required_stdout if item not in stdout_text]
+        stdout_contract_ok = not missing_stdout
+        step_ok = returncode == 0 and stdout_contract_ok
         return {
             "name": name,
-            "ok": returncode == 0,
-            "status": "passed" if returncode == 0 else "failed",
+            "ok": step_ok,
+            "status": "passed" if step_ok else ("smoke_stdout_contract_failed" if returncode == 0 else "failed"),
             "kind": spec.get("kind"),
             "description": spec.get("description"),
             "command": command,
@@ -6928,6 +6947,9 @@ def _run_bounded_smoke_subprocess(
             "started_at": started_at,
             "finished_at": utc_now(),
             "timeout_seconds": timeout,
+            "required_stdout_contains": required_stdout,
+            "missing_stdout_contains": missing_stdout,
+            "stdout_contract_ok": stdout_contract_ok,
             "stdout_log_path": str(stdout_log),
             "stderr_log_path": str(stderr_log),
             "stdout_tail": _tail_text_file(stdout_log),
