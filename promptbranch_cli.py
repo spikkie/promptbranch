@@ -9638,6 +9638,27 @@ def _release_candidate_versions_newer_than(
     return newer
 
 
+def _release_add_normal_versions(version: Any, count: Any) -> str | None:
+    """Return version advanced by count normal patch releases.
+
+    Repair components are intentionally ignored here.  The full-test threshold is
+    defined over the normal focused-development line, so the projected threshold
+    marker should be a normal version such as ``v0.1.26`` rather than a repair
+    version.  Unknown versions/counts return ``None`` instead of guessing.
+    """
+
+    normalized = _candidate_version_normalized(version)
+    version_tuple = _version_tuple_for_operator_order(normalized)
+    if not normalized or not version_tuple or len(version_tuple) < 3:
+        return None
+    if not isinstance(count, int):
+        return None
+    if count < 0:
+        return None
+    major, minor, patch = int(version_tuple[0]), int(version_tuple[1]), int(version_tuple[2])
+    return f"v{major}.{minor}.{patch + count}"
+
+
 def _release_full_test_countdown_payload(complexity_summary: dict[str, Any]) -> dict[str, Any]:
     """Return a compact read-only countdown toward the full-test checkpoint.
 
@@ -10225,9 +10246,16 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         candidate_remaining = threshold_meter.get("newer_candidates_until_full_test_threshold")
         next_development_version = next_development_version_from_plan
         full_test_recommended_now = bool(complexity.get("full_test_recommended_now"))
+        threshold_remaining_values = [
+            int(value)
+            for value in (normal_remaining, candidate_remaining)
+            if isinstance(value, int)
+        ]
+        minimum_remaining_until_threshold = min(threshold_remaining_values) if threshold_remaining_values else None
+        projected_threshold_version = _release_add_normal_versions(selected_version, minimum_remaining_until_threshold)
         next_release_reaches_full_test_threshold = bool(
             not full_test_recommended_now
-            and (normal_remaining == 1 or candidate_remaining == 1)
+            and minimum_remaining_until_threshold == 1
         )
         selected_filename = Path(selected_artifact).name if selected_artifact else "<candidate>.zip"
         selected_download_path = f"~/Downloads/{selected_filename}" if selected_filename != "<candidate>.zip" else "~/Downloads/<candidate>.zip"
@@ -10246,7 +10274,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             threshold_notice = {
                 "active": True,
                 "threshold_reached_now": True,
-                "expected_threshold_version": selected_version,
+                "next_release_reaches_threshold": False,
+                "expected_threshold_version": projected_threshold_version or selected_version,
+                "versions_until_expected_threshold": 0,
+                "calculation_rule": "current_candidate_reached_or_exceeded_threshold",
                 "message": "The focused development line has reached the full-test/adoption checkpoint threshold now.",
                 "recommended_operator_plan": "Run full release-control for the current candidate and adopt it only if the full test is green before adding more scope.",
             }
@@ -10254,11 +10285,14 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             threshold_notice = {
                 "active": next_release_reaches_full_test_threshold,
                 "threshold_reached_now": False,
-                "expected_threshold_version": next_development_version,
+                "next_release_reaches_threshold": next_release_reaches_full_test_threshold,
+                "expected_threshold_version": projected_threshold_version,
+                "versions_until_expected_threshold": minimum_remaining_until_threshold,
+                "calculation_rule": "current_candidate_plus_minimum_remaining_normal_versions",
                 "message": (
                     "The next focused development release is expected to reach the full-test/adoption checkpoint threshold."
                     if next_release_reaches_full_test_threshold
-                    else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet."
+                    else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet; expected_threshold_version is the projected threshold candidate, not necessarily the next candidate."
                 ),
                 "recommended_operator_plan": (
                     "Plan to run full release-control and adoption around the expected threshold version before adding more scope."
@@ -10307,8 +10341,9 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "command": "plan full release-control/adoption checkpoint around the threshold version",
                 "required": next_release_reaches_full_test_threshold,
                 "read_only": True,
-                "purpose": "Make the pre-threshold adoption checkpoint explicit before the next development release reaches the configured drift threshold.",
-                "expected_threshold_version": next_development_version,
+                "purpose": "Make the pre-threshold adoption checkpoint explicit before the configured drift threshold is reached.",
+                "expected_threshold_version": threshold_notice.get("expected_threshold_version"),
+                "versions_until_expected_threshold": threshold_notice.get("versions_until_expected_threshold"),
                 "active": next_release_reaches_full_test_threshold,
             },
             {

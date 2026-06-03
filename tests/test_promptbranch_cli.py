@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.24"
+    assert captured.out.strip() == "promptbranch 0.1.25"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.24"
+    assert payload["version"] == "0.1.25"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6515,6 +6515,72 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert "release_status_guide_full_test_checkpoint_advised" in payload["warning_codes"]
     assert "release_status_guide_full_test_checkpoint_expected_next_release" not in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
+
+
+def test_release_status_guide_projects_threshold_version_beyond_next_when_two_versions_remain(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    dev_version = _test_runtime_version()
+    major, minor, patch, *_ = dev_version.removeprefix("v").split(".")
+    accepted_version = f"v{major}.{minor}.{int(patch) - 6}"
+    expected_threshold_version = f"v{major}.{minor}.{int(patch) + 2}"
+    expected_next_dev = _test_next_normal_version(dev_version)
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
+    candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
+    _write_test_release_zip(accepted, accepted_version)
+    _write_test_release_zip(candidate, dev_version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=accepted_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": accepted_version,
+                "source_ref": accepted.name,
+                "source_version": accepted_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version=dev_version,
+        target_version=dev_version,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_status_guide(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 6
+    assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 2
+    assert payload["checkpoint_threshold"]["threshold_reached_now"] is False
+    assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is False
+    notice = payload["checkpoint_threshold"]["threshold_notice"]
+    assert notice["active"] is False
+    assert notice["versions_until_expected_threshold"] == 2
+    assert notice["expected_threshold_version"] == expected_threshold_version
+    assert notice["expected_threshold_version"] != expected_next_dev
+    assert payload["operator_runbook"]["expected_threshold_version"] == expected_threshold_version
+    assert payload["recommended_sequence"][4]["expected_threshold_version"] == expected_threshold_version
+    assert payload["recommended_sequence"][4]["versions_until_expected_threshold"] == 2
 
 
 def test_release_status_guide_plain_output_includes_next_development_handoff(capsys, tmp_path) -> None:
