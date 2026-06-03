@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.17`  
+Release: `v0.1.18`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -225,6 +225,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.15.md`
 - `docs/release-v0.1.16.md`
 - `docs/release-v0.1.17.md`
+- `docs/release-v0.1.18.md`
 
 ## Editing the draw.io source
 
@@ -247,6 +248,8 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 - `pb test smoke --json` as the required cheap runtime smoke after focused dev-candidate installs.
 
 `v0.1.16` extended the guide with an explicit checkpoint threshold meter so the operator can see how many focused-development releases remain before a full-test/adoption checkpoint is recommended. `v0.1.17` adds a pre-threshold planning notice: when the current development candidate is one normal release away from the full-test/adoption threshold, `status-guide` reports the expected threshold version and adds a required operator-planning step to the read-only runbook.
+
+`v0.1.18` turns that threshold notice into an actionable full-test/adoption preparation runbook when the threshold is reached. The guide remains read-only and does not execute tests or adoption, but it now includes the exact full release-control command and an explicit `adopt-current` command to run only after the full test is green.
 
 This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 

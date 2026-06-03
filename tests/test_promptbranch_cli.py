@@ -6401,7 +6401,7 @@ def test_release_baseline_status_guides_dev_candidate_to_checkpoint(capsys, tmp_
     assert payload["mutating_actions_executed"] is False
 
 
-def test_release_status_guide_selects_checkpoint_for_dev_candidate(capsys, tmp_path) -> None:
+def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_threshold(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     accepted_version = "v0.1.10"
@@ -6465,23 +6465,34 @@ def test_release_status_guide_selects_checkpoint_for_dev_candidate(capsys, tmp_p
     assert payload["recommended_sequence"][1]["command"] == "pb test smoke --json"
     assert payload["recommended_sequence"][3]["step"] == "adoption_threshold_watch"
     assert payload["recommended_sequence"][3]["required"] is False
-    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 7
-    assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 1
+    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 8
+    assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
-    assert payload["checkpoint_threshold"]["next_development_version"] == "v0.1.18"
-    assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is True
+    assert payload["checkpoint_threshold"]["next_development_version"] == "v0.1.19"
+    assert payload["checkpoint_threshold"]["threshold_reached_now"] is True
+    assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is False
     assert payload["checkpoint_threshold"]["threshold_notice"]["active"] is True
-    assert payload["checkpoint_threshold"]["threshold_notice"]["expected_threshold_version"] == "v0.1.18"
+    assert payload["checkpoint_threshold"]["threshold_notice"]["threshold_reached_now"] is True
+    assert payload["checkpoint_threshold"]["threshold_notice"]["expected_threshold_version"] == dev_version
     assert payload["recommended_sequence"][4]["step"] == "next_release_adoption_planning"
-    assert payload["recommended_sequence"][4]["required"] is True
-    assert payload["recommended_sequence"][4]["expected_threshold_version"] == "v0.1.18"
-    assert payload["operator_runbook"]["required_step_count"] == 3
+    assert payload["recommended_sequence"][4]["required"] is False
+    assert payload["recommended_sequence"][5]["step"] == "full_release_control"
+    assert payload["recommended_sequence"][5]["required"] is True
+    assert payload["recommended_sequence"][5]["would_mutate_when_executed"] is True
+    assert "--run-tests" in payload["recommended_sequence"][5]["command"]
+    assert payload["recommended_sequence"][6]["step"] == "adopt_current_after_green_full_test"
+    assert payload["recommended_sequence"][6]["required"] is True
+    assert payload["recommended_sequence"][6]["would_mutate_when_executed"] is True
+    assert "--adopt-current" in payload["recommended_sequence"][6]["command"]
+    assert payload["operator_runbook"]["required_step_count"] == 4
     assert payload["operator_runbook"]["next_full_test_threshold_visible"] is True
-    assert payload["operator_runbook"]["next_release_reaches_full_test_threshold"] is True
-    assert payload["operator_runbook"]["expected_threshold_version"] == "v0.1.18"
+    assert payload["operator_runbook"]["threshold_reached_now"] is True
+    assert payload["operator_runbook"]["next_release_reaches_full_test_threshold"] is False
+    assert payload["operator_runbook"]["expected_threshold_version"] == dev_version
     assert payload["operator_runbook"]["mutating_actions_executed"] is False
     assert "release_status_guide_dev_candidate_use_checkpoint" in payload["warning_codes"]
-    assert "release_status_guide_full_test_checkpoint_expected_next_release" in payload["warning_codes"]
+    assert "release_status_guide_full_test_checkpoint_advised" in payload["warning_codes"]
+    assert "release_status_guide_full_test_checkpoint_expected_next_release" not in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
 
 
