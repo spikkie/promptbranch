@@ -10045,6 +10045,17 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
     accepted_version = _candidate_version_normalized(accepted.get("source_version") or accepted.get("artifact_version"))
     runtime_version = _candidate_version_normalized(runtime.get("version"))
     dev_head_version = _candidate_version_normalized(dev_status.get("development_head_version"))
+    expected_next_normal_from_accepted = _candidate_version_normalized(version_plan.get("expected_next_normal_from_accepted"))
+    next_development_version_from_plan = _candidate_version_normalized(version_plan.get("next_development_version"))
+    artifact_line = dev_status.get("artifact_line") if isinstance(dev_status.get("artifact_line"), dict) else {}
+    artifact_prefix = str(artifact_line.get("prefix") or f"{repo_root.name}_")
+    artifact_suffix = str(artifact_line.get("suffix") or ".zip")
+    next_normal_candidate_filename = (
+        f"{artifact_prefix}{expected_next_normal_from_accepted}{artifact_suffix}"
+        if expected_next_normal_from_accepted
+        else None
+    )
+    next_normal_candidate_artifact = f"./{next_normal_candidate_filename}" if next_normal_candidate_filename else "./<next-normal-candidate>.zip"
     selected_version = requested_version or dev_head_version or runtime_version or accepted_version
     selected_artifact = artifact_arg
     if not selected_artifact:
@@ -10089,11 +10100,24 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
 
     commands = {
         "baseline_status": f"pb release baseline-status --version {accepted_version or selected_version or '<accepted-version>'} --json",
+        "artifact_current": "pb artifact current --json",
         "dev_status": "pb release dev-status --json",
         "checkpoint": (
             f"pb release checkpoint --artifact {selected_artifact or './<candidate>.zip'} "
             f"--version {selected_version or '<candidate-version>'} "
             f"--target-version {target_version or selected_version or '<candidate-version>'} "
+            "--mode continue --json"
+        ),
+        "next_normal_status_guide": (
+            f"pb release status-guide --artifact {next_normal_candidate_artifact} "
+            f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+            f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+            "--json"
+        ),
+        "next_normal_checkpoint": (
+            f"pb release checkpoint --artifact {next_normal_candidate_artifact} "
+            f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+            f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
             "--mode continue --json"
         ),
         "smoke": "pb test smoke --json",
@@ -10105,7 +10129,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         threshold_meter = complexity.get("threshold_meter") if isinstance(complexity.get("threshold_meter"), dict) else {}
         normal_remaining = threshold_meter.get("normal_versions_until_full_test_threshold")
         candidate_remaining = threshold_meter.get("newer_candidates_until_full_test_threshold")
-        next_development_version = _candidate_version_normalized(version_plan.get("next_development_version"))
+        next_development_version = next_development_version_from_plan
         full_test_recommended_now = bool(complexity.get("full_test_recommended_now"))
         next_release_reaches_full_test_threshold = bool(
             not full_test_recommended_now
@@ -10227,10 +10251,35 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             {
                 "step": "current_artifact_snapshot",
                 "command_kind": "artifact-current",
-                "command": "pb artifact current --json",
+                "command": commands["artifact_current"],
                 "required": False,
                 "read_only": True,
                 "purpose": "Capture the accepted artifact state as handoff evidence.",
+            },
+            {
+                "step": "next_normal_release_plan",
+                "command_kind": "operator-plan",
+                "command": (
+                    f"Build {expected_next_normal_from_accepted} from {accepted_version}"
+                    if expected_next_normal_from_accepted and accepted_version
+                    else "Build the next normal release from the adopted baseline"
+                ),
+                "required": False,
+                "read_only": True,
+                "purpose": "Make the next normal development candidate explicit after a successful adoption checkpoint.",
+                "base_version": accepted_version,
+                "next_normal_version": expected_next_normal_from_accepted,
+                "next_normal_artifact": next_normal_candidate_filename,
+            },
+            {
+                "step": "next_normal_status_guide_after_build",
+                "command_kind": "status-guide",
+                "command": commands["next_normal_status_guide"],
+                "required": False,
+                "read_only": True,
+                "purpose": "After the next normal candidate exists and is installed, use status-guide to enter the focused-development checkpoint path.",
+                "base_version": accepted_version,
+                "next_normal_version": expected_next_normal_from_accepted,
             },
         ]
     else:
@@ -10315,8 +10364,11 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         },
         "command_guide": {
             "post_adoption_verifier": commands["baseline_status"],
+            "artifact_current": commands["artifact_current"],
             "development_overview": commands["dev_status"],
             "development_checkpoint": commands["checkpoint"],
+            "next_normal_status_guide": commands["next_normal_status_guide"],
+            "next_normal_checkpoint": commands["next_normal_checkpoint"],
             "focused_smoke": commands["smoke"],
             "full_release_control": locals().get("full_test_command"),
             "adopt_current_after_green_full_test": locals().get("adopt_current_command"),
@@ -10329,6 +10381,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
             "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
+            "post_adoption_ready_for_next_normal": bool(accepted_aligned and expected_next_normal_from_accepted),
+            "development_base_version": accepted_version if accepted_aligned else None,
+            "next_normal_version": expected_next_normal_from_accepted if accepted_aligned else None,
+            "next_normal_artifact": next_normal_candidate_filename if accepted_aligned else None,
             "mutating_actions_executed": False,
         },
         "decision_matrix": [
