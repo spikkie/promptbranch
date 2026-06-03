@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.19`  
+Release: `v0.1.20`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -228,6 +228,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.18.md`
 - `docs/release-v0.1.18.1.md`
 - `docs/release-v0.1.19.md`
+- `docs/release-v0.1.20.md`
 
 ## Editing the draw.io source
 
@@ -254,6 +255,8 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 `v0.1.18` turns that threshold notice into an actionable full-test/adoption preparation runbook when the threshold is reached. The guide remains read-only and does not execute tests or adoption, but it now includes the exact full release-control command and an explicit `adopt-current` command to run only after the full test is green. `v0.1.18.1` repairs cleanup idempotency in the full browser suite and becomes the accepted repair baseline after full release-control and adoption.
 
 `v0.1.19` resets the release-status UX after that adoption checkpoint: the post-adoption status-guide runbook now shows the next normal release plan, including the expected next normal candidate artifact and the status/checkpoint commands to use after that candidate is built. This makes repair-baseline continuity explicit: the next normal release is built from the accepted repair baseline, not from the original normal release.
+
+`v0.1.20` extends the development checkpoint handoff itself: when `pb release checkpoint --mode continue --json` reports that focused development may continue, it now includes explicit status-guide and checkpoint commands for the next monotonic development candidate after that candidate is built. This keeps the operator loop deterministic across focused development slices without implying adoption or full-test completion.
 
 This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 

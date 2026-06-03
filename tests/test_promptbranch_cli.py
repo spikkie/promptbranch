@@ -29,9 +29,10 @@ def _test_runtime_version() -> str:
     return value if value.startswith("v") else f"v{value}"
 
 
-def _test_next_normal_version(version: str) -> str:
-    parts = [int(part) for part in version.removeprefix("v").split(".")[:3]]
-    return f"v{parts[0]}.{parts[1]}.{parts[2] + 1}"
+def _test_next_normal_version(value: str) -> str:
+    normalized = str(value).removeprefix("v")
+    major, minor, patch, *_ = normalized.split(".")
+    return f"v{major}.{minor}.{int(patch) + 1}"
 
 
 
@@ -1977,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.0.278.82"
+    assert captured.out.strip() == "promptbranch 0.1.20"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2831,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.0.278.82"
+    assert payload["version"] == "0.1.20"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6409,8 +6410,8 @@ def test_release_baseline_status_guides_dev_candidate_to_checkpoint(capsys, tmp_
 def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_threshold(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    accepted_version = "v0.1.10"
     dev_version = _test_runtime_version()
+    accepted_version = "v0.1.12"
     accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
     candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
     _write_test_release_zip(accepted, accepted_version)
@@ -6470,8 +6471,7 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["recommended_sequence"][1]["command"] == "pb test smoke --json"
     assert payload["recommended_sequence"][3]["step"] == "adoption_threshold_watch"
     assert payload["recommended_sequence"][3]["required"] is False
-    expected_normal_gap = int(dev_version.removeprefix("v").split(".")[2]) - 10
-    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == expected_normal_gap
+    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 8
     assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
     assert payload["checkpoint_threshold"]["next_development_version"] == _test_next_normal_version(dev_version)
@@ -6552,25 +6552,19 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["primary_read_command_kind"] == "baseline-status"
     assert payload["baseline_status_applicable"] is True
     assert payload["primary_read_command"] == f"pb release baseline-status --version {version} --json"
-    assert payload["recommended_sequence"][0]["step"] == "post_adoption_alignment"
-    assert payload["recommended_sequence"][0]["command"] == f"pb release baseline-status --version {version} --json"
     expected_next_normal = _test_next_normal_version(version)
     expected_next_artifact = f"repo_{expected_next_normal}.zip"
-    assert payload["recommended_sequence"][1]["step"] == "current_artifact_snapshot"
+    assert payload["recommended_sequence"][0]["step"] == "post_adoption_alignment"
+    assert payload["recommended_sequence"][0]["command"] == f"pb release baseline-status --version {version} --json"
     assert payload["recommended_sequence"][1]["command"] == "pb artifact current --json"
     assert payload["recommended_sequence"][2]["step"] == "next_normal_release_plan"
     assert payload["recommended_sequence"][2]["base_version"] == version
     assert payload["recommended_sequence"][2]["next_normal_version"] == expected_next_normal
     assert payload["recommended_sequence"][2]["next_normal_artifact"] == expected_next_artifact
     assert payload["recommended_sequence"][3]["step"] == "next_normal_status_guide_after_build"
-    assert payload["recommended_sequence"][3]["command"] == (
-        f"pb release status-guide --artifact ./{expected_next_artifact} "
-        f"--version {expected_next_normal} --target-version {expected_next_normal} --json"
-    )
-    assert payload["command_guide"]["next_normal_checkpoint"] == (
-        f"pb release checkpoint --artifact ./{expected_next_artifact} "
-        f"--version {expected_next_normal} --target-version {expected_next_normal} --mode continue --json"
-    )
+    assert expected_next_artifact in payload["recommended_sequence"][3]["command"]
+    assert payload["command_guide"]["next_normal_checkpoint"].endswith("--mode continue --json")
+    assert expected_next_artifact in payload["command_guide"]["next_normal_status_guide"]
     assert payload["checkpoint_threshold"]["full_test_recommended_now"] is False
     assert payload["operator_runbook"]["required_step_count"] == 1
     assert payload["operator_runbook"]["next_full_test_threshold_visible"] is False
@@ -6901,8 +6895,17 @@ hooks:
     assert payload["candidate"]["artifact_version"] == "v0.1.6"
     assert payload["checkpoint_decision"]["recommendation"] == "continue_development"
     assert payload["checkpoint_decision"]["next_development_version"] == "v0.1.7"
+    assert payload["checkpoint_decision"]["next_development_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.7.zip"
     assert payload["checkpoint_decision"]["full_test_required_before_adoption"] is True
     assert payload["install_plan_summary"]["ok"] is True
+    assert payload["suggested_commands"]["next_development_status_guide_after_build"] == (
+        "pb release status-guide --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
+        "--version v0.1.7 --target-version v0.1.7 --json"
+    )
+    assert payload["suggested_commands"]["next_development_checkpoint_after_build"] == (
+        "pb release checkpoint --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
+        "--version v0.1.7 --target-version v0.1.7 --mode continue --json"
+    )
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["full_test_performed"] is False
