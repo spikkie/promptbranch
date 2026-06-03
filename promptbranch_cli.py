@@ -10106,24 +10106,48 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         normal_remaining = threshold_meter.get("normal_versions_until_full_test_threshold")
         candidate_remaining = threshold_meter.get("newer_candidates_until_full_test_threshold")
         next_development_version = _candidate_version_normalized(version_plan.get("next_development_version"))
+        full_test_recommended_now = bool(complexity.get("full_test_recommended_now"))
         next_release_reaches_full_test_threshold = bool(
-            complexity.get("full_test_recommended_now") is not True
+            not full_test_recommended_now
             and (normal_remaining == 1 or candidate_remaining == 1)
         )
-        threshold_notice = {
-            "active": next_release_reaches_full_test_threshold,
-            "expected_threshold_version": next_development_version,
-            "message": (
-                "The next focused development release is expected to reach the full-test/adoption checkpoint threshold."
-                if next_release_reaches_full_test_threshold
-                else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet."
-            ),
-            "recommended_operator_plan": (
-                "Plan to run full release-control and adoption around the expected threshold version before adding more scope."
-                if next_release_reaches_full_test_threshold
-                else "Continue focused development checks unless checkpoint starts recommending full test/adoption."
-            ),
-        }
+        selected_filename = Path(selected_artifact).name if selected_artifact else "<candidate>.zip"
+        selected_download_path = f"~/Downloads/{selected_filename}" if selected_filename != "<candidate>.zip" else "~/Downloads/<candidate>.zip"
+        full_test_command = (
+            "./chatgpt_claudecode_workflow_release_control.sh "
+            f"--version {selected_version or '<candidate-version>'} "
+            f"--install-from-zip {selected_download_path} "
+            "--skip-source-add --run-tests --prune-release-logs --release-log-keep 12"
+        )
+        adopt_current_command = (
+            "./chatgpt_claudecode_workflow_release_control.sh "
+            f"--version {selected_version or '<candidate-version>'} "
+            "--skip-tests --adopt-current --skip-docker-logs --prune-release-logs --release-log-keep 12"
+        )
+        if full_test_recommended_now:
+            threshold_notice = {
+                "active": True,
+                "threshold_reached_now": True,
+                "expected_threshold_version": selected_version,
+                "message": "The focused development line has reached the full-test/adoption checkpoint threshold now.",
+                "recommended_operator_plan": "Run full release-control for the current candidate and adopt it only if the full test is green before adding more scope.",
+            }
+        else:
+            threshold_notice = {
+                "active": next_release_reaches_full_test_threshold,
+                "threshold_reached_now": False,
+                "expected_threshold_version": next_development_version,
+                "message": (
+                    "The next focused development release is expected to reach the full-test/adoption checkpoint threshold."
+                    if next_release_reaches_full_test_threshold
+                    else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet."
+                ),
+                "recommended_operator_plan": (
+                    "Plan to run full release-control and adoption around the expected threshold version before adding more scope."
+                    if next_release_reaches_full_test_threshold
+                    else "Continue focused development checks unless checkpoint starts recommending full test/adoption."
+                ),
+            }
         recommended_sequence = [
             {
                 "step": "continue_development_decision",
@@ -10162,12 +10186,32 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             {
                 "step": "next_release_adoption_planning",
                 "command_kind": "operator-plan",
-                "command": "plan full release-control/adoption checkpoint around the next threshold version",
+                "command": "plan full release-control/adoption checkpoint around the threshold version",
                 "required": next_release_reaches_full_test_threshold,
                 "read_only": True,
                 "purpose": "Make the pre-threshold adoption checkpoint explicit before the next development release reaches the configured drift threshold.",
                 "expected_threshold_version": next_development_version,
                 "active": next_release_reaches_full_test_threshold,
+            },
+            {
+                "step": "full_release_control",
+                "command_kind": "full-release-control",
+                "command": full_test_command,
+                "required": full_test_recommended_now,
+                "read_only": False,
+                "would_mutate_when_executed": True,
+                "purpose": "Run the full release-control validation for the current threshold candidate before adopting it.",
+                "active": full_test_recommended_now,
+            },
+            {
+                "step": "adopt_current_after_green_full_test",
+                "command_kind": "adopt-current",
+                "command": adopt_current_command,
+                "required": full_test_recommended_now,
+                "read_only": False,
+                "would_mutate_when_executed": True,
+                "purpose": "Adopt the current candidate only after the full release-control run is green and the installed runtime still matches this version.",
+                "active": full_test_recommended_now,
             },
         ]
     elif accepted_aligned:
@@ -10220,7 +10264,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "development_head_version": dev_head_version,
         })
     threshold_notice_payload = locals().get("threshold_notice", {"active": False})
-    if threshold_notice_payload.get("active") is True:
+    if threshold_notice_payload.get("active") is True and threshold_notice_payload.get("threshold_reached_now") is not True:
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_expected_next_release",
             "severity": "warning",
@@ -10231,7 +10275,8 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_advised",
             "severity": "warning",
-            "message": "Accumulated development complexity indicates that a full-test/adoption checkpoint should be considered soon.",
+            "message": "Accumulated development complexity indicates that a full-test/adoption checkpoint is recommended now.",
+            "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
         })
 
     return {
@@ -10264,7 +10309,8 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "full_test_recommended_at_normal_versions_ahead": complexity.get("full_test_recommended_at_normal_versions_ahead"),
             "full_test_recommended_at_newer_candidate_count": complexity.get("full_test_recommended_at_newer_candidate_count"),
             "next_development_version": version_plan.get("next_development_version"),
-            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active")),
+            "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
+            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "threshold_notice": threshold_notice_payload,
         },
         "command_guide": {
@@ -10272,13 +10318,16 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "development_overview": commands["dev_status"],
             "development_checkpoint": commands["checkpoint"],
             "focused_smoke": commands["smoke"],
+            "full_release_control": locals().get("full_test_command"),
+            "adopt_current_after_green_full_test": locals().get("adopt_current_command"),
         },
         "recommended_sequence": recommended_sequence,
         "operator_runbook": {
             "description": "Read-only status-guide runbook. Execute the required recommended_sequence commands for the detected context before deciding whether to continue, full-test/adopt, or inspect further.",
             "required_step_count": sum(1 for step in recommended_sequence if step.get("required")),
             "next_full_test_threshold_visible": development_candidate,
-            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active")),
+            "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
+            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
             "mutating_actions_executed": False,
         },
@@ -10337,6 +10386,7 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
             print(f"full_test_recommended_now={str(threshold.get('full_test_recommended_now')).lower()}")
             print(f"normal_versions_ahead={threshold.get('normal_versions_ahead')}")
             print(f"normal_versions_until_full_test_threshold={threshold.get('normal_versions_until_full_test_threshold')}")
+            print(f"threshold_reached_now={str(threshold.get('threshold_reached_now')).lower()}")
             print(f"next_release_reaches_full_test_threshold={str(threshold.get('next_release_reaches_full_test_threshold')).lower()}")
             if threshold.get("next_development_version"):
                 print(f"next_development_version={threshold.get('next_development_version')}")
