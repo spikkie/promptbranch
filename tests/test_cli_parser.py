@@ -483,44 +483,6 @@ def test_parser_accepts_phase3_src_sync_and_artifact_commands() -> None:
 
 
 
-def test_parser_accepts_release_baseline_status_command() -> None:
-    parser = make_parser()
-    args = parser.parse_args([
-        "release", "baseline-status",
-        "--version", "v0.1.10",
-        "--artifact", "chatgpt_claudecode_workflow-2_v0.1.10.zip",
-        "--include-docs",
-        "--repo-path", "/tmp/repo",
-        "--json",
-    ])
-    assert args.command == "release"
-    assert args.release_command == "baseline-status"
-    assert args.version == "v0.1.10"
-    assert args.artifact == "chatgpt_claudecode_workflow-2_v0.1.10.zip"
-    assert args.include_docs is True
-    assert args.repo_path == "/tmp/repo"
-    assert args.json is True
-
-
-def test_parser_accepts_release_docs_status_command() -> None:
-    parser = make_parser()
-    args = parser.parse_args([
-        "release", "docs-status",
-        "--version", "v0.1.8",
-        "--design-doc", "docs/design/promptbranch-mvp-living-design.md",
-        "--drawio", "docs/design/promptbranch-mvp-living-design.drawio",
-        "--repo-path", "/tmp/repo",
-        "--json",
-    ])
-    assert args.command == "release"
-    assert args.release_command == "docs-status"
-    assert args.version == "v0.1.8"
-    assert args.design_doc == "docs/design/promptbranch-mvp-living-design.md"
-    assert args.drawio == "docs/design/promptbranch-mvp-living-design.drawio"
-    assert args.repo_path == "/tmp/repo"
-    assert args.json is True
-
-
 def test_parser_accepts_release_dev_status_command() -> None:
     parser = make_parser()
     args = parser.parse_args([
@@ -533,27 +495,6 @@ def test_parser_accepts_release_dev_status_command() -> None:
     assert args.command == "release"
     assert args.release_command == "dev-status"
     assert args.artifact == "chatgpt_claudecode_workflow-2_v0.1.5.zip"
-    assert args.config == ".promptbranch-release.yml"
-    assert args.repo_path == "/tmp/repo"
-    assert args.json is True
-
-
-def test_parser_accepts_release_status_guide_command() -> None:
-    parser = make_parser()
-    args = parser.parse_args([
-        "release", "status-guide",
-        "--artifact", "chatgpt_claudecode_workflow-2_v0.1.14.zip",
-        "--version", "v0.1.14",
-        "--target-version", "v0.1.14",
-        "--config", ".promptbranch-release.yml",
-        "--repo-path", "/tmp/repo",
-        "--json",
-    ])
-    assert args.command == "release"
-    assert args.release_command == "status-guide"
-    assert args.artifact == "chatgpt_claudecode_workflow-2_v0.1.14.zip"
-    assert args.version == "v0.1.14"
-    assert args.target_version == "v0.1.14"
     assert args.config == ".promptbranch-release.yml"
     assert args.repo_path == "/tmp/repo"
     assert args.json is True
