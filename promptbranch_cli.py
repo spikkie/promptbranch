@@ -10381,10 +10381,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
             "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
-            "post_adoption_ready_for_next_normal": bool(accepted_aligned and expected_next_normal_from_accepted),
-            "development_base_version": accepted_version if accepted_aligned else None,
-            "next_normal_version": expected_next_normal_from_accepted if accepted_aligned else None,
-            "next_normal_artifact": next_normal_candidate_filename if accepted_aligned else None,
+            "post_adoption_ready_for_next_normal": bool(accepted_aligned),
+            "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
+            "next_normal_version": expected_next_normal_from_accepted,
+            "next_normal_artifact": next_normal_candidate_filename,
             "mutating_actions_executed": False,
         },
         "decision_matrix": [
@@ -10576,6 +10576,21 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
 
     next_dev_version = _release_expected_next_normal_version(artifact_version or dev_head_version)
     candidate_filename = str(artifact_payload.get("filename") or Path(artifact_arg).name or "")
+    artifact_line = dev_status.get("artifact_line") if isinstance(dev_status.get("artifact_line"), dict) else {}
+    artifact_prefix = str(artifact_line.get("prefix") or f"{repo_root.name}_")
+    artifact_suffix = str(artifact_line.get("suffix") or ".zip")
+    next_dev_filename = f"{artifact_prefix}{next_dev_version}{artifact_suffix}" if next_dev_version else None
+    next_dev_artifact = f"./{next_dev_filename}" if next_dev_filename else "./<next-development-candidate>.zip"
+    next_dev_status_guide_command = (
+        f"pb release status-guide --artifact {next_dev_artifact} "
+        f"--version {next_dev_version or '<next-development-version>'} "
+        f"--target-version {next_dev_version or '<next-development-version>'} --json"
+    )
+    next_dev_checkpoint_command = (
+        f"pb release checkpoint --artifact {next_dev_artifact} "
+        f"--version {next_dev_version or '<next-development-version>'} "
+        f"--target-version {next_dev_version or '<next-development-version>'} --mode continue --json"
+    )
     full_test_command = None
     if candidate_filename and artifact_version:
         full_test_command = (
@@ -10631,6 +10646,7 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             "adoption_requires_green_full_test": True,
             "next_development_version": next_dev_version,
             "next_development_base_version": artifact_version or dev_head_version,
+            "next_development_artifact": next_dev_filename,
         },
         "complexity_summary": complexity_summary,
         "suggested_commands": {
@@ -10641,6 +10657,8 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
                 "pb test smoke --json",
             ],
             "continue_development": (f"Build {next_dev_version} from {artifact_version or dev_head_version}" if next_dev_version else None),
+            "next_development_status_guide_after_build": next_dev_status_guide_command,
+            "next_development_checkpoint_after_build": next_dev_checkpoint_command,
             "full_test_before_adoption": full_test_command,
         },
         "warnings": warnings,
@@ -10661,7 +10679,7 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         "git_push_performed": False,
         "would_mutate": False,
         "mutating_actions_executed": False,
-        "operator_instruction": "Read-only development checkpoint. Use mode=continue during focused development; use mode=adopt only when deciding to spend time on full release-control before adoption.",
+        "operator_instruction": "Read-only development checkpoint. Use mode=continue during focused development; use mode=adopt only when deciding to spend time on full release-control before adoption. When continuing, build the reported next_development_artifact and then re-run status-guide/checkpoint for that new candidate.",
     }
 
 
