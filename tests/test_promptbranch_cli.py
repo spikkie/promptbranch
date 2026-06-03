@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_baseline_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_baseline_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.23"
+    assert captured.out.strip() == "promptbranch 0.1.24"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.23"
+    assert payload["version"] == "0.1.24"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6570,6 +6570,9 @@ def test_release_status_guide_plain_output_includes_next_development_handoff(cap
     assert exit_code == 0
     assert f"next_development_version={expected_next_dev}" in out
     assert f"next_development_artifact={expected_next_artifact}" in out
+    assert "full_test_countdown_active=" in out
+    assert "full_test_countdown_urgency=" in out
+    assert "minimum_remaining_until_threshold=" in out
     assert (
         "next_development_status_guide_after_build="
         f"pb release status-guide --artifact ./{expected_next_artifact} "
@@ -6901,6 +6904,40 @@ hooks:
 
 
 
+
+
+def test_release_full_test_countdown_payload_activates_near_threshold() -> None:
+    complexity = _release_dev_complexity_summary(
+        accepted_version="v0.1.2",
+        candidate_version="v0.1.7",
+        local_candidates=[],
+    )
+
+    countdown = _release_full_test_countdown_payload(complexity)
+
+    assert complexity["normal_versions_ahead"] == 5
+    assert countdown["active"] is True
+    assert countdown["urgency"] == "near_threshold"
+    assert countdown["minimum_remaining_until_threshold"] == 3
+    assert countdown["full_test_recommended_now"] is False
+    assert countdown["read_only"] is True
+
+
+def test_release_full_test_countdown_payload_reports_threshold_now() -> None:
+    complexity = _release_dev_complexity_summary(
+        accepted_version="v0.1.2",
+        candidate_version="v0.1.10",
+        local_candidates=[],
+    )
+
+    countdown = _release_full_test_countdown_payload(complexity)
+
+    assert complexity["normal_versions_ahead"] == 8
+    assert countdown["active"] is False
+    assert countdown["urgency"] == "threshold_now"
+    assert countdown["full_test_recommended_now"] is True
+    assert countdown["minimum_remaining_until_threshold"] == 0
+
 def test_release_checkpoint_continue_mode_reports_read_only_ci_decision(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6978,6 +7015,9 @@ hooks:
     assert payload["checkpoint_decision"]["next_development_version"] == "v0.1.7"
     assert payload["checkpoint_decision"]["next_development_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.7.zip"
     assert payload["checkpoint_decision"]["full_test_required_before_adoption"] is True
+    assert payload["checkpoint_decision"]["full_test_countdown_active"] is False
+    assert payload["checkpoint_decision"]["full_test_countdown_urgency"] == "normal"
+    assert payload["full_test_countdown"]["read_only"] is True
     assert payload["install_plan_summary"]["ok"] is True
     assert payload["suggested_commands"]["next_development_status_guide_after_build"] == (
         "pb release status-guide --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
@@ -7060,6 +7100,9 @@ hooks:
     assert exit_code == 0
     assert "next_development_version=v0.1.7" in out
     assert "next_development_artifact=chatgpt_claudecode_workflow-2_v0.1.7.zip" in out
+    assert "full_test_countdown_active=false" in out
+    assert "full_test_countdown_urgency=normal" in out
+    assert "minimum_remaining_until_threshold=4" in out
     assert (
         "next_development_status_guide_after_build="
         "pb release status-guide --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
@@ -11076,6 +11119,7 @@ def test_promptbranch_smoke_step_specs_are_local_and_bounded(tmp_path) -> None:
     assert "next_development_artifact=" in plain_spec["required_stdout_contains"]
     assert "next_development_status_guide_after_build=" in plain_spec["required_stdout_contains"]
     assert "next_development_checkpoint_after_build=" in plain_spec["required_stdout_contains"]
+    assert "full_test_countdown_active=" in plain_spec["required_stdout_contains"]
 
 
 def test_promptbranch_smoke_substep_stdout_contract_failure_is_structured(tmp_path) -> None:
@@ -11132,7 +11176,7 @@ def test_promptbranch_smoke_substep_timeout_reports_json_shape(tmp_path) -> None
 
 
 def test_candidate_smoke_profile_delegates_to_bounded_pb_test_smoke(tmp_path) -> None:
-    command = _candidate_test_command_for_profile(
+    command = _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload(
         tmp_path,
         version="v0.1.0",
         profile="smoke",

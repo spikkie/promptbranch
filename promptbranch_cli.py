@@ -6853,6 +6853,7 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
                 "next_development_artifact=",
                 "next_development_status_guide_after_build=",
                 "next_development_checkpoint_after_build=",
+                "full_test_countdown_active=",
                 "blocker_codes=",
             ],
         },
@@ -9637,6 +9638,53 @@ def _release_candidate_versions_newer_than(
     return newer
 
 
+def _release_full_test_countdown_payload(complexity_summary: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact read-only countdown toward the full-test checkpoint.
+
+    The normal threshold warning only becomes active at the configured limit.
+    This helper exposes the pre-threshold state earlier so operators can plan
+    the expensive full release-control/adoption checkpoint before the next few
+    focused slices accumulate more drift.
+    """
+
+    threshold_meter = complexity_summary.get("threshold_meter") if isinstance(complexity_summary.get("threshold_meter"), dict) else {}
+    normal_remaining = threshold_meter.get("normal_versions_until_full_test_threshold")
+    candidate_remaining = threshold_meter.get("newer_candidates_until_full_test_threshold")
+    full_test_recommended_now = bool(complexity_summary.get("full_test_recommended_now"))
+    numeric_remaining = [
+        int(value)
+        for value in (normal_remaining, candidate_remaining)
+        if isinstance(value, int)
+    ]
+    minimum_remaining = min(numeric_remaining) if numeric_remaining else None
+    countdown_active = bool(
+        not full_test_recommended_now
+        and minimum_remaining is not None
+        and minimum_remaining <= 3
+    )
+    if full_test_recommended_now:
+        urgency = "threshold_now"
+        message = "Full release-control/adoption checkpoint is recommended now before adding more scope."
+    elif countdown_active:
+        urgency = "near_threshold"
+        message = "Full release-control/adoption checkpoint is approaching; keep focused slices small and plan the adoption checkpoint."
+    else:
+        urgency = "normal"
+        message = "Focused development may continue; no near-threshold full-test checkpoint countdown is active."
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "active": countdown_active,
+        "urgency": urgency,
+        "full_test_recommended_now": full_test_recommended_now,
+        "minimum_remaining_until_threshold": minimum_remaining,
+        "normal_versions_until_full_test_threshold": normal_remaining,
+        "newer_candidates_until_full_test_threshold": candidate_remaining,
+        "message": message,
+        "operator_instruction": "This countdown is advisory and read-only; it does not run tests, adopt artifacts, upload sources, or mutate Git.",
+    }
+
+
 def _release_dev_complexity_summary(
     *,
     accepted_version: str | None,
@@ -9927,6 +9975,7 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
     for item in complexity_summary.get("reasons") or []:
         if isinstance(item, dict):
             warn(str(item.get("code") or "release_dev_complexity_warning"), str(item.get("message") or "Accumulated development complexity suggests a full-test checkpoint."), **{k: v for k, v in item.items() if k not in {"code", "severity", "message"}})
+
 
     if blockers:
         status = "blocked"
@@ -10358,6 +10407,16 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "development_head_version": dev_head_version,
         })
     threshold_notice_payload = locals().get("threshold_notice", {"active": False})
+    full_test_countdown_payload = _release_full_test_countdown_payload(complexity)
+    if full_test_countdown_payload.get("active") is True:
+        warnings.append({
+            "code": "release_status_guide_full_test_checkpoint_countdown",
+            "severity": "warning",
+            "message": "The focused development line is near the full-test/adoption checkpoint threshold.",
+            "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
+            "normal_versions_until_full_test_threshold": full_test_countdown_payload.get("normal_versions_until_full_test_threshold"),
+            "newer_candidates_until_full_test_threshold": full_test_countdown_payload.get("newer_candidates_until_full_test_threshold"),
+        })
     if threshold_notice_payload.get("active") is True and threshold_notice_payload.get("threshold_reached_now") is not True:
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_expected_next_release",
@@ -10406,7 +10465,11 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
             "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "threshold_notice": threshold_notice_payload,
+            "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
+            "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
+            "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
         },
+        "full_test_countdown": full_test_countdown_payload,
         "command_guide": {
             "post_adoption_verifier": commands["baseline_status"],
             "artifact_current": commands["artifact_current"],
@@ -10428,6 +10491,9 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
             "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
             "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
+            "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
+            "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
+            "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
             "post_adoption_ready_for_next_normal": bool(accepted_aligned),
             "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
             "next_normal_version": expected_next_normal_from_accepted,
@@ -10495,6 +10561,9 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
             print(f"normal_versions_until_full_test_threshold={threshold.get('normal_versions_until_full_test_threshold')}")
             print(f"threshold_reached_now={str(threshold.get('threshold_reached_now')).lower()}")
             print(f"next_release_reaches_full_test_threshold={str(threshold.get('next_release_reaches_full_test_threshold')).lower()}")
+            print(f"full_test_countdown_active={str(threshold.get('full_test_countdown_active')).lower()}")
+            print(f"full_test_countdown_urgency={threshold.get('full_test_countdown_urgency')}")
+            print(f"minimum_remaining_until_threshold={threshold.get('minimum_remaining_until_threshold')}")
             if threshold.get("next_development_version"):
                 print(f"next_development_version={threshold.get('next_development_version')}")
         if runbook.get("next_development_artifact"):
@@ -10618,6 +10687,17 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
                 warnings.append(item)
                 inherited_warning_codes.add(item.get("code"))
 
+    full_test_countdown_payload = _release_full_test_countdown_payload(complexity_summary)
+    if full_test_countdown_payload.get("active") is True and "release_checkpoint_full_test_checkpoint_countdown" not in inherited_warning_codes:
+        warnings.append({
+            "code": "release_checkpoint_full_test_checkpoint_countdown",
+            "severity": "warning",
+            "message": "The focused development line is near the full-test/adoption checkpoint threshold.",
+            "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
+            "normal_versions_until_full_test_threshold": full_test_countdown_payload.get("normal_versions_until_full_test_threshold"),
+            "newer_candidates_until_full_test_threshold": full_test_countdown_payload.get("newer_candidates_until_full_test_threshold"),
+        })
+
     if blockers:
         status = "blocked"
         recommendation_kind = "fix_checkpoint_blockers"
@@ -10704,7 +10784,11 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             "next_development_version": next_dev_version,
             "next_development_base_version": artifact_version or dev_head_version,
             "next_development_artifact": next_dev_filename,
+            "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
+            "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
+            "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
         },
+        "full_test_countdown": full_test_countdown_payload,
         "complexity_summary": complexity_summary,
         "suggested_commands": {
             "focused_checks": [
@@ -10752,6 +10836,9 @@ async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
         print(f"recommendation={decision.get('recommendation') or 'none'}")
         print(f"next_development_version={decision.get('next_development_version') or 'none'}")
         print(f"next_development_artifact={decision.get('next_development_artifact') or 'none'}")
+        print(f"full_test_countdown_active={str(decision.get('full_test_countdown_active')).lower()}")
+        print(f"full_test_countdown_urgency={decision.get('full_test_countdown_urgency') or 'none'}")
+        print(f"minimum_remaining_until_threshold={decision.get('minimum_remaining_until_threshold') if decision.get('minimum_remaining_until_threshold') is not None else 'none'}")
         suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
         if suggested.get("next_development_status_guide_after_build"):
             print(f"next_development_status_guide_after_build={suggested.get('next_development_status_guide_after_build')}")

@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.23`  
+Release: `v0.1.24`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -231,6 +231,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.20.md`
 - `docs/release-v0.1.21.md`
 - `docs/release-v0.1.22.md`
+- `docs/release-v0.1.24.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -270,6 +271,11 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.22 — plain-text next-candidate handoff
 
 `v0.1.22` adds the same next-development handoff to non-JSON `pb release status-guide` and `pb release checkpoint --mode continue` output. JSON automation already had these fields; the plain text path now also shows the next artifact and the after-build status-guide/checkpoint commands, reducing copy/paste risk during operator-driven focused development.
+
+
+### v0.1.24 — pre-threshold full-test countdown visibility
+
+`v0.1.24` adds a read-only full-test checkpoint countdown to release status-guide and checkpoint output. The countdown exposes when focused development is near the configured full release-control/adoption threshold, including plain-text fields covered by smoke. This gives operators earlier warning before the threshold is actually reached while preserving the focused-development/no-adoption workflow.
 
 ### v0.1.23 — smoke-tested plain-text status-guide handoff
 
