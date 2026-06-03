@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.22"
+    assert captured.out.strip() == "promptbranch 0.1.23"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.22"
+    assert payload["version"] == "0.1.23"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6411,7 +6411,8 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     repo = tmp_path / "repo"
     repo.mkdir()
     dev_version = _test_runtime_version()
-    accepted_version = "v0.1.14"
+    major, minor, patch, *_ = dev_version.removeprefix("v").split(".")
+    accepted_version = f"v{major}.{minor}.{int(patch) - 8}"
     accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
     candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
     _write_test_release_zip(accepted, accepted_version)
@@ -11056,13 +11057,53 @@ def test_candidate_test_parser_default_timeout_is_bounded() -> None:
 
 
 def test_promptbranch_smoke_step_specs_are_local_and_bounded(tmp_path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
     specs = _promptbranch_smoke_step_specs(tmp_path)
     names = [spec["name"] for spec in specs]
 
-    assert names == ["version", "doctor_readonly", "skill_list_readonly", "artifact_current_readonly"]
+    assert names == [
+        "version",
+        "doctor_readonly",
+        "skill_list_readonly",
+        "artifact_current_readonly",
+        "release_status_guide_plain_readonly",
+    ]
     assert all("test-suite" not in spec["command"] for spec in specs)
     assert all("browser" not in spec["command"] for spec in specs)
     assert all("full" not in spec["command"] for spec in specs)
+    plain_spec = specs[-1]
+    assert plain_spec["command"][-4:] == ["--version", "v9.9.9", "--target-version", "v9.9.9"]
+    assert "next_development_artifact=" in plain_spec["required_stdout_contains"]
+    assert "next_development_status_guide_after_build=" in plain_spec["required_stdout_contains"]
+    assert "next_development_checkpoint_after_build=" in plain_spec["required_stdout_contains"]
+
+
+def test_promptbranch_smoke_substep_stdout_contract_failure_is_structured(tmp_path) -> None:
+    script = tmp_path / "missing-contract.sh"
+    script.write_text("#!/usr/bin/env bash\necho status=release_status_guidance_available\n", encoding="utf-8")
+    script.chmod(0o755)
+
+    result = _run_bounded_smoke_subprocess(
+        {
+            "name": "plain_contract",
+            "kind": "test",
+            "command": [str(script)],
+            "description": "missing required stdout contract",
+            "required_stdout_contains": [
+                "status=release_status_guidance_available",
+                "next_development_artifact=",
+            ],
+        },
+        repo_path=tmp_path,
+        timeout_seconds=1.0,
+        log_dir=tmp_path / "logs",
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "smoke_stdout_contract_failed"
+    assert result["returncode"] == 0
+    assert result["stdout_contract_ok"] is False
+    assert result["missing_stdout_contains"] == ["next_development_artifact="]
 
 
 def test_promptbranch_smoke_substep_timeout_reports_json_shape(tmp_path) -> None:
