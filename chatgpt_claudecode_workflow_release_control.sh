@@ -1434,28 +1434,6 @@ deploy_promptbranch_service_detached() {
     return 1
   fi
 
-  if wait_for_promptbranch_service_version; then
-    return 0
-  fi
-
-  echo "WARN: Docker service reported a stale or unexpected version after normal rebuild; retrying with no-cache image rebuild." >&2
-  echo "WARN: normal build may have reused a stale Docker layer or old local image tag." >&2
-  {
-    echo "== Docker service no-cache rebuild fallback =="
-    echo "reason: service version did not match expected ${ver#v} after normal recreate"
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} build --no-cache --pull"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --no-cache --pull
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
-  } >>"${service_start_log}" 2>&1
-
-  container_id="$(compose_service_container_id)"
-  write_container_inspect_json "${container_id}" "${service_container_after_json}"
   wait_for_promptbranch_service_version
 }
 
