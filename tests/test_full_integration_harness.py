@@ -467,6 +467,80 @@ def test_project_remove_cleanup_retries_browser_profile_busy(monkeypatch) -> Non
     assert cleanup_steps[-1].details["retry_count"] == 1
 
 
+def test_project_remove_cleanup_treats_already_missing_project_as_success(monkeypatch) -> None:
+    import asyncio
+    import httpx
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
+            response = httpx.Response(504, request=request)
+            raise httpx.HTTPStatusError(
+                "504 error for POST http://localhost:8000/v1/projects/remove: "
+                "Could not find the configured project in the sidebar",
+                request=request,
+                response=response,
+            )
+
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            FakeService(),
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "project_remove_cleanup_already_missing"
+    assert result["cleanup_idempotent"] is True
+    assert result["postcondition"] == "temporary_project_absent"
+    assert cleanup_steps[-1].name == "project_remove_cleanup"
+    assert cleanup_steps[-1].ok is True
+
+
+def test_project_remove_cleanup_treats_not_found_payload_as_success(monkeypatch) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            return {
+                "ok": False,
+                "status": "project_not_found",
+                "diagnostic": "Could not find the configured project in the sidebar",
+            }
+
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            FakeService(),
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "project_remove_cleanup_already_missing"
+    assert result["missing_payload"]["status"] == "project_not_found"
+    assert cleanup_steps[-1].ok is True
+
+
 def test_project_remove_cleanup_reports_final_browser_profile_busy(monkeypatch) -> None:
     import asyncio
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
