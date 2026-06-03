@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.20"
+    assert captured.out.strip() == "promptbranch 0.1.21"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.20"
+    assert payload["version"] == "0.1.21"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6411,7 +6411,7 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     repo = tmp_path / "repo"
     repo.mkdir()
     dev_version = _test_runtime_version()
-    accepted_version = "v0.1.12"
+    accepted_version = "v0.1.13"
     accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
     candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
     _write_test_release_zip(accepted, accepted_version)
@@ -6495,6 +6495,20 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["operator_runbook"]["threshold_reached_now"] is True
     assert payload["operator_runbook"]["next_release_reaches_full_test_threshold"] is False
     assert payload["operator_runbook"]["expected_threshold_version"] == dev_version
+    expected_next_dev = _test_next_normal_version(dev_version)
+    expected_next_dev_artifact = f"repo_{expected_next_dev}.zip"
+    assert payload["operator_runbook"]["next_development_version"] == expected_next_dev
+    assert payload["operator_runbook"]["next_development_artifact"] == expected_next_dev_artifact
+    assert payload["command_guide"]["next_development_status_guide_after_build"] == (
+        f"pb release status-guide --artifact ./{expected_next_dev_artifact} "
+        f"--version {expected_next_dev} --target-version {expected_next_dev} --json"
+    )
+    assert payload["command_guide"]["next_development_checkpoint_after_build"] == (
+        f"pb release checkpoint --artifact ./{expected_next_dev_artifact} "
+        f"--version {expected_next_dev} --target-version {expected_next_dev} --mode continue --json"
+    )
+    assert payload["operator_runbook"]["next_development_status_guide_after_build"] == payload["command_guide"]["next_development_status_guide_after_build"]
+    assert payload["operator_runbook"]["next_development_checkpoint_after_build"] == payload["command_guide"]["next_development_checkpoint_after_build"]
     assert payload["operator_runbook"]["mutating_actions_executed"] is False
     assert "release_status_guide_dev_candidate_use_checkpoint" in payload["warning_codes"]
     assert "release_status_guide_full_test_checkpoint_advised" in payload["warning_codes"]

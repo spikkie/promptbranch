@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.20`  
+Release: `v0.1.21`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -229,6 +229,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.18.1.md`
 - `docs/release-v0.1.19.md`
 - `docs/release-v0.1.20.md`
+- `docs/release-v0.1.21.md`
 
 ## Editing the draw.io source
 
@@ -257,6 +258,8 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 `v0.1.19` resets the release-status UX after that adoption checkpoint: the post-adoption status-guide runbook now shows the next normal release plan, including the expected next normal candidate artifact and the status/checkpoint commands to use after that candidate is built. This makes repair-baseline continuity explicit: the next normal release is built from the accepted repair baseline, not from the original normal release.
 
 `v0.1.20` extends the development checkpoint handoff itself: when `pb release checkpoint --mode continue --json` reports that focused development may continue, it now includes explicit status-guide and checkpoint commands for the next monotonic development candidate after that candidate is built. This keeps the operator loop deterministic across focused development slices without implying adoption or full-test completion.
+
+`v0.1.21` adds the same next-development handoff to `pb release status-guide --json` so the command chooser and checkpoint report the same after-build status-guide/checkpoint commands for the next monotonic development candidate. This matters when an operator captures only `status-guide` output before deciding whether to build the next candidate.
 
 This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 

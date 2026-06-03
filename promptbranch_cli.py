@@ -10098,6 +10098,17 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         explanation = "Release state is not clearly an adopted baseline or a selected dev candidate; inspect dev-status first."
         baseline_status_applicable = False
 
+    next_development_candidate_filename = (
+        f"{artifact_prefix}{next_development_version_from_plan}{artifact_suffix}"
+        if next_development_version_from_plan
+        else None
+    )
+    next_development_candidate_artifact = (
+        f"./{next_development_candidate_filename}"
+        if next_development_candidate_filename
+        else "./<next-development-candidate>.zip"
+    )
+
     commands = {
         "baseline_status": f"pb release baseline-status --version {accepted_version or selected_version or '<accepted-version>'} --json",
         "artifact_current": "pb artifact current --json",
@@ -10118,6 +10129,18 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             f"pb release checkpoint --artifact {next_normal_candidate_artifact} "
             f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
             f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+            "--mode continue --json"
+        ),
+        "next_development_status_guide": (
+            f"pb release status-guide --artifact {next_development_candidate_artifact} "
+            f"--version {next_development_version_from_plan or '<next-development-version>'} "
+            f"--target-version {next_development_version_from_plan or '<next-development-version>'} "
+            "--json"
+        ),
+        "next_development_checkpoint": (
+            f"pb release checkpoint --artifact {next_development_candidate_artifact} "
+            f"--version {next_development_version_from_plan or '<next-development-version>'} "
+            f"--target-version {next_development_version_from_plan or '<next-development-version>'} "
             "--mode continue --json"
         ),
         "smoke": "pb test smoke --json",
@@ -10369,6 +10392,8 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "development_checkpoint": commands["checkpoint"],
             "next_normal_status_guide": commands["next_normal_status_guide"],
             "next_normal_checkpoint": commands["next_normal_checkpoint"],
+            "next_development_status_guide_after_build": commands["next_development_status_guide"],
+            "next_development_checkpoint_after_build": commands["next_development_checkpoint"],
             "focused_smoke": commands["smoke"],
             "full_release_control": locals().get("full_test_command"),
             "adopt_current_after_green_full_test": locals().get("adopt_current_command"),
@@ -10385,6 +10410,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
             "next_normal_version": expected_next_normal_from_accepted,
             "next_normal_artifact": next_normal_candidate_filename,
+            "next_development_version": next_development_version_from_plan,
+            "next_development_artifact": next_development_candidate_filename,
+            "next_development_status_guide_after_build": commands["next_development_status_guide"],
+            "next_development_checkpoint_after_build": commands["next_development_checkpoint"],
             "mutating_actions_executed": False,
         },
         "decision_matrix": [
