@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.24`  
+Release: `v0.1.25`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -232,6 +232,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.21.md`
 - `docs/release-v0.1.22.md`
 - `docs/release-v0.1.24.md`
+- `docs/release-v0.1.25.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -276,6 +277,10 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.24 — pre-threshold full-test countdown visibility
 
 `v0.1.24` adds a read-only full-test checkpoint countdown to release status-guide and checkpoint output. The countdown exposes when focused development is near the configured full release-control/adoption threshold, including plain-text fields covered by smoke. This gives operators earlier warning before the threshold is actually reached while preserving the focused-development/no-adoption workflow.
+
+### v0.1.25 — projected threshold-version clarification
+
+`v0.1.25` clarifies `expected_threshold_version` semantics in `pb release status-guide`. When the current candidate is near the full-test/adoption threshold but the next release does not reach it yet, `expected_threshold_version` now points to the projected threshold candidate instead of blindly echoing the next development candidate. For example, if the accepted baseline is `v0.1.18.1`, the current dev head is `v0.1.24`, and two normal versions remain, the projected threshold version is `v0.1.26`, while `v0.1.25` remains a normal focused-development candidate. The field is advisory/read-only; checkpoint decisions still come from `pb release checkpoint --mode continue`.
 
 ### v0.1.23 — smoke-tested plain-text status-guide handoff
 
