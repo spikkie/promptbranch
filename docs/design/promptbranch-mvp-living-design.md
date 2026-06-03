@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.18`  
+Release: `v0.1.19`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -226,6 +226,8 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.16.md`
 - `docs/release-v0.1.17.md`
 - `docs/release-v0.1.18.md`
+- `docs/release-v0.1.18.1.md`
+- `docs/release-v0.1.19.md`
 
 ## Editing the draw.io source
 
@@ -249,7 +251,9 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 
 `v0.1.16` extended the guide with an explicit checkpoint threshold meter so the operator can see how many focused-development releases remain before a full-test/adoption checkpoint is recommended. `v0.1.17` adds a pre-threshold planning notice: when the current development candidate is one normal release away from the full-test/adoption threshold, `status-guide` reports the expected threshold version and adds a required operator-planning step to the read-only runbook.
 
-`v0.1.18` turns that threshold notice into an actionable full-test/adoption preparation runbook when the threshold is reached. The guide remains read-only and does not execute tests or adoption, but it now includes the exact full release-control command and an explicit `adopt-current` command to run only after the full test is green.
+`v0.1.18` turns that threshold notice into an actionable full-test/adoption preparation runbook when the threshold is reached. The guide remains read-only and does not execute tests or adoption, but it now includes the exact full release-control command and an explicit `adopt-current` command to run only after the full test is green. `v0.1.18.1` repairs cleanup idempotency in the full browser suite and becomes the accepted repair baseline after full release-control and adoption.
+
+`v0.1.19` resets the release-status UX after that adoption checkpoint: the post-adoption status-guide runbook now shows the next normal release plan, including the expected next normal candidate artifact and the status/checkpoint commands to use after that candidate is built. This makes repair-baseline continuity explicit: the next normal release is built from the accepted repair baseline, not from the original normal release.
 
 This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 

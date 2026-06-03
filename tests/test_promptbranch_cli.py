@@ -29,6 +29,11 @@ def _test_runtime_version() -> str:
     return value if value.startswith("v") else f"v{value}"
 
 
+def _test_next_normal_version(version: str) -> str:
+    parts = [int(part) for part in version.removeprefix("v").split(".")[:3]]
+    return f"v{parts[0]}.{parts[1]}.{parts[2] + 1}"
+
+
 
 def test_protocol_reply_validation_allows_no_artifact_without_output_version() -> None:
     envelope = {
@@ -6465,10 +6470,11 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["recommended_sequence"][1]["command"] == "pb test smoke --json"
     assert payload["recommended_sequence"][3]["step"] == "adoption_threshold_watch"
     assert payload["recommended_sequence"][3]["required"] is False
-    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 8
+    expected_normal_gap = int(dev_version.removeprefix("v").split(".")[2]) - 10
+    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == expected_normal_gap
     assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
-    assert payload["checkpoint_threshold"]["next_development_version"] == "v0.1.19"
+    assert payload["checkpoint_threshold"]["next_development_version"] == _test_next_normal_version(dev_version)
     assert payload["checkpoint_threshold"]["threshold_reached_now"] is True
     assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is False
     assert payload["checkpoint_threshold"]["threshold_notice"]["active"] is True
@@ -6548,9 +6554,30 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["primary_read_command"] == f"pb release baseline-status --version {version} --json"
     assert payload["recommended_sequence"][0]["step"] == "post_adoption_alignment"
     assert payload["recommended_sequence"][0]["command"] == f"pb release baseline-status --version {version} --json"
+    expected_next_normal = _test_next_normal_version(version)
+    expected_next_artifact = f"repo_{expected_next_normal}.zip"
+    assert payload["recommended_sequence"][1]["step"] == "current_artifact_snapshot"
+    assert payload["recommended_sequence"][1]["command"] == "pb artifact current --json"
+    assert payload["recommended_sequence"][2]["step"] == "next_normal_release_plan"
+    assert payload["recommended_sequence"][2]["base_version"] == version
+    assert payload["recommended_sequence"][2]["next_normal_version"] == expected_next_normal
+    assert payload["recommended_sequence"][2]["next_normal_artifact"] == expected_next_artifact
+    assert payload["recommended_sequence"][3]["step"] == "next_normal_status_guide_after_build"
+    assert payload["recommended_sequence"][3]["command"] == (
+        f"pb release status-guide --artifact ./{expected_next_artifact} "
+        f"--version {expected_next_normal} --target-version {expected_next_normal} --json"
+    )
+    assert payload["command_guide"]["next_normal_checkpoint"] == (
+        f"pb release checkpoint --artifact ./{expected_next_artifact} "
+        f"--version {expected_next_normal} --target-version {expected_next_normal} --mode continue --json"
+    )
     assert payload["checkpoint_threshold"]["full_test_recommended_now"] is False
     assert payload["operator_runbook"]["required_step_count"] == 1
     assert payload["operator_runbook"]["next_full_test_threshold_visible"] is False
+    assert payload["operator_runbook"]["post_adoption_ready_for_next_normal"] is True
+    assert payload["operator_runbook"]["development_base_version"] == version
+    assert payload["operator_runbook"]["next_normal_version"] == expected_next_normal
+    assert payload["operator_runbook"]["next_normal_artifact"] == expected_next_artifact
     assert "release_status_guide_dev_candidate_use_checkpoint" not in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
 
