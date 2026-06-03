@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_dev_status, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_baseline_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -6183,6 +6183,460 @@ hooks:
 
 
 
+def test_release_baseline_status_verifies_post_adoption_alignment(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    runtime_version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{runtime_version}.zip"
+    _write_test_release_zip(accepted, runtime_version)
+    (repo / "VERSION").write_text(runtime_version + "\n", encoding="utf-8")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=runtime_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": runtime_version,
+                "source_ref": accepted.name,
+                "source_version": runtime_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version=runtime_version,
+        artifact=str(accepted),
+        config=str(config),
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "release_baseline_status"
+    assert payload["status"] == "baseline_current_verified"
+    assert payload["severity"] == "ok"
+    assert payload["accepted_baseline"]["source_version"] == runtime_version
+    assert payload["accepted_baseline"]["registry_current_version"] == runtime_version
+    assert payload["runtime"]["version"] == runtime_version
+    assert payload["baseline_roles"]["code_matches_adopted_source"] is True
+    assert payload["consistency"]["code_version_matches_state_source"] is True
+    assert payload["local_accepted_artifact"]["exists"] is True
+    assert payload["explicit_artifact"]["ok"] is True
+    assert payload["release_status_context"]["context"] == "post_adoption_baseline"
+    assert payload["release_status_context"]["baseline_status_applicable"] is True
+    assert payload["next_development_version"] is not None
+    assert payload["warning_codes"] == []
+    assert payload["blocker_codes"] == []
+    assert payload["mutating_actions_executed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+
+
+def test_release_baseline_status_blocks_runtime_source_drift(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    accepted = repo / "chatgpt_claudecode_workflow-2_v0.1.10.zip"
+    _write_test_release_zip(accepted, "v0.1.10")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version="v0.1.10",
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": "v0.1.10",
+                "source_ref": accepted.name,
+                "source_version": "v0.1.9",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version="v0.1.10",
+        artifact=None,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "baseline_current_blocked"
+    assert "release_baseline_adopted_source_version_mismatch" in payload["blocker_codes"]
+    assert "release_baseline_consistency_state_source_matches_state_artifact_false" in payload["blocker_codes"]
+    assert "release_baseline_code_not_matching_adopted_source" in payload["blocker_codes"]
+    assert payload["baseline_status_usage"]["intended_use"] == "post_adoption_only"
+    assert payload["baseline_status_usage"]["use_checkpoint_for_development_candidates"] is True
+    assert payload["release_status_context"]["baseline_status_applicable"] is False
+    assert payload["release_status_context"]["primary_read_command"].startswith("pb release checkpoint ")
+    assert payload["suggested_commands"]["development_overview"] == "pb release dev-status --json"
+    assert "pb release checkpoint" in payload["suggested_commands"]["development_checkpoint"]
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_baseline_status_guides_dev_candidate_to_checkpoint(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    accepted_version = "v0.1.11"
+    dev_version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
+    candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
+    _write_test_release_zip(accepted, accepted_version)
+    _write_test_release_zip(candidate, dev_version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=accepted_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": accepted_version,
+                "source_ref": accepted.name,
+                "source_version": accepted_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version=dev_version,
+        artifact=str(candidate),
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "baseline_current_blocked"
+    assert payload["post_adoption_only"] is True
+    assert payload["development_candidate_detected"] is True
+    assert payload["baseline_status_usage"]["detected_context"] == "development_candidate_ahead_of_accepted_baseline"
+    assert payload["baseline_status_usage"]["development_candidate_version"] == dev_version
+    assert payload["baseline_status_usage"]["accepted_version"] == accepted_version
+    assert payload["release_status_context"]["context"] == "development_candidate"
+    assert payload["release_status_context"]["baseline_status_applicable"] is False
+    assert payload["release_status_context"]["primary_read_command"] == payload["suggested_commands"]["development_checkpoint"]
+    assert "release_baseline_status_post_adoption_only_context" in payload["warning_codes"]
+    assert payload["suggested_commands"]["development_overview"] == "pb release dev-status --json"
+    assert "--mode continue" in payload["suggested_commands"]["development_checkpoint"]
+    assert dev_version in payload["suggested_commands"]["development_checkpoint"]
+    assert payload["operator_instruction"].startswith("baseline-status is post-adoption only")
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_status_guide_selects_checkpoint_for_dev_candidate(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    accepted_version = "v0.1.10"
+    dev_version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
+    candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
+    _write_test_release_zip(accepted, accepted_version)
+    _write_test_release_zip(candidate, dev_version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=accepted_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": accepted_version,
+                "source_ref": accepted.name,
+                "source_version": accepted_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version=dev_version,
+        target_version=dev_version,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_status_guide(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["schema"] == "promptbranch.release.status_guide"
+    assert payload["detected_context"] == "development_candidate"
+    assert payload["primary_read_command_kind"] == "checkpoint"
+    assert payload["baseline_status_applicable"] is False
+    assert payload["primary_read_command"] == payload["command_guide"]["development_checkpoint"]
+    assert "--mode continue" in payload["primary_read_command"]
+    assert dev_version in payload["primary_read_command"]
+    assert payload["command_guide"]["development_overview"] == "pb release dev-status --json"
+    assert payload["command_guide"]["focused_smoke"] == "pb test smoke --json"
+    assert payload["recommended_sequence"][0]["step"] == "continue_development_decision"
+    assert payload["recommended_sequence"][0]["required"] is True
+    assert payload["recommended_sequence"][0]["command"] == payload["primary_read_command"]
+    assert payload["recommended_sequence"][1]["command"] == "pb test smoke --json"
+    assert payload["recommended_sequence"][3]["step"] == "adoption_threshold_watch"
+    assert payload["recommended_sequence"][3]["required"] is False
+    assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 7
+    assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 1
+    assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
+    assert payload["checkpoint_threshold"]["next_development_version"] == "v0.1.18"
+    assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is True
+    assert payload["checkpoint_threshold"]["threshold_notice"]["active"] is True
+    assert payload["checkpoint_threshold"]["threshold_notice"]["expected_threshold_version"] == "v0.1.18"
+    assert payload["recommended_sequence"][4]["step"] == "next_release_adoption_planning"
+    assert payload["recommended_sequence"][4]["required"] is True
+    assert payload["recommended_sequence"][4]["expected_threshold_version"] == "v0.1.18"
+    assert payload["operator_runbook"]["required_step_count"] == 3
+    assert payload["operator_runbook"]["next_full_test_threshold_visible"] is True
+    assert payload["operator_runbook"]["next_release_reaches_full_test_threshold"] is True
+    assert payload["operator_runbook"]["expected_threshold_version"] == "v0.1.18"
+    assert payload["operator_runbook"]["mutating_actions_executed"] is False
+    assert "release_status_guide_dev_candidate_use_checkpoint" in payload["warning_codes"]
+    assert "release_status_guide_full_test_checkpoint_expected_next_release" in payload["warning_codes"]
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{version}.zip"
+    _write_test_release_zip(accepted, version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": version,
+                "source_ref": accepted.name,
+                "source_version": version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=None,
+        version=version,
+        target_version=version,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_status_guide(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["detected_context"] == "post_adoption_baseline"
+    assert payload["primary_read_command_kind"] == "baseline-status"
+    assert payload["baseline_status_applicable"] is True
+    assert payload["primary_read_command"] == f"pb release baseline-status --version {version} --json"
+    assert payload["recommended_sequence"][0]["step"] == "post_adoption_alignment"
+    assert payload["recommended_sequence"][0]["command"] == f"pb release baseline-status --version {version} --json"
+    assert payload["checkpoint_threshold"]["full_test_recommended_now"] is False
+    assert payload["operator_runbook"]["required_step_count"] == 1
+    assert payload["operator_runbook"]["next_full_test_threshold_visible"] is False
+    assert "release_status_guide_dev_candidate_use_checkpoint" not in payload["warning_codes"]
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    design_dir = repo / "docs" / "design"
+    design_dir.mkdir(parents=True)
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs" / "release-v0.1.8.md").write_text("# release\n", encoding="utf-8")
+    (repo / "README.md").write_text("# readme\n", encoding="utf-8")
+    design_doc = design_dir / "promptbranch-mvp-living-design.md"
+    drawio = design_dir / "promptbranch-mvp-living-design.drawio"
+    drawio.write_text(
+        '<mxfile host="app.diagrams.net"><diagram name="Promptbranch MVP Living Design"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    design_doc.write_text(
+        """
+# Promptbranch MVP Living Design
+
+Release: `v0.1.8`
+Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
+
+After each release slice:
+
+## Referenced documentation
+
+- `README.md`
+- `docs/release-v0.1.8.md`
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    args = argparse.Namespace(
+        version="v0.1.8",
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_docs_status(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "release_docs_status"
+    assert payload["status"] == "verified"
+    assert payload["severity"] == "ok"
+    assert payload["drawio"]["xml_parsed"] is True
+    assert payload["drawio"]["diagram_count"] == 1
+    assert payload["missing_reference_count"] == 0
+    assert payload["blocker_codes"] == []
+    assert payload["mutating_actions_executed"] is False
+    assert payload["adoption_performed"] is False
+    assert payload["project_source_mutated"] is False
+
+
+def test_release_docs_status_blocks_missing_reference(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    design_dir = repo / "docs" / "design"
+    design_dir.mkdir(parents=True)
+    drawio = design_dir / "promptbranch-mvp-living-design.drawio"
+    drawio.write_text(
+        '<mxfile><diagram name="Promptbranch MVP Living Design"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-mvp-living-design.md").write_text(
+        """
+# Promptbranch MVP Living Design
+Release: `v0.1.8`
+Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
+After each release slice:
+- `docs/missing.md`
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    args = argparse.Namespace(
+        version="v0.1.8",
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        repo_path=str(repo),
+        json=True,
+    )
+
+    exit_code = asyncio.run(cmd_release_docs_status(None, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert "living_design_reference_missing" in payload["blocker_codes"]
+    assert payload["mutating_actions_executed"] is False
+
+
 def test_release_dev_status_separates_accepted_baseline_from_dev_head(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6414,6 +6868,86 @@ hooks:
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["full_test_performed"] is False
+
+
+def test_release_checkpoint_continue_mode_advises_full_test_when_dev_line_is_complex(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    accepted = repo / "chatgpt_claudecode_workflow-2_v0.1.2.zip"
+    _write_test_release_zip(accepted, "v0.1.2")
+    for patch in range(3, 11):
+        _write_test_release_zip(repo / f"chatgpt_claudecode_workflow-2_v0.1.{patch}.zip", f"v0.1.{patch}")
+    _write_test_release_zip(repo / "chatgpt_claudecode_workflow-2_v0.1.7.1.zip", "v0.1.7.1")
+    candidate = repo / "chatgpt_claudecode_workflow-2_v0.1.10.zip"
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version="v0.1.2",
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-01T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": "v0.1.2",
+                "source_ref": accepted.name,
+                "source_version": "v0.1.2",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version="v0.1.10",
+        target_version="v0.1.10",
+        mode="continue",
+        config=str(config),
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_checkpoint(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "full_test_checkpoint_recommended"
+    assert payload["checkpoint_decision"]["recommendation"] == "consider_full_test_checkpoint"
+    assert payload["checkpoint_decision"]["continue_development"] is True
+    assert payload["checkpoint_decision"]["full_test_recommended_now"] is True
+    assert payload["checkpoint_decision"]["adopt_now"] is False
+    assert "release_checkpoint_full_test_advised_by_complexity" in payload["warning_codes"]
+    assert payload["complexity_summary"]["full_test_recommended_now"] is True
+    assert "release_dev_complexity_normal_gap_threshold_reached" in payload["complexity_summary"]["reason_codes"]
+    assert "release_dev_complexity_contains_repair_release" in payload["complexity_summary"]["reason_codes"]
+    assert payload["mutating_actions_executed"] is False
 
 
 def test_release_checkpoint_adopt_mode_requires_full_test_without_adopting(capsys, tmp_path) -> None:
