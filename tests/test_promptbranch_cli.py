@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.21"
+    assert captured.out.strip() == "promptbranch 0.1.22"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.21"
+    assert payload["version"] == "0.1.22"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6411,7 +6411,7 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     repo = tmp_path / "repo"
     repo.mkdir()
     dev_version = _test_runtime_version()
-    accepted_version = "v0.1.13"
+    accepted_version = "v0.1.14"
     accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
     candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
     _write_test_release_zip(accepted, accepted_version)
@@ -6514,6 +6514,72 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert "release_status_guide_full_test_checkpoint_advised" in payload["warning_codes"]
     assert "release_status_guide_full_test_checkpoint_expected_next_release" not in payload["warning_codes"]
     assert payload["mutating_actions_executed"] is False
+
+
+def test_release_status_guide_plain_output_includes_next_development_handoff(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    dev_version = _test_runtime_version()
+    accepted_version = "v0.1.14"
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
+    candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
+    _write_test_release_zip(accepted, accepted_version)
+    _write_test_release_zip(candidate, dev_version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=accepted_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": accepted_version,
+                "source_ref": accepted.name,
+                "source_version": accepted_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version=dev_version,
+        target_version=dev_version,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        json=False,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_status_guide(FakeBackend(), args))
+    out = capsys.readouterr().out
+    expected_next_dev = _test_next_normal_version(dev_version)
+    expected_next_artifact = f"repo_{expected_next_dev}.zip"
+
+    assert exit_code == 0
+    assert f"next_development_version={expected_next_dev}" in out
+    assert f"next_development_artifact={expected_next_artifact}" in out
+    assert (
+        "next_development_status_guide_after_build="
+        f"pb release status-guide --artifact ./{expected_next_artifact} "
+        f"--version {expected_next_dev} --target-version {expected_next_dev} --json"
+    ) in out
+    assert (
+        "next_development_checkpoint_after_build="
+        f"pb release checkpoint --artifact ./{expected_next_artifact} "
+        f"--version {expected_next_dev} --target-version {expected_next_dev} --mode continue --json"
+    ) in out
+
 
 
 def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys, tmp_path) -> None:
@@ -6923,6 +6989,87 @@ hooks:
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["full_test_performed"] is False
+
+
+def test_release_checkpoint_plain_output_includes_next_development_handoff(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = repo / ".promptbranch-release.yml"
+    config.write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    accepted = repo / "chatgpt_claudecode_workflow-2_v0.1.2.zip"
+    candidate = repo / "chatgpt_claudecode_workflow-2_v0.1.6.zip"
+    _write_test_release_zip(accepted, "v0.1.2")
+    _write_test_release_zip(candidate, "v0.1.6")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version="v0.1.2",
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-01T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": "v0.1.2",
+                "source_ref": accepted.name,
+                "source_version": "v0.1.2",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(candidate),
+        version="v0.1.6",
+        target_version="v0.1.6",
+        mode="continue",
+        config=str(config),
+        repo_path=str(repo),
+        json=False,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_checkpoint(FakeBackend(), args))
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "next_development_version=v0.1.7" in out
+    assert "next_development_artifact=chatgpt_claudecode_workflow-2_v0.1.7.zip" in out
+    assert (
+        "next_development_status_guide_after_build="
+        "pb release status-guide --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
+        "--version v0.1.7 --target-version v0.1.7 --json"
+    ) in out
+    assert (
+        "next_development_checkpoint_after_build="
+        "pb release checkpoint --artifact ./chatgpt_claudecode_workflow-2_v0.1.7.zip "
+        "--version v0.1.7 --target-version v0.1.7 --mode continue --json"
+    ) in out
+
 
 
 def test_release_checkpoint_continue_mode_advises_full_test_when_dev_line_is_complex(capsys, tmp_path) -> None:

@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.21`  
+Release: `v0.1.22`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -230,6 +230,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.19.md`
 - `docs/release-v0.1.20.md`
 - `docs/release-v0.1.21.md`
+- `docs/release-v0.1.22.md`
 
 ## Editing the draw.io source
 
@@ -263,3 +264,8 @@ in diagrams.net/draw.io. Update only the region affected by the current release 
 
 This keeps `baseline-status` post-adoption only while making the correct development-mode path discoverable and executable as an explicit read-only runbook.
 
+
+
+### v0.1.22 — plain-text next-candidate handoff
+
+`v0.1.22` adds the same next-development handoff to non-JSON `pb release status-guide` and `pb release checkpoint --mode continue` output. JSON automation already had these fields; the plain text path now also shows the next artifact and the after-build status-guide/checkpoint commands, reducing copy/paste risk during operator-driven focused development.

@@ -10475,6 +10475,12 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
             print(f"next_release_reaches_full_test_threshold={str(threshold.get('next_release_reaches_full_test_threshold')).lower()}")
             if threshold.get("next_development_version"):
                 print(f"next_development_version={threshold.get('next_development_version')}")
+        if runbook.get("next_development_artifact"):
+            print(f"next_development_artifact={runbook.get('next_development_artifact')}")
+        if runbook.get("next_development_status_guide_after_build"):
+            print(f"next_development_status_guide_after_build={runbook.get('next_development_status_guide_after_build')}")
+        if runbook.get("next_development_checkpoint_after_build"):
+            print(f"next_development_checkpoint_after_build={runbook.get('next_development_checkpoint_after_build')}")
         sequence = payload.get("recommended_sequence") if isinstance(payload.get("recommended_sequence"), list) else []
         for index, step in enumerate(sequence, start=1):
             if isinstance(step, dict):
@@ -10720,8 +10726,15 @@ async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
         print(f"status={payload.get('status')}")
         print(f"mode={payload.get('mode')}")
         print(f"candidate={((payload.get('candidate') or {}).get('artifact_version') or 'none')}")
-        print(f"recommendation={((payload.get('checkpoint_decision') or {}).get('recommendation') or 'none')}")
-        print(f"next_development_version={((payload.get('checkpoint_decision') or {}).get('next_development_version') or 'none')}")
+        decision = payload.get("checkpoint_decision") if isinstance(payload.get("checkpoint_decision"), dict) else {}
+        print(f"recommendation={decision.get('recommendation') or 'none'}")
+        print(f"next_development_version={decision.get('next_development_version') or 'none'}")
+        print(f"next_development_artifact={decision.get('next_development_artifact') or 'none'}")
+        suggested = payload.get("suggested_commands") if isinstance(payload.get("suggested_commands"), dict) else {}
+        if suggested.get("next_development_status_guide_after_build"):
+            print(f"next_development_status_guide_after_build={suggested.get('next_development_status_guide_after_build')}")
+        if suggested.get("next_development_checkpoint_after_build"):
+            print(f"next_development_checkpoint_after_build={suggested.get('next_development_checkpoint_after_build')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
         usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
