@@ -415,7 +415,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="ft-title" value="v0.1.34 Full-Test Countdown Planning Window" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
+        <mxCell id="ft-title" value="v0.1.35 Full-Test Countdown Planning Window" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="40" y="30" width="1460" height="70" as="geometry" />
         </mxCell>
         <mxCell id="ft-state" value="Focused development candidate&#10;&#10;Runtime/dev head can intentionally be ahead of accepted baseline.&#10;&#10;Checkpoint remains read-only." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">

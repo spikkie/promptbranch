@@ -9706,6 +9706,86 @@ def _release_full_test_countdown_payload(complexity_summary: dict[str, Any]) -> 
     }
 
 
+def _release_focused_development_dod_payload(
+    *,
+    accepted_version: Any,
+    candidate_version: Any,
+    next_development_version: Any,
+    candidate_verified: bool,
+    blockers: list[dict[str, Any]],
+    full_test_countdown: dict[str, Any],
+    full_test_command: str | None,
+    adopt_current_command: str | None,
+) -> dict[str, Any]:
+    """Return a read-only focused-development DoD/MVP-state checklist.
+
+    This is intentionally advisory. It gives the operator a compact proof map for
+    continuing focused development versus crossing into the expensive full-test
+    and adoption gate, without itself installing, testing, adopting, uploading
+    sources, or mutating Git.
+    """
+
+    accepted_version = _candidate_version_normalized(accepted_version)
+    candidate_version = _candidate_version_normalized(candidate_version)
+    next_development_version = _candidate_version_normalized(next_development_version)
+    countdown_active = bool(full_test_countdown.get("active"))
+    full_test_recommended_now = bool(full_test_countdown.get("full_test_recommended_now"))
+    blocked = bool(blockers)
+    if blocked:
+        status = "blocked"
+    elif full_test_recommended_now:
+        status = "full_test_adoption_checkpoint_required"
+    elif countdown_active:
+        status = "near_threshold_continue_ready"
+    else:
+        status = "continue_ready"
+
+    focused_continue_ok = bool(candidate_verified and not blocked and not full_test_recommended_now)
+    adoption_checkpoint_required = bool(full_test_recommended_now)
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "status": status,
+        "mvp_state": {
+            "accepted_baseline_version": accepted_version,
+            "development_candidate_version": candidate_version,
+            "next_development_version": next_development_version,
+            "full_test_countdown_active": countdown_active,
+            "full_test_countdown_urgency": full_test_countdown.get("urgency"),
+            "minimum_remaining_until_threshold": full_test_countdown.get("minimum_remaining_until_threshold"),
+        },
+        "definition_of_done": {
+            "focused_continue": {
+                "complete": focused_continue_ok,
+                "required_evidence": [
+                    "candidate ZIP verified",
+                    "release status-guide reports no blockers",
+                    "release checkpoint --mode continue reports continue_development_ready",
+                    "pb test smoke --json passes after install",
+                ],
+                "operator_instruction": "Focused development may continue only while the checkpoint stays green and the smoke test passes after each focused install.",
+            },
+            "adoption_checkpoint": {
+                "complete": False,
+                "required_now": adoption_checkpoint_required,
+                "required_before_acceptance": [
+                    "full release-control with --run-tests is green",
+                    "structured post-release validation summary reports full_test_green",
+                    "adopt-current succeeds after the green full-test run",
+                    "pb artifact current and baseline-status verify runtime/source/artifact/registry alignment",
+                ],
+                "full_test_command": full_test_command,
+                "adopt_current_after_green_full_test": adopt_current_command,
+                "operator_instruction": "Do not accept or advance the baseline until full-test evidence and adopt-current verification are green.",
+            },
+        },
+        "candidate_verified": bool(candidate_verified),
+        "blocker_codes": [item.get("code") for item in blockers if isinstance(item, dict)],
+        "full_test_recommended_now": full_test_recommended_now,
+        "mutating_actions_executed": False,
+    }
+
+
 def _release_dev_complexity_summary(
     *,
     accepted_version: str | None,
@@ -10457,6 +10537,17 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         })
     threshold_notice_payload = locals().get("threshold_notice", {"active": False})
     full_test_countdown_payload = _release_full_test_countdown_payload(complexity)
+    development_head_payload = dev_status.get("development_head") if isinstance(dev_status.get("development_head"), dict) else {}
+    focused_development_dod = _release_focused_development_dod_payload(
+        accepted_version=accepted_version,
+        candidate_version=selected_version or dev_head_version or runtime_version,
+        next_development_version=next_development_version_from_plan,
+        candidate_verified=bool(development_head_payload.get("artifact_verified") or accepted_aligned),
+        blockers=blockers,
+        full_test_countdown=full_test_countdown_payload,
+        full_test_command=locals().get("full_test_command"),
+        adopt_current_command=locals().get("adopt_current_command"),
+    )
     if full_test_countdown_payload.get("active") is True:
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_countdown",
@@ -10519,6 +10610,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
         },
         "full_test_countdown": full_test_countdown_payload,
+        "focused_development_dod": focused_development_dod,
         "command_guide": {
             "post_adoption_verifier": commands["baseline_status"],
             "artifact_current": commands["artifact_current"],
@@ -10545,6 +10637,9 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
             "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
             "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
+            "focused_development_dod_status": focused_development_dod.get("status"),
+            "focused_continue_dod_complete": bool(((focused_development_dod.get("definition_of_done") or {}).get("focused_continue") or {}).get("complete")),
+            "adoption_dod_complete": bool(((focused_development_dod.get("definition_of_done") or {}).get("adoption_checkpoint") or {}).get("complete")),
             "post_adoption_ready_for_next_normal": bool(accepted_aligned),
             "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
             "next_normal_guidance_applicable": next_normal_guidance_applicable,
@@ -10828,6 +10923,23 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             f"--install-from-zip ~/Downloads/{candidate_filename} "
             "--skip-source-add --run-tests --prune-release-logs --release-log-keep 12"
         )
+    adopt_current_command = None
+    if artifact_version:
+        adopt_current_command = (
+            "./chatgpt_claudecode_workflow_release_control.sh "
+            f"--version {artifact_version} "
+            "--skip-tests --adopt-current --skip-docker-logs --prune-release-logs --release-log-keep 12"
+        )
+    focused_development_dod = _release_focused_development_dod_payload(
+        accepted_version=(dev_status.get("accepted_baseline") or {}).get("source_version") if isinstance(dev_status.get("accepted_baseline"), dict) else None,
+        candidate_version=artifact_version or dev_head_version,
+        next_development_version=next_dev_version,
+        candidate_verified=bool(artifact_payload.get("ok")),
+        blockers=blockers,
+        full_test_countdown=full_test_countdown_payload,
+        full_test_command=full_test_command,
+        adopt_current_command=adopt_current_command,
+    )
 
     return {
         "ok": not blockers,
@@ -10882,6 +10994,7 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
         },
         "full_test_countdown": full_test_countdown_payload,
+        "focused_development_dod": focused_development_dod,
         "complexity_summary": complexity_summary,
         "suggested_commands": {
             "focused_checks": [

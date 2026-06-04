@@ -6711,6 +6711,12 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["recommended_sequence"][3]["step"] == "adoption_threshold_watch"
     assert payload["recommended_sequence"][3]["required"] is False
     assert payload["checkpoint_threshold"]["normal_versions_ahead"] == 8
+    assert payload["focused_development_dod"]["status"] == "full_test_adoption_checkpoint_required"
+    assert payload["focused_development_dod"]["mvp_state"]["development_candidate_version"] == dev_version
+    assert payload["focused_development_dod"]["definition_of_done"]["focused_continue"]["complete"] is False
+    assert payload["focused_development_dod"]["definition_of_done"]["adoption_checkpoint"]["required_now"] is True
+    assert payload["operator_runbook"]["focused_development_dod_status"] == "full_test_adoption_checkpoint_required"
+    assert payload["operator_runbook"]["focused_continue_dod_complete"] is False
     assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
     assert payload["checkpoint_threshold"]["next_development_version"] == _test_next_normal_version(dev_version)
@@ -7345,6 +7351,13 @@ hooks:
     assert payload["checkpoint_decision"]["full_test_countdown_active"] is True
     assert payload["checkpoint_decision"]["full_test_countdown_urgency"] == "near_threshold"
     assert payload["full_test_countdown"]["read_only"] is True
+    assert payload["focused_development_dod"]["status"] == "near_threshold_continue_ready"
+    assert payload["focused_development_dod"]["mvp_state"]["accepted_baseline_version"] == "v0.1.2"
+    assert payload["focused_development_dod"]["mvp_state"]["development_candidate_version"] == "v0.1.6"
+    assert payload["focused_development_dod"]["definition_of_done"]["focused_continue"]["complete"] is True
+    assert payload["focused_development_dod"]["definition_of_done"]["adoption_checkpoint"]["complete"] is False
+    assert payload["focused_development_dod"]["definition_of_done"]["adoption_checkpoint"]["required_now"] is False
+    assert payload["focused_development_dod"]["mutating_actions_executed"] is False
     assert payload["install_plan_summary"]["ok"] is True
     assert "release_install_candidate_not_next_normal_version" not in payload["warning_codes"]
     assert payload["contextualized_warning_codes"] == ["release_install_candidate_not_next_normal_version"]
