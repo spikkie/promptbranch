@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.27`  
+Release: `v0.1.28`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -250,6 +250,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.25.md`
 - `docs/release-v0.1.26.md`
 - `docs/release-v0.1.27.md`
+- `docs/release-v0.1.28.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -313,3 +314,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.23 — smoke-tested plain-text status-guide handoff
 
 `v0.1.23` extends `pb test smoke --json` with a bounded non-JSON `pb release status-guide` substep. The smoke runner now validates required stdout markers for the plain-text operator handoff, including the next development artifact and after-build status-guide/checkpoint commands. This turns the v0.1.22 plain-text UX into recurring smoke evidence instead of relying on manual log inspection.
+
+
+### v0.1.28 — read-only full-test evidence/status
+
+`v0.1.28` adds a read-only full-test evidence/status surface for the post-adoption and focused-development lifecycle. `pb release evidence-status` inspects local release logs and structured post-release validation summaries without running tests or mutating state. `pb release baseline-status --json` now embeds the same evidence summary so an accepted baseline can distinguish three states: adopted and aligned, adopted with machine-verifiable full-test evidence, or adopted with only operator-reported/implicit evidence. This closes the process gap observed around `v0.1.26`, where adoption and later full-test evidence could both be true but not clearly represented by the status commands.
