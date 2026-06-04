@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.35`  
+Release: `v0.1.36`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -256,6 +256,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.32.md`
 - `docs/release-v0.1.33.md`
 - `docs/release-v0.1.35.md`
+- `docs/release-v0.1.36.md`
 - `docs/release-v0.1.34.md`
 - `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
@@ -359,3 +360,7 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 
 `v0.1.34` makes the read-only full-test/adoption countdown enter its `near_threshold` planning state when the minimum remaining distance to the configured threshold is four focused releases. This keeps focused development allowed while making adoption planning visible earlier, before the projected threshold release. The change does not run tests, adopt artifacts, upload Project Sources, or mutate Git; it only improves operator guidance.
 
+
+### v0.1.36 — pre-threshold planning notice alignment
+
+`v0.1.36` aligns the read-only pre-threshold planning notice with the active full-test/adoption countdown. When the countdown is active but the configured threshold has not yet been reached, `release status-guide` now marks the planning notice and operator-plan step active while keeping `full_test_recommended_now=false` and leaving full release-control/adoption commands optional. This keeps adoption planning visible without prematurely forcing the expensive full-test checkpoint.

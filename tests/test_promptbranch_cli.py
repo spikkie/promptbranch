@@ -6818,13 +6818,21 @@ def test_release_status_guide_projects_threshold_version_beyond_next_when_two_ve
     assert payload["checkpoint_threshold"]["threshold_reached_now"] is False
     assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is False
     notice = payload["checkpoint_threshold"]["threshold_notice"]
-    assert notice["active"] is False
+    assert notice["active"] is True
+    assert notice["pre_threshold_planning_active"] is True
+    assert notice["next_release_reaches_threshold"] is False
     assert notice["versions_until_expected_threshold"] == 2
     assert notice["expected_threshold_version"] == expected_threshold_version
     assert notice["expected_threshold_version"] != expected_next_dev
+    assert "countdown is active" in notice["message"]
+    assert payload["checkpoint_threshold"]["next_release_reaches_full_test_threshold"] is False
     assert payload["operator_runbook"]["expected_threshold_version"] == expected_threshold_version
+    assert payload["operator_runbook"]["next_release_reaches_full_test_threshold"] is False
     assert payload["recommended_sequence"][4]["expected_threshold_version"] == expected_threshold_version
     assert payload["recommended_sequence"][4]["versions_until_expected_threshold"] == 2
+    assert payload["recommended_sequence"][4]["active"] is True
+    assert payload["recommended_sequence"][4]["required"] is False
+    assert "release_status_guide_full_test_checkpoint_expected_next_release" not in payload["warning_codes"]
 
 
 def test_release_status_guide_plain_output_includes_next_development_handoff(capsys, tmp_path) -> None:
