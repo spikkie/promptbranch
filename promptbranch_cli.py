@@ -10901,6 +10901,11 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     expected_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    artifact_prefix = str(artifact_cfg.get("prefix") or f"{repo_root.name}_")
+    artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
     baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
@@ -11041,6 +11046,16 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
     accepted_version = adopted_source_version or adopted_artifact_version or registry_current_version
     detected_context = "development_candidate_ahead_of_accepted_baseline" if dev_candidate_detected else "post_adoption_baseline_check"
     next_development_version = _release_expected_next_normal_version(expected_version or runtime_version or adopted_source_version)
+    next_development_base_version = expected_version or runtime_version or adopted_source_version
+    next_development_artifact = f"{artifact_prefix}{next_development_version}{artifact_suffix}" if next_development_version else None
+    next_development_status_guide_after_build = (
+        f"pb release status-guide --artifact ./{next_development_artifact} --version {next_development_version} --target-version {next_development_version} --json"
+        if next_development_version and next_development_artifact else None
+    )
+    next_development_checkpoint_after_build = (
+        f"pb release checkpoint --artifact ./{next_development_artifact} --version {next_development_version} --target-version {next_development_version} --mode continue --json"
+        if next_development_version and next_development_artifact else None
+    )
     checkpoint_version = expected_version or dev_candidate_version or runtime_version or adopted_source_version
     checkpoint_artifact = getattr(args, "artifact", None) or (f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip")
     development_checkpoint_command = (
@@ -11117,10 +11132,16 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "post_adoption_only": True,
         "development_candidate_detected": dev_candidate_detected,
         "next_development_version": next_development_version,
+        "next_development_base_version": next_development_base_version,
+        "next_development_artifact": next_development_artifact,
+        "next_development_status_guide_after_build": next_development_status_guide_after_build,
+        "next_development_checkpoint_after_build": next_development_checkpoint_after_build,
         "suggested_commands": {
             "development_overview": "pb release dev-status --json",
             "development_checkpoint": development_checkpoint_command,
             "continue_development": f"Build {next_development_version} from current development head" if next_development_version else None,
+            "next_development_status_guide_after_build": next_development_status_guide_after_build,
+            "next_development_checkpoint_after_build": next_development_checkpoint_after_build,
             "verify_current": "pb artifact current --json",
             "verify_docs": f"pb release docs-status --version {expected_version} --json" if expected_version else "pb release docs-status --json",
             "post_adoption_baseline_check": f"pb release baseline-status --version {adopted_source_version or expected_version or '<accepted-version>'} --json",
@@ -11159,6 +11180,11 @@ async def cmd_release_baseline_status(backend: Any, args: argparse.Namespace) ->
         print(f"severity={payload.get('severity')}")
         print(f"expected_version={payload.get('expected_version') or 'none'}")
         print(f"next_development_version={payload.get('next_development_version') or 'none'}")
+        print(f"next_development_artifact={payload.get('next_development_artifact') or 'none'}")
+        if payload.get("next_development_status_guide_after_build"):
+            print(f"next_development_status_guide_after_build={payload.get('next_development_status_guide_after_build')}")
+        if payload.get("next_development_checkpoint_after_build"):
+            print(f"next_development_checkpoint_after_build={payload.get('next_development_checkpoint_after_build')}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
         usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
