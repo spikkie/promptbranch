@@ -7216,6 +7216,23 @@ hooks:
 
 
 
+def test_release_full_test_countdown_payload_activates_planning_window_at_four_remaining() -> None:
+    complexity = _release_dev_complexity_summary(
+        accepted_version="v0.1.2",
+        candidate_version="v0.1.6",
+        local_candidates=[],
+    )
+
+    countdown = _release_full_test_countdown_payload(complexity)
+
+    assert complexity["normal_versions_ahead"] == 4
+    assert countdown["active"] is True
+    assert countdown["urgency"] == "near_threshold"
+    assert countdown["minimum_remaining_until_threshold"] == 4
+    assert countdown["full_test_recommended_now"] is False
+    assert countdown["read_only"] is True
+
+
 def test_release_full_test_countdown_payload_activates_near_threshold() -> None:
     complexity = _release_dev_complexity_summary(
         accepted_version="v0.1.2",
@@ -7325,8 +7342,8 @@ hooks:
     assert payload["checkpoint_decision"]["next_development_version"] == "v0.1.7"
     assert payload["checkpoint_decision"]["next_development_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.7.zip"
     assert payload["checkpoint_decision"]["full_test_required_before_adoption"] is True
-    assert payload["checkpoint_decision"]["full_test_countdown_active"] is False
-    assert payload["checkpoint_decision"]["full_test_countdown_urgency"] == "normal"
+    assert payload["checkpoint_decision"]["full_test_countdown_active"] is True
+    assert payload["checkpoint_decision"]["full_test_countdown_urgency"] == "near_threshold"
     assert payload["full_test_countdown"]["read_only"] is True
     assert payload["install_plan_summary"]["ok"] is True
     assert "release_install_candidate_not_next_normal_version" not in payload["warning_codes"]
@@ -7485,8 +7502,8 @@ hooks:
     assert exit_code == 0
     assert "next_development_version=v0.1.7" in out
     assert "next_development_artifact=chatgpt_claudecode_workflow-2_v0.1.7.zip" in out
-    assert "full_test_countdown_active=false" in out
-    assert "full_test_countdown_urgency=normal" in out
+    assert "full_test_countdown_active=true" in out
+    assert "full_test_countdown_urgency=near_threshold" in out
     assert "minimum_remaining_until_threshold=4" in out
     assert (
         "next_development_status_guide_after_build="
