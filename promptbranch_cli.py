@@ -9681,14 +9681,14 @@ def _release_full_test_countdown_payload(complexity_summary: dict[str, Any]) -> 
     countdown_active = bool(
         not full_test_recommended_now
         and minimum_remaining is not None
-        and minimum_remaining <= 3
+        and minimum_remaining <= 4
     )
     if full_test_recommended_now:
         urgency = "threshold_now"
         message = "Full release-control/adoption checkpoint is recommended now before adding more scope."
     elif countdown_active:
         urgency = "near_threshold"
-        message = "Full release-control/adoption checkpoint is approaching; keep focused slices small and plan the adoption checkpoint."
+        message = "Full release-control/adoption checkpoint is approaching; keep focused slices small and plan the adoption checkpoint before the threshold release."
     else:
         urgency = "normal"
         message = "Focused development may continue; no near-threshold full-test checkpoint countdown is active."
