@@ -10201,6 +10201,30 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         else "./<next-development-candidate>.zip"
     )
 
+    next_normal_guidance_applicable = not development_candidate
+    suppressed_next_normal_guidance = None
+    if development_candidate:
+        suppressed_next_normal_guidance = {
+            "reason": "development_candidate_ahead_of_accepted_baseline",
+            "accepted_baseline_version": accepted_version,
+            "accepted_next_normal_version": expected_next_normal_from_accepted,
+            "development_head_version": dev_head_version,
+            "operator_instruction": "Use next_development_* guidance while a development head is already ahead of the accepted baseline; next_normal_* guidance is reserved for post-adoption baseline handoff.",
+        }
+
+    next_normal_status_guide_command = None if development_candidate else (
+        f"pb release status-guide --artifact {next_normal_candidate_artifact} "
+        f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+        f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+        "--json"
+    )
+    next_normal_checkpoint_command = None if development_candidate else (
+        f"pb release checkpoint --artifact {next_normal_candidate_artifact} "
+        f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+        f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
+        "--mode continue --json"
+    )
+
     commands = {
         "baseline_status": f"pb release baseline-status --version {accepted_version or selected_version or '<accepted-version>'} --json",
         "artifact_current": "pb artifact current --json",
@@ -10211,18 +10235,8 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             f"--target-version {target_version or selected_version or '<candidate-version>'} "
             "--mode continue --json"
         ),
-        "next_normal_status_guide": (
-            f"pb release status-guide --artifact {next_normal_candidate_artifact} "
-            f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
-            f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
-            "--json"
-        ),
-        "next_normal_checkpoint": (
-            f"pb release checkpoint --artifact {next_normal_candidate_artifact} "
-            f"--version {expected_next_normal_from_accepted or '<next-normal-version>'} "
-            f"--target-version {expected_next_normal_from_accepted or '<next-normal-version>'} "
-            "--mode continue --json"
-        ),
+        "next_normal_status_guide": next_normal_status_guide_command,
+        "next_normal_checkpoint": next_normal_checkpoint_command,
         "next_development_status_guide": (
             f"pb release status-guide --artifact {next_development_candidate_artifact} "
             f"--version {next_development_version_from_plan or '<next-development-version>'} "
@@ -10510,8 +10524,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "artifact_current": commands["artifact_current"],
             "development_overview": commands["dev_status"],
             "development_checkpoint": commands["checkpoint"],
+            "next_normal_guidance_applicable": next_normal_guidance_applicable,
             "next_normal_status_guide": commands["next_normal_status_guide"],
             "next_normal_checkpoint": commands["next_normal_checkpoint"],
+            "suppressed_next_normal_guidance": suppressed_next_normal_guidance,
             "next_development_status_guide_after_build": commands["next_development_status_guide"],
             "next_development_checkpoint_after_build": commands["next_development_checkpoint"],
             "focused_smoke": commands["smoke"],
@@ -10531,8 +10547,10 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "minimum_remaining_until_threshold": full_test_countdown_payload.get("minimum_remaining_until_threshold"),
             "post_adoption_ready_for_next_normal": bool(accepted_aligned),
             "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
-            "next_normal_version": expected_next_normal_from_accepted,
-            "next_normal_artifact": next_normal_candidate_filename,
+            "next_normal_guidance_applicable": next_normal_guidance_applicable,
+            "next_normal_version": expected_next_normal_from_accepted if next_normal_guidance_applicable else None,
+            "next_normal_artifact": next_normal_candidate_filename if next_normal_guidance_applicable else None,
+            "suppressed_next_normal_guidance": suppressed_next_normal_guidance,
             "next_development_version": next_development_version_from_plan,
             "next_development_artifact": next_development_candidate_filename,
             "next_development_status_guide_after_build": commands["next_development_status_guide"],

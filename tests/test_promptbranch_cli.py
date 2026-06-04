@@ -6695,6 +6695,15 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert dev_version in payload["primary_read_command"]
     assert payload["command_guide"]["development_overview"] == "pb release dev-status --json"
     assert payload["command_guide"]["focused_smoke"] == "pb test smoke --json"
+    assert payload["command_guide"]["next_normal_guidance_applicable"] is False
+    assert payload["command_guide"]["next_normal_status_guide"] is None
+    assert payload["command_guide"]["next_normal_checkpoint"] is None
+    assert payload["command_guide"]["suppressed_next_normal_guidance"]["accepted_next_normal_version"] == _test_next_normal_version(accepted_version)
+    assert payload["command_guide"]["suppressed_next_normal_guidance"]["development_head_version"] == dev_version
+    assert payload["operator_runbook"]["next_normal_guidance_applicable"] is False
+    assert payload["operator_runbook"]["next_normal_version"] is None
+    assert payload["operator_runbook"]["next_normal_artifact"] is None
+    assert payload["operator_runbook"]["suppressed_next_normal_guidance"]["development_head_version"] == dev_version
     assert payload["recommended_sequence"][0]["step"] == "continue_development_decision"
     assert payload["recommended_sequence"][0]["required"] is True
     assert payload["recommended_sequence"][0]["command"] == payload["primary_read_command"]
@@ -6865,6 +6874,8 @@ def test_release_status_guide_plain_output_includes_next_development_handoff(cap
     assert exit_code == 0
     assert f"next_development_version={expected_next_dev}" in out
     assert f"next_development_artifact={expected_next_artifact}" in out
+    assert "next_normal_version=" not in out
+    assert "next_normal_artifact=" not in out
     assert "full_test_countdown_active=" in out
     assert "full_test_countdown_urgency=" in out
     assert "minimum_remaining_until_threshold=" in out
@@ -6942,6 +6953,8 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["recommended_sequence"][2]["next_normal_artifact"] == expected_next_artifact
     assert payload["recommended_sequence"][3]["step"] == "next_normal_status_guide_after_build"
     assert expected_next_artifact in payload["recommended_sequence"][3]["command"]
+    assert payload["command_guide"]["next_normal_guidance_applicable"] is True
+    assert payload["command_guide"]["suppressed_next_normal_guidance"] is None
     assert payload["command_guide"]["next_normal_checkpoint"].endswith("--mode continue --json")
     assert expected_next_artifact in payload["command_guide"]["next_normal_status_guide"]
     assert payload["checkpoint_threshold"]["full_test_recommended_now"] is False
@@ -6949,6 +6962,8 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["operator_runbook"]["next_full_test_threshold_visible"] is False
     assert payload["operator_runbook"]["post_adoption_ready_for_next_normal"] is True
     assert payload["operator_runbook"]["development_base_version"] == version
+    assert payload["operator_runbook"]["next_normal_guidance_applicable"] is True
+    assert payload["operator_runbook"]["suppressed_next_normal_guidance"] is None
     assert payload["operator_runbook"]["next_normal_version"] == expected_next_normal
     assert payload["operator_runbook"]["next_normal_artifact"] == expected_next_artifact
     assert "release_status_guide_dev_candidate_use_checkpoint" not in payload["warning_codes"]

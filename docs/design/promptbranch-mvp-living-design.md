@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.31`  
+Release: `v0.1.32`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -253,6 +253,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.28.md`
 - `docs/release-v0.1.29.md`
 - `docs/release-v0.1.30.md`
+- `docs/release-v0.1.32.md`
 - `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
 
@@ -337,3 +338,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.31 — strict skip-source-add preservation
 
 `v0.1.31` hardens the release-control source-add guard. A focused install run with `--skip-source-add` must not call `promptbranch src add`, even when the workflow delegates to the candidate ZIP's embedded `chatgpt_claudecode_workflow_release_control.sh`. The script now carries the skip intent through `PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD=1`, double-checks that guard before Project Source mutation, prints an explicit skip marker, and adds regression coverage for the Stage-0 delegated install path. This keeps local candidate install/checkpoint/smoke runs clearly separated from Project Source mutation and adoption.
+
+
+### v0.1.32 — development-candidate next-normal guidance cleanup
+
+`v0.1.32` cleans up read-only status-guide output for installed development candidates. When the runtime or selected artifact is already ahead of the accepted baseline, `next_normal_*` guidance from the accepted baseline is intentionally suppressed because it can point backward relative to the active development head. Development-candidate output now keeps the canonical path on `next_development_*` fields and records a `suppressed_next_normal_guidance` explanation, while post-adoption baseline output still exposes the normal next-release handoff. This keeps operator guidance aligned with the actual lifecycle context.
