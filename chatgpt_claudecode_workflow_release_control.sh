@@ -60,7 +60,7 @@ install_zip=""
 allow_dirty=0
 skip_commit=0
 skip_push=0
-skip_source_add=0
+skip_source_add="${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}"
 skip_install=0
 skip_chown=0
 skip_service=0
@@ -249,6 +249,25 @@ resolve_download_zip() {
   return 1
 }
 
+args_include_skip_source_add() {
+  local arg
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    case "${arg}" in
+      --skip-source-add)
+        return 0
+        ;;
+      --)
+        return 1
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  return 1
+}
+
 find_stage0_install_zip_arg() {
   local parsed_ver="${PB_RELEASE_VERSION:-}"
   local parsed_downloads_dir="${DOWNLOADS_DIR:-${HOME}/Downloads}"
@@ -349,6 +368,9 @@ if [[ "${PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0:-0}" != "1" ]]; then
     echo "stage0_script: ${candidate_stage0_script}"
     export PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT="${repo_root}"
     export PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0=1
+    if args_include_skip_source_add "$@"; then
+      export PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD=1
+    fi
     exec "${candidate_stage0_script}" "$@"
   fi
 fi
@@ -1092,8 +1114,13 @@ print(f"ZIP verified: {zip_path}")
 PY
 
 # Add release ZIP to ChatGPT Project Sources.
-if [[ ${skip_source_add} -eq 0 ]]; then
+# The CLI flag and PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD are both honored so
+# Stage-0 candidate delegation cannot accidentally re-enable Project Source
+# mutation after the operator explicitly selected --skip-source-add.
+if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
   promptbranch src add "${artifact_zip}"
+else
+  echo "Source add skipped: --skip-source-add"
 fi
 
 # Reinstall local CLI from the release ZIP.

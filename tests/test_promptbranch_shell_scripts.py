@@ -405,6 +405,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PB_FAKE_CALL_LOG"] = str(calls)
     env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_ARTIFACT_PROJECT_NAME"] = "chatgpt_claudecode_workflow"
 
     result = subprocess.run(
         [
@@ -445,6 +446,93 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     assert os.access(repo / "run_chatgpt_service.sh", os.X_OK)
     assert os.access(repo / "chatgpt_claudecode_workflow_release_control.sh", os.X_OK)
     assert os.access(repo / "scripts" / "example.sh", os.X_OK)
+    assert "Source add skipped: --skip-source-add" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "promptbranch src add" not in call_text
+
+
+def test_release_control_stage0_delegation_preserves_skip_source_add(tmp_path: Path):
+    repo = tmp_path / "chatgpt_claudecode_workflow"
+    repo.mkdir()
+    version = "v9.9.31"
+    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    (repo / "VERSION").write_text("v0.0.0\n", encoding="utf-8")
+    (repo / ".env").write_text("LOCAL=1\n", encoding="utf-8")
+
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    import zipfile
+
+    release_script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    with zipfile.ZipFile(downloads / artifact, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
+        archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr("fresh.txt", "installed by delegated candidate\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", release_script.read_text(encoding="utf-8"))
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    (fake_bin / "promptbranch").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo git \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1\" == \"status\" ]]; then exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"rev-parse --short HEAD\" ]]; then echo abc1234; exit 0; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "git").chmod(0o755)
+    packager = tmp_path / "packager.sh"
+    packager.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'INNERPY'\n"
+        "import zipfile\n"
+        f"with zipfile.ZipFile('{artifact}', 'w') as archive:\n"
+        f"    archive.writestr('VERSION', '{version}\\n')\n"
+        "    archive.writestr('fresh.txt', 'packaged\\n')\n"
+        "INNERPY\n",
+        encoding="utf-8",
+    )
+    packager.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+
+    result = subprocess.run(
+        [
+            str(release_script),
+            "--version", version,
+            "--install-from-zip", str(downloads / artifact),
+            "--packager", str(packager),
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--skip-docker-logs",
+            "--skip-tests",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "== Delegate to workflow runner from candidate ZIP ==" in result.stdout
+    assert "Source add skipped: --skip-source-add" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "promptbranch src add" not in call_text
+    assert (repo / "fresh.txt").read_text(encoding="utf-8") == "installed by delegated candidate\n"
 
 
 def _extract_first_json_object(text: str) -> dict:
