@@ -11127,6 +11127,7 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "local_accepted_artifact": local_accepted_artifact,
         "explicit_artifact": explicit_artifact,
         "docs_status": docs_status,
+        "full_test_evidence": _release_full_test_evidence_summary(repo_root=repo_root, profile_root=_candidate_profile_dir_for_repo(args, repo_root), requested_version=expected_version),
         "baseline_status_usage": baseline_status_usage,
         "release_status_context": release_status_context,
         "post_adoption_only": True,
@@ -13647,6 +13648,262 @@ def _latest_post_release_validation_summary(
 
 
 
+def _read_text_sample(path: Path, *, max_bytes: int = 2_000_000) -> str:
+    try:
+        data = path.read_bytes()[:max_bytes]
+    except OSError:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def _release_full_test_evidence_summary(
+    *,
+    repo_root: Path,
+    profile_root: Path,
+    requested_version: str | None = None,
+) -> dict[str, Any]:
+    """Read-only full-test evidence detector for a release version.
+
+    The command intentionally does not run tests. It inspects existing release-log
+    artifacts and structured post-release summaries to answer whether the given
+    version already has local full-test evidence.
+    """
+
+    requested = _candidate_version_normalized(requested_version)
+    release_log_roots: list[Path] = []
+    for candidate in [profile_root / "release_logs", repo_root / ".pb_profile" / "release_logs"]:
+        resolved = candidate.expanduser().resolve()
+        if resolved not in release_log_roots:
+            release_log_roots.append(resolved)
+
+    post_validation = _latest_post_release_validation_summary(
+        repo_root=repo_root,
+        profile_root=profile_root,
+        requested_version=requested,
+    )
+    if post_validation.get("ok") is True and post_validation.get("failure_count") == 0:
+        return {
+            "schema_version": 1,
+            "read_only": True,
+            "version": post_validation.get("version") or requested,
+            "status": "full_test_green",
+            "evidence_found": True,
+            "full_test_green": True,
+            "source_kind": "post_release_validation_summary",
+            "evidence_path": post_validation.get("summary_path"),
+            "latest_post_release_validation": post_validation,
+            "release_log_roots": [str(path) for path in release_log_roots],
+            "confidence": "high",
+            "limitations": [],
+            "operator_instruction": "Existing structured post-release validation evidence is green. This command did not run tests or mutate state.",
+        }
+
+    candidate_dirs: list[Path] = []
+    for root in release_log_roots:
+        if not root.is_dir():
+            continue
+        if requested and (root / requested).is_dir():
+            candidate_dirs.append((root / requested).resolve())
+        elif not requested:
+            candidate_dirs.extend([path.resolve() for path in root.iterdir() if path.is_dir()])
+    unique_dirs = []
+    seen = set()
+    for path in candidate_dirs:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique_dirs.append(path)
+
+    inspected_files: list[dict[str, Any]] = []
+    inferred_green: dict[str, Any] | None = None
+    install_only_markers: list[str] = []
+    failure_markers: list[str] = []
+    for directory in unique_dirs:
+        for path in sorted(directory.glob("**/*")):
+            if not path.is_file() or path.suffix.lower() not in {".log", ".json", ".txt"}:
+                continue
+            text = _read_text_sample(path)
+            if not text:
+                continue
+            lowered = text.lower()
+            file_markers: list[str] = []
+            if "--run-tests" in text or "run-tests" in lowered:
+                file_markers.append("run_tests_requested")
+            if "test_session:" in lowered:
+                file_markers.append("test_session_field")
+                if "test_session:  skipped" in lowered or "test_session: skipped" in lowered:
+                    install_only_markers.append(str(path))
+                else:
+                    file_markers.append("test_session_not_skipped")
+            if "exit_code:     0" in text or "exit_code: 0" in text or '"exit_code": 0' in text:
+                file_markers.append("exit_code_0")
+            if "status: passed" in lowered or '"status": "passed"' in lowered:
+                file_markers.append("status_passed")
+            if "exit_code:" in lowered and "exit_code:     0" not in text and "exit_code: 0" not in text:
+                failure_markers.append(str(path))
+            if file_markers:
+                inspected_files.append({"path": str(path), "markers": file_markers})
+            markers = set(file_markers)
+            if (
+                ("run_tests_requested" in markers or "test_session_not_skipped" in markers)
+                and ("exit_code_0" in markers or "status_passed" in markers)
+                and inferred_green is None
+            ):
+                inferred_green = {"path": str(path), "markers": file_markers}
+
+    if inferred_green:
+        return {
+            "schema_version": 1,
+            "read_only": True,
+            "version": requested,
+            "status": "full_test_green_inferred_from_release_log",
+            "evidence_found": True,
+            "full_test_green": True,
+            "source_kind": "release_control_log_inference",
+            "evidence_path": inferred_green.get("path"),
+            "latest_post_release_validation": post_validation,
+            "release_log_roots": [str(path) for path in release_log_roots],
+            "inspected_files": inspected_files[:20],
+            "inspected_files_truncated": len(inspected_files) > 20,
+            "confidence": "medium",
+            "limitations": [
+                "Evidence was inferred from local release logs rather than a structured post-release validation summary.",
+            ],
+            "operator_instruction": "Local release logs indicate a full-test run completed green. Prefer structured summary evidence when available.",
+        }
+
+    status = "install_or_smoke_only_evidence" if install_only_markers else "full_test_evidence_not_found"
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "version": requested,
+        "status": status,
+        "evidence_found": False,
+        "full_test_green": False,
+        "source_kind": None,
+        "evidence_path": None,
+        "latest_post_release_validation": post_validation,
+        "release_log_roots": [str(path) for path in release_log_roots],
+        "inspected_files": inspected_files[:20],
+        "inspected_files_truncated": len(inspected_files) > 20,
+        "install_only_marker_paths": install_only_markers[:10],
+        "failure_marker_paths": failure_markers[:10],
+        "confidence": "high" if not inspected_files else "medium",
+        "limitations": [
+            "This command is read-only and does not run tests.",
+            "Operator-reported full-test success is not machine-verifiable unless a release log or structured summary is present.",
+        ],
+        "operator_instruction": "Run release-control with --run-tests, or preserve/upload the generated full-test log, to create machine-readable evidence.",
+    }
+
+
+def _release_evidence_status_payload(backend: Any, args: argparse.Namespace) -> dict[str, Any]:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    profile_root = _candidate_profile_dir_for_repo(args, repo_root)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
+    registry = _artifact_registry_from_args(args)
+    current_payload = _artifact_current_payload(backend, registry)
+    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    accepted_version = _candidate_version_normalized(
+        baseline_roles.get("adopted_source_version")
+        or baseline_roles.get("adopted_artifact_version")
+        or baseline_roles.get("registry_current_version")
+    )
+    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+    runtime_version = _candidate_version_normalized(runtime.get("version"))
+    evidence_version = requested_version or accepted_version or runtime_version
+    evidence = _release_full_test_evidence_summary(
+        repo_root=repo_root,
+        profile_root=profile_root,
+        requested_version=evidence_version,
+    )
+    dev_candidate = bool(accepted_version and runtime_version and accepted_version != runtime_version)
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    if not evidence.get("full_test_green"):
+        warnings.append({
+            "code": "release_evidence_full_test_not_machine_verified",
+            "severity": "warning",
+            "message": "No machine-verifiable green full-test evidence was found for the requested version.",
+            "version": evidence_version,
+        })
+    if dev_candidate:
+        warnings.append({
+            "code": "release_evidence_runtime_ahead_of_accepted_baseline",
+            "severity": "warning",
+            "message": "Runtime is ahead of accepted baseline; evidence-status reports evidence for the requested/accepted version only and does not adopt candidates.",
+            "runtime_version": runtime_version,
+            "accepted_version": accepted_version,
+        })
+
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    artifact_prefix = str(artifact_cfg.get("prefix") or f"{repo_root.name}_")
+    artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
+    evidence_artifact_name = f"{artifact_prefix}{evidence_version or '<version>'}{artifact_suffix}"
+    recommended_commands = {
+        "full_release_control": f"./chatgpt_claudecode_workflow_release_control.sh --version {evidence_version or '<version>'} --install-from-zip ~/Downloads/{evidence_artifact_name} --skip-source-add --run-tests --prune-release-logs --release-log-keep 12",
+        "baseline_status": f"pb release baseline-status --version {accepted_version or evidence_version or '<accepted-version>'} --json",
+        "artifact_current": "pb artifact current --json",
+    }
+    return {
+        "ok": True,
+        "schema": "promptbranch.release.evidence_status",
+        "schema_version": "1.0",
+        "action": "release_evidence_status",
+        "status": "full_test_evidence_green" if evidence.get("full_test_green") else "full_test_evidence_missing_or_unverified",
+        "severity": "warning" if warnings else "ok",
+        "read_only": True,
+        "repo_path": str(repo_root),
+        "profile_dir": str(profile_root),
+        "requested_version": requested_version,
+        "evidence_version": evidence_version,
+        "accepted_baseline_version": accepted_version,
+        "runtime_version": runtime_version,
+        "development_candidate_detected": dev_candidate,
+        "full_test_evidence": evidence,
+        "artifact_current": current_payload,
+        "recommended_commands": recommended_commands,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "download_performed": False,
+        "migration_performed": False,
+        "install_performed": False,
+        "candidate_test_performed": False,
+        "full_test_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "would_mutate": False,
+        "mutating_actions_executed": False,
+        "operator_instruction": "Read-only full-test evidence status. It inspects local evidence only; it does not run tests, adopt, upload, or mutate Git.",
+    }
+
+
+async def cmd_release_evidence_status(backend: Any, args: argparse.Namespace) -> int:
+    payload = _release_evidence_status_payload(backend, args)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        evidence = payload.get("full_test_evidence") if isinstance(payload.get("full_test_evidence"), dict) else {}
+        print(f"status={payload.get('status')}")
+        print(f"severity={payload.get('severity')}")
+        print(f"evidence_version={payload.get('evidence_version') or 'none'}")
+        print(f"full_test_green={str(evidence.get('full_test_green')).lower()}")
+        print(f"evidence_status={evidence.get('status') or 'unknown'}")
+        print(f"evidence_path={evidence.get('evidence_path') or 'none'}")
+        print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
+        print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
+    return 0 if payload.get("ok") else 1
+
+
 def _release_lifecycle_status_text(payload: dict[str, Any]) -> str:
     """Render a concise human-facing lifecycle status summary.
 
@@ -14143,6 +14400,8 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
     if args.release_command == "baseline-status":
         return await cmd_release_baseline_status(backend, args)
+    if args.release_command == "evidence-status":
+        return await cmd_release_evidence_status(backend, args)
     if args.release_command == "docs-status":
         return await cmd_release_docs_status(backend, args)
     if args.release_command == "dev-status":
@@ -18433,6 +18692,12 @@ def make_parser() -> argparse.ArgumentParser:
     release_baseline_status.add_argument("--design-doc", default="docs/design/promptbranch-mvp-living-design.md", help="Repo-relative living design Markdown path when --include-docs is used.")
     release_baseline_status.add_argument("--drawio", default="docs/design/promptbranch-mvp-living-design.drawio", help="Repo-relative editable draw.io source path when --include-docs is used.")
     release_baseline_status.add_argument("--json", action="store_true")
+
+    release_evidence_status = release_subparsers.add_parser("evidence-status", help="Read-only full-test evidence/status verifier for a release version.")
+    release_evidence_status.add_argument("--version", help="Release version to inspect for full-test evidence. Defaults to the running Promptbranch version.")
+    release_evidence_status.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    release_evidence_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file for artifact naming context. Defaults to .promptbranch-release.yml.")
+    release_evidence_status.add_argument("--json", action="store_true")
 
     release_docs_status = release_subparsers.add_parser("docs-status", help="Read-only living MVP design document and draw.io source validator.")
     release_docs_status.add_argument("--version", help="Expected version marker to check in the living design document. Defaults to the running Promptbranch version.")

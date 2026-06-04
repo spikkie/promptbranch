@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-04T09:40:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-04T10:20:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
@@ -204,6 +204,27 @@
         <mxCell id="e_trust" value="policy gate owns authority" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" source="schema_gate" target="trust" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="full-test-evidence-status" name="Full Test Evidence Status">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="e-title" value="v0.1.28 — Read-only full-test evidence/status" style="rounded=1;whiteSpace=wrap;html=1;fontSize=22;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="640" height="60" as="geometry" /></mxCell>
+        <mxCell id="e-baseline" value="Accepted baseline&lt;br&gt;pb artifact current JSON&lt;br&gt;artifact/source/runtime versions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="60" y="160" width="260" height="90" as="geometry" /></mxCell>
+        <mxCell id="e-logs" value="Local evidence sources&lt;br&gt;.pb_profile/release_logs/&lt;br&gt;post_release_validation.*.summary.json&lt;br&gt;release-control logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="160" width="320" height="110" as="geometry" /></mxCell>
+        <mxCell id="e-command" value="pb release evidence-status --json&lt;br&gt;read-only: no tests, no adoption, no source mutation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="790" y="160" width="360" height="90" as="geometry" /></mxCell>
+        <mxCell id="e-output" value="promptbranch.release.evidence_status JSON&lt;br&gt;full_test_green&lt;br&gt;evidence_path&lt;br&gt;source_kind&lt;br&gt;confidence / limitations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="790" y="350" width="360" height="130" as="geometry" /></mxCell>
+        <mxCell id="e-baseline-status" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence for accepted baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="390" y="360" width="320" height="90" as="geometry" /></mxCell>
+        <mxCell id="e-next" value="Operator decision&lt;br&gt;Continue focused dev if green/aligned&lt;br&gt;Run full release-control if evidence missing before adoption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="390" y="560" width="430" height="100" as="geometry" /></mxCell>
+        <mxCell id="edge1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline" target="e-command"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="edge2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-logs" target="e-command"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="edge3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-command" target="e-output"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="edge4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-output" target="e-baseline-status"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="edge5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline-status" target="e-next"><mxGeometry relative="1" as="geometry" /></mxCell>
       </root>
     </mxGraphModel>
   </diagram>
