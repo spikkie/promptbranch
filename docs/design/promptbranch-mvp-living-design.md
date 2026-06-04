@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.34`  
+Release: `v0.1.35`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -255,6 +255,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.30.md`
 - `docs/release-v0.1.32.md`
 - `docs/release-v0.1.33.md`
+- `docs/release-v0.1.35.md`
 - `docs/release-v0.1.34.md`
 - `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
@@ -349,6 +350,10 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.33 — checkpoint continue-mode warning contextualization
 
 `v0.1.33` cleans up read-only checkpoint output for explicit focused-development candidates. When `pb release checkpoint --mode continue` is evaluating the currently installed development head and the complexity threshold still allows focused development, the install-plan warning `release_install_candidate_not_next_normal_version` is now contextualized instead of promoted as a top-level checkpoint warning. The nested install-plan evidence remains visible, and adoption mode still preserves the warning. This keeps continue-mode operator output focused on actionable risks while retaining strict full-test/adoption safety boundaries.
+
+### v0.1.35 — focused development DoD and MVP-state guidance
+
+`v0.1.35` adds a read-only focused-development definition-of-done payload to `release status-guide` and `release checkpoint`. The payload summarizes the accepted baseline, current development candidate, next development version, countdown state, focused-continue evidence, and the adoption checkpoint evidence required before a candidate may become accepted. It is advisory only and does not install, test, adopt, upload Project Sources, or mutate Git.
 
 ### v0.1.34 — full-test countdown planning window
 
