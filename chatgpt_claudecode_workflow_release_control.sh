@@ -560,6 +560,7 @@ release_log_dir="${release_log_root}/${ver}"
 mkdir -p "${release_log_dir}"
 full_log="${release_log_dir}/pb_test.full.${ver}.log"
 report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
+structured_summary_json="${release_log_dir}/post_release_validation.${ver}.summary.json"
 if [[ -n "${PROMPTBRANCH_TEST_SESSION_LOG:-}" ]]; then
   case "${PROMPTBRANCH_TEST_SESSION_LOG}" in
     /*) test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
@@ -1145,6 +1146,123 @@ if int(payload.get("failure_count") or 0) != 0:
 INNERPY
 }
 
+write_structured_full_test_summary() {
+  local output_path="$1"
+  local report_path="$2"
+  local full_log_path="$3"
+  local session_log_path="$4"
+  local version_value="$5"
+  local artifact_value="$6"
+  local test_exit_code="$7"
+  local report_exit_code="$8"
+  local service_health_path="$9"
+  python3 - "$output_path" "$report_path" "$full_log_path" "$session_log_path" "$version_value" "$artifact_value" "$test_exit_code" "$report_exit_code" "$service_health_path" <<'INNERPY'
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+
+out = Path(sys.argv[1])
+report_path = Path(sys.argv[2])
+full_log_path = Path(sys.argv[3])
+session_log_path = Path(sys.argv[4])
+version = sys.argv[5]
+artifact = sys.argv[6]
+test_rc = int(sys.argv[7])
+report_rc = int(sys.argv[8])
+service_health_path = Path(sys.argv[9]) if sys.argv[9] else None
+
+
+def read_json_object(path: Path) -> tuple[dict, str | None]:
+    if not path.is_file():
+        return {}, f"missing: {path}"
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    idx = raw.find("{")
+    if idx < 0:
+        return {}, f"no JSON object found in {path}"
+    try:
+        return json.loads(raw[idx:]), None
+    except Exception as exc:  # pragma: no cover - defensive shell boundary
+        return {}, f"invalid JSON in {path}: {exc}"
+
+report, report_error = read_json_object(report_path)
+service_health, service_health_error = ({}, None)
+if service_health_path:
+    service_health, service_health_error = read_json_object(service_health_path)
+
+try:
+    failure_count = int(report.get("failure_count") or 0)
+except Exception:
+    failure_count = 0
+report_status = report.get("status")
+report_ok = report.get("ok") is True
+full_test_green = bool(test_rc == 0 and report_rc == 0 and report_ok and report_status == "verified" and failure_count == 0)
+classification = report.get("validation_classification") if isinstance(report.get("validation_classification"), dict) else {}
+if not classification:
+    classification = {
+        "status": "passed" if full_test_green else "failed",
+        "primary_category": "none" if full_test_green else "full_test_or_report_failure",
+        "blocking_categories": [] if full_test_green else ["full_test_or_report_failure"],
+    }
+primary_failure_category = report.get("primary_failure_category") or classification.get("primary_category") or ("none" if full_test_green else "full_test_or_report_failure")
+blocking_failure_categories = report.get("blocking_failure_categories") or classification.get("blocking_categories") or ([] if full_test_green else [primary_failure_category])
+
+summary = {
+    "schema": "promptbranch.post_release_validation.summary",
+    "schema_version": "1.0",
+    "action": "post_release_validation",
+    "source_kind": "release_control_full_test_summary",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": full_test_green,
+    "status": "verified" if full_test_green else "failed",
+    "version": version,
+    "target_version": version,
+    "artifact": artifact,
+    "failure_count": failure_count,
+    "primary_failure_category": primary_failure_category,
+    "blocking_failure_categories": blocking_failure_categories,
+    "validation_classification": classification,
+    "full_test_evidence": {
+        "performed": True,
+        "full_test_green": full_test_green,
+        "test_exit_code": test_rc,
+        "report_exit_code": report_rc,
+        "full_log": str(full_log_path),
+        "report_json": str(report_path),
+        "test_session_log": str(session_log_path),
+        "service_health_json": str(service_health_path) if service_health_path else None,
+    },
+    "test_report": {
+        "path": str(report_path),
+        "ok": report.get("ok"),
+        "status": report_status,
+        "failure_count": report.get("failure_count"),
+        "error": report_error,
+    },
+    "service_health": {
+        "path": str(service_health_path) if service_health_path else None,
+        "ok": service_health.get("ok"),
+        "version": service_health.get("version"),
+        "error": service_health_error,
+    },
+    "limitations": [],
+}
+if report_error:
+    summary["limitations"].append("The test report JSON could not be parsed; summary records the failed evidence boundary.")
+if service_health_error:
+    summary["limitations"].append("Service health JSON was missing or invalid when the full-test evidence summary was generated.")
+
+out.parent.mkdir(parents=True, exist_ok=True)
+tmp = out.with_name(out.name + ".tmp")
+tmp.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+tmp.replace(out)
+print(f"Structured full-test evidence summary written: {out}")
+INNERPY
+}
+
 verify_source_list_mentions_artifact() {
   local src_list_json="$1"
   python3 -c '
@@ -1502,6 +1620,8 @@ if [[ ${skip_tests} -eq 0 ]]; then
     workflow_rc=${report_rc}
   fi
 
+  write_structured_full_test_summary "${structured_summary_json}" "${report_json}" "${full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
+
   set -e
 
   if [[ ${adopt_if_green} -eq 1 ]]; then
@@ -1645,6 +1765,7 @@ release_logs:  ${release_log_dir}
 log_prune:     $(summary_value "${prune_summary_active}" "keep=${release_log_keep}")
 full_log:      $(summary_value "${tests_summary_active}" "${full_log}")
 report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
+structured_summary: $(summary_value "${tests_summary_active}" "${structured_summary_json}")
 adopt_current: ${adopt_current}
 adopt_if_green: ${adopt_if_green}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")

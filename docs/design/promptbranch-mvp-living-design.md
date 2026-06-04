@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.28`  
+Release: `v0.1.29`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -251,6 +251,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.26.md`
 - `docs/release-v0.1.27.md`
 - `docs/release-v0.1.28.md`
+- `docs/release-v0.1.29.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -319,3 +320,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.28 — read-only full-test evidence/status
 
 `v0.1.28` adds a read-only full-test evidence/status surface for the post-adoption and focused-development lifecycle. `pb release evidence-status` inspects local release logs and structured post-release validation summaries without running tests or mutating state. `pb release baseline-status --json` now embeds the same evidence summary so an accepted baseline can distinguish three states: adopted and aligned, adopted with machine-verifiable full-test evidence, or adopted with only operator-reported/implicit evidence. This closes the process gap observed around `v0.1.26`, where adoption and later full-test evidence could both be true but not clearly represented by the status commands.
+
+
+### v0.1.29 — structured full-test evidence summary
+
+`v0.1.29` turns the full-test evidence path from log inference into a structured release-control artifact. When `chatgpt_claudecode_workflow_release_control.sh --run-tests` runs the full `pb test full` plus `pb test report` block, it now writes `post_release_validation.<version>.summary.json` under the versioned release log directory. `pb release evidence-status` already treats a green structured summary as high-confidence evidence, so future accepted baselines can be proven by machine-readable validation data instead of only release-log marker inference. The slice remains focused on evidence generation and reporting; it does not change adoption, Project Source upload, ZIP import semantics, or browser automation.

@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-04T10:20:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-04T12:35:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
@@ -228,4 +228,27 @@
       </root>
     </mxGraphModel>
   </diagram>
+  <diagram id="structured-full-test-summary-v0129" name="Structured Full Test Summary">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="s-title" value="v0.1.29 Structured Full-Test Evidence Summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="40" y="30" width="1460" height="70" as="geometry" /></mxCell>
+        <mxCell id="s-run" value="release-control --run-tests&lt;br&gt;bounded full-test workflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="170" width="250" height="90" as="geometry" /></mxCell>
+        <mxCell id="s-full" value="pb test full --json&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="150" width="280" height="90" as="geometry" /></mxCell>
+        <mxCell id="s-report" value="pb test report&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.report.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="280" width="280" height="90" as="geometry" /></mxCell>
+        <mxCell id="s-summary" value="post_release_validation.&amp;lt;version&amp;gt;.summary.json&lt;br&gt;machine-readable full-test evidence&lt;br&gt;source_kind=release_control_full_test_summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="750" y="205" width="340" height="125" as="geometry" /></mxCell>
+        <mxCell id="s-evidence" value="pb release evidence-status --json&lt;br&gt;prefers structured summary&lt;br&gt;confidence=high when green" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="1160" y="185" width="300" height="105" as="geometry" /></mxCell>
+        <mxCell id="s-baseline" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence&lt;br&gt;post-adoption verifier remains read-only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="1160" y="340" width="300" height="110" as="geometry" /></mxCell>
+        <mxCell id="s-boundary" value="Safety boundary&lt;br&gt;No adoption, no Project Source upload, no ZIP import semantic change, no browser automation change from evidence inspection." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="220" y="520" width="1080" height="95" as="geometry" /></mxCell>
+        <mxCell id="s-edge-1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-full"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-edge-2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-report"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-edge-3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-full" target="s-summary"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-edge-4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-report" target="s-summary"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-edge-5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-evidence"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-edge-6" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-baseline"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
 </mxfile>
