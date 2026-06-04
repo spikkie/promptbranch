@@ -99,8 +99,17 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     assert not (repo / "chatgpt_claudecode_workflow_v9.9.9.zip").exists()
     assert (log_dir / "pb_test.full.v9.9.9.log").is_file()
     assert (log_dir / "pb_test.full.v9.9.9.report.json").is_file()
+    structured_summary = log_dir / "post_release_validation.v9.9.9.summary.json"
+    assert structured_summary.is_file()
+    summary_payload = json.loads(structured_summary.read_text(encoding="utf-8"))
+    assert summary_payload["source_kind"] == "release_control_full_test_summary"
+    assert summary_payload["ok"] is True
+    assert summary_payload["failure_count"] == 0
+    assert summary_payload["full_test_evidence"]["full_test_green"] is True
+    assert summary_payload["full_test_evidence"]["report_json"] == str(log_dir / "pb_test.full.v9.9.9.report.json")
     assert (log_dir / "release-control-tests-only.log").is_file()
     assert "release_logs:" in result.stdout
+    assert f"structured_summary: {structured_summary}" in result.stdout
     assert "service_log:   skipped" in result.stdout
     assert "service_start: skipped" in result.stdout
     assert "service_pid:   skipped" in result.stdout
