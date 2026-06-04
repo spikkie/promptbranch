@@ -10734,11 +10734,50 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             )
 
     inherited_warning_codes = set()
-    for source in (dev_status, install_plan):
+    contextualized_warnings: list[dict[str, Any]] = []
+
+    def contextualize_warning(item: dict[str, Any], *, source_name: str, reason: str, operator_instruction: str) -> None:
+        contextualized_warnings.append({
+            **item,
+            "source": source_name,
+            "contextualized": True,
+            "contextualization_reason": reason,
+            "operator_instruction": operator_instruction,
+        })
+
+    def should_contextualize_warning(item: dict[str, Any], *, source_name: str) -> bool:
+        code = item.get("code")
+        if source_name != "install_plan" or code != "release_install_candidate_not_next_normal_version":
+            return False
+        if checkpoint_mode != "continue":
+            return False
+        if complexity_summary.get("full_test_recommended_now"):
+            return False
+        if not artifact_version or not dev_head_version or artifact_version != dev_head_version:
+            return False
+        return bool(dev_status.get("status") == "development_head_ahead_of_accepted")
+
+    for source_name, source in (("dev_status", dev_status), ("install_plan", install_plan)):
         for item in source.get("warnings") or []:
-            if isinstance(item, dict) and item.get("code") not in inherited_warning_codes:
-                warnings.append(item)
-                inherited_warning_codes.add(item.get("code"))
+            if not isinstance(item, dict):
+                continue
+            code = item.get("code")
+            if code in inherited_warning_codes:
+                continue
+            if should_contextualize_warning(item, source_name=source_name):
+                contextualize_warning(
+                    item,
+                    source_name=source_name,
+                    reason="explicit_development_candidate_continue_mode",
+                    operator_instruction=(
+                        "The candidate intentionally continues the installed development head; "
+                        "next_development_* guidance is authoritative until the next full-test/adoption checkpoint."
+                    ),
+                )
+                inherited_warning_codes.add(code)
+                continue
+            warnings.append(item)
+            inherited_warning_codes.add(code)
 
     full_test_countdown_payload = _release_full_test_countdown_payload(complexity_summary)
     if full_test_countdown_payload.get("active") is True and "release_checkpoint_full_test_checkpoint_countdown" not in inherited_warning_codes:
@@ -10823,6 +10862,7 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
             "ok": install_plan.get("ok"),
             "warning_codes": install_plan.get("warning_codes") or [],
             "blocker_codes": install_plan.get("blocker_codes") or [],
+            "contextualized_warning_codes": [item.get("code") for item in contextualized_warnings if item.get("source") == "install_plan"],
             "baseline_comparison": install_plan.get("baseline_comparison") or {},
             "install_target_plan": install_plan.get("install_target_plan") or {},
         },
@@ -10857,6 +10897,8 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         },
         "warnings": warnings,
         "warning_codes": [item["code"] for item in warnings],
+        "contextualized_warnings": contextualized_warnings,
+        "contextualized_warning_codes": [item.get("code") for item in contextualized_warnings],
         "blockers": blockers,
         "blocker_codes": [item["code"] for item in blockers],
         "download_performed": False,

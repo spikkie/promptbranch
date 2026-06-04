@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.32`  
+Release: `v0.1.33`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -254,6 +254,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.29.md`
 - `docs/release-v0.1.30.md`
 - `docs/release-v0.1.32.md`
+- `docs/release-v0.1.33.md`
 - `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
 
@@ -343,3 +344,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.32 — development-candidate next-normal guidance cleanup
 
 `v0.1.32` cleans up read-only status-guide output for installed development candidates. When the runtime or selected artifact is already ahead of the accepted baseline, `next_normal_*` guidance from the accepted baseline is intentionally suppressed because it can point backward relative to the active development head. Development-candidate output now keeps the canonical path on `next_development_*` fields and records a `suppressed_next_normal_guidance` explanation, while post-adoption baseline output still exposes the normal next-release handoff. This keeps operator guidance aligned with the actual lifecycle context.
+
+### v0.1.33 — checkpoint continue-mode warning contextualization
+
+`v0.1.33` cleans up read-only checkpoint output for explicit focused-development candidates. When `pb release checkpoint --mode continue` is evaluating the currently installed development head and the complexity threshold still allows focused development, the install-plan warning `release_install_candidate_not_next_normal_version` is now contextualized instead of promoted as a top-level checkpoint warning. The nested install-plan evidence remains visible, and adoption mode still preserves the warning. This keeps continue-mode operator output focused on actionable risks while retaining strict full-test/adoption safety boundaries.
+
