@@ -10351,6 +10351,11 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             not full_test_recommended_now
             and minimum_remaining_until_threshold == 1
         )
+        pre_threshold_planning_notice_active = bool(
+            not full_test_recommended_now
+            and minimum_remaining_until_threshold is not None
+            and minimum_remaining_until_threshold <= 4
+        )
         selected_filename = Path(selected_artifact).name if selected_artifact else "<candidate>.zip"
         selected_download_path = f"~/Downloads/{selected_filename}" if selected_filename != "<candidate>.zip" else "~/Downloads/<candidate>.zip"
         full_test_command = (
@@ -10377,20 +10382,25 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             }
         else:
             threshold_notice = {
-                "active": next_release_reaches_full_test_threshold,
+                "active": pre_threshold_planning_notice_active,
                 "threshold_reached_now": False,
                 "next_release_reaches_threshold": next_release_reaches_full_test_threshold,
+                "pre_threshold_planning_active": pre_threshold_planning_notice_active,
                 "expected_threshold_version": projected_threshold_version,
                 "versions_until_expected_threshold": minimum_remaining_until_threshold,
                 "calculation_rule": "current_candidate_plus_minimum_remaining_normal_versions",
                 "message": (
                     "The next focused development release is expected to reach the full-test/adoption checkpoint threshold."
                     if next_release_reaches_full_test_threshold
-                    else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet; expected_threshold_version is the projected threshold candidate, not necessarily the next candidate."
+                    else (
+                        "The full-test/adoption checkpoint countdown is active; plan the adoption checkpoint around the projected threshold version while continuing focused development checks."
+                        if pre_threshold_planning_notice_active
+                        else "The next focused development release is not expected to reach the full-test/adoption checkpoint threshold yet; expected_threshold_version is the projected threshold candidate, not necessarily the next candidate."
+                    )
                 ),
                 "recommended_operator_plan": (
                     "Plan to run full release-control and adoption around the expected threshold version before adding more scope."
-                    if next_release_reaches_full_test_threshold
+                    if pre_threshold_planning_notice_active
                     else "Continue focused development checks unless checkpoint starts recommending full test/adoption."
                 ),
             }
@@ -10438,7 +10448,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "purpose": "Make the pre-threshold adoption checkpoint explicit before the configured drift threshold is reached.",
                 "expected_threshold_version": threshold_notice.get("expected_threshold_version"),
                 "versions_until_expected_threshold": threshold_notice.get("versions_until_expected_threshold"),
-                "active": next_release_reaches_full_test_threshold,
+                "active": bool(threshold_notice.get("active")),
             },
             {
                 "step": "full_release_control",
@@ -10557,7 +10567,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "normal_versions_until_full_test_threshold": full_test_countdown_payload.get("normal_versions_until_full_test_threshold"),
             "newer_candidates_until_full_test_threshold": full_test_countdown_payload.get("newer_candidates_until_full_test_threshold"),
         })
-    if threshold_notice_payload.get("active") is True and threshold_notice_payload.get("threshold_reached_now") is not True:
+    if threshold_notice_payload.get("next_release_reaches_threshold") is True and threshold_notice_payload.get("threshold_reached_now") is not True:
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_expected_next_release",
             "severity": "warning",
@@ -10603,7 +10613,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "full_test_recommended_at_newer_candidate_count": complexity.get("full_test_recommended_at_newer_candidate_count"),
             "next_development_version": version_plan.get("next_development_version"),
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
-            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
+            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("next_release_reaches_threshold")),
             "threshold_notice": threshold_notice_payload,
             "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
             "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
@@ -10632,7 +10642,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "required_step_count": sum(1 for step in recommended_sequence if step.get("required")),
             "next_full_test_threshold_visible": development_candidate,
             "threshold_reached_now": bool(threshold_notice_payload.get("threshold_reached_now")),
-            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("active") and not threshold_notice_payload.get("threshold_reached_now")),
+            "next_release_reaches_full_test_threshold": bool(threshold_notice_payload.get("next_release_reaches_threshold")),
             "expected_threshold_version": threshold_notice_payload.get("expected_threshold_version"),
             "full_test_countdown_active": bool(full_test_countdown_payload.get("active")),
             "full_test_countdown_urgency": full_test_countdown_payload.get("urgency"),
