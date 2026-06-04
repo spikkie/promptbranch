@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.30`  
+Release: `v0.1.31`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -253,6 +253,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.28.md`
 - `docs/release-v0.1.29.md`
 - `docs/release-v0.1.30.md`
+- `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -331,3 +332,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 
 `v0.1.30` repairs a read-only operator-handoff defect in `pb release baseline-status`. When an installed development candidate is ahead of the accepted baseline and the operator accidentally runs `baseline-status --version <candidate>` without passing `--artifact`, the development checkpoint command now prefers the matching local candidate ZIP when it exists. This prevents the handoff from mixing the candidate version with the previously accepted artifact path. The slice is intentionally limited to read-only status guidance, tests, and documentation; it does not change adoption, Project Source upload, ZIP import, full-test execution, or browser automation.
 
+
+
+### v0.1.31 — strict skip-source-add preservation
+
+`v0.1.31` hardens the release-control source-add guard. A focused install run with `--skip-source-add` must not call `promptbranch src add`, even when the workflow delegates to the candidate ZIP's embedded `chatgpt_claudecode_workflow_release_control.sh`. The script now carries the skip intent through `PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD=1`, double-checks that guard before Project Source mutation, prints an explicit skip marker, and adds regression coverage for the Stage-0 delegated install path. This keeps local candidate install/checkpoint/smoke runs clearly separated from Project Source mutation and adoption.
