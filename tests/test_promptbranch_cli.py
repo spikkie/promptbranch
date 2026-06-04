@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.26"
+    assert captured.out.strip() == "promptbranch 0.1.27"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.26"
+    assert payload["version"] == "0.1.27"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6269,7 +6269,19 @@ hooks:
     assert payload["explicit_artifact"]["ok"] is True
     assert payload["release_status_context"]["context"] == "post_adoption_baseline"
     assert payload["release_status_context"]["baseline_status_applicable"] is True
-    assert payload["next_development_version"] is not None
+    expected_next = _test_next_normal_version(runtime_version)
+    expected_next_artifact = f"chatgpt_claudecode_workflow-2_{expected_next}.zip"
+    assert payload["next_development_version"] == expected_next
+    assert payload["next_development_base_version"] == runtime_version
+    assert payload["next_development_artifact"] == expected_next_artifact
+    assert payload["next_development_status_guide_after_build"] == (
+        f"pb release status-guide --artifact ./{expected_next_artifact} --version {expected_next} --target-version {expected_next} --json"
+    )
+    assert payload["next_development_checkpoint_after_build"] == (
+        f"pb release checkpoint --artifact ./{expected_next_artifact} --version {expected_next} --target-version {expected_next} --mode continue --json"
+    )
+    assert payload["suggested_commands"]["next_development_status_guide_after_build"] == payload["next_development_status_guide_after_build"]
+    assert payload["suggested_commands"]["next_development_checkpoint_after_build"] == payload["next_development_checkpoint_after_build"]
     assert payload["warning_codes"] == []
     assert payload["blocker_codes"] == []
     assert payload["mutating_actions_executed"] is False
