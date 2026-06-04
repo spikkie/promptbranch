@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2026-06-04T12:35:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
+<mxfile host="app.diagrams.net" modified="2026-06-04T14:45:00.000Z" agent="ChatGPT" version="24.7.17" type="device">
   <diagram id="promptbranch-mvp-living-design" name="Promptbranch MVP Living Design">
     <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1760" math="0" shadow="0">
       <root>
@@ -207,24 +207,47 @@
       </root>
     </mxGraphModel>
   </diagram>
-
   <diagram id="full-test-evidence-status" name="Full Test Evidence Status">
     <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="e-title" value="v0.1.28 — Read-only full-test evidence/status" style="rounded=1;whiteSpace=wrap;html=1;fontSize=22;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="640" height="60" as="geometry" /></mxCell>
-        <mxCell id="e-baseline" value="Accepted baseline&lt;br&gt;pb artifact current JSON&lt;br&gt;artifact/source/runtime versions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="60" y="160" width="260" height="90" as="geometry" /></mxCell>
-        <mxCell id="e-logs" value="Local evidence sources&lt;br&gt;.pb_profile/release_logs/&lt;br&gt;post_release_validation.*.summary.json&lt;br&gt;release-control logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="160" width="320" height="110" as="geometry" /></mxCell>
-        <mxCell id="e-command" value="pb release evidence-status --json&lt;br&gt;read-only: no tests, no adoption, no source mutation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="790" y="160" width="360" height="90" as="geometry" /></mxCell>
-        <mxCell id="e-output" value="promptbranch.release.evidence_status JSON&lt;br&gt;full_test_green&lt;br&gt;evidence_path&lt;br&gt;source_kind&lt;br&gt;confidence / limitations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="790" y="350" width="360" height="130" as="geometry" /></mxCell>
-        <mxCell id="e-baseline-status" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence for accepted baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="390" y="360" width="320" height="90" as="geometry" /></mxCell>
-        <mxCell id="e-next" value="Operator decision&lt;br&gt;Continue focused dev if green/aligned&lt;br&gt;Run full release-control if evidence missing before adoption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="390" y="560" width="430" height="100" as="geometry" /></mxCell>
-        <mxCell id="edge1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline" target="e-command"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="edge2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-logs" target="e-command"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="edge3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-command" target="e-output"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="edge4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-output" target="e-baseline-status"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="edge5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline-status" target="e-next"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e-title" value="v0.1.28 — Read-only full-test evidence/status" style="rounded=1;whiteSpace=wrap;html=1;fontSize=22;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="640" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e-baseline" value="Accepted baseline&lt;br&gt;pb artifact current JSON&lt;br&gt;artifact/source/runtime versions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="160" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e-logs" value="Local evidence sources&lt;br&gt;.pb_profile/release_logs/&lt;br&gt;post_release_validation.*.summary.json&lt;br&gt;release-control logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="390" y="160" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="e-command" value="pb release evidence-status --json&lt;br&gt;read-only: no tests, no adoption, no source mutation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="790" y="160" width="360" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e-output" value="promptbranch.release.evidence_status JSON&lt;br&gt;full_test_green&lt;br&gt;evidence_path&lt;br&gt;source_kind&lt;br&gt;confidence / limitations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="790" y="350" width="360" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="e-baseline-status" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence for accepted baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="390" y="360" width="320" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e-next" value="Operator decision&lt;br&gt;Continue focused dev if green/aligned&lt;br&gt;Run full release-control if evidence missing before adoption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="390" y="560" width="430" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline" target="e-command">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-logs" target="e-command">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-command" target="e-output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-output" target="e-baseline-status">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="e-baseline-status" target="e-next">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
@@ -233,22 +256,75 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="s-title" value="v0.1.29 Structured Full-Test Evidence Summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="40" y="30" width="1460" height="70" as="geometry" /></mxCell>
-        <mxCell id="s-run" value="release-control --run-tests&lt;br&gt;bounded full-test workflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="70" y="170" width="250" height="90" as="geometry" /></mxCell>
-        <mxCell id="s-full" value="pb test full --json&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="150" width="280" height="90" as="geometry" /></mxCell>
-        <mxCell id="s-report" value="pb test report&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.report.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="390" y="280" width="280" height="90" as="geometry" /></mxCell>
-        <mxCell id="s-summary" value="post_release_validation.&amp;lt;version&amp;gt;.summary.json&lt;br&gt;machine-readable full-test evidence&lt;br&gt;source_kind=release_control_full_test_summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="750" y="205" width="340" height="125" as="geometry" /></mxCell>
-        <mxCell id="s-evidence" value="pb release evidence-status --json&lt;br&gt;prefers structured summary&lt;br&gt;confidence=high when green" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="1160" y="185" width="300" height="105" as="geometry" /></mxCell>
-        <mxCell id="s-baseline" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence&lt;br&gt;post-adoption verifier remains read-only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="1160" y="340" width="300" height="110" as="geometry" /></mxCell>
-        <mxCell id="s-boundary" value="Safety boundary&lt;br&gt;No adoption, no Project Source upload, no ZIP import semantic change, no browser automation change from evidence inspection." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="220" y="520" width="1080" height="95" as="geometry" /></mxCell>
-        <mxCell id="s-edge-1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-full"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="s-edge-2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-report"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="s-edge-3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-full" target="s-summary"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="s-edge-4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-report" target="s-summary"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="s-edge-5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-evidence"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="s-edge-6" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-baseline"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="s-title" value="v0.1.29 Structured Full-Test Evidence Summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1460" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s-run" value="release-control --run-tests&lt;br&gt;bounded full-test workflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="170" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="s-full" value="pb test full --json&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="390" y="150" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="s-report" value="pb test report&lt;br&gt;writes pb_test.full.&amp;lt;version&amp;gt;.report.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="390" y="280" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="s-summary" value="post_release_validation.&amp;lt;version&amp;gt;.summary.json&lt;br&gt;machine-readable full-test evidence&lt;br&gt;source_kind=release_control_full_test_summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="750" y="205" width="340" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="s-evidence" value="pb release evidence-status --json&lt;br&gt;prefers structured summary&lt;br&gt;confidence=high when green" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="185" width="300" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="s-baseline" value="pb release baseline-status --json&lt;br&gt;embeds full_test_evidence&lt;br&gt;post-adoption verifier remains read-only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="340" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="s-boundary" value="Safety boundary&lt;br&gt;No adoption, no Project Source upload, no ZIP import semantic change, no browser automation change from evidence inspection." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="220" y="520" width="1080" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-full">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-2" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-run" target="s-report">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-3" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-full" target="s-summary">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-4" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-report" target="s-summary">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-5" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-evidence">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-edge-6" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="s-summary" target="s-baseline">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
-
+  <diagram id="baseline-status-dev-candidate-checkpoint-v0130" name="Baseline Status Dev Candidate Checkpoint">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="980" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="b-title" value="v0.1.30 Baseline-Status Development Checkpoint Artifact Selection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=20;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1460" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="b-problem" value="Problem before v0.1.30&#10;&#10;Operator runs baseline-status for an installed development candidate before adoption.&#10;The command correctly reports post-adoption-only context, but its suggested checkpoint command may combine the candidate version with the accepted-baseline ZIP path." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="420" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="b-fix" value="Read-only fix&#10;&#10;If no explicit --artifact is supplied and a matching local candidate ZIP exists, baseline-status now uses that candidate path for the checkpoint handoff.&#10;&#10;New payload fields:&#10;- development_checkpoint_artifact&#10;- development_checkpoint_artifact_source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="560" y="140" width="420" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="b-output" value="Desired handoff&#10;&#10;pb release checkpoint \&#10;  --artifact ./chatgpt_claudecode_workflow-2_v0.1.30.zip \&#10;  --version v0.1.30 \&#10;  --target-version v0.1.30 \&#10;  --mode continue \&#10;  --json&#10;&#10;No adoption, no source upload, no tests are run by baseline-status." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;align=left;verticalAlign=top;spacing=8;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1060" y="140" width="420" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="b-e1" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="b-problem" target="b-fix">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b-e2" value="" style="endArrow=block;html=1;rounded=0;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="b-fix" target="b-output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>

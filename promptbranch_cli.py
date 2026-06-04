@@ -11057,7 +11057,17 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         if next_development_version and next_development_artifact else None
     )
     checkpoint_version = expected_version or dev_candidate_version or runtime_version or adopted_source_version
-    checkpoint_artifact = getattr(args, "artifact", None) or (f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip")
+    explicit_checkpoint_artifact = getattr(args, "artifact", None)
+    checkpoint_artifact_source = "explicit_artifact" if explicit_checkpoint_artifact else "accepted_fallback"
+    checkpoint_artifact = explicit_checkpoint_artifact
+    if not checkpoint_artifact and dev_candidate_detected and dev_candidate_version:
+        candidate_filename = f"{artifact_prefix}{dev_candidate_version}{artifact_suffix}"
+        candidate_path = repo_root / candidate_filename
+        if candidate_path.is_file():
+            checkpoint_artifact = f"./{candidate_filename}"
+            checkpoint_artifact_source = "local_development_candidate"
+    if not checkpoint_artifact:
+        checkpoint_artifact = f"./{accepted_filename}" if accepted_filename else "./<candidate>.zip"
     development_checkpoint_command = (
         f"pb release checkpoint --artifact {checkpoint_artifact} --version {checkpoint_version} "
         f"--target-version {checkpoint_version} --mode continue --json"
@@ -11130,6 +11140,8 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "full_test_evidence": _release_full_test_evidence_summary(repo_root=repo_root, profile_root=_candidate_profile_dir_for_repo(args, repo_root), requested_version=expected_version),
         "baseline_status_usage": baseline_status_usage,
         "release_status_context": release_status_context,
+        "development_checkpoint_artifact": checkpoint_artifact,
+        "development_checkpoint_artifact_source": checkpoint_artifact_source,
         "post_adoption_only": True,
         "development_candidate_detected": dev_candidate_detected,
         "next_development_version": next_development_version,
