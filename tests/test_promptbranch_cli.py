@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.29"
+    assert captured.out.strip() == "promptbranch 0.1.30"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2832,7 +2832,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.29"
+    assert payload["version"] == "0.1.30"
     assert payload["checks"]["workspace_selected"] is True
 
 
@@ -6558,6 +6558,84 @@ def test_release_baseline_status_guides_dev_candidate_to_checkpoint(capsys, tmp_
     assert payload["mutating_actions_executed"] is False
 
 
+
+
+def test_release_baseline_status_uses_local_dev_candidate_for_checkpoint_without_explicit_artifact(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".promptbranch-release.yml").write_text("""
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  unsafe_paths:
+    - '*.zip'
+hooks:
+  doctor:
+    command: echo {version}
+""".lstrip(), encoding="utf-8")
+    accepted_version = "v0.1.29"
+    dev_version = _test_runtime_version()
+    accepted = repo / f"chatgpt_claudecode_workflow-2_{accepted_version}.zip"
+    candidate = repo / f"chatgpt_claudecode_workflow-2_{dev_version}.zip"
+    _write_test_release_zip(accepted, accepted_version)
+    _write_test_release_zip(candidate, dev_version)
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(accepted),
+        filename=accepted.name,
+        kind="adopted_release",
+        version=accepted_version,
+        repo_path=None,
+        sha256=hashlib.sha256(accepted.read_bytes()).hexdigest(),
+        size_bytes=accepted.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=accepted.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": accepted.name,
+                "artifact_version": accepted_version,
+                "source_ref": accepted.name,
+                "source_version": accepted_version,
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        version=dev_version,
+        artifact=None,
+        config=".promptbranch-release.yml",
+        repo_path=str(repo),
+        include_docs=False,
+        design_doc="docs/design/promptbranch-mvp-living-design.md",
+        drawio="docs/design/promptbranch-mvp-living-design.drawio",
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_baseline_status(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["development_candidate_detected"] is True
+    assert payload["development_checkpoint_artifact"] == f"./{candidate.name}"
+    assert payload["development_checkpoint_artifact_source"] == "local_development_candidate"
+    assert f"--artifact ./{candidate.name}" in payload["suggested_commands"]["development_checkpoint"]
+    assert f"--artifact ./{accepted.name}" not in payload["suggested_commands"]["development_checkpoint"]
+    assert payload["mutating_actions_executed"] is False
+
+
 def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_threshold(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -10273,7 +10351,7 @@ def test_src_add_service_error_returns_structured_json_without_traceback(monkeyp
         def add_project_source(self, **kwargs):
             raise RuntimeError("504 error for POST http://localhost:8000/v1/project-sources: Could not find the remove/delete action for the selected project source")
 
-    file_path = tmp_path / "architecture-process_0.1.29.zip"
+    file_path = tmp_path / "architecture-process_0.1.30.zip"
     file_path.write_bytes(b"zip")
     monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 

@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.29`  
+Release: `v0.1.30`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 
@@ -252,6 +252,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.27.md`
 - `docs/release-v0.1.28.md`
 - `docs/release-v0.1.29.md`
+- `docs/release-v0.1.30.md`
 - `docs/release-v0.1.23.md`
 
 ## Editing the draw.io source
@@ -325,3 +326,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.29 — structured full-test evidence summary
 
 `v0.1.29` turns the full-test evidence path from log inference into a structured release-control artifact. When `chatgpt_claudecode_workflow_release_control.sh --run-tests` runs the full `pb test full` plus `pb test report` block, it now writes `post_release_validation.<version>.summary.json` under the versioned release log directory. `pb release evidence-status` already treats a green structured summary as high-confidence evidence, so future accepted baselines can be proven by machine-readable validation data instead of only release-log marker inference. The slice remains focused on evidence generation and reporting; it does not change adoption, Project Source upload, ZIP import semantics, or browser automation.
+
+### v0.1.30 — baseline-status development checkpoint artifact selection
+
+`v0.1.30` repairs a read-only operator-handoff defect in `pb release baseline-status`. When an installed development candidate is ahead of the accepted baseline and the operator accidentally runs `baseline-status --version <candidate>` without passing `--artifact`, the development checkpoint command now prefers the matching local candidate ZIP when it exists. This prevents the handoff from mixing the candidate version with the previously accepted artifact path. The slice is intentionally limited to read-only status guidance, tests, and documentation; it does not change adoption, Project Source upload, ZIP import, full-test execution, or browser automation.
+
