@@ -1,8 +1,9 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.36`  
+Release: `v0.1.37`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
+Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
 
 ## Purpose
 
@@ -257,6 +258,7 @@ The draw.io source refers to these repo-relative documentation files:
 - `docs/release-v0.1.33.md`
 - `docs/release-v0.1.35.md`
 - `docs/release-v0.1.36.md`
+- `docs/release-v0.1.37.md`
 - `docs/release-v0.1.34.md`
 - `docs/release-v0.1.31.md`
 - `docs/release-v0.1.23.md`
@@ -364,3 +366,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.36 — pre-threshold planning notice alignment
 
 `v0.1.36` aligns the read-only pre-threshold planning notice with the active full-test/adoption countdown. When the countdown is active but the configured threshold has not yet been reached, `release status-guide` now marks the planning notice and operator-plan step active while keeping `full_test_recommended_now=false` and leaving full release-control/adoption commands optional. This keeps adoption planning visible without prematurely forcing the expensive full-test checkpoint.
+
+
+### v0.1.37 — threshold handoff and Promptbranch class diagram
+
+`v0.1.37` is the threshold-handoff slice for the focused-development line that started after accepted baseline `v0.1.29`. It adds a compact read-only `threshold_handoff` payload to release status-guide and checkpoint output so the operator can distinguish ordinary focused continuation from the point where full release-control and adoption evidence must become the next gate. The handoff exposes the current candidate, expected threshold version, full-test command, adopt-current command, next safe operator step, and the class diagram source path. The release also adds `docs/design/promptbranch-class-diagram.drawio`, an editable diagrams.net class diagram covering the CLI, state store, artifact registry, release guidance/checkpoint classes, install plan, threshold handoff, release-control script, Project Source client, MCP host/server, and skill registry.

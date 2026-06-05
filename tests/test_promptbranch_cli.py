@@ -6717,6 +6717,12 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["focused_development_dod"]["definition_of_done"]["adoption_checkpoint"]["required_now"] is True
     assert payload["operator_runbook"]["focused_development_dod_status"] == "full_test_adoption_checkpoint_required"
     assert payload["operator_runbook"]["focused_continue_dod_complete"] is False
+    assert payload["threshold_handoff"]["status"] == "full_test_adoption_checkpoint_required"
+    assert payload["threshold_handoff"]["operator_action"] == "run_full_release_control_for_current_candidate"
+    assert payload["threshold_handoff"]["full_test_recommended_now"] is True
+    assert payload["threshold_handoff"]["class_diagram"] == "docs/design/promptbranch-class-diagram.drawio"
+    assert payload["operator_runbook"]["threshold_handoff_status"] == "full_test_adoption_checkpoint_required"
+    assert payload["operator_runbook"]["threshold_handoff_operator_action"] == "run_full_release_control_for_current_candidate"
     assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
     assert payload["checkpoint_threshold"]["next_development_version"] == _test_next_normal_version(dev_version)
@@ -7612,6 +7618,9 @@ hooks:
     assert payload["checkpoint_decision"]["continue_development"] is True
     assert payload["checkpoint_decision"]["full_test_recommended_now"] is True
     assert payload["checkpoint_decision"]["adopt_now"] is False
+    assert payload["threshold_handoff"]["status"] == "full_test_adoption_checkpoint_required"
+    assert payload["threshold_handoff"]["operator_action"] == "run_full_release_control_for_current_candidate"
+    assert payload["threshold_handoff"]["full_test_recommended_now"] is True
     assert "release_checkpoint_full_test_advised_by_complexity" in payload["warning_codes"]
     assert payload["complexity_summary"]["full_test_recommended_now"] is True
     assert "release_dev_complexity_normal_gap_threshold_reached" in payload["complexity_summary"]["reason_codes"]
@@ -11721,3 +11730,25 @@ def test_visual_artifact_roundtrip_prompt_hardens_download_url_json_syntax() -> 
     assert "download.url must be a JSON string" in prompt
     assert "Do not put Markdown link syntax in artifacts[0].download.url" in prompt
     assert "would parse with Python json.loads" in prompt
+
+
+def test_promptbranch_class_diagram_drawio_documents_core_classes() -> None:
+    diagram = Path("docs/design/promptbranch-class-diagram.drawio")
+    assert diagram.exists()
+    text = diagram.read_text(encoding="utf-8")
+    for class_name in [
+        "PromptbranchCLI",
+        "ConversationStateStore",
+        "ArtifactRegistry",
+        "ReleaseStatusGuide",
+        "ReleaseCheckpoint",
+        "ReleaseInstallPlan",
+        "ThresholdHandoff",
+        "ReleaseControlScript",
+        "ProjectSourceClient",
+        "PromptbranchMcpHost",
+        "PromptbranchMcpServer",
+        "SkillRegistry",
+    ]:
+        assert class_name in text
+    assert "threshold_handoff" in text or "ThresholdHandoff" in text
