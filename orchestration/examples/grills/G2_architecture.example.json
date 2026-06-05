@@ -1,0 +1,41 @@
+{
+  "schema": "promptbranch.orchestration.grill",
+  "schema_version": "1.0",
+  "stage": "G2_architecture",
+  "project": {
+    "id": "k8s-game-mvp",
+    "role": "orchestration-model-test-vehicle"
+  },
+  "provider": {
+    "kind": "manual_fixture",
+    "critical_path": false,
+    "note": "manual_fixture is allowed only for committed read-only examples; production critical-path grilling remains ChatGPT-only."
+  },
+  "proposal_status": "proposal_only",
+  "constraints": {
+    "model_may_execute": false,
+    "promptbranch_must_validate": true,
+    "source_mutation_allowed": false,
+    "artifact_adoption_allowed": false
+  },
+  "questions": [
+    {
+      "id": "G2_architecture_Q1",
+      "question": "Which boundary owns truth: ChatGPT proposal, Promptbranch accepted event, or tool evidence?",
+      "risk": "authority_confusion",
+      "required_evidence": [
+        "validated_json",
+        "operator_review"
+      ]
+    }
+  ],
+  "acceptance": {
+    "blocking_findings": [],
+    "decision": "continue"
+  },
+  "next_state_recommendation": {
+    "from": "grill_pending",
+    "to": "grill_reviewed",
+    "reason": "Example envelope is structurally valid and remains proposal-only until Promptbranch accepts a later event."
+  }
+}

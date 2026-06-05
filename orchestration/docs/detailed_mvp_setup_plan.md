@@ -125,3 +125,50 @@ The planning MVP is ready for implementation slices when:
 - model_may_execute=true is rejected in tests.
 - promptbranch_must_validate=false is rejected in tests.
 ```
+
+
+## v0.1.40 reconciliation and grill foundation
+
+`v0.1.40` is the reconciled continuation of the original planned `v0.1.1` grill slice after the line absorbed operational hardening through `v0.1.39`.
+
+Added files:
+
+```text
+orchestration/docs/current_status.md
+orchestration/docs/release_line_reconciliation.md
+orchestration/schemas/grill.schema.json
+orchestration/examples/grills/G0_intent.example.json
+orchestration/examples/grills/G1_mvp.example.json
+orchestration/examples/grills/G2_architecture.example.json
+orchestration/examples/grills/G3_slice.example.json
+orchestration/examples/grills/G4_implementation.example.json
+orchestration/examples/grills/G5_release_deployment.example.json
+orchestration/examples/grills/G6_maintenance.example.json
+scripts/orchestration/validate_grill.py
+tests/orchestration/test_orchestration_grill_schema.py
+docs/release-v0.1.40.md
+```
+
+Validation checklist:
+
+```bash
+python3 scripts/orchestration/validate_examples.py
+python3 scripts/orchestration/validate_grill.py
+python3 -m pytest -q tests/orchestration
+python3 -m compileall -q .
+```
+
+Scope boundary:
+
+```text
+read-only validation only
+no accepted-event write path
+no source mutation
+no artifact adoption
+no Kubernetes deployment
+no Ollama/local_llm provider approval
+```
+
+## Next handoff after v0.1.40
+
+The next orchestration slice should map valid grill stages to allowed k8s-game state-machine transitions, still read-only.
