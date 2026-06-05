@@ -68,6 +68,7 @@ from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smo
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
+from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -18727,6 +18728,40 @@ async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
 
 
 
+async def cmd_profile(args: argparse.Namespace) -> int:
+    repo_path = getattr(args, "repo_path", ".") or "."
+    config_path = getattr(args, "config", None)
+    if args.profile_command == "list":
+        result = profile_registry(repo_path=repo_path, config_path=config_path)
+    elif args.profile_command == "pools":
+        result = profile_pools(repo_path=repo_path, config_path=config_path, profile_name=getattr(args, "profile", None))
+    elif args.profile_command == "show":
+        result = profile_show(args.name, repo_path=repo_path, config_path=config_path)
+    else:
+        raise RuntimeError(f"Unknown profile command: {args.profile_command}")
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result.get("ok") else 2
+
+    print(f"status={result.get('status')}")
+    if args.profile_command == "list":
+        print(f"profile_count={result.get('profile_count')}")
+        for profile in result.get("profiles", []):
+            print(f"{profile.get('name')}	{profile.get('kind')}	{profile.get('status')}")
+    elif args.profile_command == "pools":
+        print(f"pool_count={result.get('pool_count')}")
+        for pool in result.get("pools", []):
+            print(f"{pool.get('profile')}/{pool.get('name')}	size={pool.get('size')}	{pool.get('profile_status')}")
+    elif args.profile_command == "show" and result.get("ok"):
+        profile = result.get("profile", {})
+        print(f"profile={profile.get('name')}")
+        print(f"kind={profile.get('kind')}")
+        print(f"status={profile.get('status')}")
+        print(f"seed_dir={profile.get('seed_dir')}")
+    return 0 if result.get("ok") else 2
+
+
 async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     if args.agent_command == "inspect":
@@ -19377,6 +19412,26 @@ def make_parser() -> argparse.ArgumentParser:
     src_sync.add_argument("--dry-run", "--plan", dest="dry_run", action="store_true", help="Plan source sync without creating a ZIP, updating local state, or uploading a source.")
     src_sync.add_argument("--json", action="store_true", help="Emit the sync result as JSON.")
     src_sync.add_argument("--keep-open", action="store_true")
+
+    profile = subparsers.add_parser("profile", help="Named browser/service profile registry commands for future parallel execution.")
+    profile_subparsers = profile.add_subparsers(dest="profile_command", required=True)
+
+    profile_list = profile_subparsers.add_parser("list", help="List named local and service profile definitions.")
+    profile_list.add_argument("--repo-path", default=".", help="Repository root used to resolve relative local seed profile paths. Defaults to current directory.")
+    profile_list.add_argument("--config", help="Optional JSON profile registry extension file. Relative paths are resolved from --repo-path.")
+    profile_list.add_argument("--json", action="store_true", help="Emit profile registry as JSON.")
+
+    profile_pools_parser = profile_subparsers.add_parser("pools", help="List profile pool definitions across named profiles.")
+    profile_pools_parser.add_argument("--profile", help="Optional profile name filter.")
+    profile_pools_parser.add_argument("--repo-path", default=".", help="Repository root used to resolve relative local seed profile paths. Defaults to current directory.")
+    profile_pools_parser.add_argument("--config", help="Optional JSON profile registry extension file. Relative paths are resolved from --repo-path.")
+    profile_pools_parser.add_argument("--json", action="store_true", help="Emit profile pools as JSON.")
+
+    profile_show_parser = profile_subparsers.add_parser("show", help="Show one named profile definition.")
+    profile_show_parser.add_argument("name", help="Profile name, for example local-debug or service-default.")
+    profile_show_parser.add_argument("--repo-path", default=".", help="Repository root used to resolve relative local seed profile paths. Defaults to current directory.")
+    profile_show_parser.add_argument("--config", help="Optional JSON profile registry extension file. Relative paths are resolved from --repo-path.")
+    profile_show_parser.add_argument("--json", action="store_true", help="Emit profile definition as JSON.")
 
     browser = subparsers.add_parser("browser", help="Browser profile monitor commands.")
     browser_subparsers = browser.add_subparsers(dest="browser_command", required=True)
@@ -20302,6 +20357,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_status(args)
     if args.command == "test" and getattr(args, "test_command", None) == "import-smoke":
         return await cmd_test_import_smoke(args)
+    if args.command == "profile":
+        return await cmd_profile(args)
 
     _apply_protocol_timeout(args)
     profile_lease: PromptbranchProfileLease | None = None
