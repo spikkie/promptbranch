@@ -1087,3 +1087,33 @@ def test_parser_accepts_ask_debug_browser_flags() -> None:
     assert args.pause_after_fill is True
     assert args.pause_before_submit is True
 
+
+
+def test_parser_accepts_profile_pool_for_parallel_task_commands() -> None:
+    parser = make_parser()
+
+    task_list = parser.parse_args([
+        "task", "list", "--json", "--profile-pool", "tasks", "--profile-pool-size", "3"
+    ])
+    assert task_list.command == "task"
+    assert task_list.task_command == "list"
+    assert task_list.profile_pool == "tasks"
+    assert task_list.profile_pool_size == 3
+
+    task_show = parser.parse_args([
+        "task", "show", "1", "--profile-pool", "tasks", "--profile-pool-refresh"
+    ])
+    assert task_show.task_command == "show"
+    assert task_show.profile_pool == "tasks"
+    assert task_show.profile_pool_refresh is True
+
+
+def test_parser_accepts_release_live_profile_pool_defaults() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["test", "release-live", "--json", "--run-id", "UNIT"])
+    assert args.command == "test"
+    assert args.test_command == "release-live"
+    assert args.profile_pool == "release-live"
+    assert args.profile_pool_size == 2
+    assert args.project_name_prefix == "release-live-temp"
+    assert args.debug_browser is True

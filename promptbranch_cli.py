@@ -90,6 +90,302 @@ DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1200.0
 DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS = 600.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
+
+
+DEFAULT_PROFILE_POOL_SIZE = 2
+DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS = 0.0
+DEFAULT_PROFILE_LEASE_TTL_SECONDS = 24 * 60 * 60.0
+PROFILE_LEASE_DIRNAME = ".promptbranch_profile_lease.lock"
+PROFILE_POOLS_DIR_SUFFIX = "_pools"
+
+
+def _now_unix() -> float:
+    return time.time()
+
+
+def _is_browser_profile_lease_command(args: argparse.Namespace) -> bool:
+    command = getattr(args, "command", None)
+    if command == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
+        return True
+    if command == "task" and getattr(args, "task_command", None) in {"list", "use", "show", "messages", "message", "answer"}:
+        return True
+    return False
+
+
+def _profile_pool_root(seed_profile_dir: str | Path, pool_name: str) -> Path:
+    seed = Path(seed_profile_dir).expanduser().resolve()
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(pool_name or "default")).strip("._-") or "default"
+    return seed.parent / f"{seed.name}{PROFILE_POOLS_DIR_SUFFIX}" / safe_name
+
+
+def _profile_copy_ignore(directory: str, names: list[str]) -> set[str]:
+    ignored: set[str] = set()
+    for name in names:
+        if name.startswith("Singleton"):
+            ignored.add(name)
+        if name in {
+            "Crashpad",
+            "BrowserMetrics",
+            "Code Cache",
+            "GPUCache",
+            "GrShaderCache",
+            "ShaderCache",
+            "DawnCache",
+            "blob_storage",
+            ".cache",
+            PROFILE_LEASE_DIRNAME,
+        }:
+            ignored.add(name)
+        if name.endswith(".lock") or name.endswith(".tmp"):
+            ignored.add(name)
+        if name == "profile_pools" or name.endswith(PROFILE_POOLS_DIR_SUFFIX):
+            ignored.add(name)
+    return ignored
+
+
+def _clone_profile_seed(seed_profile_dir: Path, slot_profile_dir: Path, *, refresh: bool = False) -> dict[str, Any]:
+    seed = seed_profile_dir.expanduser().resolve()
+    slot = slot_profile_dir.expanduser().resolve()
+    if not seed.exists():
+        return {
+            "ok": False,
+            "status": "profile_seed_missing",
+            "seed_profile_dir": str(seed),
+            "slot_profile_dir": str(slot),
+            "error": "profile pool seed profile directory does not exist",
+        }
+    if refresh and slot.exists():
+        shutil.rmtree(slot)
+    if slot.exists():
+        return {
+            "ok": True,
+            "status": "profile_slot_reused",
+            "seed_profile_dir": str(seed),
+            "slot_profile_dir": str(slot),
+            "refreshed": False,
+        }
+    slot.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(seed, slot, ignore=_profile_copy_ignore)
+    return {
+        "ok": True,
+        "status": "profile_slot_cloned",
+        "seed_profile_dir": str(seed),
+        "slot_profile_dir": str(slot),
+        "refreshed": bool(refresh),
+    }
+
+
+def _lock_metadata_path(lock_dir: Path) -> Path:
+    return lock_dir / "lease.json"
+
+
+def _read_lock_metadata(lock_dir: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(_lock_metadata_path(lock_dir).read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _lock_is_stale(lock_dir: Path, *, ttl_seconds: float) -> bool:
+    if not lock_dir.exists():
+        return False
+    meta = _read_lock_metadata(lock_dir)
+    created_at = meta.get("created_at_unix")
+    try:
+        age = _now_unix() - float(created_at)
+    except Exception:
+        try:
+            age = _now_unix() - lock_dir.stat().st_mtime
+        except Exception:
+            return False
+    return age > max(1.0, float(ttl_seconds))
+
+
+class ProfileLeaseError(RuntimeError):
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        super().__init__(str(payload.get("error") or payload.get("status") or "profile lease failed"))
+
+
+class PromptbranchProfileLease:
+    """Exclusive local lease for a physical browser profile or cloned pool slot.
+
+    This does not make Chromium user-data-dir sharing safe. It either serializes
+    access to one physical profile directory or selects one cloned slot from a
+    named profile pool so parallel browser-backed Promptbranch commands can use
+    the same authenticated account without opening the same user-data-dir at the
+    same time.
+    """
+
+    def __init__(
+        self,
+        *,
+        profile_dir: str | Path,
+        action: str,
+        pool_name: str | None = None,
+        pool_size: int = DEFAULT_PROFILE_POOL_SIZE,
+        seed_profile_dir: str | Path | None = None,
+        refresh_slot: bool = False,
+        timeout_seconds: float = DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS,
+        ttl_seconds: float = DEFAULT_PROFILE_LEASE_TTL_SECONDS,
+    ) -> None:
+        self.original_profile_dir = Path(profile_dir).expanduser().resolve()
+        self.action = action
+        self.pool_name = str(pool_name).strip() if pool_name else None
+        self.pool_size = max(1, int(pool_size or DEFAULT_PROFILE_POOL_SIZE))
+        self.seed_profile_dir = Path(seed_profile_dir).expanduser().resolve() if seed_profile_dir else self.original_profile_dir
+        self.refresh_slot = bool(refresh_slot)
+        self.timeout_seconds = max(0.0, float(timeout_seconds or 0.0))
+        self.ttl_seconds = max(1.0, float(ttl_seconds or DEFAULT_PROFILE_LEASE_TTL_SECONDS))
+        self.leased_profile_dir: Path | None = None
+        self.lock_dir: Path | None = None
+        self.slot_name: str | None = None
+        self.clone_result: dict[str, Any] | None = None
+        self.metadata: dict[str, Any] | None = None
+
+    def __enter__(self) -> "PromptbranchProfileLease":
+        deadline = _now_unix() + self.timeout_seconds
+        while True:
+            payload = self._try_acquire()
+            if payload.get("ok"):
+                return self
+            if _now_unix() >= deadline:
+                raise ProfileLeaseError(payload)
+            time.sleep(min(0.25, max(0.05, deadline - _now_unix())))
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.release()
+
+    def _candidate_slots(self) -> list[tuple[str, Path, Path]]:
+        if self.pool_name:
+            root = _profile_pool_root(self.seed_profile_dir, self.pool_name)
+            return [
+                (f"slot-{index}", root / "slots" / f"slot-{index}", root / "leases" / f"slot-{index}.lock")
+                for index in range(1, self.pool_size + 1)
+            ]
+        return [("single", self.original_profile_dir, self.original_profile_dir / PROFILE_LEASE_DIRNAME)]
+
+    def _try_acquire(self) -> dict[str, Any]:
+        busy: list[dict[str, Any]] = []
+        for slot_name, profile_dir, lock_dir in self._candidate_slots():
+            if _lock_is_stale(lock_dir, ttl_seconds=self.ttl_seconds):
+                shutil.rmtree(lock_dir, ignore_errors=True)
+            try:
+                lock_dir.parent.mkdir(parents=True, exist_ok=True)
+                lock_dir.mkdir()
+            except FileExistsError:
+                busy.append({"slot": slot_name, "lock_dir": str(lock_dir), "owner": _read_lock_metadata(lock_dir)})
+                continue
+            clone_result: dict[str, Any] | None = None
+            try:
+                if self.pool_name:
+                    clone_result = _clone_profile_seed(self.seed_profile_dir, profile_dir, refresh=self.refresh_slot)
+                    if not clone_result.get("ok"):
+                        shutil.rmtree(lock_dir, ignore_errors=True)
+                        return {
+                            **clone_result,
+                            "action": "profile_lease",
+                            "profile_pool": self.pool_name,
+                            "profile_pool_slot": slot_name,
+                        }
+                metadata = {
+                    "pid": os.getpid(),
+                    "action": self.action,
+                    "created_at_unix": _now_unix(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "profile_dir": str(profile_dir),
+                    "original_profile_dir": str(self.original_profile_dir),
+                    "profile_pool": self.pool_name,
+                    "profile_pool_slot": slot_name,
+                }
+                _lock_metadata_path(lock_dir).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+                self.lock_dir = lock_dir
+                self.leased_profile_dir = profile_dir
+                self.slot_name = slot_name
+                self.clone_result = clone_result
+                self.metadata = metadata
+                return self.to_payload(ok=True)
+            except Exception as exc:
+                shutil.rmtree(lock_dir, ignore_errors=True)
+                return {
+                    "ok": False,
+                    "action": "profile_lease",
+                    "status": "profile_lease_failed",
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                    "profile_pool": self.pool_name,
+                    "profile_pool_slot": slot_name,
+                    "profile_dir": str(profile_dir),
+                }
+        return {
+            "ok": False,
+            "action": "profile_lease",
+            "status": "profile_pool_busy" if self.pool_name else "profile_busy",
+            "classification": "expected_contention",
+            "error": "no browser profile slot is currently available" if self.pool_name else "browser profile is already leased by another Promptbranch process",
+            "profile_dir": str(self.original_profile_dir),
+            "profile_pool": self.pool_name,
+            "profile_pool_size": self.pool_size if self.pool_name else None,
+            "busy_slots": busy,
+            "retry_after_seconds": 1,
+        }
+
+    def to_payload(self, *, ok: bool = True) -> dict[str, Any]:
+        return {
+            "ok": bool(ok),
+            "action": "profile_lease",
+            "status": "leased" if ok else "not_leased",
+            "profile_dir": str(self.leased_profile_dir or self.original_profile_dir),
+            "original_profile_dir": str(self.original_profile_dir),
+            "profile_pool": self.pool_name,
+            "profile_pool_slot": self.slot_name,
+            "profile_pool_size": self.pool_size if self.pool_name else None,
+            "lock_dir": str(self.lock_dir) if self.lock_dir else None,
+            "clone": self.clone_result,
+            "metadata": self.metadata,
+        }
+
+    def release(self) -> None:
+        if self.lock_dir is not None:
+            shutil.rmtree(self.lock_dir, ignore_errors=True)
+            self.lock_dir = None
+
+
+def _profile_lease_settings_from_args(args: argparse.Namespace) -> dict[str, Any] | None:
+    if not _is_browser_profile_lease_command(args):
+        return None
+    if bool(getattr(args, "no_profile_lease", False)):
+        return None
+    pool_name = getattr(args, "profile_pool", None)
+    if not pool_name and not bool(getattr(args, "profile_lease", False)):
+        return None
+    return {
+        "profile_dir": getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        "action": _command_action_name(args),
+        "pool_name": pool_name,
+        "pool_size": getattr(args, "profile_pool_size", DEFAULT_PROFILE_POOL_SIZE),
+        "seed_profile_dir": getattr(args, "profile_pool_seed_dir", None) or getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        "refresh_slot": bool(getattr(args, "profile_pool_refresh", False)),
+        "timeout_seconds": getattr(args, "profile_lease_timeout_seconds", DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS),
+        "ttl_seconds": getattr(args, "profile_lease_ttl_seconds", DEFAULT_PROFILE_LEASE_TTL_SECONDS),
+    }
+
+
+def _emit_profile_lease_error(exc: ProfileLeaseError, args: argparse.Namespace) -> int:
+    payload = dict(exc.payload)
+    payload.setdefault("ok", False)
+    payload.setdefault("action", "profile_lease")
+    payload.setdefault("command_action", _command_action_name(args))
+    payload.setdefault("recovery_hint", "Use --profile-pool <name> for parallel browser-backed commands, increase --profile-pool-size, wait for the active lease to finish, or inspect/remove stale lease directories only after confirming no matching process is running.")
+    if _json_output_requested(args):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"{payload.get('status')}: {payload.get('error')}", file=sys.stderr)
+        if payload.get("profile_pool"):
+            print(f"profile_pool={payload.get('profile_pool')}", file=sys.stderr)
+        print(str(payload.get("recovery_hint")), file=sys.stderr)
+    return 75
 COMMANDS = {
     "login-check",
     "ask",
@@ -872,8 +1168,7 @@ def _configure_logging(debug: bool) -> None:
 
 
 def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
-    resolved_profile_dir = str(resolve_profile_dir(getattr(args, "profile_dir", None)))
-    args.profile_dir = resolved_profile_dir
+    resolved_profile_dir = str(resolve_profile_dir(getattr(args, "_browser_profile_dir", None) or getattr(args, "profile_dir", None)))
     settings = ChatGPTAutomationSettings(
         project_url=args.project_url,
         email=args.email,
@@ -6629,7 +6924,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "--json", "--scroll-rounds", "--wait-ms", "--no-history", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -17622,6 +17917,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     "run_id": run_id,
                     "mode": "visible_local_debug_browser",
                     "profile_dir": profile_dir,
+        "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
+        "profile_lease": getattr(args, "profile_lease", None),
                     "debug_browser": True,
                     "service_transport_used": False,
                     "test_project_name": test_project_name,
@@ -17775,6 +18072,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
         "run_id": run_id,
         "mode": "visible_local_debug_browser",
         "profile_dir": profile_dir,
+        "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
+        "profile_lease": getattr(args, "profile_lease", None),
         "debug_browser": True,
         "service_transport_used": False,
         "uses_temporary_project": not bool(explicit_conversation_url),
@@ -18015,7 +18314,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         payload = {
             "ok": False,
             "action": "test_visual_artifact_roundtrip",
-            "profile": "visual-artifact-roundtrip",
+            "profile": getattr(args, "result_profile", None) or "visual-artifact-roundtrip",
             "status": status if cleanup_ok else "cleanup_failed",
             "version": f"v{CLI_VERSION}",
             "run_id": run_id,
@@ -18023,6 +18322,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "service_transport_used": False,
             "mode": "visible_local_debug_browser",
             "profile_dir": profile_dir,
+        "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
+        "profile_lease": getattr(args, "profile_lease", None),
             "input_zip": str(input_zip),
             "input_entry": input_entry,
             "input_content": input_content,
@@ -18200,7 +18501,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     payload = {
         "ok": ok,
         "action": "test_visual_artifact_roundtrip",
-        "profile": "visual-artifact-roundtrip",
+        "profile": getattr(args, "result_profile", None) or "visual-artifact-roundtrip",
         "status": status,
         "version": f"v{CLI_VERSION}",
         "run_id": run_id,
@@ -18208,6 +18509,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "service_transport_used": False,
         "mode": "visible_local_debug_browser",
         "profile_dir": profile_dir,
+        "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
+        "profile_lease": getattr(args, "profile_lease", None),
         "input_zip": str(input_zip),
         "input_entry": input_entry,
         "input_content": input_content,
@@ -18282,6 +18585,11 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_test_ask_live(backend, args)
     if args.test_command == "artifact-roundtrip":
         return await cmd_test_artifact_roundtrip(args)
+    if args.test_command == "release-live":
+        args.result_profile = "release-live"
+        if not getattr(args, "project_name_prefix", None):
+            args.project_name_prefix = "release-live-temp"
+        return await cmd_test_visual_artifact_roundtrip(backend, args)
     if args.test_command == "visual-artifact-roundtrip":
         return await cmd_test_visual_artifact_roundtrip(backend, args)
     if args.test_command == "smoke":
@@ -18806,6 +19114,43 @@ def _add_test_suite_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
 
 
+
+def _add_profile_pool_options(parser: argparse.ArgumentParser, *, default_pool: str | None = None) -> None:
+    parser.add_argument("--profile-pool", default=default_pool, help="Lease a cloned browser profile slot from the named pool instead of opening the physical --profile-dir directly.")
+    parser.add_argument("--profile-pool-size", type=int, default=DEFAULT_PROFILE_POOL_SIZE, help=f"Maximum cloned browser profile slots in --profile-pool. Defaults to {DEFAULT_PROFILE_POOL_SIZE}.")
+    parser.add_argument("--profile-pool-seed-dir", help="Authenticated seed profile to clone into pool slots. Defaults to --profile-dir.")
+    parser.add_argument("--profile-pool-refresh", action="store_true", help="Refresh the leased pool slot from the seed profile before use.")
+    parser.add_argument("--profile-lease", action="store_true", help="Serialize direct access to the physical --profile-dir even without --profile-pool.")
+    parser.add_argument("--no-profile-lease", action="store_true", help="Disable Promptbranch profile leasing for this browser-backed command.")
+    parser.add_argument("--profile-lease-timeout-seconds", type=float, default=DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS, help="Seconds to wait for a profile lease/slot before failing with profile_busy/profile_pool_busy.")
+    parser.add_argument("--profile-lease-ttl-seconds", type=float, default=DEFAULT_PROFILE_LEASE_TTL_SECONDS, help="Seconds after which an abandoned profile lease is considered stale.")
+
+
+def _add_task_profile_pool_options(parser: argparse.ArgumentParser) -> None:
+    _add_profile_pool_options(parser, default_pool=None)
+
+
+def _add_visual_artifact_roundtrip_options(parser: argparse.ArgumentParser, *, default_profile_pool: str | None = None, default_project_name_prefix: str = "visual-artifact-roundtrip-temp") -> None:
+    parser.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")
+    parser.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
+    parser.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after the ask/download steps.")
+    parser.add_argument("--keep-project", action="store_true", help="Keep the temporary ChatGPT Project for debugging instead of removing it after the run.")
+    parser.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of creating a temporary project.")
+    parser.add_argument("--project-name", help="Explicit temporary ChatGPT Project name. Defaults to <prefix>-<run-id>.")
+    parser.add_argument("--project-name-prefix", default=default_project_name_prefix, help="Temporary ChatGPT Project name prefix.")
+    parser.add_argument("--project-icon", help="Optional temporary project icon passed to project creation.")
+    parser.add_argument("--project-color", help="Optional temporary project color passed to project creation.")
+    parser.add_argument("--memory-mode", default="project-only", help="Temporary project memory mode. Defaults to project-only.")
+    parser.add_argument("--retries", type=int, help="Retry count passed to the visual pb ask step.")
+    parser.add_argument("--download-timeout", type=float, default=120.0, help="Artifact download timeout in seconds for the retrieve step.")
+    parser.add_argument("--input-entry", default="input.txt", help="Filename to place inside the locally generated input ZIP.")
+    parser.add_argument("--input-content", help="Exact UTF-8 content to place in the input ZIP. Defaults to a run-id sentinel.")
+    parser.add_argument("--output-filename", help="Expected generated ZIP filename. Defaults to pb_visual_artifact_roundtrip_<run-id>.zip.")
+    parser.add_argument("--expect-entry", default="output.txt", help="Expected file entry inside the generated ZIP.")
+    parser.add_argument("--expect-content", help="Expected UTF-8 content inside --expect-entry. Defaults to a run-id sentinel.")
+    _add_profile_pool_options(parser, default_pool=default_profile_pool)
+    parser.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_cli_command_name(),
@@ -18872,11 +19217,13 @@ def make_parser() -> argparse.ArgumentParser:
     task_list.add_argument("--json", action="store_true", help="Emit the full task list payload as JSON.")
     task_list.add_argument("--keep-open", action="store_true")
     task_list.add_argument("--deep-history", action="store_true", help="Also scan global conversation history. Slow and may trigger ChatGPT 429s; normally unnecessary when project backend/indexed sources work.")
+    _add_task_profile_pool_options(task_list)
 
     task_use = task_subparsers.add_parser("use", help="Select the active task.")
     task_use.add_argument("target", help="Conversation URL, conversation id, id prefix, exact title, or numeric index from task list.")
     task_use.add_argument("--json", action="store_true", help="Emit the resulting selection as JSON.")
     task_use.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(task_use)
 
     task_current = task_subparsers.add_parser("current", help="Show the current task scope.")
     task_current.add_argument("--json", action="store_true", help="Emit task state as JSON.")
@@ -18888,6 +19235,7 @@ def make_parser() -> argparse.ArgumentParser:
     task_show.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_show.add_argument("--json", action="store_true", help="Emit the full task payload as JSON.")
     task_show.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(task_show)
 
     task_messages = task_subparsers.add_parser("messages", help="Inspect user messages in the current task.")
     task_messages_subparsers = task_messages.add_subparsers(dest="task_messages_command", required=True)
@@ -18895,6 +19243,7 @@ def make_parser() -> argparse.ArgumentParser:
     task_messages_list.add_argument("target", nargs="?", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_messages_list.add_argument("--json", action="store_true", help="Emit grouped message/answer payload as JSON.")
     task_messages_list.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(task_messages_list)
 
     task_message = task_subparsers.add_parser("message", help="Inspect one message subresource in the current task.")
     task_message_subparsers = task_message.add_subparsers(dest="task_message_command", required=True)
@@ -18903,11 +19252,13 @@ def make_parser() -> argparse.ArgumentParser:
     task_message_show.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_message_show.add_argument("--json", action="store_true", help="Emit the selected message as JSON.")
     task_message_show.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(task_message_show)
 
     task_message_answer = task_message_subparsers.add_parser("answer", help="Show assistant answer(s) for one user message.")
     task_message_answer.add_argument("id_or_index", help="Message index, exact id, or unique id prefix.")
     task_message_answer.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_message_answer.add_argument("--json", action="store_true", help="Emit answer payload as JSON.")
+    _add_task_profile_pool_options(task_message_answer)
     task_message_answer.add_argument("--keep-open", action="store_true")
 
     task_answer = task_subparsers.add_parser("answer", help="Parse assistant answers as Promptbranch protocol data.")
@@ -18922,6 +19273,7 @@ def make_parser() -> argparse.ArgumentParser:
     task_answer_parse.add_argument("--task", dest="target", help="Optional conversation URL, id, id prefix, exact title, or numeric index from task list.")
     task_answer_parse.add_argument("--json", action="store_true", help="Emit parsed protocol reply as JSON.")
     task_answer_parse.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(task_answer_parse)
 
     src = subparsers.add_parser("src", help="Source commands for the active workspace.")
     src_subparsers = src.add_subparsers(dest="src_command", required=True)
@@ -19472,7 +19824,15 @@ def make_parser() -> argparse.ArgumentParser:
     test_visual_artifact_roundtrip.add_argument("--output-filename", help="Expected generated ZIP filename. Defaults to pb_visual_artifact_roundtrip_<run-id>.zip.")
     test_visual_artifact_roundtrip.add_argument("--expect-entry", default="output.txt", help="Expected file entry inside the generated ZIP.")
     test_visual_artifact_roundtrip.add_argument("--expect-content", help="Expected UTF-8 content inside --expect-entry. Defaults to a run-id sentinel.")
+    _add_profile_pool_options(test_visual_artifact_roundtrip, default_pool=None)
     test_visual_artifact_roundtrip.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
+    test_release_live = test_subparsers.add_parser("release-live", help="Run the explicit live release browser gate using a leased profile/pool slot.")
+    _add_visual_artifact_roundtrip_options(
+        test_release_live,
+        default_profile_pool="release-live",
+        default_project_name_prefix="release-live-temp",
+    )
 
     test_report = test_subparsers.add_parser("report", help="Summarize a pb test-suite / pb test full JSON log.")
     test_report.add_argument("log", help="Path to a log produced by pb test-suite --json or pb test full --json.")
@@ -19869,82 +20229,100 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_import_smoke(args)
 
     _apply_protocol_timeout(args)
-    backend = build_backend(args)
-    if args.command == "login-check":
-        return await cmd_login_check(backend, args)
-    if args.command == "ws":
-        return await cmd_ws(backend, args)
-    if args.command == "task":
-        return await cmd_task(backend, args)
-    if args.command == "src":
-        return await cmd_src(backend, args)
-    if args.command == "artifact":
-        return await cmd_artifact(backend, args)
-    if args.command == "ask-release":
-        return await cmd_ask_release(backend, args)
-    if args.command == "release":
-        return await cmd_release(backend, args)
-    if args.command == "agent":
-        return await cmd_agent(backend, args)
-    if args.command == "skill":
-        return await cmd_skill(backend, args)
-    if args.command == "mcp":
-        return await cmd_mcp(backend, args)
-    if args.command == "test":
-        return await cmd_test(backend, args)
-    if args.command == "doctor":
-        return await cmd_doctor(backend, args)
-    if args.command == "debug":
-        return await cmd_debug(backend, args)
-    if args.command == "browser":
-        return await cmd_browser(backend, args)
-    if args.command == "project-create":
-        return await cmd_project_create(backend, args)
-    if args.command == "project-list":
-        return await cmd_project_list(backend, args)
-    if args.command == "project-resolve":
-        return await cmd_project_resolve(backend, args)
-    if args.command == "project-ensure":
-        return await cmd_project_ensure(backend, args)
-    if args.command == "project-remove":
-        return await cmd_project_remove(backend, args)
-    if args.command == "project-source-add":
-        return await cmd_project_source_add(backend, args)
-    if args.command == "project-source-list":
-        return await cmd_project_source_list(backend, args)
-    if args.command == "project-source-remove":
-        return await cmd_project_source_remove(backend, args)
-    if args.command in {"chat-list", "chats"}:
-        return await cmd_chat_list(backend, args)
-    if args.command in {"chat-use", "use-chat"}:
-        return await cmd_chat_use(backend, args)
-    if args.command in {"chat-leave", "cq"}:
-        return await cmd_chat_leave(backend, args)
-    if args.command in {"chat-show", "show"}:
-        return await cmd_chat_show(backend, args)
-    if args.command in {"chat-summarize", "summarize"}:
-        return await cmd_chat_summarize(backend, args)
-    if args.command == "state":
-        return await cmd_state(backend, args)
-    if args.command == "prompt":
-        return await cmd_prompt(backend, args)
-    if args.command == "state-clear":
-        return await cmd_state_clear(backend, args)
-    if args.command == "use":
-        return await cmd_use(backend, args)
-    if args.command == "completion":
-        return await cmd_completion(backend, args)
-    if args.command == "version":
-        print(f"promptbranch {CLI_VERSION}")
-        return 0
-    if args.command == "test-suite":
-        return await cmd_test_suite(args)
-    if args.command == "ask":
-        return await cmd_ask(backend, args)
-    if args.command == "shell":
-        return await cmd_shell(backend, args)
-    raise RuntimeError(f"Unknown command: {args.command}")
-
+    profile_lease: PromptbranchProfileLease | None = None
+    try:
+        lease_settings = _profile_lease_settings_from_args(args)
+        if lease_settings:
+            profile_lease = PromptbranchProfileLease(**lease_settings)
+            profile_lease.__enter__()
+            args._browser_profile_dir = str(profile_lease.leased_profile_dir or lease_settings.get("profile_dir"))
+            args.profile_lease = profile_lease.to_payload(ok=True)
+            # Profile-pool slots are local filesystem browser profiles. The Docker
+            # service owns its own container profile and cannot use these local
+            # leased slot paths, so pooled browser-backed commands intentionally
+            # run through the direct local browser backend.
+            if lease_settings.get("pool_name") or bool(getattr(args, "profile_lease", False)):
+                args.service_base_url = None
+        backend = build_backend(args)
+        if args.command == "login-check":
+            return await cmd_login_check(backend, args)
+        if args.command == "ws":
+            return await cmd_ws(backend, args)
+        if args.command == "task":
+            return await cmd_task(backend, args)
+        if args.command == "src":
+            return await cmd_src(backend, args)
+        if args.command == "artifact":
+            return await cmd_artifact(backend, args)
+        if args.command == "ask-release":
+            return await cmd_ask_release(backend, args)
+        if args.command == "release":
+            return await cmd_release(backend, args)
+        if args.command == "agent":
+            return await cmd_agent(backend, args)
+        if args.command == "skill":
+            return await cmd_skill(backend, args)
+        if args.command == "mcp":
+            return await cmd_mcp(backend, args)
+        if args.command == "test":
+            return await cmd_test(backend, args)
+        if args.command == "doctor":
+            return await cmd_doctor(backend, args)
+        if args.command == "debug":
+            return await cmd_debug(backend, args)
+        if args.command == "browser":
+            return await cmd_browser(backend, args)
+        if args.command == "project-create":
+            return await cmd_project_create(backend, args)
+        if args.command == "project-list":
+            return await cmd_project_list(backend, args)
+        if args.command == "project-resolve":
+            return await cmd_project_resolve(backend, args)
+        if args.command == "project-ensure":
+            return await cmd_project_ensure(backend, args)
+        if args.command == "project-remove":
+            return await cmd_project_remove(backend, args)
+        if args.command == "project-source-add":
+            return await cmd_project_source_add(backend, args)
+        if args.command == "project-source-list":
+            return await cmd_project_source_list(backend, args)
+        if args.command == "project-source-remove":
+            return await cmd_project_source_remove(backend, args)
+        if args.command in {"chat-list", "chats"}:
+            return await cmd_chat_list(backend, args)
+        if args.command in {"chat-use", "use-chat"}:
+            return await cmd_chat_use(backend, args)
+        if args.command in {"chat-leave", "cq"}:
+            return await cmd_chat_leave(backend, args)
+        if args.command in {"chat-show", "show"}:
+            return await cmd_chat_show(backend, args)
+        if args.command in {"chat-summarize", "summarize"}:
+            return await cmd_chat_summarize(backend, args)
+        if args.command == "state":
+            return await cmd_state(backend, args)
+        if args.command == "prompt":
+            return await cmd_prompt(backend, args)
+        if args.command == "state-clear":
+            return await cmd_state_clear(backend, args)
+        if args.command == "use":
+            return await cmd_use(backend, args)
+        if args.command == "completion":
+            return await cmd_completion(backend, args)
+        if args.command == "version":
+            print(f"promptbranch {CLI_VERSION}")
+            return 0
+        if args.command == "test-suite":
+            return await cmd_test_suite(args)
+        if args.command == "ask":
+            return await cmd_ask(backend, args)
+        if args.command == "shell":
+            return await cmd_shell(backend, args)
+        raise RuntimeError(f"Unknown command: {args.command}")
+    except ProfileLeaseError as exc:
+        return _emit_profile_lease_error(exc, args)
+    finally:
+        if profile_lease is not None:
+            profile_lease.release()
 
 def main(argv: Optional[list[str]] = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
@@ -19960,7 +20338,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return help_exit_code
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
-    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) == "ask-live":
+    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
         args.debug_browser = True
         args.headless = False
         if not _option_was_provided(normalized_argv, "--profile-dir"):

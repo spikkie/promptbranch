@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.37`  
+Release: `v0.1.38`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -371,3 +371,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.37 — threshold handoff and Promptbranch class diagram
 
 `v0.1.37` is the threshold-handoff slice for the focused-development line that started after accepted baseline `v0.1.29`. It adds a compact read-only `threshold_handoff` payload to release status-guide and checkpoint output so the operator can distinguish ordinary focused continuation from the point where full release-control and adoption evidence must become the next gate. The handoff exposes the current candidate, expected threshold version, full-test command, adopt-current command, next safe operator step, and the class diagram source path. The release also adds `docs/design/promptbranch-class-diagram.drawio`, an editable diagrams.net class diagram covering the CLI, state store, artifact registry, release guidance/checkpoint classes, install plan, threshold handoff, release-control script, Project Source client, MCP host/server, and skill registry.
+
+
+### v0.1.38 — profile-pool leases for parallel task reads
+
+`v0.1.38` rebases the profile lease/pool solution onto the `chatgpt_claudecode_workflow-2` line. Browser-backed `pb task` commands can now lease cloned profile-pool slots through `--profile-pool`, allowing parallel task listing/show/answer inspection without opening the same physical Chromium/Patchright user-data-dir concurrently. The slice also adds `pb test release-live --json` as an explicit live browser gate around `visual-artifact-roundtrip`, while keeping `pb test full` deterministic. The operator state file remains rooted at the selected seed `--profile-dir`; the leased slot is used only for browser automation.
