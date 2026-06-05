@@ -381,3 +381,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.39 — read-only ChatGPT rate-limit diagnostics
 
 `v0.1.39` adds `pb debug rate-limit --json` as a first-class diagnostic for the ChatGPT conversation-history guardrail. The command captures visible modal text, observed `/backend-api/*` `403`/`429` responses, `retry-after` when exposed, persisted cooldown state, and a safe pause policy. Guardrail detection is read-only and does not attempt bypass or direct mutation; service-level retry loops treat the rate-limit modal timeout as non-retryable so Promptbranch pauses instead of amplifying the restriction. The release also documents the current private `https://chatgpt.com/backend-api` surfaces Promptbranch reads or observes in `docs/chatgpt_backend_api_surfaces.md`.
+
+
+### v0.1.41 — parallel execution architecture first slice
+
+`v0.1.41` opens the Promptbranch parallel execution architecture line. The slice documents the resource-lock model in `docs/design/promptbranch-parallel-execution-architecture.md`, adds the `promptbranch_parallel.py` operation classification registry, exposes the plan through `pb debug parallel-plan --json`, and routes browser-client `_log` diagnostics to stderr so JSON stdout can become strict enough for future parallel runners. This slice does not add the scheduler or service-profile queue yet; it creates the executable metadata and test plan that later slices must build on.

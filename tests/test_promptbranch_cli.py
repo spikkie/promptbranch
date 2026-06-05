@@ -11836,3 +11836,36 @@ def test_debug_rate_limit_command_dispatches_and_returns_rate_limited_exit(monke
     assert payload["pause_policy"]["do_not_retry"] is True
     assert captured["probe_backend"] is True
     assert captured["wait_ms"] == 25
+
+
+def test_debug_parallel_plan_emits_command_metadata_json(capsys) -> None:
+    rc = main(["debug", "parallel-plan", "--operation", "src_add", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "debug_parallel_plan"
+    assert payload["classification"]["operation"]["operation"] == "src_add"
+    assert payload["classification"]["operation"]["queue_required"] is True
+    assert payload["classification"]["operation"]["transactional"] is True
+
+
+def test_browser_client_log_writes_to_stderr(capsys, tmp_path) -> None:
+    from promptbranch_browser_auth.client import ChatGPTBrowserClient
+    from promptbranch_browser_auth.config import ChatGPTBrowserConfig
+
+    client = ChatGPTBrowserClient(
+        ChatGPTBrowserConfig(
+            project_url="https://chatgpt.com/g/example/project",
+            email=None,
+            password=None,
+            profile_dir=str(tmp_path / "profile"),
+        )
+    )
+
+    client._log("json-purity", "diagnostic", answer=42)
+    captured = capsys.readouterr()
+
+    assert captured.out == ""
+    assert "[json-purity] diagnostic" in captured.err
+    assert "answer=42" in captured.err

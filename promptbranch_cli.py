@@ -67,6 +67,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
+from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -18709,6 +18710,19 @@ async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
         print(f"modal_detected={str(bool(modal.get('detected'))).lower()}")
         print(f"summary={result.get('artifact_dir')}/summary.json")
         return 0 if result.get("status") != "rate_limited" else 2
+    if args.debug_command == "parallel-plan":
+        result = parallel_architecture_payload(getattr(args, "operation", None))
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("ok") else 2
+        print(f"status={result.get('status')}")
+        classification = result.get("classification") if isinstance(result.get("classification"), dict) else {}
+        if getattr(args, "operation", None):
+            print(f"operation={getattr(args, 'operation', None)}")
+        else:
+            print(f"operation_count={classification.get('operation_count')}")
+        print("Use --json for the full resource-lock and slice test plan.")
+        return 0 if result.get("ok") else 2
     raise RuntimeError(f"Unknown debug command: {args.debug_command}")
 
 
@@ -19922,6 +19936,9 @@ def make_parser() -> argparse.ArgumentParser:
     debug_rate_limit.add_argument("--probe-backend", action="store_true", help="Perform one low-volume /backend-api/conversations probe unless a cooldown is already active.")
     debug_rate_limit.add_argument("--wait-ms", type=int, default=750, help="Milliseconds to observe backend responses after navigation.")
     debug_rate_limit.add_argument("--keep-open", action="store_true", help="Keep the browser open after debug collection.")
+    debug_parallel_plan = debug_subparsers.add_parser("parallel-plan", help="Show Promptbranch parallel execution architecture and command resource classifications.")
+    debug_parallel_plan.add_argument("--json", action="store_true", help="Emit the parallel execution plan as JSON.")
+    debug_parallel_plan.add_argument("--operation", choices=sorted(OPERATION_CLASSES), help="Show one operation classification instead of the full registry.")
 
     project_create = subparsers.add_parser(
         "project-create",
