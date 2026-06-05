@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: named profile registry slice in `v0.1.42`  
+Status: scheduler/resource lock inspection slice in `v0.1.43`  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -232,6 +232,37 @@ pb profile show service-default --json
 
 The registry intentionally treats a missing local seed profile as a structured `seed_missing` status, not as a command failure. This keeps profile discovery safe across repositories where `.pb_profile_local_debug` has not yet been created.
 
+## Scheduler/resource lock planner (`v0.1.43`)
+
+`v0.1.43` adds the first scheduler surface without yet routing command execution through it.
+
+Implemented commands:
+
+```bash
+pb queue status --json
+pb queue list --json
+pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json
+pb queue conflicts --left-operation src_add --right-operation src_sync --context account_id=default --context project_id=demo --context service_id=default --context repo_path=. --json
+```
+
+Boundary of this slice:
+
+```text
+implemented:
+  - render resource templates from command classification metadata
+  - identify missing context instead of guessing
+  - classify read/write/exclusive lock scopes
+  - detect direct resource conflicts
+  - expose queue status/list as strict JSON
+
+not implemented yet:
+  - no command execution is routed through the scheduler
+  - no service browser queue is active yet
+  - no source mutation behavior changes yet
+```
+
+This keeps `v0.1.43` safe and testable. Runtime source/upload behavior still changes later in the service-queue slice.
+
 ## Scheduler target
 
 The future scheduler should do this:
@@ -270,7 +301,7 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 |---|---|---|
 | `v0.1.41` | Document architecture, add operation classification metadata, add `pb debug parallel-plan`, route browser `_log` output to stderr. | `pytest -q tests/test_promptbranch_parallel.py tests/test_cli_parser.py::test_parser_accepts_debug_parallel_plan_command tests/test_promptbranch_cli.py::test_debug_parallel_plan_emits_command_metadata_json tests/test_promptbranch_cli.py::test_browser_client_log_writes_to_stderr`; `python3 -m compileall -q .`; `pb debug parallel-plan --json \| python3 -m json.tool` |
 | `v0.1.42` | Add named profile registry for local browser profiles and future service profile queues. | prior tests + `pytest -q tests/test_promptbranch_profile_registry.py`; `pb profile list --json \| python3 -m json.tool`; `pb profile pools --json \| python3 -m json.tool`; `pb profile show service-default --json \| python3 -m json.tool` |
-| `v0.1.43` | Add scheduler/resource lock manager. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool` |
+| `v0.1.43` | Add scheduler/resource lock planner and read-only queue inspection commands. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool`; `pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json \| python3 -m json.tool` |
 | `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pytest -q tests/test_promptbranch_service_queue.py`; `pb browser status --json \| python3 -m json.tool` |
 | `v0.1.45` | Move task/source reads backend-first with DOM fallback only when required. | prior tests + `pytest -q tests/test_promptbranch_backend_first_reads.py`; strict JSON smoke for `pb task list/show --json` |
 | `v0.1.46` | Add read-only parallel task runner. | prior tests + `pytest -q tests/test_promptbranch_parallel_runner.py`; `pb parallel task show --tasks 1,2 --concurrency 2 --json \| python3 -m json.tool` |

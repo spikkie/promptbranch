@@ -4,6 +4,48 @@ from promptbranch_cli import make_parser, _normalize_global_options
 from promptbranch_version import PACKAGE_VERSION
 
 
+
+def test_parser_accepts_queue_inspection_commands() -> None:
+    parser = make_parser()
+
+    status_args = parser.parse_args(["queue", "status", "--repo-path", ".", "--json"])
+    list_args = parser.parse_args(["queue", "list", "--json"])
+    plan_args = parser.parse_args([
+        "queue",
+        "plan",
+        "--operation",
+        "src_add",
+        "--context",
+        "account_id=default",
+        "--context",
+        "project_id=demo",
+        "--context",
+        "service_id=default",
+        "--json",
+    ])
+    conflicts_args = parser.parse_args([
+        "queue",
+        "conflicts",
+        "--left-operation",
+        "src_add",
+        "--right-operation",
+        "src_sync",
+        "--context",
+        "project_id=demo",
+        "--json",
+    ])
+
+    assert status_args.command == "queue"
+    assert status_args.queue_command == "status"
+    assert status_args.repo_path == "."
+    assert list_args.queue_command == "list"
+    assert plan_args.queue_command == "plan"
+    assert plan_args.operation == "src_add"
+    assert plan_args.context == ["account_id=default", "project_id=demo", "service_id=default"]
+    assert conflicts_args.queue_command == "conflicts"
+    assert conflicts_args.left_operation == "src_add"
+    assert conflicts_args.right_operation == "src_sync"
+
 def test_global_options_after_project_source_add_are_normalized() -> None:
     argv = [
         "project-source-add",
