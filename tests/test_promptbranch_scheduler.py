@@ -80,3 +80,11 @@ def test_conflict_matrix_allows_independent_stateless_reads() -> None:
     assert payload["ok"] is True
     assert payload["status"] == "compatible"
     assert payload["conflict_count"] == 0
+
+def test_scheduler_module_is_declared_for_setuptools_install() -> None:
+    import tomllib
+
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    modules = data["tool"]["setuptools"]["py-modules"]
+
+    assert "promptbranch_scheduler" in modules
