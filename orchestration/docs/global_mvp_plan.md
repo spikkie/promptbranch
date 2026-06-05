@@ -65,6 +65,30 @@ v0.1.4
   - capture rollout/smoke evidence as validated evidence JSON
 ```
 
+
+## Current release-line reconciliation
+
+The original `v0.1.1`-`v0.1.4` sequence remains the intended orchestration direction, but the actual line first absorbed control-plane hardening through `v0.1.39`.
+
+This was acceptable because those releases protected baseline continuity, browser/profile isolation, task/message handling, artifact/source handling, and rate-limit safety. It did create documentation drift, so `v0.1.40` explicitly reconciles the state and resumes the read-only grill slice.
+
+Reconciled path:
+
+```text
+v0.1.40
+  Documentation/status reconciliation plus promptbranch.orchestration.grill foundation:
+  - grill schema
+  - G0-G6 examples
+  - read-only validation
+  - provider.kind=chatgpt or manual_fixture only
+  - provider.kind=ollama/local_llm rejected
+  - model_may_execute=true rejected
+  - promptbranch_must_validate=false rejected
+
+next narrow orchestration slice
+  Read-only grill-to-state-machine transition validation.
+```
+
 ## Global non-goals
 
 ```text
