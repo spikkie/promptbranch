@@ -11903,3 +11903,38 @@ def test_profile_show_unknown_returns_nonzero_json(capsys, tmp_path) -> None:
     assert rc == 2
     assert payload["ok"] is False
     assert payload["status"] == "profile_not_found"
+
+
+def test_queue_status_command_emits_scheduler_json(capsys, tmp_path) -> None:
+    rc = main(["queue", "status", "--repo-path", str(tmp_path), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "queue_status"
+    assert payload["runtime_integration"] == "inspection_only"
+    assert "src_add" in payload["known_operations"]
+
+
+def test_queue_plan_command_emits_resource_plan_json(capsys) -> None:
+    rc = main([
+        "queue",
+        "plan",
+        "--operation",
+        "src_add",
+        "--context",
+        "account_id=default",
+        "--context",
+        "project_id=demo",
+        "--context",
+        "service_id=default",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "queue_plan"
+    assert payload["operation"] == "src_add"
+    assert payload["queue_required"] is True
+    assert any(item["resource"] == "sources:demo:exclusive" for item in payload["resources"])
