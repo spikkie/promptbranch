@@ -1128,3 +1128,13 @@ def test_parser_accepts_debug_rate_limit_command() -> None:
     assert args.probe_backend is True
     assert args.wait_ms == 25
     assert args.keep_open is True
+
+
+def test_parser_accepts_debug_parallel_plan_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["debug", "parallel-plan", "--operation", "src_add", "--json"])
+
+    assert args.command == "debug"
+    assert args.debug_command == "parallel-plan"
+    assert args.operation == "src_add"
+    assert args.json is True

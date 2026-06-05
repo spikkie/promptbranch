@@ -19688,9 +19688,9 @@ class ChatGPTBrowserClient:
         base = f"[{timestamp}] [{stage}] {message}"
         if fields:
             rendered = " ".join(f"{key}={self._safe_repr(value)}" for key, value in fields.items())
-            print(f"{base} | {rendered}", flush=True)
+            print(f"{base} | {rendered}", file=sys.stderr, flush=True)
         else:
-            print(base, flush=True)
+            print(base, file=sys.stderr, flush=True)
 
     @staticmethod
     def _safe_repr(value: Any) -> str:
