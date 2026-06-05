@@ -11752,3 +11752,48 @@ def test_promptbranch_class_diagram_drawio_documents_core_classes() -> None:
     ]:
         assert class_name in text
     assert "threshold_handoff" in text or "ThresholdHandoff" in text
+
+
+def test_profile_pool_lease_uses_distinct_cloned_slots(tmp_path) -> None:
+    from promptbranch_cli import PromptbranchProfileLease, ProfileLeaseError
+
+    seed = tmp_path / "seed-profile"
+    seed.mkdir()
+    (seed / "Cookies").write_text("authenticated=true", encoding="utf-8")
+    (seed / "SingletonLock").write_text("ignore me", encoding="utf-8")
+
+    lease1 = PromptbranchProfileLease(profile_dir=seed, action="task_list", pool_name="tasks", pool_size=2)
+    lease2 = PromptbranchProfileLease(profile_dir=seed, action="task_show", pool_name="tasks", pool_size=2)
+    with lease1 as first, lease2 as second:
+        assert first.leased_profile_dir != second.leased_profile_dir
+        assert first.slot_name == "slot-1"
+        assert second.slot_name == "slot-2"
+        assert (first.leased_profile_dir / "Cookies").read_text(encoding="utf-8") == "authenticated=true"
+        assert not (first.leased_profile_dir / "SingletonLock").exists()
+        try:
+            with PromptbranchProfileLease(profile_dir=seed, action="task_list", pool_name="tasks", pool_size=2):
+                raise AssertionError("third lease unexpectedly succeeded")
+        except ProfileLeaseError as exc:
+            assert exc.payload["status"] == "profile_pool_busy"
+
+    with PromptbranchProfileLease(profile_dir=seed, action="task_list", pool_name="tasks", pool_size=2) as third:
+        assert third.slot_name == "slot-1"
+
+
+def test_profile_lease_settings_enable_task_pool_without_replacing_state_dir(tmp_path) -> None:
+    from promptbranch_cli import _profile_lease_settings_from_args, make_parser
+
+    seed = tmp_path / "seed-profile"
+    parser = make_parser()
+    args = parser.parse_args([
+        "--profile-dir", str(seed),
+        "task", "list",
+        "--profile-pool", "tasks",
+        "--profile-pool-size", "4",
+    ])
+    settings = _profile_lease_settings_from_args(args)
+    assert settings is not None
+    assert settings["profile_dir"] == str(seed)
+    assert settings["seed_profile_dir"] == str(seed)
+    assert settings["pool_name"] == "tasks"
+    assert settings["pool_size"] == 4
