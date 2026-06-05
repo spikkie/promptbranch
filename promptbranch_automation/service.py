@@ -19,6 +19,7 @@ from promptbranch_browser_auth.exceptions import (
     ManualLoginRequiredError,
     BrowserProfileBusyError,
     BrowserContextUnavailableError,
+    RateLimitDetectedError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -654,6 +655,11 @@ class ChatGPTAutomationService:
                 if attempt >= max_retries + 1:
                     break
                 await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
+            except RateLimitDetectedError:
+                # Guardrail/rate-limit responses are not transient browser
+                # glitches. The browser client has already persisted cooldown
+                # state; retrying here would make the restriction worse.
+                raise
             except (ManualLoginRequiredError, UnsupportedOperationError, AuthenticationError, EOFError):
                 raise
             except Exception as exc:  # pragma: no cover - defensive fallback
@@ -795,6 +801,24 @@ class ChatGPTAutomationService:
                     history_max_detail_probes=history_max_detail_probes,
                     manual_pause=manual_pause,
                     keep_open=keep_open,
+                ),
+            )
+
+    async def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        logger.info("Debugging ChatGPT rate-limit state locally")
+        async with self._lock.operation("debug_rate_limit"):
+            return await self._with_retries(
+                "debug_rate_limit",
+                lambda: self._build_bot().debug_rate_limit(
+                    keep_open=keep_open,
+                    probe_backend=probe_backend,
+                    wait_ms=wait_ms,
                 ),
             )
 

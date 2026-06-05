@@ -22,6 +22,7 @@ from .exceptions import (
     BotChallengeError,
     BrowserContextUnavailableError,
     ManualLoginRequiredError,
+    RateLimitDetectedError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -361,6 +362,92 @@ CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS = (
     '/backend-api/conversations',
     '/backend-api/conversation/',
 )
+CHATGPT_BACKEND_API_SURFACES = [
+    {
+        'path': '/backend-api/gizmos/snorlax/sidebar',
+        'method': 'GET',
+        'purpose': 'backend-first project/workspace sidebar enumeration and shallow task discovery',
+        'parameters': ['owned_only', 'conversations_per_gizmo<=20', 'limit<=100', 'cursor'],
+        'risk': 'undocumented_private_surface',
+    },
+    {
+        'path': '/backend-api/gizmos/{project_id}/conversations',
+        'method': 'GET',
+        'purpose': 'project-scoped task/conversation enumeration',
+        'parameters': ['limit<=50', 'cursor', '_pb_fresh'],
+        'risk': 'undocumented_private_surface',
+    },
+    {
+        'path': '/backend-api/conversations',
+        'method': 'GET',
+        'purpose': 'global conversation-history fallback and diagnostic enumeration',
+        'parameters': ['offset', 'limit', 'order', 'is_archived', 'is_starred'],
+        'risk': 'rate_limit_sensitive_private_surface',
+    },
+    {
+        'path': '/backend-api/conversation/{conversation_id}',
+        'method': 'GET',
+        'purpose': 'conversation detail fallback and transcript hydration checks',
+        'parameters': ['_pb_fresh'],
+        'risk': 'rate_limit_sensitive_private_surface',
+    },
+    {
+        'path': '/backend-api/f/conversation/prepare',
+        'method': 'POST',
+        'purpose': 'observed first-class prepare phase during ask/send instrumentation',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': '/backend-api/conversation',
+        'method': 'POST',
+        'purpose': 'observed message submission backend commit path',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': '/backend-api/conversation/{conversation_id}/stream_status',
+        'method': 'GET',
+        'purpose': 'observed post-submit stream state diagnostics',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': '/backend-api/conversation/init',
+        'method': 'POST',
+        'purpose': 'observed conversation initialization diagnostics',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': '/backend-api/conduit/finalize',
+        'method': 'POST',
+        'purpose': 'observed post-prepare/conduit finalization diagnostics',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': 'wss://chatgpt.com/backend-api/conduit',
+        'method': 'WEBSOCKET',
+        'purpose': 'observed streaming/conduit diagnostics',
+        'parameters': [],
+        'risk': 'observed_only_do_not_call_directly',
+    },
+    {
+        'path': '/backend-api/files/process_upload_stream',
+        'method': 'POST',
+        'purpose': 'observed project-source file upload processing',
+        'parameters': [],
+        'risk': 'mutation_sensitive_private_surface',
+    },
+    {
+        'path': '/backend-api/gizmos/snorlax/upsert',
+        'method': 'POST',
+        'purpose': 'observed project/source update persistence path',
+        'parameters': [],
+        'risk': 'mutation_sensitive_private_surface',
+    },
+]
 _PROFILE_LAST_CONTEXT_CLOSED_AT: dict[str, float] = {}
 PROJECT_NEW_BUTTON_SELECTORS = [
     'button:has-text("New project")',
@@ -535,6 +622,58 @@ class ChatGPTBrowserClient:
         normalized = (url or '').lower()
         return any(fragment in normalized for fragment in CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS)
 
+    def _is_backend_api_url(self, url: str) -> bool:
+        normalized = (url or '').lower()
+        return '/backend-api/' in normalized or normalized.startswith('wss://chatgpt.com/backend-api/')
+
+    def _redact_backend_api_url(self, url: str) -> dict[str, Any]:
+        text = str(url or '')
+        try:
+            parsed = urlparse(text)
+        except Exception:
+            return {'path': text[:200], 'query_keys': [], 'redacted_url': text[:200]}
+        query_keys = sorted({key for key, _value in parse_qsl(parsed.query or '', keep_blank_values=True)})
+        redacted_query = '&'.join(f'{key}=<redacted>' for key in query_keys)
+        scheme = parsed.scheme or 'https'
+        netloc = parsed.netloc or 'chatgpt.com'
+        redacted_url = urlunparse((scheme, netloc, parsed.path, '', redacted_query, ''))
+        return {
+            'path': parsed.path or text[:200],
+            'query_keys': query_keys,
+            'redacted_url': redacted_url,
+        }
+
+    def _parse_retry_after_seconds(self, value: object) -> float | None:
+        text = str(value or '').strip()
+        if not text:
+            return None
+        try:
+            return max(0.0, float(text))
+        except ValueError:
+            pass
+        try:
+            # HTTP-date retry-after values are uncommon here but cheap to parse
+            # enough for diagnostics. Avoid importing email.utils globally.
+            from email.utils import parsedate_to_datetime
+
+            dt = parsedate_to_datetime(text)
+            return max(0.0, dt.timestamp() - time.time())
+        except Exception:
+            return None
+
+    def _backend_api_surfaces_snapshot(self) -> list[dict[str, Any]]:
+        return [dict(item) for item in CHATGPT_BACKEND_API_SURFACES]
+
+    def _rate_limit_cooldown_snapshot(self) -> dict[str, Any]:
+        cooldown_until = self._read_rate_limit_cooldown_until()
+        remaining = max(0.0, cooldown_until - time.time())
+        return {
+            'path': str(self._rate_limit_cooldown_path),
+            'active': remaining > 0,
+            'cooldown_until_unix': cooldown_until if cooldown_until > 0 else None,
+            'cooldown_remaining_seconds': round(remaining, 3),
+        }
+
     def _read_rate_limit_cooldown_until(self) -> float:
         try:
             raw = self._rate_limit_cooldown_path.read_text(encoding='utf-8').strip()
@@ -622,6 +761,7 @@ class ChatGPTBrowserClient:
         return {
             'rate_limit_modal_detected': any(event.get('kind') == 'modal_detected' for event in events),
             'conversation_history_429_seen': any(int(event.get('status') or 0) == 429 for event in events),
+            'backend_api_guardrail_seen': any(event.get('kind') == 'backend_api_guardrail' for event in events),
             'cooldown_wait_seconds_total': round(self._rate_limit_cooldown_wait_seconds_total, 3),
             'cooldown_wait_count': int(self._rate_limit_cooldown_wait_count),
             'conversation_history_fetch_attempt_count': int(self._conversation_history_fetch_attempt_count),
@@ -651,6 +791,36 @@ class ChatGPTBrowserClient:
         self._log(
             'rate-limit',
             'conversation history rate limit noted',
+            trigger=trigger,
+            status=status,
+            url=url,
+            cooldown_seconds=cooldown_seconds,
+            cooldown_until=cooldown_until,
+        )
+
+    def _note_backend_api_guardrail(
+        self,
+        *,
+        trigger: str,
+        url: str,
+        status: int | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        self._record_rate_limit_event(kind='backend_api_guardrail', trigger=trigger, status=status, url=url, wait_seconds=retry_after_seconds)
+        cooldown_seconds = retry_after_seconds
+        if cooldown_seconds is None:
+            cooldown_seconds = max(0.0, float(self.config.conversation_history_rate_limit_cooldown_seconds))
+        cooldown_seconds = max(0.0, float(cooldown_seconds))
+        if cooldown_seconds <= 0:
+            return
+        cooldown_until = time.time() + cooldown_seconds
+        existing = self._read_rate_limit_cooldown_until()
+        if existing > cooldown_until:
+            cooldown_until = existing
+        self._write_rate_limit_cooldown_until(cooldown_until)
+        self._log(
+            'rate-limit',
+            'backend-api guardrail noted',
             trigger=trigger,
             status=status,
             url=url,
@@ -759,8 +929,63 @@ class ChatGPTBrowserClient:
                 except Exception as exc:
                     self._log('rate-limit', 'rate limit modal acknowledgement click failed', label=label, error=repr(exc))
             if asyncio.get_running_loop().time() >= deadline:
-                raise ResponseTimeoutError('Rate limit modal did not clear before continuing')
+                snapshot = await self._rate_limit_modal_snapshot(page, label=f'{label}-timeout')
+                raise RateLimitDetectedError(
+                    'Rate limit modal did not clear before continuing',
+                    retry_after_seconds=None,
+                    cooldown_remaining_seconds=self._conversation_history_cooldown_remaining(),
+                    modal_text=snapshot.get('text') if isinstance(snapshot, dict) else None,
+                    payload={
+                        'modal': snapshot,
+                        'cooldown': self._rate_limit_cooldown_snapshot(),
+                        'rate_limit_telemetry': self._rate_limit_telemetry_snapshot(),
+                    },
+                )
             await page.wait_for_timeout(poll_interval_ms)
+
+    async def _rate_limit_modal_snapshot(self, page: Any, *, label: str = 'rate-limit-diagnostic') -> dict[str, Any]:
+        probes: list[dict[str, Any]] = []
+        for selector in RATE_LIMIT_MODAL_SELECTORS:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+            except Exception as exc:
+                probes.append({'selector': selector, 'count': 0, 'visible': False, 'error': repr(exc)})
+                continue
+            visible = False
+            text = ''
+            if count:
+                try:
+                    first = locator.first
+                    visible = bool(await first.is_visible(timeout=250))
+                    if visible:
+                        text = (await first.inner_text(timeout=750)).strip()
+                except Exception as exc:
+                    probes.append({'selector': selector, 'count': count, 'visible': False, 'error': repr(exc)})
+                    continue
+            probe = {
+                'selector': selector,
+                'count': count,
+                'visible': visible,
+            }
+            if text:
+                probe['text'] = re.sub(r'\s+', ' ', text)[:1000]
+            probes.append(probe)
+            if visible:
+                return {
+                    'detected': True,
+                    'selector': selector,
+                    'text': probe.get('text', ''),
+                    'probes': probes,
+                    'label': label,
+                }
+        return {
+            'detected': False,
+            'selector': None,
+            'text': '',
+            'probes': probes,
+            'label': label,
+        }
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
         self._log(
@@ -941,6 +1166,30 @@ class ChatGPTBrowserClient:
             history_max_detail_probes=history_max_detail_probes,
             manual_pause=manual_pause,
             keep_open=keep_open,
+        )
+
+    async def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        self._log(
+            "rate-limit-debug",
+            "starting debug_rate_limit",
+            project_url=self.config.project_url,
+            keep_open=keep_open,
+            probe_backend=probe_backend,
+            wait_ms=wait_ms,
+        )
+        return await self._run_with_context(
+            operation_name="rate_limit_debug",
+            operation=self._debug_rate_limit_operation,
+            keep_open=keep_open,
+            probe_backend=probe_backend,
+            wait_ms=wait_ms,
+            respect_history_rate_limit_cooldown=False,
         )
 
     async def list_project_sources(
@@ -3283,6 +3532,203 @@ class ChatGPTBrowserClient:
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Chat-list debug completed. Press Enter to close the browser...')
         return summary
+
+    async def _debug_rate_limit_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        artifact_dir = self._artifact_dir / f"rate_limit_debug_{self._timestamp_for_filename()}"
+        await self._ensure_dir(artifact_dir)
+
+        observed_responses: list[dict[str, Any]] = []
+        response_tasks: list[asyncio.Task[Any]] = []
+        loop = asyncio.get_running_loop()
+
+        async def capture_backend_response(resp: Any) -> None:
+            url = getattr(resp, 'url', '') or ''
+            if not self._is_backend_api_url(url):
+                return
+            status = int(getattr(resp, 'status', 0) or 0)
+            try:
+                headers = await resp.all_headers()
+            except Exception:
+                headers = {}
+            retry_after = self._parse_retry_after_seconds(headers.get('retry-after') if isinstance(headers, dict) else None)
+            redacted = self._redact_backend_api_url(url)
+            body_preview = ''
+            json_summary: Any = None
+            if status in {403, 429}:
+                try:
+                    text = await resp.text()
+                except Exception as exc:
+                    text = f'<failed to read body: {exc}>'
+                body_preview = re.sub(r'\s+', ' ', text).strip()[:1000]
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict):
+                        json_summary = {'type': 'dict', 'keys': sorted(str(key) for key in parsed.keys())[:50]}
+                    elif isinstance(parsed, list):
+                        json_summary = {'type': 'list', 'count': len(parsed)}
+                except Exception:
+                    json_summary = None
+                self._note_backend_api_guardrail(
+                    trigger='debug_response',
+                    url=url,
+                    status=status,
+                    retry_after_seconds=retry_after,
+                )
+            observed_responses.append({
+                'status': status,
+                'path': redacted.get('path'),
+                'query_keys': redacted.get('query_keys'),
+                'redacted_url': redacted.get('redacted_url'),
+                'content_type': headers.get('content-type') if isinstance(headers, dict) else None,
+                'retry_after_seconds': retry_after,
+                'body_preview': body_preview,
+                'json_summary': json_summary,
+            })
+
+        def observe_response(resp: Any) -> None:
+            try:
+                url = getattr(resp, 'url', '') or ''
+                if self._is_backend_api_url(url):
+                    response_tasks.append(loop.create_task(capture_backend_response(resp)))
+            except Exception as exc:
+                self._log('rate-limit-debug', 'failed to schedule backend response capture', error=repr(exc))
+
+        if hasattr(context, 'on'):
+            context.on('response', observe_response)
+
+        ensure_login_payload: dict[str, Any] | None = None
+        try:
+            await self.ensure_logged_in(page, context)
+        except RateLimitDetectedError as exc:
+            # The diagnostic command must still return JSON when the modal is
+            # already blocking normal navigation/login hydration.
+            ensure_login_payload = exc.to_payload()
+        project_url = self._project_home_url_from_url(self.config.project_url) or self.config.project_url
+        navigation_error: str | None = None
+        try:
+            await page.goto(project_url, wait_until='domcontentloaded')
+        except Exception as exc:
+            navigation_error = repr(exc)
+            self._log('rate-limit-debug', 'project navigation failed during rate-limit diagnostic', error=navigation_error)
+        if wait_ms > 0:
+            await page.wait_for_timeout(max(0, wait_ms))
+
+        modal = await self._rate_limit_modal_snapshot(page, label='debug-rate-limit')
+        probe: dict[str, Any] = {'requested': bool(probe_backend), 'executed': False}
+        cooldown_before_probe = self._rate_limit_cooldown_snapshot()
+        if probe_backend and not cooldown_before_probe.get('active'):
+            probe = await page.evaluate(
+                r'''
+                async () => {
+                    const base = new URL('/backend-api/conversations', window.location.origin);
+                    base.searchParams.set('offset', '0');
+                    base.searchParams.set('limit', '1');
+                    base.searchParams.set('order', 'updated');
+                    base.searchParams.set('is_archived', 'false');
+                    base.searchParams.set('is_starred', 'false');
+                    let accessToken = null;
+                    try {
+                        const bootstrap = document.getElementById('client-bootstrap');
+                        if (bootstrap && bootstrap.textContent) {
+                            const payload = JSON.parse(bootstrap.textContent);
+                            accessToken = payload?.session?.accessToken || payload?.accessToken || null;
+                        }
+                    } catch (_err) {
+                        accessToken = null;
+                    }
+                    const headers = { accept: 'application/json' };
+                    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+                    const response = await fetch(base.toString(), { credentials: 'include', headers });
+                    const text = await response.text();
+                    const responseHeaders = {};
+                    for (const [key, value] of response.headers.entries()) responseHeaders[key] = value;
+                    return {
+                        requested: true,
+                        executed: true,
+                        ok: response.ok,
+                        status: response.status,
+                        url: response.url || base.toString(),
+                        headers: responseHeaders,
+                        body_preview: text.slice(0, 1000),
+                        used_authorization: Boolean(accessToken),
+                    };
+                }
+                '''
+            )
+            if isinstance(probe, dict) and int(probe.get('status') or 0) in {403, 429}:
+                retry_after = self._parse_retry_after_seconds((probe.get('headers') or {}).get('retry-after') if isinstance(probe.get('headers'), dict) else None)
+                self._note_backend_api_guardrail(
+                    trigger='debug_probe',
+                    url=str(probe.get('url') or ''),
+                    status=int(probe.get('status') or 0),
+                    retry_after_seconds=retry_after,
+                )
+        elif probe_backend:
+            probe = {
+                'requested': True,
+                'executed': False,
+                'skip_reason': 'cooldown_active',
+                'cooldown_remaining_seconds': cooldown_before_probe.get('cooldown_remaining_seconds'),
+            }
+
+        if response_tasks:
+            await asyncio.gather(*response_tasks, return_exceptions=True)
+
+        cooldown = self._rate_limit_cooldown_snapshot()
+        guardrail_responses = [item for item in observed_responses if int(item.get('status') or 0) in {403, 429}]
+        probe_status = int(probe.get('status') or 0) if isinstance(probe, dict) else 0
+        retry_after_values = [item.get('retry_after_seconds') for item in guardrail_responses if item.get('retry_after_seconds') is not None]
+        if isinstance(probe, dict) and probe_status in {403, 429}:
+            retry_after = self._parse_retry_after_seconds((probe.get('headers') or {}).get('retry-after') if isinstance(probe.get('headers'), dict) else None)
+            if retry_after is not None:
+                retry_after_values.append(retry_after)
+        retry_after_seconds = max(retry_after_values) if retry_after_values else None
+        rate_limited = (
+            bool(modal.get('detected'))
+            or bool(cooldown.get('active'))
+            or bool(guardrail_responses)
+            or probe_status in {403, 429}
+            or (isinstance(ensure_login_payload, dict) and ensure_login_payload.get('status') == 'rate_limited')
+        )
+        status = 'rate_limited' if rate_limited else 'clear'
+        result = {
+            'ok': not rate_limited,
+            'action': 'debug_rate_limit',
+            'status': status,
+            'artifact_dir': str(artifact_dir),
+            'project_url': project_url,
+            'current_url': await self._safe_page_url(page),
+            'navigation_error': navigation_error,
+            'ensure_login_payload': ensure_login_payload,
+            'modal': modal,
+            'cooldown': cooldown,
+            'retry_after_seconds': retry_after_seconds,
+            'backend_guardrail_responses': guardrail_responses,
+            'backend_response_count': len(observed_responses),
+            'network': {'responses': observed_responses},
+            'probe': probe,
+            'backend_api_surfaces': self._backend_api_surfaces_snapshot(),
+            'pause_policy': {
+                'pause_further_chatgpt_calls': rate_limited,
+                'do_not_retry': rate_limited,
+                'safe_next_action': 'pause_chatgpt_calls_until_retry_after_or_cooldown_expires' if rate_limited else 'normal_operation_allowed',
+            },
+            'rate_limit_telemetry': self._rate_limit_telemetry_snapshot(),
+        }
+        await self._write_json(artifact_dir / 'network.json', result['network'])
+        await self._write_json(artifact_dir / 'summary.json', result)
+        self._log('rate-limit-debug', 'debug_rate_limit completed', artifact_dir=str(artifact_dir), status=status)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open('Rate-limit debug completed. Press Enter to close the browser...')
+        return result
 
     async def _list_project_sources_operation(
         self,
@@ -18973,6 +19419,8 @@ class ChatGPTBrowserClient:
         def observe_response(resp: Any) -> None:
             status = getattr(resp, "status", None)
             url = getattr(resp, "url", "")
+            if status in {403, 429} and self._is_backend_api_url(url):
+                self._note_backend_api_guardrail(trigger="response", url=url, status=status)
             if status == 429 and self._is_conversation_history_url(url):
                 self._note_conversation_history_rate_limit(trigger="response", url=url, status=status)
             if self._is_snorlax_sidebar_url(url):

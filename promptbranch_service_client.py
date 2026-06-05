@@ -231,6 +231,23 @@ class ChatGPTServiceClient:
             params["project_url"] = project_url
         return self._json(self._client.get("/v1/chats/debug", params=params))
 
+    def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: Optional[str] = None,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "keep_open": keep_open,
+            "probe_backend": probe_backend,
+            "wait_ms": wait_ms,
+        }
+        if project_url:
+            params["project_url"] = project_url
+        return self._json(self._client.get("/v1/debug/rate-limit", params=params))
+
     def list_project_sources(
         self,
         *,

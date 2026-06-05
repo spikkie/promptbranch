@@ -1117,3 +1117,14 @@ def test_parser_accepts_release_live_profile_pool_defaults() -> None:
     assert args.profile_pool_size == 2
     assert args.project_name_prefix == "release-live-temp"
     assert args.debug_browser is True
+
+
+def test_parser_accepts_debug_rate_limit_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["debug", "rate-limit", "--json", "--probe-backend", "--wait-ms", "25", "--keep-open"])
+    assert args.command == "debug"
+    assert args.debug_command == "rate-limit"
+    assert args.json is True
+    assert args.probe_backend is True
+    assert args.wait_ms == 25
+    assert args.keep_open is True

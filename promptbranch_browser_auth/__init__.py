@@ -3,6 +3,7 @@ from .config import ChatGPTBrowserConfig
 from .exceptions import (
     AuthenticationError,
     ManualLoginRequiredError,
+    RateLimitDetectedError,
     ResponseTimeoutError,
     UnsupportedOperationError,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "ChatGPTBrowserClient",
     "ChatGPTBrowserConfig",
     "ManualLoginRequiredError",
+    "RateLimitDetectedError",
     "ResponseTimeoutError",
     "UnsupportedOperationError",
     "ask_chatgpt",

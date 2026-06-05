@@ -1751,3 +1751,33 @@ def test_remove_project_source_uses_direct_card_remove_button_before_options_men
     assert direct_remove_button.click_count == 1
     assert confirm_button.click_count == 1
     assert options_button.click_count == 0
+
+
+def test_note_backend_api_guardrail_persists_cooldown_file(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    monkeypatch.setattr(client_module.time, "time", lambda: 2_000.0)
+
+    client._note_backend_api_guardrail(
+        trigger="debug_response",
+        url="https://chatgpt.com/backend-api/conversations?offset=0&limit=1",
+        status=403,
+        retry_after_seconds=45.0,
+    )
+
+    assert client._rate_limit_cooldown_path.exists() is True
+    assert float(client._rate_limit_cooldown_path.read_text(encoding="utf-8")) == pytest.approx(2_045.0)
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert telemetry["backend_api_guardrail_seen"] is True
+
+
+def test_backend_api_url_redaction_keeps_path_and_redacts_query(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    redacted = client._redact_backend_api_url(
+        "https://chatgpt.com/backend-api/conversations?offset=0&limit=1&token=secret"
+    )
+
+    assert redacted["path"] == "/backend-api/conversations"
+    assert redacted["query_keys"] == ["limit", "offset", "token"]
+    assert "secret" not in redacted["redacted_url"]
+    assert "token=<redacted>" in redacted["redacted_url"]
