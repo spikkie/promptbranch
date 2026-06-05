@@ -9786,6 +9786,87 @@ def _release_focused_development_dod_payload(
     }
 
 
+def _release_threshold_handoff_payload(
+    *,
+    candidate_version: Any,
+    next_development_version: Any,
+    threshold_notice: dict[str, Any],
+    full_test_countdown: dict[str, Any],
+    focused_development_dod: dict[str, Any],
+    full_test_command: str | None,
+    adopt_current_command: str | None,
+    blocker_codes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return a read-only threshold handoff summary for focused development.
+
+    This is deliberately advisory: it turns the threshold/countdown fields into a
+    compact operator handoff without executing tests, adopting artifacts,
+    uploading Project Sources, syncing policy, or mutating Git.  It separates the
+    current candidate's full-test/adoption gate from the next-development
+    command hints so threshold releases do not look like ordinary focused slices.
+    """
+
+    candidate_version = _candidate_version_normalized(candidate_version)
+    next_development_version = _candidate_version_normalized(next_development_version)
+    threshold_reached_now = bool(threshold_notice.get("threshold_reached_now"))
+    next_release_reaches_threshold = bool(threshold_notice.get("next_release_reaches_threshold"))
+    countdown_active = bool(full_test_countdown.get("active"))
+    full_test_recommended_now = bool(full_test_countdown.get("full_test_recommended_now")) or threshold_reached_now
+    blocked = bool(blocker_codes)
+
+    if blocked:
+        status = "blocked"
+        operator_action = "fix_blockers_before_threshold_handoff"
+    elif full_test_recommended_now:
+        status = "full_test_adoption_checkpoint_required"
+        operator_action = "run_full_release_control_for_current_candidate"
+    elif next_release_reaches_threshold:
+        status = "next_release_reaches_threshold"
+        operator_action = "build_threshold_candidate_then_full_test"
+    elif countdown_active:
+        status = "pre_threshold_planning_active"
+        operator_action = "plan_full_test_adoption_checkpoint"
+    else:
+        status = "not_active"
+        operator_action = "continue_focused_development"
+
+    adoption_dod = ((focused_development_dod.get("definition_of_done") or {}).get("adoption_checkpoint") or {}) if isinstance(focused_development_dod, dict) else {}
+    focused_dod = ((focused_development_dod.get("definition_of_done") or {}).get("focused_continue") or {}) if isinstance(focused_development_dod, dict) else {}
+    return {
+        "schema_version": 1,
+        "read_only": True,
+        "status": status,
+        "operator_action": operator_action,
+        "current_candidate_version": candidate_version,
+        "next_development_version": next_development_version,
+        "expected_threshold_version": threshold_notice.get("expected_threshold_version"),
+        "threshold_reached_now": threshold_reached_now,
+        "next_release_reaches_threshold": next_release_reaches_threshold,
+        "pre_threshold_planning_active": bool(threshold_notice.get("pre_threshold_planning_active")),
+        "full_test_countdown_active": countdown_active,
+        "full_test_countdown_urgency": full_test_countdown.get("urgency"),
+        "minimum_remaining_until_threshold": full_test_countdown.get("minimum_remaining_until_threshold"),
+        "full_test_recommended_now": full_test_recommended_now,
+        "focused_continue_dod_complete": bool(focused_dod.get("complete")),
+        "adoption_checkpoint_required_now": bool(adoption_dod.get("required_now")) or full_test_recommended_now,
+        "adoption_checkpoint_complete": bool(adoption_dod.get("complete")),
+        "full_test_command": full_test_command,
+        "adopt_current_after_green_full_test": adopt_current_command,
+        "class_diagram": "docs/design/promptbranch-class-diagram.drawio",
+        "next_safe_operator_step": (
+            "Run the full release-control command for the current candidate; adopt only after green full-test evidence."
+            if full_test_recommended_now
+            else (
+                "Build the reported threshold candidate, then run full release-control before any further focused scope."
+                if next_release_reaches_threshold
+                else "Continue only small focused slices and keep the adoption checkpoint planned."
+            )
+        ),
+        "mutating_actions_executed": False,
+        "blocker_codes": blocker_codes or [],
+    }
+
+
 def _release_dev_complexity_summary(
     *,
     accepted_version: str | None,
@@ -10558,6 +10639,16 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         full_test_command=locals().get("full_test_command"),
         adopt_current_command=locals().get("adopt_current_command"),
     )
+    threshold_handoff = _release_threshold_handoff_payload(
+        candidate_version=selected_version or dev_head_version or runtime_version,
+        next_development_version=next_development_version_from_plan,
+        threshold_notice=threshold_notice_payload,
+        full_test_countdown=full_test_countdown_payload,
+        focused_development_dod=focused_development_dod,
+        full_test_command=locals().get("full_test_command"),
+        adopt_current_command=locals().get("adopt_current_command"),
+        blocker_codes=[item.get("code") for item in blockers if isinstance(item, dict)],
+    )
     if full_test_countdown_payload.get("active") is True:
         warnings.append({
             "code": "release_status_guide_full_test_checkpoint_countdown",
@@ -10621,6 +10712,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         },
         "full_test_countdown": full_test_countdown_payload,
         "focused_development_dod": focused_development_dod,
+        "threshold_handoff": threshold_handoff,
         "command_guide": {
             "post_adoption_verifier": commands["baseline_status"],
             "artifact_current": commands["artifact_current"],
@@ -10650,6 +10742,8 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "focused_development_dod_status": focused_development_dod.get("status"),
             "focused_continue_dod_complete": bool(((focused_development_dod.get("definition_of_done") or {}).get("focused_continue") or {}).get("complete")),
             "adoption_dod_complete": bool(((focused_development_dod.get("definition_of_done") or {}).get("adoption_checkpoint") or {}).get("complete")),
+            "threshold_handoff_status": threshold_handoff.get("status"),
+            "threshold_handoff_operator_action": threshold_handoff.get("operator_action"),
             "post_adoption_ready_for_next_normal": bool(accepted_aligned),
             "development_base_version": accepted_version if accepted_aligned else (dev_head_version or runtime_version or accepted_version),
             "next_normal_guidance_applicable": next_normal_guidance_applicable,
@@ -10730,6 +10824,10 @@ async def cmd_release_status_guide(backend: Any, args: argparse.Namespace) -> in
             print(f"next_development_status_guide_after_build={runbook.get('next_development_status_guide_after_build')}")
         if runbook.get("next_development_checkpoint_after_build"):
             print(f"next_development_checkpoint_after_build={runbook.get('next_development_checkpoint_after_build')}")
+        handoff = payload.get("threshold_handoff") if isinstance(payload.get("threshold_handoff"), dict) else {}
+        if handoff:
+            print(f"threshold_handoff_status={handoff.get('status') or 'none'}")
+            print(f"threshold_handoff_operator_action={handoff.get('operator_action') or 'none'}")
         sequence = payload.get("recommended_sequence") if isinstance(payload.get("recommended_sequence"), list) else []
         for index, step in enumerate(sequence, start=1):
             if isinstance(step, dict):
@@ -10950,6 +11048,30 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         full_test_command=full_test_command,
         adopt_current_command=adopt_current_command,
     )
+    threshold_handoff = _release_threshold_handoff_payload(
+        candidate_version=artifact_version or dev_head_version,
+        next_development_version=next_dev_version,
+        threshold_notice={
+            "active": bool(full_test_countdown_payload.get("active") or complexity_summary.get("full_test_recommended_now")),
+            "threshold_reached_now": bool(complexity_summary.get("full_test_recommended_now")),
+            "next_release_reaches_threshold": bool(
+                not complexity_summary.get("full_test_recommended_now")
+                and full_test_countdown_payload.get("minimum_remaining_until_threshold") == 1
+            ),
+            "pre_threshold_planning_active": bool(full_test_countdown_payload.get("active")),
+            "expected_threshold_version": (
+                artifact_version
+                if complexity_summary.get("full_test_recommended_now")
+                else _release_add_normal_versions(artifact_version or dev_head_version, full_test_countdown_payload.get("minimum_remaining_until_threshold"))
+            ),
+            "versions_until_expected_threshold": 0 if complexity_summary.get("full_test_recommended_now") else full_test_countdown_payload.get("minimum_remaining_until_threshold"),
+        },
+        full_test_countdown=full_test_countdown_payload,
+        focused_development_dod=focused_development_dod,
+        full_test_command=full_test_command,
+        adopt_current_command=adopt_current_command,
+        blocker_codes=[item.get("code") for item in blockers if isinstance(item, dict)],
+    )
 
     return {
         "ok": not blockers,
@@ -11005,6 +11127,7 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
         },
         "full_test_countdown": full_test_countdown_payload,
         "focused_development_dod": focused_development_dod,
+        "threshold_handoff": threshold_handoff,
         "complexity_summary": complexity_summary,
         "suggested_commands": {
             "focused_checks": [
@@ -11062,6 +11185,10 @@ async def cmd_release_checkpoint(backend: Any, args: argparse.Namespace) -> int:
             print(f"next_development_status_guide_after_build={suggested.get('next_development_status_guide_after_build')}")
         if suggested.get("next_development_checkpoint_after_build"):
             print(f"next_development_checkpoint_after_build={suggested.get('next_development_checkpoint_after_build')}")
+        handoff = payload.get("threshold_handoff") if isinstance(payload.get("threshold_handoff"), dict) else {}
+        if handoff:
+            print(f"threshold_handoff_status={handoff.get('status') or 'none'}")
+            print(f"threshold_handoff_operator_action={handoff.get('operator_action') or 'none'}")
         print(f"warning_codes={','.join(payload.get('warning_codes') or []) or 'none'}")
         print(f"blocker_codes={','.join(payload.get('blocker_codes') or []) or 'none'}")
         usage = payload.get("baseline_status_usage") if isinstance(payload.get("baseline_status_usage"), dict) else {}
