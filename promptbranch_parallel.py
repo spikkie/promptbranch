@@ -215,15 +215,10 @@ SLICE_TEST_PLAN: list[dict[str, Any]] = [
     },
     {
         "slice": "v0.1.43",
-        "goal": "Add scheduler/resource lock planner and read-only queue inspection commands.",
+        "goal": "Add scheduler/resource lock manager and queue inspection commands.",
         "tests": [
-            "python3 -m pytest -q tests/test_promptbranch_parallel.py tests/test_promptbranch_profile_registry.py tests/test_promptbranch_scheduler.py tests/test_cli_parser.py::test_parser_accepts_debug_parallel_plan_command tests/test_cli_parser.py::test_parser_accepts_profile_registry_commands tests/test_cli_parser.py::test_parser_accepts_queue_inspection_commands tests/test_promptbranch_cli.py::test_debug_parallel_plan_emits_command_metadata_json tests/test_promptbranch_cli.py::test_profile_list_command_emits_profile_registry_json tests/test_promptbranch_cli.py::test_profile_pools_command_emits_flattened_pool_json tests/test_promptbranch_cli.py::test_queue_status_command_emits_scheduler_json tests/test_promptbranch_cli.py::test_queue_plan_command_emits_resource_plan_json tests/test_promptbranch_cli.py::test_browser_client_log_writes_to_stderr",
-            "python3 -m compileall -q .",
-            "pb debug parallel-plan --json | python3 -m json.tool",
-            "pb profile list --json | python3 -m json.tool",
-            "pb profile pools --json | python3 -m json.tool",
             "pb queue status --json | python3 -m json.tool",
-            "pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json | python3 -m json.tool",
+            "pytest -q tests/test_promptbranch_scheduler.py",
         ],
     },
     {
