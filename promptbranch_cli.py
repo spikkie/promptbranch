@@ -69,6 +69,7 @@ from promptbranch_test_report import build_test_report, build_test_status, rende
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
+from promptbranch_scheduler import conflict_matrix, plan_operation_resources, queue_list, queue_status
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -18762,6 +18763,51 @@ async def cmd_profile(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 2
 
 
+def _queue_context_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    context: dict[str, Any] = {}
+    for item in getattr(args, "context", []) or []:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        if key:
+            context[key] = value
+    return context
+
+
+async def cmd_queue(args: argparse.Namespace) -> int:
+    repo_path = getattr(args, "repo_path", ".") or "."
+    if args.queue_command == "status":
+        result = queue_status(repo_path=repo_path)
+    elif args.queue_command == "list":
+        result = queue_list(repo_path=repo_path)
+    elif args.queue_command == "plan":
+        result = plan_operation_resources(args.operation, _queue_context_from_args(args))
+    elif args.queue_command == "conflicts":
+        result = conflict_matrix(args.left_operation, args.right_operation, _queue_context_from_args(args))
+    else:
+        raise RuntimeError(f"Unknown queue command: {args.queue_command}")
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result.get("ok") else 2
+
+    print(f"status={result.get('status')}")
+    if args.queue_command == "status":
+        print(f"active_count={result.get('active_count')}")
+        print(f"queued_count={result.get('queued_count')}")
+        print(f"runtime_integration={result.get('runtime_integration')}")
+    elif args.queue_command == "list":
+        print(f"operation_count={result.get('operation_count')}")
+    elif args.queue_command == "plan":
+        print(f"operation={result.get('operation')}")
+        print(f"resource_count={result.get('resource_count')}")
+        if result.get("missing_context"):
+            print(f"missing_context={','.join(result.get('missing_context', []))}")
+    elif args.queue_command == "conflicts":
+        print(f"conflict_count={result.get('conflict_count')}")
+    return 0 if result.get("ok") else 2
+
+
 async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     if args.agent_command == "inspect":
@@ -19432,6 +19478,30 @@ def make_parser() -> argparse.ArgumentParser:
     profile_show_parser.add_argument("--repo-path", default=".", help="Repository root used to resolve relative local seed profile paths. Defaults to current directory.")
     profile_show_parser.add_argument("--config", help="Optional JSON profile registry extension file. Relative paths are resolved from --repo-path.")
     profile_show_parser.add_argument("--json", action="store_true", help="Emit profile definition as JSON.")
+
+    queue = subparsers.add_parser("queue", help="Read-only scheduler/resource lock inspection commands.")
+    queue_subparsers = queue.add_subparsers(dest="queue_command", required=True)
+
+    queue_status_parser = queue_subparsers.add_parser("status", help="Show scheduler queue status and known operation metadata.")
+    queue_status_parser.add_argument("--repo-path", default=".", help="Repository root used to locate queue metadata. Defaults to current directory.")
+    queue_status_parser.add_argument("--json", action="store_true", help="Emit queue status as JSON.")
+
+    queue_list_parser = queue_subparsers.add_parser("list", help="List recorded queue operations, if any.")
+    queue_list_parser.add_argument("--repo-path", default=".", help="Repository root used to locate queue metadata. Defaults to current directory.")
+    queue_list_parser.add_argument("--json", action="store_true", help="Emit queue operations as JSON.")
+
+    queue_plan_parser = queue_subparsers.add_parser("plan", help="Render the resource locks required by an operation without executing it.")
+    queue_plan_parser.add_argument("--operation", required=True, choices=sorted(OPERATION_CLASSES), help="Operation to plan, such as src_add or task_show.")
+    queue_plan_parser.add_argument("--context", action="append", default=[], help="Context key=value used to render resource templates. Repeat as needed.")
+    queue_plan_parser.add_argument("--repo-path", default=".", help="Repository root used to locate queue metadata. Defaults to current directory.")
+    queue_plan_parser.add_argument("--json", action="store_true", help="Emit resource plan as JSON.")
+
+    queue_conflicts_parser = queue_subparsers.add_parser("conflicts", help="Check whether two planned operations conflict for the supplied context.")
+    queue_conflicts_parser.add_argument("--left-operation", required=True, choices=sorted(OPERATION_CLASSES), help="First operation to compare.")
+    queue_conflicts_parser.add_argument("--right-operation", required=True, choices=sorted(OPERATION_CLASSES), help="Second operation to compare.")
+    queue_conflicts_parser.add_argument("--context", action="append", default=[], help="Context key=value used to render resource templates. Repeat as needed.")
+    queue_conflicts_parser.add_argument("--repo-path", default=".", help="Repository root used to locate queue metadata. Defaults to current directory.")
+    queue_conflicts_parser.add_argument("--json", action="store_true", help="Emit conflict result as JSON.")
 
     browser = subparsers.add_parser("browser", help="Browser profile monitor commands.")
     browser_subparsers = browser.add_subparsers(dest="browser_command", required=True)
@@ -20239,7 +20309,7 @@ def _json_output_requested(args: argparse.Namespace) -> bool:
 
 def _command_action_name(args: argparse.Namespace) -> str:
     command = str(getattr(args, "command", "command") or "command")
-    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "test_command", "agent_command", "skill_command", "mcp_command"):
+    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "queue_command", "test_command", "agent_command", "skill_command", "mcp_command"):
         value = getattr(args, attr, None)
         if value:
             return f"{command}_{value}".replace("-", "_")
@@ -20359,6 +20429,8 @@ async def _async_main(args: argparse.Namespace) -> int:
         return await cmd_test_import_smoke(args)
     if args.command == "profile":
         return await cmd_profile(args)
+    if args.command == "queue":
+        return await cmd_queue(args)
 
     _apply_protocol_timeout(args)
     profile_lease: PromptbranchProfileLease | None = None
