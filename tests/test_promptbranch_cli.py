@@ -11869,3 +11869,37 @@ def test_browser_client_log_writes_to_stderr(capsys, tmp_path) -> None:
     assert captured.out == ""
     assert "[json-purity] diagnostic" in captured.err
     assert "answer=42" in captured.err
+
+
+def test_profile_list_command_emits_profile_registry_json(capsys, tmp_path) -> None:
+    (tmp_path / ".pb_profile_local_debug").mkdir()
+
+    rc = main(["profile", "list", "--repo-path", str(tmp_path), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "profile_registry"
+    profiles = {profile["name"]: profile for profile in payload["profiles"]}
+    assert profiles["local-debug"]["status"] == "seed_available"
+    assert profiles["service-default"]["kind"] == "service_browser"
+
+
+def test_profile_pools_command_emits_flattened_pool_json(capsys, tmp_path) -> None:
+    rc = main(["profile", "pools", "--repo-path", str(tmp_path), "--profile", "local-debug", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "profile_pools"
+    assert payload["profile"] == "local-debug"
+    assert {pool["name"] for pool in payload["pools"]} == {"tasks", "ask"}
+
+
+def test_profile_show_unknown_returns_nonzero_json(capsys, tmp_path) -> None:
+    rc = main(["profile", "show", "missing", "--repo-path", str(tmp_path), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "profile_not_found"

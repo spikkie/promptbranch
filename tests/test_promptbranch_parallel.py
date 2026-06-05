@@ -59,3 +59,11 @@ def test_parallel_architecture_payload_includes_cumulative_slice_tests() -> None
     assert payload["slice_test_plan"]
     assert payload["slice_test_plan"][0]["slice"] == "v0.1.41"
     assert any("pytest" in item for item in payload["slice_test_plan"][0]["tests"])
+
+
+def test_parallel_architecture_payload_documents_lightweight_test_policy() -> None:
+    payload = parallel_architecture_payload()
+
+    assert payload["test_policy"]["default_cadence"] == "lightweight_cumulative_slice_tests"
+    assert "python3 -m compileall -q ." in payload["test_policy"]["required_every_slice"]
+    assert any(item["slice"] == "v0.1.42" for item in payload["slice_test_plan"])

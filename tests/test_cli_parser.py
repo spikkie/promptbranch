@@ -1138,3 +1138,20 @@ def test_parser_accepts_debug_parallel_plan_command() -> None:
     assert args.debug_command == "parallel-plan"
     assert args.operation == "src_add"
     assert args.json is True
+
+
+def test_parser_accepts_profile_registry_commands() -> None:
+    parser = make_parser()
+
+    list_args = parser.parse_args(["profile", "list", "--repo-path", ".", "--json"])
+    pools_args = parser.parse_args(["profile", "pools", "--profile", "local-debug", "--json"])
+    show_args = parser.parse_args(["profile", "show", "service-default", "--json"])
+
+    assert list_args.command == "profile"
+    assert list_args.profile_command == "list"
+    assert list_args.repo_path == "."
+    assert list_args.json is True
+    assert pools_args.profile_command == "pools"
+    assert pools_args.profile == "local-debug"
+    assert show_args.profile_command == "show"
+    assert show_args.name == "service-default"

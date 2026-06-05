@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: first implementation slice in `v0.1.41`  
+Status: named profile registry slice in `v0.1.42`  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -195,6 +195,43 @@ python3 -m json.tool out.json
 
 This is a prerequisite for any reliable parallel runner.
 
+
+## Named profile registry (`v0.1.42`)
+
+`v0.1.42` adds a read-only profile registry so later scheduler slices can refer to named profiles instead of ad-hoc paths.
+
+Built-in profiles:
+
+```text
+local-debug
+  kind: local_browser
+  seed_dir: ./.pb_profile_local_debug or PROMPTBRANCH_LOCAL_DEBUG_PROFILE_DIR
+  pools:
+    tasks size=4
+    ask   size=2
+
+service-default
+  kind: service_browser
+  seed_dir: /app/.pb_profile or PROMPTBRANCH_SERVICE_PROFILE_DIR
+  service_base_url: CHATGPT_SERVICE_BASE_URL / CHATGPT_API_BASE_URL / http://localhost:8000
+  pools:
+    sources size=1
+    tasks   size=3
+```
+
+The service profile is metadata-only in this slice. It documents the future queue target for `/app/.pb_profile`, but does not yet clone service-side profiles or change `pb src add` execution.
+
+Commands:
+
+```bash
+pb profile list --json
+pb profile pools --json
+pb profile pools --profile local-debug --json
+pb profile show service-default --json
+```
+
+The registry intentionally treats a missing local seed profile as a structured `seed_missing` status, not as a command failure. This keeps profile discovery safe across repositories where `.pb_profile_local_debug` has not yet been created.
+
 ## Scheduler target
 
 The future scheduler should do this:
@@ -232,7 +269,7 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | Slice | Goal | Required tests |
 |---|---|---|
 | `v0.1.41` | Document architecture, add operation classification metadata, add `pb debug parallel-plan`, route browser `_log` output to stderr. | `pytest -q tests/test_promptbranch_parallel.py tests/test_cli_parser.py::test_parser_accepts_debug_parallel_plan_command tests/test_promptbranch_cli.py::test_debug_parallel_plan_emits_command_metadata_json tests/test_promptbranch_cli.py::test_browser_client_log_writes_to_stderr`; `python3 -m compileall -q .`; `pb debug parallel-plan --json \| python3 -m json.tool` |
-| `v0.1.42` | Add named profile registry for local and future service profiles. | prior tests + `pytest -q tests/test_promptbranch_profile_registry.py`; `pb profile list --json \| python3 -m json.tool`; `pb profile pools --json \| python3 -m json.tool` |
+| `v0.1.42` | Add named profile registry for local browser profiles and future service profile queues. | prior tests + `pytest -q tests/test_promptbranch_profile_registry.py`; `pb profile list --json \| python3 -m json.tool`; `pb profile pools --json \| python3 -m json.tool`; `pb profile show service-default --json \| python3 -m json.tool` |
 | `v0.1.43` | Add scheduler/resource lock manager. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool` |
 | `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pytest -q tests/test_promptbranch_service_queue.py`; `pb browser status --json \| python3 -m json.tool` |
 | `v0.1.45` | Move task/source reads backend-first with DOM fallback only when required. | prior tests + `pytest -q tests/test_promptbranch_backend_first_reads.py`; strict JSON smoke for `pb task list/show --json` |

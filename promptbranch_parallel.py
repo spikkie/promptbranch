@@ -204,11 +204,13 @@ SLICE_TEST_PLAN: list[dict[str, Any]] = [
     },
     {
         "slice": "v0.1.42",
-        "goal": "Add named profile registry for local and future service profiles.",
+        "goal": "Add named profile registry for local browser profiles and future service profile queues.",
         "tests": [
+            "python3 -m pytest -q tests/test_promptbranch_parallel.py tests/test_promptbranch_profile_registry.py tests/test_cli_parser.py::test_parser_accepts_debug_parallel_plan_command tests/test_cli_parser.py::test_parser_accepts_profile_registry_commands tests/test_promptbranch_cli.py::test_debug_parallel_plan_emits_command_metadata_json tests/test_promptbranch_cli.py::test_profile_list_command_emits_profile_registry_json tests/test_promptbranch_cli.py::test_profile_pools_command_emits_flattened_pool_json tests/test_promptbranch_cli.py::test_browser_client_log_writes_to_stderr",
+            "python3 -m compileall -q .",
+            "pb debug parallel-plan --json | python3 -m json.tool",
             "pb profile list --json | python3 -m json.tool",
             "pb profile pools --json | python3 -m json.tool",
-            "pytest -q tests/test_promptbranch_profile_registry.py",
         ],
     },
     {
@@ -327,5 +329,23 @@ def parallel_architecture_payload(operation: str | None = None) -> dict[str, Any
             ],
         },
         "classification": classification,
+        "test_policy": {
+            "default_cadence": "lightweight_cumulative_slice_tests",
+            "full_test_required_when": [
+                "scheduler or queue behavior changes",
+                "service-backed browser profile behavior changes",
+                "Project Source mutations change",
+                "artifact adoption or release lifecycle behavior changes",
+                "a focused regression is unexplained",
+                "operator wants to accept a major stable baseline",
+            ],
+            "required_every_slice": [
+                "new slice focused tests",
+                "all prior parallel-line focused tests",
+                "python3 -m compileall -q .",
+                "strict JSON smoke for new/changed --json commands",
+                "pb test artifact-roundtrip --json --path .",
+            ],
+        },
         "slice_test_plan": SLICE_TEST_PLAN,
     }
