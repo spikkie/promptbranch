@@ -621,6 +621,25 @@ class DirectBackend:
         finally:
             self._service.settings.project_url = original_project_url
 
+    async def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        original_project_url = self._service.settings.project_url
+        effective_project_url = self._effective_project_home_url()
+        try:
+            self._service.settings.project_url = effective_project_url or original_project_url
+            return await self._service.debug_rate_limit(
+                keep_open=keep_open,
+                probe_backend=probe_backend,
+                wait_ms=wait_ms,
+            )
+        finally:
+            self._service.settings.project_url = original_project_url
+
     async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
         original_project_url = self._service.settings.project_url
         effective_project_url = self._effective_project_home_url()
@@ -896,6 +915,21 @@ class ServiceBackend:
             history_max_pages=history_max_pages,
             history_max_detail_probes=history_max_detail_probes,
             manual_pause=manual_pause,
+        )
+
+    async def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        return await self._call(
+            self._client.debug_rate_limit,
+            keep_open=keep_open,
+            project_url=self._effective_project_home_url(),
+            probe_backend=probe_backend,
+            wait_ms=wait_ms,
         )
 
     async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
@@ -18656,6 +18690,25 @@ async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
         )
         print(f"summary={result.get('artifact_dir')}/summary.json")
         return 0
+    if args.debug_command == "rate-limit":
+        result = await backend.debug_rate_limit(
+            keep_open=args.keep_open,
+            probe_backend=args.probe_backend,
+            wait_ms=args.wait_ms,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("status") != "rate_limited" else 2
+        print(f"status={result.get('status')}")
+        print(f"artifact_dir={result.get('artifact_dir')}")
+        cooldown = result.get("cooldown") if isinstance(result.get("cooldown"), dict) else {}
+        print(f"cooldown_active={str(bool(cooldown.get('active'))).lower()}")
+        if result.get("retry_after_seconds") is not None:
+            print(f"retry_after_seconds={result.get('retry_after_seconds')}")
+        modal = result.get("modal") if isinstance(result.get("modal"), dict) else {}
+        print(f"modal_detected={str(bool(modal.get('detected'))).lower()}")
+        print(f"summary={result.get('artifact_dir')}/summary.json")
+        return 0 if result.get("status") != "rate_limited" else 2
     raise RuntimeError(f"Unknown debug command: {args.debug_command}")
 
 
@@ -19864,6 +19917,11 @@ def make_parser() -> argparse.ArgumentParser:
     debug_chats.add_argument("--history-max-detail-probes", type=int, default=80, help="Maximum conversation detail probes for history classification during debug.")
     debug_chats.add_argument("--manual-pause", action="store_true", help="Pause between key browser states in headed mode for manual inspection.")
     debug_chats.add_argument("--keep-open", action="store_true", help="Keep the browser open after debug collection.")
+    debug_rate_limit = debug_subparsers.add_parser("rate-limit", help="Diagnose ChatGPT conversation-access rate limits without retrying or mutating state.")
+    debug_rate_limit.add_argument("--json", action="store_true", help="Emit the rate-limit diagnostic as JSON.")
+    debug_rate_limit.add_argument("--probe-backend", action="store_true", help="Perform one low-volume /backend-api/conversations probe unless a cooldown is already active.")
+    debug_rate_limit.add_argument("--wait-ms", type=int, default=750, help="Milliseconds to observe backend responses after navigation.")
+    debug_rate_limit.add_argument("--keep-open", action="store_true", help="Keep the browser open after debug collection.")
 
     project_create = subparsers.add_parser(
         "project-create",

@@ -48,6 +48,45 @@ class ResponseTimeoutError(TimeoutError):
     """Raised when ChatGPT did not produce the expected output in time."""
 
 
+class RateLimitDetectedError(RuntimeError):
+    """Raised when ChatGPT temporarily limits conversation access.
+
+    This is intentionally non-retryable at the service layer. Retrying a
+    browser operation immediately after the conversation-history guardrail is
+    detected tends to amplify the restriction. Callers should inspect the
+    payload, respect retry_after_seconds/cooldown_remaining_seconds, and return
+    a structured rate_limited result instead of looping.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: float | None = None,
+        cooldown_remaining_seconds: float | None = None,
+        modal_text: str | None = None,
+        payload: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        self.cooldown_remaining_seconds = cooldown_remaining_seconds
+        self.modal_text = modal_text
+        self.payload = payload or {}
+
+    def to_payload(self) -> dict:
+        payload = dict(self.payload)
+        payload.setdefault("ok", False)
+        payload.setdefault("status", "rate_limited")
+        payload.setdefault("error", str(self))
+        payload.setdefault("error_type", type(self).__name__)
+        payload.setdefault("timeout_layer", "chatgpt_rate_limit")
+        payload.setdefault("retry_after_seconds", self.retry_after_seconds)
+        payload.setdefault("cooldown_remaining_seconds", self.cooldown_remaining_seconds)
+        payload.setdefault("modal_text", self.modal_text)
+        payload.setdefault("safe_next_action", "pause_chatgpt_calls_until_retry_after_or_cooldown_expires")
+        return payload
+
+
 class BotChallengeError(AuthenticationError):
     """Raised when ChatGPT/Cloudflare challenge blocks the browser before app load."""
 

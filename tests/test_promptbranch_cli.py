@@ -11797,3 +11797,42 @@ def test_profile_lease_settings_enable_task_pool_without_replacing_state_dir(tmp
     assert settings["seed_profile_dir"] == str(seed)
     assert settings["pool_name"] == "tasks"
     assert settings["pool_size"] == 4
+
+
+def test_debug_rate_limit_command_dispatches_and_returns_rate_limited_exit(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            captured["base_url"] = base_url
+
+        def debug_rate_limit(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "ok": False,
+                "action": "debug_rate_limit",
+                "status": "rate_limited",
+                "cooldown": {"active": True, "cooldown_remaining_seconds": 30.0},
+                "modal": {"detected": True, "text": "Too many requests"},
+                "pause_policy": {"pause_further_chatgpt_calls": True, "do_not_retry": True},
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    rc = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "debug",
+        "rate-limit",
+        "--json",
+        "--probe-backend",
+        "--wait-ms",
+        "25",
+    ])
+
+    assert rc == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "rate_limited"
+    assert payload["pause_policy"]["do_not_retry"] is True
+    assert captured["probe_backend"] is True
+    assert captured["wait_ms"] == 25

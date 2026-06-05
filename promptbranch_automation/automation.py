@@ -420,6 +420,19 @@ class ChatGPTAutomation:
             keep_open=keep_open,
         )
 
+    async def debug_rate_limit(
+        self,
+        *,
+        keep_open: bool = False,
+        probe_backend: bool = False,
+        wait_ms: int = 750,
+    ) -> dict[str, Any]:
+        return await self.client.debug_rate_limit(
+            keep_open=keep_open,
+            probe_backend=probe_backend,
+            wait_ms=wait_ms,
+        )
+
     async def create_project(
         self,
         *,

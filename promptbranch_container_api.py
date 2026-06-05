@@ -572,6 +572,23 @@ async def debug_project_chats(
         _raise_http_error(exc)
 
 
+@protected.get("/debug/rate-limit", dependencies=[Depends(require_service_token)])
+async def debug_rate_limit(
+    keep_open: bool = False,
+    project_url: Optional[str] = None,
+    probe_backend: bool = False,
+    wait_ms: int = 750,
+) -> dict:
+    try:
+        return await _service_for(project_url).debug_rate_limit(
+            keep_open=keep_open,
+            probe_backend=probe_backend,
+            wait_ms=wait_ms,
+        )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
 @protected.get("/project-sources", dependencies=[Depends(require_service_token)])
 async def list_project_sources(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:

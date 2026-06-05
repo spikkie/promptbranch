@@ -376,3 +376,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.38 — profile-pool leases for parallel task reads
 
 `v0.1.38` rebases the profile lease/pool solution onto the `chatgpt_claudecode_workflow-2` line. Browser-backed `pb task` commands can now lease cloned profile-pool slots through `--profile-pool`, allowing parallel task listing/show/answer inspection without opening the same physical Chromium/Patchright user-data-dir concurrently. The slice also adds `pb test release-live --json` as an explicit live browser gate around `visual-artifact-roundtrip`, while keeping `pb test full` deterministic. The operator state file remains rooted at the selected seed `--profile-dir`; the leased slot is used only for browser automation.
+
+
+### v0.1.39 — read-only ChatGPT rate-limit diagnostics
+
+`v0.1.39` adds `pb debug rate-limit --json` as a first-class diagnostic for the ChatGPT conversation-history guardrail. The command captures visible modal text, observed `/backend-api/*` `403`/`429` responses, `retry-after` when exposed, persisted cooldown state, and a safe pause policy. Guardrail detection is read-only and does not attempt bypass or direct mutation; service-level retry loops treat the rate-limit modal timeout as non-retryable so Promptbranch pauses instead of amplifying the restriction. The release also documents the current private `https://chatgpt.com/backend-api` surfaces Promptbranch reads or observes in `docs/chatgpt_backend_api_surfaces.md`.
