@@ -1244,3 +1244,31 @@ def test_parser_accepts_debug_backend_reads_command() -> None:
     assert args.operation == "task_list"
     assert args.plan_only is True
     assert args.json is True
+
+
+def test_parser_accepts_parallel_task_show_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "parallel",
+        "task",
+        "show",
+        "1,2",
+        "--task",
+        "abc",
+        "--targets",
+        "def,ghi",
+        "--concurrency",
+        "3",
+        "--plan-only",
+        "--json",
+    ])
+
+    assert args.command == "parallel"
+    assert args.parallel_command == "task"
+    assert args.parallel_task_command == "show"
+    assert args.target_values == ["1,2"]
+    assert args.task == ["abc"]
+    assert args.targets == ["def,ghi"]
+    assert args.concurrency == 3
+    assert args.plan_only is True
+    assert args.json is True

@@ -117,6 +117,18 @@ OPERATION_CLASSES: dict[str, OperationClass] = {
         queue_required=False,
         notes="Task transcript reads may run in parallel across tasks when output is strict JSON and browser fallbacks use separate profile slots.",
     ),
+    "task_fanout": OperationClass(
+        operation="task_fanout",
+        command_group="parallel",
+        risk="read_backend_or_browser",
+        preferred_executor="backend_first_then_local_browser_pool",
+        parallel_policy="parallel_read_only_across_distinct_task_read_locks",
+        resource_templates=("account:{account_id}:read", "workspace:{project_id}:read", "task:{conversation_id}:read", "profile_pool:{profile_name}:{pool}:slot"),
+        transactional=False,
+        json_stdout_strict=True,
+        queue_required=False,
+        notes="Read-only task fan-out may fetch multiple task transcripts concurrently; same-conversation writes remain serialized by task exclusive locks and are not routed through this command.",
+    ),
     "ask": OperationClass(
         operation="ask",
         command_group="ask",
@@ -244,18 +256,23 @@ SLICE_TEST_PLAN: list[dict[str, Any]] = [
     },
     {
         "slice": "v0.1.46",
-        "goal": "Add read-only parallel task runner.",
+        "goal": "Use backend-read diagnostics for actual backend-first task list routing while keeping source reads explicit-fallback on provenance gaps.",
         "tests": [
-            "pb parallel task show --tasks 1,2 --concurrency 2 --json | python3 -m json.tool",
-            "pytest -q tests/test_promptbranch_parallel_runner.py",
+            "python3 -m pytest -q tests/test_promptbranch_backend_reads.py tests/test_promptbranch_cli.py::test_chat_list_deep_history_skips_history_when_backend_indexed tests/test_promptbranch_cli.py::test_chat_list_deep_history_uses_fallback_when_backend_missing tests/test_promptbranch_cli.py::test_project_source_list_json_marks_metadata_gap_routing",
+            "python3 -m compileall -q .",
+            "pb task list --json | python3 -m json.tool",
+            "pb src list --json | python3 -m json.tool",
+            "pb debug backend-reads --json | python3 -m json.tool",
         ],
     },
     {
         "slice": "v0.1.47",
-        "goal": "Allow protocol-bound parallel ask across different conversations while serializing same-conversation writes.",
+        "goal": "Add read-only parallel task fan-out while preserving same-conversation write serialization policy.",
         "tests": [
-            "pytest -q tests/test_promptbranch_parallel_ask.py",
-            "pb parallel ask --dry-run --tasks 1,2 --protocol --json | python3 -m json.tool",
+            "python3 -m pytest -q tests/test_promptbranch_task_fanout.py tests/test_cli_parser.py::test_parser_accepts_parallel_task_show_command tests/test_promptbranch_cli.py::test_parallel_task_show_plan_only_emits_read_only_policy tests/test_promptbranch_cli.py::test_parallel_task_show_fetches_targets_without_mutating_current_state",
+            "python3 -m compileall -q .",
+            "pb parallel policy --json | python3 -m json.tool",
+            "pb parallel task show --task 1 --plan-only --json | python3 -m json.tool",
         ],
     },
     {

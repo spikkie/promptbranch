@@ -12206,3 +12206,113 @@ def test_project_source_list_json_marks_metadata_gap_routing(monkeypatch, capsys
     assert exit_code == 0
     assert payload["read_routing"]["mode"] == "backend_first_blocked"
     assert payload["read_routing"]["metadata_gap"] is True
+
+
+def test_parallel_task_show_plan_only_emits_read_only_policy(capsys) -> None:
+    from promptbranch_cli import cmd_parallel
+
+    async def run() -> int:
+        class FakeBackend:
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                assert include_history_fallback is False
+                return {
+                    "ok": True,
+                    "chats": [
+                        {"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc", "source": "project_endpoint"},
+                        {"id": "def", "title": "Other", "conversation_url": "https://chatgpt.com/g/demo/c/def", "source": "project_endpoint"},
+                    ],
+                    "source_counts": {"project_endpoint": 2},
+                    "count": 2,
+                }
+
+        args = argparse.Namespace(
+            command="parallel",
+            parallel_command="task",
+            parallel_task_command="show",
+            target_values=["1,def"],
+            task=[],
+            targets=[],
+            all=False,
+            concurrency=4,
+            plan_only=True,
+            deep_history=False,
+            keep_open=False,
+            json=True,
+        )
+        return await cmd_parallel(FakeBackend(), args)
+
+    rc = asyncio.run(run())
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["status"] == "planned"
+    assert payload["target_count"] == 2
+    assert payload["concurrency"] == 2
+    assert payload["policy"]["read_only"] is True
+    assert payload["policy"]["same_conversation_writes_serialized"] is True
+    assert payload["task_list_routing"]["selected_path"] == "backend_first"
+
+
+def test_parallel_task_show_fetches_targets_without_mutating_current_state(capsys) -> None:
+    from promptbranch_cli import cmd_parallel
+
+    async def run() -> tuple[int, list[str]]:
+        class FakeBackend:
+            fetched: list[str]
+
+            def __init__(self) -> None:
+                self.fetched = []
+
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                return {
+                    "ok": True,
+                    "chats": [
+                        {"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc", "source": "project_endpoint"},
+                        {"id": "def", "title": "Other", "conversation_url": "https://chatgpt.com/g/demo/c/def", "source": "project_endpoint"},
+                    ],
+                    "source_counts": {"project_endpoint": 2},
+                    "count": 2,
+                }
+
+            async def get_chat(self, conversation_url: str, *, keep_open=False):
+                self.fetched.append(conversation_url)
+                return {"ok": True, "conversation_url": conversation_url, "messages": []}
+
+        backend = FakeBackend()
+        args = argparse.Namespace(
+            command="parallel",
+            parallel_command="task",
+            parallel_task_command="show",
+            target_values=["1", "2"],
+            task=[],
+            targets=[],
+            all=False,
+            concurrency=8,
+            plan_only=False,
+            deep_history=False,
+            keep_open=False,
+            json=True,
+        )
+        return await cmd_parallel(backend, args), backend.fetched
+
+    rc, fetched = asyncio.run(run())
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["status"] == "completed"
+    assert payload["result_count"] == 2
+    assert payload["failure_count"] == 0
+    assert fetched == ["https://chatgpt.com/g/demo/c/abc", "https://chatgpt.com/g/demo/c/def"]
+    assert payload["policy"]["same_conversation_writes_serialized"] is True

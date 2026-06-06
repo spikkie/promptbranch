@@ -68,6 +68,15 @@ from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smo
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
+from promptbranch_task_fanout import (
+    TaskFanoutTarget,
+    normalize_task_fanout_concurrency,
+    render_task_fanout_summary,
+    split_task_fanout_targets,
+    task_fanout_plan_payload,
+    task_fanout_result_payload,
+    task_fanout_policy_payload,
+)
 from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan, classify_task_list_payload, source_list_read_routing, task_list_read_routing
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
@@ -7003,6 +7012,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "rate-limit", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
+        "parallel": ["policy", "task", "show", "--task", "--targets", "--all", "--concurrency", "--plan-only", "--deep-history", "--json", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
@@ -7632,6 +7642,172 @@ async def cmd_ws(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_state_clear(backend, args)
     raise RuntimeError(f"Unknown ws command: {args.ws_command}")
 
+
+
+
+def _task_fanout_target_from_chat(requested: str, chat: dict[str, Any]) -> TaskFanoutTarget:
+    conversation_url = str(chat.get("conversation_url") or "")
+    task_id = str(chat.get("id") or conversation_id_from_url(conversation_url) or requested)
+    return TaskFanoutTarget(
+        target=str(requested),
+        id=task_id,
+        title=str(chat.get("title") or "(untitled)"),
+        conversation_url=conversation_url,
+        source=str(chat.get("source") or "") or None,
+    )
+
+
+def _task_fanout_direct_target(requested: str, snapshot: dict[str, Any] | None) -> TaskFanoutTarget:
+    value = str(requested).strip()
+    conversation_url = value if _looks_like_chatgpt_url(value) else ""
+    task_id = conversation_id_from_url(conversation_url) if conversation_url else ""
+    if not conversation_url and _looks_like_conversation_id(value):
+        project_home_url = _selected_project_home_url(snapshot or {})
+        if project_home_url:
+            project_base = project_home_url[:-len('/project')] if project_home_url.endswith('/project') else project_home_url.rstrip('/')
+            conversation_url = f"{project_base}/c/{value}"
+        task_id = value
+    return TaskFanoutTarget(
+        target=value,
+        id=task_id or value,
+        title=value,
+        conversation_url=conversation_url,
+        source="direct",
+    )
+
+
+async def _load_task_fanout_targets(backend: Any, args: argparse.Namespace, requested_targets: list[str]) -> tuple[list[TaskFanoutTarget], dict[str, Any]]:
+    snapshot = backend.state_snapshot()
+    current_conversation_url = snapshot.get('conversation_url') if isinstance(snapshot, dict) else None
+    initial_result = await backend.list_project_chats(
+        keep_open=getattr(args, "keep_open", False),
+        include_history_fallback=False,
+    )
+    chats, payload = _chat_list_payload(
+        initial_result,
+        current_conversation_url=current_conversation_url if isinstance(current_conversation_url, str) else None,
+    )
+    routing = task_list_read_routing(
+        payload,
+        history_fallback_requested=bool(getattr(args, "deep_history", False)),
+        history_fallback_used=False,
+    )
+
+    if bool(getattr(args, "deep_history", False)) and not routing.get("backend_first_satisfied"):
+        fallback_result = await backend.list_project_chats(
+            keep_open=getattr(args, "keep_open", False),
+            include_history_fallback=True,
+        )
+        chats, payload = _chat_list_payload(
+            fallback_result,
+            current_conversation_url=current_conversation_url if isinstance(current_conversation_url, str) else None,
+        )
+        routing = task_list_read_routing(
+            payload,
+            history_fallback_requested=True,
+            history_fallback_used=True,
+        )
+
+    payload["read_routing"] = routing
+    if bool(getattr(args, "all", False)):
+        targets = [_task_fanout_target_from_chat(str(index), chat) for index, chat in enumerate(chats, start=1)]
+        return targets, payload
+
+    targets: list[TaskFanoutTarget] = []
+    for requested in requested_targets:
+        if _looks_like_chatgpt_url(requested) or _looks_like_conversation_id(requested):
+            direct = _task_fanout_direct_target(requested, snapshot if isinstance(snapshot, dict) else None)
+            if direct.conversation_url:
+                targets.append(direct)
+                continue
+        selected = _select_chat_from_list(chats, requested)
+        targets.append(_task_fanout_target_from_chat(requested, selected))
+    return targets, payload
+
+
+async def cmd_parallel_task_show(backend: Any, args: argparse.Namespace) -> int:
+    requested_targets = split_task_fanout_targets(
+        list(getattr(args, "targets", []) or [])
+        + list(getattr(args, "task", []) or [])
+        + list(getattr(args, "target_values", []) or [])
+    )
+    if not requested_targets and not bool(getattr(args, "all", False)):
+        print("error: provide one or more task targets or use --all", file=sys.stderr)
+        return 1
+
+    try:
+        targets, task_list_payload = await _load_task_fanout_targets(backend, args, requested_targets)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not targets:
+        print("error: no task targets resolved", file=sys.stderr)
+        return 1
+
+    concurrency = normalize_task_fanout_concurrency(getattr(args, "concurrency", None), target_count=len(targets))
+    plan = task_fanout_plan_payload(
+        targets=targets,
+        requested_targets=requested_targets if requested_targets else ["--all"],
+        concurrency=concurrency,
+        operation="task_show",
+        task_list_routing=task_list_payload.get("read_routing") if isinstance(task_list_payload, dict) else {},
+    )
+    if bool(getattr(args, "plan_only", False)):
+        if args.json:
+            print(json.dumps(plan, indent=2, ensure_ascii=False))
+        else:
+            print(render_task_fanout_summary(plan), end="")
+        return 0
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def fetch(target: TaskFanoutTarget) -> dict[str, Any]:
+        async with semaphore:
+            if not target.conversation_url:
+                return {
+                    "ok": False,
+                    "status": "conversation_url_missing",
+                    "target": target.to_dict(),
+                    "error": "target did not resolve to a conversation URL",
+                }
+            try:
+                payload = await backend.get_chat(target.conversation_url, keep_open=getattr(args, "keep_open", False))
+                return {
+                    "ok": bool(payload.get("ok", True)) if isinstance(payload, dict) else True,
+                    "status": "fetched",
+                    "target": target.to_dict(),
+                    "payload": payload,
+                }
+            except Exception as exc:  # pragma: no cover - defensive path for live browser/service failures
+                return {
+                    "ok": False,
+                    "status": "fetch_failed",
+                    "target": target.to_dict(),
+                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
+                }
+
+    results = await asyncio.gather(*(fetch(target) for target in targets))
+    payload = task_fanout_result_payload(plan=plan, results=list(results))
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(render_task_fanout_summary(payload), end="")
+    return 0 if payload.get("ok") else 2
+
+
+async def cmd_parallel(backend: Any, args: argparse.Namespace) -> int:
+    if args.parallel_command == "policy":
+        payload = task_fanout_policy_payload()
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_task_fanout_summary({"status": payload.get("status"), "operation": "policy", "target_count": 0, "concurrency": 0, "policy": payload}), end="")
+        return 0
+    if args.parallel_command == "task" and args.parallel_task_command == "show":
+        return await cmd_parallel_task_show(backend, args)
+    raise RuntimeError(f"Unknown parallel command: {args.parallel_command}")
 
 async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.task_command == "list":
@@ -19519,6 +19695,26 @@ def make_parser() -> argparse.ArgumentParser:
     task_answer_parse.add_argument("--keep-open", action="store_true")
     _add_task_profile_pool_options(task_answer_parse)
 
+    parallel = subparsers.add_parser("parallel", help="Read-only parallel execution helpers.")
+    parallel_subparsers = parallel.add_subparsers(dest="parallel_command", required=True)
+
+    parallel_policy = parallel_subparsers.add_parser("policy", help="Show read-only parallel fan-out policy metadata.")
+    parallel_policy.add_argument("--json", action="store_true", help="Emit policy as JSON.")
+
+    parallel_task = parallel_subparsers.add_parser("task", help="Parallel read-only task helpers.")
+    parallel_task_subparsers = parallel_task.add_subparsers(dest="parallel_task_command", required=True)
+    parallel_task_show = parallel_task_subparsers.add_parser("show", help="Fetch multiple task transcripts with bounded read-only fan-out.")
+    parallel_task_show.add_argument("target_values", nargs="*", help="Task selectors: numeric index, id, id prefix, title, or conversation URL. Comma-separated values are allowed.")
+    parallel_task_show.add_argument("--task", action="append", default=[], help="Task selector. Repeat or comma-separate for multiple tasks.")
+    parallel_task_show.add_argument("--targets", action="append", default=[], help="Comma-separated task selectors. Repeat as needed.")
+    parallel_task_show.add_argument("--all", action="store_true", help="Fan out across all indexed tasks currently visible for the workspace.")
+    parallel_task_show.add_argument("--concurrency", type=int, default=4, help="Maximum concurrent read-only task fetches. Capped at 8.")
+    parallel_task_show.add_argument("--plan-only", action="store_true", help="Resolve targets and print the fan-out plan without fetching transcripts.")
+    parallel_task_show.add_argument("--deep-history", action="store_true", help="Allow slow history fallback only when backend/indexed task evidence is missing.")
+    parallel_task_show.add_argument("--json", action="store_true", help="Emit fan-out plan/result as JSON.")
+    parallel_task_show.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(parallel_task_show)
+
     src = subparsers.add_parser("src", help="Source commands for the active workspace.")
     src_subparsers = src.add_subparsers(dest="src_command", required=True)
 
@@ -20415,7 +20611,7 @@ def _json_output_requested(args: argparse.Namespace) -> bool:
 
 def _command_action_name(args: argparse.Namespace) -> str:
     command = str(getattr(args, "command", "command") or "command")
-    for attr in ("src_command", "task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "queue_command", "test_command", "agent_command", "skill_command", "mcp_command"):
+    for attr in ("src_command", "task_command", "parallel_command", "parallel_task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "queue_command", "test_command", "agent_command", "skill_command", "mcp_command"):
         value = getattr(args, attr, None)
         if value:
             return f"{command}_{value}".replace("-", "_")
@@ -20560,6 +20756,8 @@ async def _async_main(args: argparse.Namespace) -> int:
             return await cmd_ws(backend, args)
         if args.command == "task":
             return await cmd_task(backend, args)
+        if args.command == "parallel":
+            return await cmd_parallel(backend, args)
         if args.command == "src":
             return await cmd_src(backend, args)
         if args.command == "artifact":
