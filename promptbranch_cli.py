@@ -6965,7 +6965,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "login-check": ["--keep-open"],
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
-        "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
+        "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--wait-for-profile", "--no-queue", "--profile-wait-timeout-seconds", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
         "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "mvp-dod", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
@@ -6979,7 +6979,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "project-resolve": ["--keep-open"],
         "project-ensure": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-remove": ["--keep-open"],
-        "project-source-add": ["--type", "--value", "--file", "--name", "--no-overwrite", "--keep-open"],
+        "project-source-add": ["--type", "--value", "--file", "--name", "--no-overwrite", "--wait-for-profile", "--no-queue", "--profile-wait-timeout-seconds", "--json", "--keep-open"],
         "project-source-list": ["--json", "--keep-open"],
         "project-source-remove": ["--exact", "--keep-open"],
         "chat-list": ["--json", "--keep-open", "--deep-history"],
@@ -19457,6 +19457,7 @@ def make_parser() -> argparse.ArgumentParser:
     src_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window. In v0.1.44 source add queues by default.")
     src_add.add_argument("--no-queue", action="store_true", help="Disable the v0.1.44 service-profile bounded wait queue and use the service default contention timeout.")
     src_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile. Defaults to {SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS} for source add queueing.")
+    src_add.add_argument("--json", action="store_true", help="Emit the source-add result as JSON. Source add is JSON-first; this flag is accepted for command-contract consistency.")
     src_add.add_argument("--keep-open", action="store_true")
 
     src_remove = src_subparsers.add_parser("rm", aliases=["remove"], help="Remove a source from the current workspace.")
@@ -20147,6 +20148,7 @@ def make_parser() -> argparse.ArgumentParser:
     source_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window. In v0.1.44 source add queues by default.")
     source_add.add_argument("--no-queue", action="store_true", help="Disable the v0.1.44 service-profile bounded wait queue and use the service default contention timeout.")
     source_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile. Defaults to {SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS} for source add queueing.")
+    source_add.add_argument("--json", action="store_true", help="Emit the source-add result as JSON. Source add is JSON-first; this flag is accepted for command-contract consistency.")
     source_add.add_argument("--keep-open", action="store_true")
 
     source_list = subparsers.add_parser(
