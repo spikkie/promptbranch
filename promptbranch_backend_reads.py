@@ -226,3 +226,83 @@ def backend_reads_diagnostics(
         "backend_first_missing": backend_first_missing,
     })
     return result
+
+
+def task_list_read_routing(payload: Any, *, history_fallback_requested: bool = False, history_fallback_used: bool = False) -> dict[str, Any]:
+    """Return the runtime read-routing decision for `pb task list`.
+
+    v0.1.46 starts routing task reads from the same backend-read evidence
+    exposed by `pb debug backend-reads`. Backend-indexed observations win;
+    global history/DOM/current-state rows are explicit fallbacks rather than an
+    invisible blend.
+    """
+
+    diagnostic = classify_task_list_payload(payload)
+    backend_first = bool(diagnostic.get("backend_first_satisfied"))
+    if backend_first:
+        selected_path = "backend_first"
+        fallback_policy = "skip_history_fallback_when_backend_indexed"
+    elif history_fallback_used:
+        selected_path = "history_fallback"
+        fallback_policy = "used_after_backend_missing"
+    elif diagnostic.get("status") == "fallback_only":
+        selected_path = "indexed_fallback"
+        fallback_policy = "fallback_visible"
+    elif diagnostic.get("status") == "recent_state_only":
+        selected_path = "state_fallback"
+        fallback_policy = "recent_state_only"
+    else:
+        selected_path = "missing"
+        fallback_policy = "no_read_path_verified"
+
+    return {
+        "operation": "task_list",
+        "mode": "backend_first",
+        "selected_path": selected_path,
+        "status": diagnostic.get("status"),
+        "backend_first_satisfied": backend_first,
+        "history_fallback_requested": bool(history_fallback_requested),
+        "history_fallback_used": bool(history_fallback_used),
+        "fallback_policy": fallback_policy,
+        "backend_observation_count": diagnostic.get("backend_observation_count", 0),
+        "fallback_observation_count": diagnostic.get("fallback_observation_count", 0),
+        "metadata_gap": bool(diagnostic.get("metadata_gap")),
+    }
+
+
+def source_list_read_routing(payload: Any) -> dict[str, Any]:
+    """Return the runtime read-routing decision for `pb src list`.
+
+    Source listing still lacks reliable backend-vs-DOM provenance in the current
+    service payload, so v0.1.46 deliberately exposes the fallback/metadata-gap
+    instead of pretending the source path is backend-first.
+    """
+
+    diagnostic = classify_source_list_payload(payload)
+    backend_first = bool(diagnostic.get("backend_first_satisfied"))
+    metadata_gap = bool(diagnostic.get("metadata_gap"))
+    if backend_first:
+        selected_path = "backend_first"
+        fallback_policy = "backend_provenance_available"
+    elif metadata_gap:
+        selected_path = "explicit_fallback_metadata_gap"
+        fallback_policy = "do_not_route_backend_first_until_source_provenance_exists"
+    elif diagnostic.get("fallback_used"):
+        selected_path = "explicit_fallback"
+        fallback_policy = "fallback_visible"
+    else:
+        selected_path = "missing" if diagnostic.get("status") == "missing" else "undifferentiated"
+        fallback_policy = "source_provenance_required"
+
+    return {
+        "operation": "source_list",
+        "mode": "backend_first_blocked" if metadata_gap else "backend_first",
+        "selected_path": selected_path,
+        "status": diagnostic.get("status"),
+        "backend_first_satisfied": backend_first,
+        "fallback_used": bool(diagnostic.get("fallback_used")),
+        "fallback_policy": fallback_policy,
+        "backend_observation_count": diagnostic.get("backend_observation_count", 0),
+        "fallback_observation_count": diagnostic.get("fallback_observation_count", 0),
+        "metadata_gap": metadata_gap,
+    }

@@ -304,6 +304,7 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | `v0.1.43` | Add scheduler/resource lock planner and read-only queue inspection commands. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool`; `pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json \| python3 -m json.tool` |
 | `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pytest -q tests/test_promptbranch_service_queue.py`; `pb browser status --json \| python3 -m json.tool` |
 | `v0.1.45` | Add backend-first task/source read diagnostics before changing live read routing. | prior tests + `pytest -q tests/test_promptbranch_backend_reads.py`; strict JSON smoke for `pb debug backend-reads --plan-only --json` |
+| `v0.1.46` | Use backend-read diagnostics for actual task-list routing; keep source-list backend-first blocked when provenance is missing. | prior tests + focused routing tests; strict JSON smoke for `pb task list --json`, `pb src list --json`, and `pb debug backend-reads --json` |
 | `v0.1.46` | Add read-only parallel task runner. | prior tests + `pytest -q tests/test_promptbranch_parallel_runner.py`; `pb parallel task show --tasks 1,2 --concurrency 2 --json \| python3 -m json.tool` |
 | `v0.1.47` | Add protocol-bound parallel asks across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask --dry-run --tasks 1,2 --protocol --json \| python3 -m json.tool` |
 | `v0.1.48` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
@@ -387,3 +388,10 @@ pb browser status --json | python3 -m json.tool
 pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json | python3 -m json.tool
 pb src add --file <zip> --profile-wait-timeout-seconds 600 --json | python3 -m json.tool
 ```
+
+
+## Backend-first read routing (`v0.1.46`)
+
+`v0.1.46` turns the read-only diagnostics from `v0.1.45` into runtime routing for the safe part of the read surface. `pb task list` now reads the lightweight backend/indexed project task list first. If `--deep-history` is requested, global history is used only when backend/indexed evidence is missing.
+
+`pb src list` remains intentionally conservative. The live `v0.1.45` diagnostic showed source-list payloads can contain sources without reliable backend-vs-DOM provenance. `v0.1.46` therefore adds `read_routing.mode=backend_first_blocked` and keeps the source path explicit-fallback until the service exposes source provenance.

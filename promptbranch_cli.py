@@ -68,7 +68,7 @@ from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smo
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
-from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan
+from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan, classify_task_list_payload, source_list_read_routing, task_list_read_routing
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
@@ -1285,6 +1285,7 @@ def _project_source_list_payload(result: Any) -> tuple[list[dict[str, Any]], dic
     sources = [item for item in raw_sources if isinstance(item, dict)]
     payload["sources"] = sources
     payload["count"] = len(sources)
+    payload["read_routing"] = source_list_read_routing(payload)
     return sources, payload
 
 
@@ -1620,11 +1621,36 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
     if not project_home_url:
         print('error: no current project is selected', file=sys.stderr)
         return 2
-    result = await backend.list_project_chats(
+
+    # v0.1.46: route task reads backend-first. Always collect the lightweight
+    # indexed/project payload first. The expensive history fallback is allowed
+    # only when explicitly requested and backend/indexed evidence is missing.
+    initial_result = await backend.list_project_chats(
         keep_open=args.keep_open,
-        include_history_fallback=bool(getattr(args, 'deep_history', False)),
+        include_history_fallback=False,
     )
-    chats, payload = _chat_list_payload(result, current_conversation_url=snapshot.get('conversation_url'))
+    chats, payload = _chat_list_payload(initial_result, current_conversation_url=snapshot.get('conversation_url'))
+    initial_routing = task_list_read_routing(
+        payload,
+        history_fallback_requested=bool(getattr(args, 'deep_history', False)),
+        history_fallback_used=False,
+    )
+    history_fallback_used = False
+
+    if bool(getattr(args, 'deep_history', False)) and not initial_routing.get('backend_first_satisfied'):
+        fallback_result = await backend.list_project_chats(
+            keep_open=args.keep_open,
+            include_history_fallback=True,
+        )
+        chats, payload = _chat_list_payload(fallback_result, current_conversation_url=snapshot.get('conversation_url'))
+        history_fallback_used = True
+
+    payload['read_routing'] = task_list_read_routing(
+        payload,
+        history_fallback_requested=bool(getattr(args, 'deep_history', False)),
+        history_fallback_used=history_fallback_used,
+    )
+
     cache_writer = getattr(backend, 'remember_task_list', None)
     if callable(cache_writer):
         try:
@@ -1639,13 +1665,15 @@ async def cmd_chat_list(backend: Any, args: argparse.Namespace) -> int:
         return 0
     for idx, item in enumerate(chats, start=1):
         marker = '*' if item.get('is_current') else ' '
-        print(f"{idx:>3}. {marker} {item.get('title') or '(untitled)'}\t{item.get('id') or ''}\t{item.get('conversation_url') or ''}")
+        print(f"{idx:>3}. {marker} {item.get('title') or '(untitled)'}	{item.get('id') or ''}	{item.get('conversation_url') or ''}")
     source_counts = payload.get('source_counts') if isinstance(payload.get('source_counts'), dict) else {}
     if source_counts:
         source_summary = ', '.join(f"{name}={source_counts.get(name) or 0}" for name in ('snorlax', 'project_endpoint', 'dom', 'history', 'history_detail', 'current_page', 'recent_state') if name in source_counts)
         visibility = payload.get('visibility_status') or 'unknown'
-        print(f"# count={payload.get('count', len(chats))} visibility={visibility} sources: {source_summary}")
-        if payload.get('history_supplement_used'):
+        routing = payload.get('read_routing') if isinstance(payload.get('read_routing'), dict) else {}
+        route_summary = f" route={routing.get('selected_path')}" if routing else ''
+        print(f"# count={payload.get('count', len(chats))} visibility={visibility}{route_summary} sources: {source_summary}")
+        if payload.get('history_supplement_used') or history_fallback_used:
             print('# history_supplement_used=true')
     return 0
 

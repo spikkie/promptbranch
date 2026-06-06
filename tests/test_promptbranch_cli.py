@@ -12101,3 +12101,108 @@ def test_debug_backend_reads_collects_task_and_source_payloads(capsys) -> None:
     assert out["status"] == "metadata_gap"
     assert out["diagnostics"]["task_list"]["backend_first_satisfied"] is True
     assert out["diagnostics"]["source_list"]["metadata_gap"] is True
+
+
+def test_chat_list_deep_history_skips_history_when_backend_indexed(capsys) -> None:
+    from promptbranch_cli import cmd_chat_list
+
+    async def run() -> int:
+        class FakeBackend:
+            calls: list[bool] = []
+
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                self.calls.append(include_history_fallback)
+                return {
+                    "ok": True,
+                    "chats": [{"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc"}],
+                    "source_counts": {"project_endpoint": 1},
+                    "count": 1,
+                }
+
+            def remember_task_list(self, project_home_url, chats):
+                pass
+
+        backend = FakeBackend()
+        args = argparse.Namespace(keep_open=False, deep_history=True, json=True)
+        rc = await cmd_chat_list(backend, args)
+        assert backend.calls == [False]
+        return rc
+
+    rc = asyncio.run(run())
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["read_routing"]["selected_path"] == "backend_first"
+    assert out["read_routing"]["history_fallback_requested"] is True
+    assert out["read_routing"]["history_fallback_used"] is False
+
+
+def test_chat_list_deep_history_uses_fallback_when_backend_missing(capsys) -> None:
+    from promptbranch_cli import cmd_chat_list
+
+    async def run() -> int:
+        class FakeBackend:
+            calls: list[bool] = []
+
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                self.calls.append(include_history_fallback)
+                if include_history_fallback:
+                    return {
+                        "ok": True,
+                        "chats": [{"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc"}],
+                        "source_counts": {"history": 1},
+                        "count": 1,
+                    }
+                return {"ok": True, "chats": [], "source_counts": {}, "count": 0}
+
+            def remember_task_list(self, project_home_url, chats):
+                pass
+
+        backend = FakeBackend()
+        args = argparse.Namespace(keep_open=False, deep_history=True, json=True)
+        rc = await cmd_chat_list(backend, args)
+        assert backend.calls == [False, True]
+        return rc
+
+    rc = asyncio.run(run())
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["read_routing"]["history_fallback_used"] is True
+    assert out["read_routing"]["selected_path"] in {"backend_first", "history_fallback", "indexed_fallback"}
+
+
+def test_project_source_list_json_marks_metadata_gap_routing(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            return {"ok": True, "sources": [{"title": "demo.zip"}], "count": 1}
+
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project("https://chatgpt.com/g/g-p-demo-project/project", project_name="demo-project")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "project-source-list", "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["read_routing"]["mode"] == "backend_first_blocked"
+    assert payload["read_routing"]["metadata_gap"] is True
