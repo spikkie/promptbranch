@@ -1200,3 +1200,36 @@ def test_parser_accepts_profile_registry_commands() -> None:
     assert pools_args.profile == "local-debug"
     assert show_args.profile_command == "show"
     assert show_args.name == "service-default"
+
+def test_parser_accepts_src_add_json_for_queue_smoke_contract() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "src",
+        "add",
+        "--file",
+        "demo.zip",
+        "--profile-wait-timeout-seconds",
+        "600",
+        "--json",
+    ])
+    assert args.command == "src"
+    assert args.src_command == "add"
+    assert args.file == "demo.zip"
+    assert args.profile_wait_timeout_seconds == 600
+    assert args.json is True
+
+
+def test_parser_accepts_project_source_add_json_for_legacy_contract() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "project-source-add",
+        "--file",
+        "demo.zip",
+        "--profile-wait-timeout-seconds",
+        "600",
+        "--json",
+    ])
+    assert args.command == "project-source-add"
+    assert args.file == "demo.zip"
+    assert args.profile_wait_timeout_seconds == 600
+    assert args.json is True

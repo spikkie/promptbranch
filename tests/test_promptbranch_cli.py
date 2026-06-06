@@ -11966,3 +11966,69 @@ def test_queue_plan_command_emits_resource_plan_json(capsys) -> None:
     assert payload["operation"] == "src_add"
     assert payload["queue_required"] is True
     assert any(item["resource"] == "sources:demo:exclusive" for item in payload["resources"])
+
+def test_src_add_accepts_json_flag_after_subcommand(monkeypatch, capsys, tmp_path) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "action": "add", "status": "verified"}
+
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "src",
+        "add",
+        "--file",
+        str(file_path),
+        "--profile-wait-timeout-seconds",
+        "600",
+        "--json",
+    ])
+
+    assert exit_code == 0
+    assert calls["profile_lock_wait_seconds"] == 600.0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "verified"
+
+
+def test_project_source_add_accepts_json_flag_after_subcommand(monkeypatch, capsys, tmp_path) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "action": "add", "status": "verified"}
+
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "project-source-add",
+        "--file",
+        str(file_path),
+        "--profile-wait-timeout-seconds",
+        "600",
+        "--json",
+    ])
+
+    assert exit_code == 0
+    assert calls["profile_lock_wait_seconds"] == 600.0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "verified"
