@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: scheduler/resource lock inspection slice in `v0.1.43`  
+Status: documentation consistency repaired in `v0.1.47.1`; implementation is current through the read-only parallel task fan-out slice in `v0.1.47`  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -302,13 +302,16 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | `v0.1.41` | Document architecture, add operation classification metadata, add `pb debug parallel-plan`, route browser `_log` output to stderr. | `pytest -q tests/test_promptbranch_parallel.py tests/test_cli_parser.py::test_parser_accepts_debug_parallel_plan_command tests/test_promptbranch_cli.py::test_debug_parallel_plan_emits_command_metadata_json tests/test_promptbranch_cli.py::test_browser_client_log_writes_to_stderr`; `python3 -m compileall -q .`; `pb debug parallel-plan --json \| python3 -m json.tool` |
 | `v0.1.42` | Add named profile registry for local browser profiles and future service profile queues. | prior tests + `pytest -q tests/test_promptbranch_profile_registry.py`; `pb profile list --json \| python3 -m json.tool`; `pb profile pools --json \| python3 -m json.tool`; `pb profile show service-default --json \| python3 -m json.tool` |
 | `v0.1.43` | Add scheduler/resource lock planner and read-only queue inspection commands. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool`; `pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json \| python3 -m json.tool` |
-| `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pytest -q tests/test_promptbranch_service_queue.py`; `pb browser status --json \| python3 -m json.tool` |
+| `v0.1.43.1` | Repair installed-distribution package inclusion for `promptbranch_scheduler`. | prior tests + installed-distribution smoke for `pb queue status --json` and `pb queue plan ... --json` |
+| `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pb browser status --json \| python3 -m json.tool`; queue plan smoke for `src_add` |
+| `v0.1.44.1` | Repair the documented `pb src add ... --json` parser contract. | parser/CLI regression tests for `pb src add --json` and legacy `pb project-source-add --json` |
 | `v0.1.45` | Add backend-first task/source read diagnostics before changing live read routing. | prior tests + `pytest -q tests/test_promptbranch_backend_reads.py`; strict JSON smoke for `pb debug backend-reads --plan-only --json` |
 | `v0.1.46` | Use backend-read diagnostics for actual task-list routing; keep source-list backend-first blocked when provenance is missing. | prior tests + focused routing tests; strict JSON smoke for `pb task list --json`, `pb src list --json`, and `pb debug backend-reads --json` |
-| `v0.1.46` | Add read-only parallel task runner. | prior tests + `pytest -q tests/test_promptbranch_parallel_runner.py`; `pb parallel task show --tasks 1,2 --concurrency 2 --json \| python3 -m json.tool` |
-| `v0.1.47` | Add protocol-bound parallel asks across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask --dry-run --tasks 1,2 --protocol --json \| python3 -m json.tool` |
-| `v0.1.48` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
-| `v0.1.49` | Integrate release lifecycle with scheduler locks and source upload queue. | prior tests + `pytest -q tests/test_promptbranch_release_lifecycle_scheduler.py`; release lifecycle dry-run JSON smoke |
+| `v0.1.47` | Add read-only parallel task fan-out. | prior tests + `pytest -q tests/test_promptbranch_task_fanout.py`; `pb parallel policy --json \| python3 -m json.tool`; `pb parallel task show --task 1 --plan-only --json \| python3 -m json.tool` |
+| `v0.1.47.1` | Repair this architecture document so the status header and slice plan match the accepted release history. | doc consistency test + compileall + strict JSON smoke for `pb parallel policy --json` |
+| `v0.1.48` | Add protocol-bound parallel ask planning across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask --dry-run --tasks 1,2 --protocol --json \| python3 -m json.tool` |
+| `v0.1.49` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
+| `v0.1.50` | Integrate release lifecycle with scheduler locks and source upload queue. | prior tests + `pytest -q tests/test_promptbranch_release_lifecycle_scheduler.py`; release lifecycle dry-run JSON smoke |
 
 ## Definition of done for the architecture line
 
@@ -414,3 +417,17 @@ task:{conversation_id}:exclusive
 ```
 
 This means read fan-out may overlap across task read locks, but `pb ask`, `pb task message answer`, and any future write to the same conversation must remain serialized.
+
+## Documentation consistency repair (`v0.1.47.1`)
+
+`v0.1.47.1` is a repair release for this document only. It does not advance the parallel execution line, does not introduce new scheduler behavior, and does not widen any write path.
+
+The repair corrects the architecture status and slice plan after the actual release order became:
+
+```text
+v0.1.46  backend-first task-list routing
+v0.1.47  read-only parallel task fan-out
+v0.1.48  next planned protocol-bound parallel ask planning
+```
+
+The duplicate `v0.1.46` planning row is removed, and the future source-mutation and release-lifecycle scheduler slices are shifted after the protocol-bound ask-planning slice.
