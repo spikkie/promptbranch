@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: implementation current through `v0.1.48`; protocol-bound parallel ask planning is available, while ask execution remains future scheduler scope  
+Status: implementation current through `v0.1.48.1`; protocol-bound parallel ask planning is available as a planning-only surface with stale release-baseline guards, while ask execution remains future scheduler scope  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -309,7 +309,8 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | `v0.1.46` | Use backend-read diagnostics for actual task-list routing; keep source-list backend-first blocked when provenance is missing. | prior tests + focused routing tests; strict JSON smoke for `pb task list --json`, `pb src list --json`, and `pb debug backend-reads --json` |
 | `v0.1.47` | Add read-only parallel task fan-out. | prior tests + `pytest -q tests/test_promptbranch_task_fanout.py`; `pb parallel policy --json \| python3 -m json.tool`; `pb parallel task show --task 1 --plan-only --json \| python3 -m json.tool` |
 | `v0.1.47.1` | Repair this architecture document so the status header and slice plan match the accepted release history. | doc consistency test + compileall + strict JSON smoke for `pb parallel policy --json` |
-| `v0.1.48` | Add protocol-bound parallel ask planning across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask --dry-run --tasks 1,2 --protocol --json \| python3 -m json.tool` |
+| `v0.1.48` | Add protocol-bound parallel ask planning across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask "summarize status" --task 1 --task 2 --plan-only --protocol --json \| python3 -m json.tool` |
+| `v0.1.48.1` | Repair parallel ask protocol planning so non-release plans do not infer stale release targets and release-style plans fail closed on stale baselines unless explicitly overridden. | stale-baseline regression tests + `pb parallel ask ... --plan-only --protocol --json` strict JSON smoke |
 | `v0.1.49` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
 | `v0.1.50` | Integrate release lifecycle with scheduler locks and source upload queue. | prior tests + `pytest -q tests/test_promptbranch_release_lifecycle_scheduler.py`; release lifecycle dry-run JSON smoke |
 
@@ -464,3 +465,40 @@ same conversation: must serialize under task:{conversation_id}:exclusive
 ```
 
 Execution is intentionally blocked until a later scheduler/executor slice can acquire profile slots, enforce rate limits, submit prompts transactionally, and verify protocol replies. This prevents `v0.1.48` from widening live write behavior while still making the future parallel ask model concrete and testable.
+
+
+## Repair v0.1.48.1 — Parallel ask stale-baseline guard
+
+`v0.1.48.1` repairs the planning-only parallel ask surface without advancing the slice.
+
+The defect in `v0.1.48` was that generic planning commands such as:
+
+```bash
+pb parallel ask "summarize status" --task 1 --task 2 --plan-only --protocol --json
+```
+
+could emit release-style `promptbranch.ask.request` envelopes using a stale artifact registry baseline. That is unsafe because a later executor could treat stale `current_baseline` / `target_version` metadata as authoritative.
+
+The repair rule is:
+
+```text
+non-release parallel ask plan:
+  intent_kind = parallel_task_request
+  do not infer target_version from artifact registry state
+  allow stale artifact baseline only as diagnostic metadata
+
+release-style parallel ask plan:
+  requires fresh baseline matching installed runtime/source state
+  or explicit operator baseline override via --baseline-artifact / --baseline-version
+  otherwise fail closed with status parallel_ask_baseline_stale
+```
+
+This repair preserves the original boundary:
+
+```text
+automation_performed = false
+planning_only = true
+no prompts sent
+no conversation mutation
+same-conversation writes remain serialized
+```

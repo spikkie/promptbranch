@@ -31,6 +31,92 @@ PROTOCOL_BOUND_PARALLEL_ASK_POLICY: dict[str, Any] = {
 }
 
 
+PARALLEL_ASK_RELEASE_INTENT_KINDS = {
+    "software_release_request",
+    "software_release_candidate_request",
+}
+
+
+def _normalize_version_for_compare(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text[1:] if text.lower().startswith("v") else text
+
+
+def parallel_ask_is_release_like(
+    *,
+    intent_kind: str | None,
+    target_version: str | None = None,
+    baseline_artifact: str | None = None,
+    baseline_version: str | None = None,
+    release_type: str | None = None,
+) -> bool:
+    """Return whether a parallel ask plan would carry release/baseline authority."""
+
+    normalized_intent = str(intent_kind or "").strip()
+    return (
+        normalized_intent in PARALLEL_ASK_RELEASE_INTENT_KINDS
+        or bool(str(target_version or "").strip())
+        or bool(str(baseline_artifact or "").strip())
+        or bool(str(baseline_version or "").strip())
+        or str(release_type or "normal").strip() == "repair"
+    )
+
+
+def parallel_ask_baseline_safety(
+    *,
+    request: dict[str, Any],
+    artifact_current: dict[str, Any] | None,
+    release_like: bool,
+) -> dict[str, Any]:
+    """Classify whether a protocol ask plan may safely carry artifact baseline data."""
+
+    artifact = request.get("artifact") if isinstance(request.get("artifact"), dict) else {}
+    current_payload = artifact_current if isinstance(artifact_current, dict) else {}
+    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    runtime_version = runtime.get("version")
+    protocol_baseline_version = artifact.get("current_version")
+    baseline_override = bool(artifact.get("baseline_override"))
+    runtime_norm = _normalize_version_for_compare(runtime_version)
+    baseline_norm = _normalize_version_for_compare(protocol_baseline_version)
+    versions_match = bool(runtime_norm and baseline_norm and runtime_norm == baseline_norm)
+    stale = bool(runtime_norm and baseline_norm and not versions_match)
+
+    status = "fresh"
+    ok = True
+    blocking = False
+    if baseline_override:
+        status = "explicit_baseline_override"
+    elif stale and release_like:
+        ok = False
+        blocking = True
+        status = "stale_release_baseline_blocked"
+    elif stale:
+        status = "stale_non_release_baseline_allowed"
+
+    return {
+        "ok": ok,
+        "status": status,
+        "blocking": blocking,
+        "release_like": bool(release_like),
+        "baseline_override": baseline_override,
+        "runtime_version": runtime_version,
+        "protocol_baseline_version": protocol_baseline_version,
+        "protocol_baseline_artifact": artifact.get("current_baseline"),
+        "versions_match": versions_match,
+        "code_version_matches_state_source": consistency.get("code_version_matches_state_source"),
+        "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact"),
+        "operator_instruction": (
+            "Refusing to emit release-style parallel ask envelopes from a stale artifact baseline; "
+            "run pb artifact current --json / adopt-current, or pass explicit --baseline-artifact/--baseline-version after verifying baseline continuity."
+            if blocking
+            else "Parallel ask plan is planning-only; no prompts were sent."
+        ),
+    }
+
+
 @dataclass(frozen=True)
 class ParallelAskRequestPlan:
     target: TaskFanoutTarget
@@ -105,6 +191,7 @@ def parallel_ask_plan_payload(
     concurrency: int,
     prompt: str,
     task_list_routing: dict[str, Any] | None = None,
+    baseline_safety: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     serial_groups = build_parallel_ask_serial_groups(requests)
     serialized_groups = [group for group in serial_groups if group["serialization_required"]]
@@ -126,6 +213,7 @@ def parallel_ask_plan_payload(
         "prompt_preview": prompt[:160],
         "prompt_length": len(prompt),
         "task_list_routing": dict(task_list_routing or {}),
+        "baseline_safety": dict(baseline_safety or {}),
         "policy": dict(PROTOCOL_BOUND_PARALLEL_ASK_POLICY),
         "resource_policy": {
             "conversation_write_locks": [group["conversation_lock"] for group in serial_groups],

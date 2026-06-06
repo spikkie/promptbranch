@@ -75,14 +75,17 @@ def build_ask_request_envelope(
     base_release: str | None = None,
     repair_reason: str | None = None,
     intent_kind: str = "software_release_request",
+    infer_target_version: bool = True,
 ) -> dict[str, Any]:
     """Build the Promptbranch ask.request envelope used by protocol-aware asks."""
 
     artifact_payload = dict(artifact or {})
     current_version = artifact_payload.get("current_version") or artifact_payload.get("artifact_version")
-    inferred_target = target_version or infer_next_normal_version(str(current_version) if current_version else None)
+    inferred_target = target_version or (infer_next_normal_version(str(current_version) if current_version else None) if infer_target_version else None)
     if inferred_target:
         artifact_payload["target_version"] = inferred_target
+    elif not infer_target_version:
+        artifact_payload["target_version_policy"] = "not_applicable_for_non_release_parallel_plan"
     artifact_payload.setdefault("release_type", release_type)
     artifact_payload.setdefault("target_version_policy", "explicit_required")
     artifact_payload.setdefault("download_policy", "direct_url_only")

@@ -12328,10 +12328,10 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
                     "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
                     "project_name": "demo-project",
                     "conversation_url": "https://chatgpt.com/g/demo/c/abc",
-                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.47.1.zip",
-                    "artifact_version": "v0.1.47.1",
-                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.47.1.zip",
-                    "source_version": "v0.1.47.1",
+                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.48.1.zip",
+                    "artifact_version": "v0.1.48.1",
+                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.48.1.zip",
+                    "source_version": "v0.1.48.1",
                 }
 
             async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
@@ -12359,7 +12359,7 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
             plan_only=True,
             protocol=True,
             deep_history=False,
-            target_version="v0.1.48",
+            target_version="v0.1.49",
             release_type="normal",
             intent_kind="software_release_request",
             baseline_artifact=None,
@@ -12386,5 +12386,133 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
     assert payload["concurrency"] == 2
     assert payload["serial_groups"][0]["serialization_required"] is True
     assert payload["protocol_requests"][0]["request"]["schema"] == "promptbranch.ask.request"
-    assert payload["protocol_requests"][0]["request"]["artifact"]["target_version"] == "v0.1.48"
+    assert payload["protocol_requests"][0]["request"]["artifact"]["target_version"] == "v0.1.49"
+    assert payload["baseline_safety"]["status"] == "fresh"
     assert payload["protocol_requests"][0]["request"]["task"]["conversation_id"] == "abc"
+
+
+def test_parallel_ask_plan_blocks_release_request_when_baseline_is_stale(capsys, tmp_path) -> None:
+    from promptbranch_cli import cmd_parallel
+
+    async def run() -> int:
+        class FakeBackend:
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "project_name": "demo-project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.40.zip",
+                    "artifact_version": "v0.1.40",
+                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.40.zip",
+                    "source_version": "v0.1.40",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                return {
+                    "ok": True,
+                    "chats": [
+                        {"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc", "source": "project_endpoint"},
+                    ],
+                    "source_counts": {"project_endpoint": 1},
+                    "count": 1,
+                }
+
+        args = argparse.Namespace(
+            command="parallel",
+            parallel_command="ask",
+            prompt=["Build", "next"],
+            prompt_file=None,
+            target_values=["1"],
+            task=[],
+            targets=[],
+            all=False,
+            concurrency=2,
+            plan_only=True,
+            protocol=True,
+            deep_history=False,
+            target_version="v0.1.49",
+            release_type="normal",
+            intent_kind="software_release_request",
+            baseline_artifact=None,
+            baseline_version=None,
+            request_prefix="req_parallel_stale",
+            keep_open=False,
+            json=True,
+            profile_dir=str(tmp_path),
+        )
+        return await cmd_parallel(FakeBackend(), args)
+
+    rc = asyncio.run(run())
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "parallel_ask_baseline_stale"
+    assert payload["baseline_safety"]["status"] == "stale_release_baseline_blocked"
+    assert payload["baseline_safety"]["runtime_version"] == "v0.1.48.1"
+    assert payload["baseline_safety"]["protocol_baseline_version"] == "v0.1.40"
+    assert payload["automation_performed"] is False
+
+
+def test_parallel_ask_plan_default_non_release_does_not_infer_target_from_stale_baseline(capsys, tmp_path) -> None:
+    from promptbranch_cli import cmd_parallel
+
+    async def run() -> int:
+        class FakeBackend:
+            def state_snapshot(self):
+                return {
+                    "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
+                    "project_name": "demo-project",
+                    "conversation_url": "https://chatgpt.com/g/demo/c/abc",
+                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.40.zip",
+                    "artifact_version": "v0.1.40",
+                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.40.zip",
+                    "source_version": "v0.1.40",
+                }
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
+                return {
+                    "ok": True,
+                    "chats": [
+                        {"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc", "source": "project_endpoint"},
+                    ],
+                    "source_counts": {"project_endpoint": 1},
+                    "count": 1,
+                }
+
+        args = argparse.Namespace(
+            command="parallel",
+            parallel_command="ask",
+            prompt=["Summarize", "status"],
+            prompt_file=None,
+            target_values=["1"],
+            task=[],
+            targets=[],
+            all=False,
+            concurrency=2,
+            plan_only=True,
+            protocol=True,
+            deep_history=False,
+            target_version=None,
+            release_type="normal",
+            intent_kind="parallel_task_request",
+            baseline_artifact=None,
+            baseline_version=None,
+            request_prefix="req_parallel_nonrelease",
+            keep_open=False,
+            json=True,
+            profile_dir=str(tmp_path),
+        )
+        return await cmd_parallel(FakeBackend(), args)
+
+    rc = asyncio.run(run())
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["baseline_safety"]["status"] == "stale_non_release_baseline_allowed"
+    request = payload["protocol_requests"][0]["request"]
+    assert request["intent"]["kind"] == "parallel_task_request"
+    assert "target_version" not in request["artifact"]
+    assert request["artifact"]["target_version_policy"] == "not_applicable_for_non_release_parallel_plan"
+    assert payload["automation_performed"] is False

@@ -6,6 +6,8 @@ from promptbranch_parallel_ask import (
     ParallelAskRequestPlan,
     build_parallel_ask_serial_groups,
     normalize_parallel_ask_concurrency,
+    parallel_ask_baseline_safety,
+    parallel_ask_is_release_like,
     parallel_ask_plan_payload,
     parallel_ask_policy_payload,
 )
@@ -99,3 +101,34 @@ def test_parallel_ask_module_is_declared_for_setuptools_install() -> None:
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     modules = data["tool"]["setuptools"]["py-modules"]
     assert "promptbranch_parallel_ask" in modules
+
+
+def test_parallel_ask_release_like_detection() -> None:
+    assert parallel_ask_is_release_like(intent_kind="software_release_request") is True
+    assert parallel_ask_is_release_like(intent_kind="parallel_task_request") is False
+    assert parallel_ask_is_release_like(intent_kind="parallel_task_request", target_version="v0.1.49") is True
+    assert parallel_ask_is_release_like(intent_kind="parallel_task_request", baseline_version="v0.1.48.1") is True
+
+
+def test_parallel_ask_baseline_safety_blocks_stale_release_without_override() -> None:
+    request = {"artifact": {"current_baseline": "demo_v0.1.40.zip", "current_version": "v0.1.40"}}
+    artifact_current = {
+        "runtime": {"version": "v0.1.48.1"},
+        "consistency": {"code_version_matches_state_source": False, "state_source_matches_state_artifact": True},
+    }
+
+    safety = parallel_ask_baseline_safety(request=request, artifact_current=artifact_current, release_like=True)
+
+    assert safety["ok"] is False
+    assert safety["blocking"] is True
+    assert safety["status"] == "stale_release_baseline_blocked"
+
+
+def test_parallel_ask_baseline_safety_allows_explicit_override() -> None:
+    request = {"artifact": {"current_baseline": "demo_v0.1.40.zip", "current_version": "v0.1.40", "baseline_override": True}}
+    artifact_current = {"runtime": {"version": "v0.1.48.1"}, "consistency": {}}
+
+    safety = parallel_ask_baseline_safety(request=request, artifact_current=artifact_current, release_like=True)
+
+    assert safety["ok"] is True
+    assert safety["status"] == "explicit_baseline_override"
