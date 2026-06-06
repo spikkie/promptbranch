@@ -12,6 +12,26 @@ SCHEDULER_SCHEMA = "promptbranch.scheduler"
 SCHEDULER_SCHEMA_VERSION = "1.0"
 DEFAULT_QUEUE_DIRNAME = ".pb_profile/queue"
 
+SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS = 600.0
+SERVICE_BROWSER_QUEUE_SCHEMA_VERSION = "1.0"
+
+
+def service_browser_queue_policy(operation: str = "src_add") -> dict[str, Any]:
+    classification = command_classification(operation)
+    return {
+        "ok": bool(classification.get("ok")),
+        "action": "service_browser_queue_policy",
+        "status": "queue_enabled" if classification.get("ok") else "unknown_operation",
+        "schema": f"{SCHEDULER_SCHEMA}.service_browser_queue_policy",
+        "schema_version": SERVICE_BROWSER_QUEUE_SCHEMA_VERSION,
+        "operation": operation,
+        "queue_enabled": bool(classification.get("ok") and classification.get("operation", {}).get("queue_required")),
+        "queue_mode": "bounded_wait_for_single_service_profile",
+        "default_wait_timeout_seconds": SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS,
+        "profile_resource": "service_profile:{service_id}:exclusive",
+        "notes": "v0.1.44 routes service-backed source mutations through a bounded wait on the shared service browser profile instead of fail-fast contention.",
+    }
+
 
 @dataclass(frozen=True)
 class PlannedResource:

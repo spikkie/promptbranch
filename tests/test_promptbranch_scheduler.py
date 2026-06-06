@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from promptbranch_scheduler import conflict_matrix, plan_operation_resources, queue_list, queue_status
+from promptbranch_scheduler import conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 
 
 def test_queue_status_is_read_only_and_lists_known_operations(tmp_path: Path) -> None:
@@ -88,3 +88,11 @@ def test_scheduler_module_is_declared_for_setuptools_install() -> None:
     modules = data["tool"]["setuptools"]["py-modules"]
 
     assert "promptbranch_scheduler" in modules
+
+
+def test_service_browser_queue_policy_documents_bounded_wait_for_source_add() -> None:
+    payload = service_browser_queue_policy("src_add")
+    assert payload["ok"] is True
+    assert payload["queue_enabled"] is True
+    assert payload["queue_mode"] == "bounded_wait_for_single_service_profile"
+    assert payload["default_wait_timeout_seconds"] == 600.0

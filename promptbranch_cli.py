@@ -69,7 +69,7 @@ from promptbranch_test_report import build_test_report, build_test_status, rende
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
-from promptbranch_scheduler import conflict_matrix, plan_operation_resources, queue_list, queue_status
+from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -4776,12 +4776,18 @@ async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int
 
 
 def _profile_wait_timeout_from_args(args: argparse.Namespace) -> float | None:
-    if not getattr(args, "wait_for_profile", False):
+    if getattr(args, "no_queue", False):
         return None
     value = getattr(args, "profile_wait_timeout_seconds", None)
-    if value is None:
+    if value is not None:
+        return max(0.001, float(value))
+    if getattr(args, "wait_for_profile", False):
         return DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS
-    return max(0.001, float(value))
+    command = getattr(args, "command", None)
+    src_command = getattr(args, "src_command", None)
+    if command in {"src", "project-source-add"} and (src_command in {None, "add"}):
+        return SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS
+    return None
 
 
 def _source_add_busy_payload(
@@ -4792,6 +4798,7 @@ def _source_add_busy_payload(
     display_name: Optional[str],
     overwrite_existing: bool,
     args: argparse.Namespace,
+    profile_lock_wait_seconds: float | None = None,
 ) -> dict[str, Any]:
     payload = dict(service_payload)
     payload.update({
@@ -4806,7 +4813,9 @@ def _source_add_busy_payload(
         "project_source_mutated": False,
         "persistence_verified": False,
         "operator_review_required": False,
-        "queue_enabled": False,
+        "queue_enabled": profile_lock_wait_seconds is not None,
+        "queue_mode": "bounded_wait_for_single_service_profile" if profile_lock_wait_seconds is not None else "fail_fast",
+        "queue_wait_timeout_seconds": profile_lock_wait_seconds,
     })
     command_parts = ["pb", "src", "add"]
     if source_kind != "file":
@@ -4823,7 +4832,7 @@ def _source_add_busy_payload(
     command_parts.extend(["--profile-wait-timeout-seconds", str(float(wait_timeout))])
     payload.setdefault(
         "recovery_hint",
-        "The browser profile is currently owned by another browser-backed operation. Retry after it completes or rerun with --wait-for-profile.",
+        "The browser profile is currently owned by another browser-backed operation. The service-profile queue waited until its timeout; retry after the active operation finishes or increase --profile-wait-timeout-seconds.",
     )
     payload["next_safe_commands"] = [
         "pb browser status --json",
@@ -4906,6 +4915,7 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
                 display_name=display_name,
                 overwrite_existing=overwrite_existing,
                 args=args,
+                profile_lock_wait_seconds=profile_lock_wait_seconds,
             )
         else:
             result = _project_source_add_exception_payload(
@@ -17564,6 +17574,13 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
 async def cmd_browser(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.browser_command == "status":
         result = await backend.browser_status()
+        if isinstance(result, dict):
+            result = dict(result)
+            policy = service_browser_queue_policy("src_add")
+            result.setdefault("service_queue", policy)
+            result["queue_enabled"] = bool(result.get("queue_enabled") or policy.get("queue_enabled"))
+            result.setdefault("queue_mode", policy.get("queue_mode"))
+            result.setdefault("default_queue_wait_timeout_seconds", policy.get("default_wait_timeout_seconds"))
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
@@ -19437,8 +19454,9 @@ def make_parser() -> argparse.ArgumentParser:
     src_add.add_argument("--file", help="Local file path for file sources.")
     src_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
     src_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
-    src_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window.")
-    src_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile when --wait-for-profile is used. Defaults to {DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS}.")
+    src_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window. In v0.1.44 source add queues by default.")
+    src_add.add_argument("--no-queue", action="store_true", help="Disable the v0.1.44 service-profile bounded wait queue and use the service default contention timeout.")
+    src_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile. Defaults to {SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS} for source add queueing.")
     src_add.add_argument("--keep-open", action="store_true")
 
     src_remove = src_subparsers.add_parser("rm", aliases=["remove"], help="Remove a source from the current workspace.")
@@ -20126,8 +20144,9 @@ def make_parser() -> argparse.ArgumentParser:
     source_add.add_argument("--file", help="Local file path for file sources.")
     source_add.add_argument("--name", help="Optional display name/title to set when the UI supports it.")
     source_add.add_argument("--no-overwrite", action="store_true", help="Do not replace an existing file source with the same display name.")
-    source_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window.")
-    source_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile when --wait-for-profile is used. Defaults to {DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS}.")
+    source_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window. In v0.1.44 source add queues by default.")
+    source_add.add_argument("--no-queue", action="store_true", help="Disable the v0.1.44 service-profile bounded wait queue and use the service default contention timeout.")
+    source_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile. Defaults to {SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS} for source add queueing.")
     source_add.add_argument("--keep-open", action="store_true")
 
     source_list = subparsers.add_parser(

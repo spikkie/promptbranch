@@ -2649,6 +2649,30 @@ def test_src_add_positional_file_delegates_as_file_source(monkeypatch, capsys, t
     assert calls["file_path"] == str(file_path)
     assert calls["display_name"] == "my_gitlab_0.0.4.zip"
     assert calls["overwrite_existing"] is True
+    assert calls["profile_lock_wait_seconds"] == 600.0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+
+
+def test_src_add_no_queue_disables_service_profile_wait(monkeypatch, capsys, tmp_path) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "action": "add"}
+
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "add", "--file", str(file_path), "--no-queue"])
+
+    assert exit_code == 0
+    assert calls["profile_lock_wait_seconds"] is None
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
 
@@ -11659,6 +11683,8 @@ def test_src_add_promotes_browser_profile_busy_to_top_level_payload(monkeypatch,
     assert payload["classification"] == "expected_contention"
     assert payload["active_operation"] == "ask_question"
     assert payload["project_source_mutated"] is False
+    assert payload["queue_enabled"] is True
+    assert payload["queue_wait_timeout_seconds"] == 600.0
     assert "423 error" not in payload.get("error", "")
     assert payload["next_safe_commands"][0] == "pb browser status --json"
 
@@ -11678,7 +11704,9 @@ def test_browser_status_command_uses_service_client(monkeypatch, capsys) -> None
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "available"
-    assert payload["queue_enabled"] is False
+    assert payload["queue_enabled"] is True
+    assert payload["queue_mode"] == "bounded_wait_for_single_service_profile"
+    assert payload["service_queue"]["operation"] == "src_add"
 
 def test_ask_live_failed_response_does_not_report_sentinel_match(monkeypatch) -> None:
     import asyncio

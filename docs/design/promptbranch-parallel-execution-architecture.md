@@ -325,3 +325,48 @@ The architecture line is complete when:
 - source/artifact/release mutations serialize safely
 - full release-control passes with the accumulated test set
 ```
+
+## Scheduler/resource lock inspection (`v0.1.43`)
+
+`v0.1.43` adds an executable resource planning surface before live queue mutation:
+
+```bash
+pb queue status --json
+pb queue list --json
+pb queue plan --operation src_add --context account_id=default --context project_id=<id> --context service_id=default --json
+pb queue conflicts --left-operation src_add --right-operation src_sync --context account_id=default --context project_id=<id> --context repo_path=. --context service_id=default --json
+```
+
+The scheduler slice is intentionally inspection-only. It proves command/resource classification and conflict planning before any browser-backed operation is routed through a queue.
+
+## Service-profile bounded wait queue (`v0.1.44`)
+
+`v0.1.44` starts the first live service-profile queue behavior for Project Source upload.
+
+Scope:
+
+```text
+pb src add / project-source-add
+  default service profile wait: 600 seconds
+  queue mode: bounded_wait_for_single_service_profile
+  opt-out: --no-queue
+  override: --profile-wait-timeout-seconds <seconds>
+```
+
+This is not multi-profile service cloning yet. It is a single-owner bounded wait queue around `/app/.pb_profile`, so source upload waits for an active operation such as `get_chat` before failing with `browser_profile_busy`.
+
+The implementation remains fail-closed:
+
+```text
+project_source_mutated=false when timeout occurs
+persistence_verified=false when timeout occurs
+queue_wait_timeout_seconds is reported in the JSON payload
+```
+
+Acceptance smoke:
+
+```bash
+pb browser status --json | python3 -m json.tool
+pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json | python3 -m json.tool
+pb src add --file <zip> --profile-wait-timeout-seconds 600 --json | python3 -m json.tool
+```
