@@ -141,6 +141,18 @@ OPERATION_CLASSES: dict[str, OperationClass] = {
         queue_required=True,
         notes="Parallel asks are safe only across different conversations; the same conversation must serialize to avoid composer/answer races.",
     ),
+    "parallel_ask_plan": OperationClass(
+        operation="parallel_ask_plan",
+        command_group="parallel",
+        risk="write_conversation_plan_only",
+        preferred_executor="scheduler_plan_only",
+        parallel_policy="plan_parallel_across_distinct_conversations_serialize_same_conversation",
+        resource_templates=("account:{account_id}:read", "workspace:{project_id}:read", "task:{conversation_id}:exclusive", "profile_pool:{profile_name}:ask:slot"),
+        transactional=True,
+        json_stdout_strict=True,
+        queue_required=True,
+        notes="Planning-only surface for protocol-bound asks. It emits per-target ask.request envelopes and conversation write locks but does not send prompts in this slice.",
+    ),
     "src_list": OperationClass(
         operation="src_list",
         command_group="src",
@@ -277,6 +289,15 @@ SLICE_TEST_PLAN: list[dict[str, Any]] = [
     },
     {
         "slice": "v0.1.48",
+        "goal": "Add protocol-bound parallel ask planning across different conversations while serializing same-conversation writes.",
+        "tests": [
+            "python3 -m pytest -q tests/test_promptbranch_parallel_ask.py tests/test_cli_parser.py::test_parser_accepts_parallel_ask_plan_command tests/test_promptbranch_cli.py::test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversation",
+            "python3 -m compileall -q .",
+            "pb parallel ask --task 1 --task 2 --plan-only --protocol --json 'summarize status' | python3 -m json.tool",
+        ],
+    },
+    {
+        "slice": "v0.1.49",
         "goal": "Queue source mutations per workspace with transactional verification.",
         "tests": [
             "pytest -q tests/test_promptbranch_source_mutation_queue.py",
@@ -284,7 +305,7 @@ SLICE_TEST_PLAN: list[dict[str, Any]] = [
         ],
     },
     {
-        "slice": "v0.1.49",
+        "slice": "v0.1.50",
         "goal": "Integrate release lifecycle with scheduler locks and source upload queue.",
         "tests": [
             "pytest -q tests/test_promptbranch_release_lifecycle_scheduler.py",

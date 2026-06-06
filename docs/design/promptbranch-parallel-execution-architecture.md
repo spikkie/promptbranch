@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: documentation consistency repaired in `v0.1.47.1`; implementation is current through the read-only parallel task fan-out slice in `v0.1.47`  
+Status: implementation current through `v0.1.48`; protocol-bound parallel ask planning is available, while ask execution remains future scheduler scope  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -431,3 +431,36 @@ v0.1.48  next planned protocol-bound parallel ask planning
 ```
 
 The duplicate `v0.1.46` planning row is removed, and the future source-mutation and release-lifecycle scheduler slices are shifted after the protocol-bound ask-planning slice.
+
+
+## v0.1.48 — Protocol-bound parallel ask planning
+
+`v0.1.48` adds the first ask-oriented parallel planning surface:
+
+```bash
+pb parallel ask "summarize status" --task 1 --task 2 --plan-only --protocol --json
+pb parallel ask --tasks 1,2 --plan-only --protocol --json --prompt-file ./prompt.txt
+```
+
+This command is planning-only in `v0.1.48`. It does not send prompts, does not call `pb ask`, and does not mutate any conversation.
+
+The command resolves task targets through the backend-first task-list surface, then builds one Promptbranch `ask.request` protocol envelope per target conversation. The emitted plan includes:
+
+```text
+- requested task selectors
+- resolved target conversations
+- per-target protocol request envelopes
+- conversation write locks
+- same-conversation serial groups
+- different-conversation parallel eligibility
+- profile slot count required before a future executor may run
+```
+
+The core invariant remains:
+
+```text
+different conversations: may be planned as parallel groups
+same conversation: must serialize under task:{conversation_id}:exclusive
+```
+
+Execution is intentionally blocked until a later scheduler/executor slice can acquire profile slots, enforce rate limits, submit prompts transactionally, and verify protocol replies. This prevents `v0.1.48` from widening live write behavior while still making the future parallel ask model concrete and testable.
