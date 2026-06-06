@@ -303,7 +303,7 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | `v0.1.42` | Add named profile registry for local browser profiles and future service profile queues. | prior tests + `pytest -q tests/test_promptbranch_profile_registry.py`; `pb profile list --json \| python3 -m json.tool`; `pb profile pools --json \| python3 -m json.tool`; `pb profile show service-default --json \| python3 -m json.tool` |
 | `v0.1.43` | Add scheduler/resource lock planner and read-only queue inspection commands. | prior tests + `pytest -q tests/test_promptbranch_scheduler.py`; `pb queue status --json \| python3 -m json.tool`; `pb queue plan --operation src_add --context account_id=default --context project_id=demo --context service_id=default --json \| python3 -m json.tool` |
 | `v0.1.44` | Queue service-backed browser operations instead of immediate `browser_profile_busy` failure. | prior tests + `pytest -q tests/test_promptbranch_service_queue.py`; `pb browser status --json \| python3 -m json.tool` |
-| `v0.1.45` | Move task/source reads backend-first with DOM fallback only when required. | prior tests + `pytest -q tests/test_promptbranch_backend_first_reads.py`; strict JSON smoke for `pb task list/show --json` |
+| `v0.1.45` | Add backend-first task/source read diagnostics before changing live read routing. | prior tests + `pytest -q tests/test_promptbranch_backend_reads.py`; strict JSON smoke for `pb debug backend-reads --plan-only --json` |
 | `v0.1.46` | Add read-only parallel task runner. | prior tests + `pytest -q tests/test_promptbranch_parallel_runner.py`; `pb parallel task show --tasks 1,2 --concurrency 2 --json \| python3 -m json.tool` |
 | `v0.1.47` | Add protocol-bound parallel asks across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask --dry-run --tasks 1,2 --protocol --json \| python3 -m json.tool` |
 | `v0.1.48` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
@@ -338,6 +338,23 @@ pb queue conflicts --left-operation src_add --right-operation src_sync --context
 ```
 
 The scheduler slice is intentionally inspection-only. It proves command/resource classification and conflict planning before any browser-backed operation is routed through a queue.
+
+## Backend-first read diagnostics (`v0.1.45`)
+
+`v0.1.45` adds a read-only diagnostic surface before rerouting live task/source reads.
+
+```bash
+pb debug backend-reads --json
+pb debug backend-reads --plan-only --json
+pb debug backend-reads --operation task_list --json
+pb debug backend-reads --operation source_list --json
+```
+
+The diagnostic classifies task-list payloads as `backend_indexed`, `fallback_only`, `recent_state_only`, `undifferentiated`, or `missing`.
+
+For Project Source lists, the diagnostic intentionally flags `metadata_gap` when the payload does not expose whether the source list came from a backend/network source or DOM fallback. That keeps the backend-first migration honest: no read path is claimed backend-first without explicit evidence.
+
+Boundary: this slice does not change `pb task list`, `pb task show`, `pb src list`, or source mutation behavior. It only exposes the evidence needed for the next read-routing slice.
 
 ## Service-profile bounded wait queue (`v0.1.44`)
 
