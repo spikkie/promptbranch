@@ -1272,3 +1272,35 @@ def test_parser_accepts_parallel_task_show_command() -> None:
     assert args.concurrency == 3
     assert args.plan_only is True
     assert args.json is True
+
+
+def test_parser_accepts_parallel_ask_plan_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "parallel",
+        "ask",
+        "summarize",
+        "status",
+        "--task",
+        "1",
+        "--targets",
+        "2,3",
+        "--concurrency",
+        "2",
+        "--plan-only",
+        "--protocol",
+        "--target-version",
+        "v0.1.48",
+        "--json",
+    ])
+
+    assert args.command == "parallel"
+    assert args.parallel_command == "ask"
+    assert args.prompt == ["summarize", "status"]
+    assert args.task == ["1"]
+    assert args.targets == ["2,3"]
+    assert args.concurrency == 2
+    assert args.plan_only is True
+    assert args.protocol is True
+    assert args.target_version == "v0.1.48"
+    assert args.json is True

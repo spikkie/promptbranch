@@ -10,11 +10,12 @@ def _doc_text() -> str:
     return DOC.read_text(encoding="utf-8")
 
 
-def test_parallel_architecture_doc_status_matches_repaired_release_history() -> None:
+def test_parallel_architecture_doc_status_matches_current_release_history() -> None:
     text = _doc_text()
-    assert "Status: documentation consistency repaired in `v0.1.47.1`" in text
+    assert "Status: implementation current through `v0.1.48`" in text
     assert "`v0.1.47` | Add read-only parallel task fan-out." in text
     assert "`v0.1.48` | Add protocol-bound parallel ask planning" in text
+    assert "## v0.1.48 — Protocol-bound parallel ask planning" in text
 
 
 def test_parallel_architecture_slice_plan_has_no_duplicate_v0146_row() -> None:

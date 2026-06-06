@@ -77,6 +77,12 @@ from promptbranch_task_fanout import (
     task_fanout_result_payload,
     task_fanout_policy_payload,
 )
+from promptbranch_parallel_ask import (
+    ParallelAskRequestPlan,
+    normalize_parallel_ask_concurrency,
+    parallel_ask_plan_payload,
+    render_parallel_ask_summary,
+)
 from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan, classify_task_list_payload, source_list_read_routing, task_list_read_routing
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
@@ -7012,7 +7018,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "rate-limit", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
-        "parallel": ["policy", "task", "show", "--task", "--targets", "--all", "--concurrency", "--plan-only", "--deep-history", "--json", "--keep-open"],
+        "parallel": ["policy", "task", "show", "ask", "--task", "--targets", "--tasks", "--all", "--concurrency", "--plan-only", "--deep-history", "--protocol", "--prompt-file", "--target-version", "--release-type", "--json", "--keep-open"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
@@ -7797,6 +7803,86 @@ async def cmd_parallel_task_show(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 2
 
 
+def _parallel_ask_request_id(prefix: str, index: int, target: TaskFanoutTarget) -> str:
+    raw = f"{prefix}_{index}_{target.id or target.target}"
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("._") or f"{prefix}_{index}"
+
+
+async def cmd_parallel_ask(backend: Any, args: argparse.Namespace) -> int:
+    if not bool(getattr(args, "protocol", False)):
+        print("error: pb parallel ask requires --protocol", file=sys.stderr)
+        return 2
+    if not bool(getattr(args, "plan_only", False)):
+        print("error: pb parallel ask is planning-only in this release; pass --plan-only", file=sys.stderr)
+        return 2
+    try:
+        prompt = _merge_prompt_text(" ".join(getattr(args, "prompt", []) or []), getattr(args, "prompt_file", None))
+    except (OSError, UnicodeError) as exc:
+        print(f"error: could not read prompt file: {exc}", file=sys.stderr)
+        return 2
+    if not prompt:
+        print("error: prompt is required", file=sys.stderr)
+        return 2
+
+    requested_targets = split_task_fanout_targets(
+        list(getattr(args, "targets", []) or [])
+        + list(getattr(args, "task", []) or [])
+        + list(getattr(args, "target_values", []) or [])
+    )
+    if not requested_targets and not bool(getattr(args, "all", False)):
+        print("error: provide one or more task targets or use --all", file=sys.stderr)
+        return 1
+
+    try:
+        targets, task_list_payload = await _load_task_fanout_targets(backend, args, requested_targets)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not targets:
+        print("error: no task targets resolved", file=sys.stderr)
+        return 1
+
+    request_prefix = str(getattr(args, "request_prefix", "") or "").strip()
+    if not request_prefix:
+        request_prefix = f"parallel_req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
+
+    request_plans: list[ParallelAskRequestPlan] = []
+    for index, target in enumerate(targets, start=1):
+        if not target.conversation_url:
+            print(f"error: target {target.target!r} did not resolve to a conversation URL", file=sys.stderr)
+            return 1
+        target_args = copy.copy(args)
+        request_id = _parallel_ask_request_id(request_prefix, index, target)
+        target_args.conversation_url = target.conversation_url
+        target_args.request_id = request_id
+        target_args.correlation_id = request_id
+        protocol_payload = _protocol_request_from_current_baseline(backend, target_args, prompt=prompt)
+        request = protocol_payload["request"]
+        request_plans.append(
+            ParallelAskRequestPlan(
+                target=target,
+                request_id=str(request.get("request_id") or request_id),
+                correlation_id=str(request.get("correlation_id") or request_id),
+                request=request,
+            )
+        )
+
+    concurrency = normalize_parallel_ask_concurrency(getattr(args, "concurrency", None), group_count=len(request_plans))
+    payload = parallel_ask_plan_payload(
+        requests=request_plans,
+        requested_targets=requested_targets if requested_targets else ["--all"],
+        concurrency=concurrency,
+        prompt=prompt,
+        task_list_routing=task_list_payload.get("read_routing") if isinstance(task_list_payload, dict) else {},
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(render_parallel_ask_summary(payload), end="")
+    return 0
+
+
 async def cmd_parallel(backend: Any, args: argparse.Namespace) -> int:
     if args.parallel_command == "policy":
         payload = task_fanout_policy_payload()
@@ -7807,6 +7893,8 @@ async def cmd_parallel(backend: Any, args: argparse.Namespace) -> int:
         return 0
     if args.parallel_command == "task" and args.parallel_task_command == "show":
         return await cmd_parallel_task_show(backend, args)
+    if args.parallel_command == "ask":
+        return await cmd_parallel_ask(backend, args)
     raise RuntimeError(f"Unknown parallel command: {args.parallel_command}")
 
 async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -19714,6 +19802,26 @@ def make_parser() -> argparse.ArgumentParser:
     parallel_task_show.add_argument("--json", action="store_true", help="Emit fan-out plan/result as JSON.")
     parallel_task_show.add_argument("--keep-open", action="store_true")
     _add_task_profile_pool_options(parallel_task_show)
+
+    parallel_ask = parallel_subparsers.add_parser("ask", help="Plan protocol-bound asks across task conversations without sending them.")
+    parallel_ask.add_argument("prompt", nargs="*", help="Prompt text to wrap in a protocol request for each target task.")
+    parallel_ask.add_argument("--prompt-file", help="Read prompt text from a file and append it to the prompt argument.")
+    parallel_ask.add_argument("--task", action="append", default=[], help="Task selector. Repeat or comma-separate for multiple tasks.")
+    parallel_ask.add_argument("--targets", "--tasks", dest="targets", action="append", default=[], help="Comma-separated task selectors. Repeat as needed.")
+    parallel_ask.add_argument("--all", action="store_true", help="Plan protocol asks for all indexed tasks currently visible for the workspace.")
+    parallel_ask.add_argument("--concurrency", type=int, default=2, help="Maximum distinct-conversation ask groups to run in parallel once execution is implemented. Capped at 4.")
+    parallel_ask.add_argument("--plan-only", action="store_true", help="Required in this release: emit the protocol/resource plan without sending prompts.")
+    parallel_ask.add_argument("--protocol", action="store_true", help="Required: build Promptbranch ask.request envelopes for each target.")
+    parallel_ask.add_argument("--deep-history", action="store_true", help="Allow slow history fallback only when backend/indexed task evidence is missing.")
+    parallel_ask.add_argument("--target-version", help="Target artifact version to place in each protocol request envelope.")
+    parallel_ask.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type for protocol request envelopes.")
+    parallel_ask.add_argument("--intent-kind", default="software_release_request", help="Protocol request intent kind.")
+    parallel_ask.add_argument("--baseline-artifact", help="Override current artifact baseline in generated protocol requests.")
+    parallel_ask.add_argument("--baseline-version", help="Override current baseline version in generated protocol requests.")
+    parallel_ask.add_argument("--request-prefix", help="Stable request-id prefix for deterministic planning/tests.")
+    parallel_ask.add_argument("--json", action="store_true", help="Emit the parallel ask plan as JSON.")
+    parallel_ask.add_argument("--keep-open", action="store_true")
+    _add_task_profile_pool_options(parallel_ask)
 
     src = subparsers.add_parser("src", help="Source commands for the active workspace.")
     src_subparsers = src.add_subparsers(dest="src_command", required=True)
