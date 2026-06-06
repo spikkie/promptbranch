@@ -80,6 +80,8 @@ from promptbranch_task_fanout import (
 from promptbranch_parallel_ask import (
     ParallelAskRequestPlan,
     normalize_parallel_ask_concurrency,
+    parallel_ask_baseline_safety,
+    parallel_ask_is_release_like,
     parallel_ask_plan_payload,
     render_parallel_ask_summary,
 )
@@ -5048,6 +5050,7 @@ def _protocol_request_from_current_baseline(
         target_version=getattr(args, "target_version", None),
         release_type=getattr(args, "release_type", "normal"),
         intent_kind=getattr(args, "intent_kind", "software_release_request"),
+        infer_target_version=not bool(getattr(args, "no_target_version_inference", False)),
     )
     return {
         "ok": True,
@@ -7847,7 +7850,17 @@ async def cmd_parallel_ask(backend: Any, args: argparse.Namespace) -> int:
     if not request_prefix:
         request_prefix = f"parallel_req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
 
+    intent_kind = str(getattr(args, "intent_kind", None) or "parallel_task_request").strip() or "parallel_task_request"
+    release_like = parallel_ask_is_release_like(
+        intent_kind=intent_kind,
+        target_version=getattr(args, "target_version", None),
+        baseline_artifact=getattr(args, "baseline_artifact", None),
+        baseline_version=getattr(args, "baseline_version", None),
+        release_type=getattr(args, "release_type", "normal"),
+    )
+
     request_plans: list[ParallelAskRequestPlan] = []
+    baseline_safety: dict[str, Any] | None = None
     for index, target in enumerate(targets, start=1):
         if not target.conversation_url:
             print(f"error: target {target.target!r} did not resolve to a conversation URL", file=sys.stderr)
@@ -7857,8 +7870,36 @@ async def cmd_parallel_ask(backend: Any, args: argparse.Namespace) -> int:
         target_args.conversation_url = target.conversation_url
         target_args.request_id = request_id
         target_args.correlation_id = request_id
+        target_args.intent_kind = intent_kind
+        target_args.no_target_version_inference = not release_like and not str(getattr(args, "target_version", "") or "").strip()
         protocol_payload = _protocol_request_from_current_baseline(backend, target_args, prompt=prompt)
         request = protocol_payload["request"]
+        safety = parallel_ask_baseline_safety(
+            request=request,
+            artifact_current=protocol_payload.get("artifact_current") if isinstance(protocol_payload, dict) else {},
+            release_like=release_like,
+        )
+        baseline_safety = baseline_safety or safety
+        if not safety.get("ok"):
+            payload = {
+                "ok": False,
+                "action": "parallel_ask_plan",
+                "status": "parallel_ask_baseline_stale",
+                "automation_performed": False,
+                "planning_only": True,
+                "requested_targets": requested_targets if requested_targets else ["--all"],
+                "target_count": len(targets),
+                "request_count": 0,
+                "intent_kind": intent_kind,
+                "baseline_safety": safety,
+                "artifact_current": protocol_payload.get("artifact_current"),
+                "error": "release-style parallel ask planning requires a fresh artifact baseline or an explicit verified baseline override",
+            }
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print(f"error: {payload['error']}", file=sys.stderr)
+            return 2
         request_plans.append(
             ParallelAskRequestPlan(
                 target=target,
@@ -7875,6 +7916,7 @@ async def cmd_parallel_ask(backend: Any, args: argparse.Namespace) -> int:
         concurrency=concurrency,
         prompt=prompt,
         task_list_routing=task_list_payload.get("read_routing") if isinstance(task_list_payload, dict) else {},
+        baseline_safety=baseline_safety or {},
     )
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -19815,7 +19857,7 @@ def make_parser() -> argparse.ArgumentParser:
     parallel_ask.add_argument("--deep-history", action="store_true", help="Allow slow history fallback only when backend/indexed task evidence is missing.")
     parallel_ask.add_argument("--target-version", help="Target artifact version to place in each protocol request envelope.")
     parallel_ask.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type for protocol request envelopes.")
-    parallel_ask.add_argument("--intent-kind", default="software_release_request", help="Protocol request intent kind.")
+    parallel_ask.add_argument("--intent-kind", default="parallel_task_request", help="Protocol request intent kind. Release-style values require fresh baseline state or an explicit verified baseline override.")
     parallel_ask.add_argument("--baseline-artifact", help="Override current artifact baseline in generated protocol requests.")
     parallel_ask.add_argument("--baseline-version", help="Override current baseline version in generated protocol requests.")
     parallel_ask.add_argument("--request-prefix", help="Stable request-id prefix for deterministic planning/tests.")

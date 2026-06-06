@@ -1303,4 +1303,5 @@ def test_parser_accepts_parallel_ask_plan_command() -> None:
     assert args.plan_only is True
     assert args.protocol is True
     assert args.target_version == "v0.1.48"
+    assert args.intent_kind == "parallel_task_request"
     assert args.json is True
