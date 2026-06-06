@@ -175,8 +175,10 @@ class _SharedProfileAsyncLock:
             "lock_file_exists": lock_file_exists,
             "external_lock_held": external_lock_held,
             "lock_file": lock_file_payload,
-            "scheduler_model": "single_owner_profile_monitor",
-            "queue_enabled": False,
+            "scheduler_model": "single_owner_profile_wait_queue",
+            "queue_enabled": True,
+            "queue_mode": "bounded_wait_for_single_service_profile",
+            "default_queue_wait_timeout_seconds": 600.0,
         }
 
     async def __aenter__(self) -> "_SharedProfileAsyncLock":

@@ -1108,6 +1108,9 @@ def test_parser_accepts_browser_status_and_source_add_profile_wait() -> None:
     assert src_add.wait_for_profile is True
     assert src_add.profile_wait_timeout_seconds == 120
 
+    no_queue = parser.parse_args(["src", "add", "--file", "demo.zip", "--no-queue"])
+    assert no_queue.no_queue is True
+
 
 def test_global_options_after_browser_status_are_normalized() -> None:
     normalized = _normalize_global_options(["browser", "status", "--service-timeout-seconds", "1200", "--json"])
