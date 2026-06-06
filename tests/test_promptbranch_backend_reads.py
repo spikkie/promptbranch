@@ -76,3 +76,30 @@ def test_backend_reads_module_is_declared_for_setuptools_install() -> None:
     modules = data["tool"]["setuptools"]["py-modules"]
 
     assert "promptbranch_backend_reads" in modules
+
+
+def test_task_list_read_routing_prefers_backend_and_skips_history() -> None:
+    from promptbranch_backend_reads import task_list_read_routing
+
+    payload = task_list_read_routing(
+        {"count": 2, "indexed_task_count": 2, "source_counts": {"project_endpoint": 2}},
+        history_fallback_requested=True,
+        history_fallback_used=False,
+    )
+
+    assert payload["mode"] == "backend_first"
+    assert payload["selected_path"] == "backend_first"
+    assert payload["backend_first_satisfied"] is True
+    assert payload["history_fallback_requested"] is True
+    assert payload["history_fallback_used"] is False
+
+
+def test_source_list_read_routing_blocks_backend_first_on_metadata_gap() -> None:
+    from promptbranch_backend_reads import source_list_read_routing
+
+    payload = source_list_read_routing({"ok": True, "sources": [{"title": "demo.zip"}], "count": 1})
+
+    assert payload["mode"] == "backend_first_blocked"
+    assert payload["selected_path"] == "explicit_fallback_metadata_gap"
+    assert payload["metadata_gap"] is True
+    assert payload["backend_first_satisfied"] is False
