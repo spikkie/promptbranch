@@ -395,3 +395,22 @@ pb src add --file <zip> --profile-wait-timeout-seconds 600 --json | python3 -m j
 `v0.1.46` turns the read-only diagnostics from `v0.1.45` into runtime routing for the safe part of the read surface. `pb task list` now reads the lightweight backend/indexed project task list first. If `--deep-history` is requested, global history is used only when backend/indexed evidence is missing.
 
 `pb src list` remains intentionally conservative. The live `v0.1.45` diagnostic showed source-list payloads can contain sources without reliable backend-vs-DOM provenance. `v0.1.46` therefore adds `read_routing.mode=backend_first_blocked` and keeps the source path explicit-fallback until the service exposes source provenance.
+
+## v0.1.47 — Read-only parallel task fan-out
+
+`v0.1.47` adds the first operator-facing parallel read command:
+
+```bash
+pb parallel task show --task 1 --task 2 --concurrency 2 --json
+pb parallel task show --targets 1,2 --plan-only --json
+```
+
+The command is intentionally read-only. It resolves task targets from the backend-first task list surface, emits the fan-out resource policy, and fetches selected task transcripts concurrently with a bounded semaphore.
+
+Mutation remains outside this command. Conversation writes continue to require the exclusive task lock:
+
+```text
+task:{conversation_id}:exclusive
+```
+
+This means read fan-out may overlap across task read locks, but `pb ask`, `pb task message answer`, and any future write to the same conversation must remain serialized.
