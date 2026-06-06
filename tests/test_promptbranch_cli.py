@@ -12032,3 +12032,72 @@ def test_project_source_add_accepts_json_flag_after_subcommand(monkeypatch, caps
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["status"] == "verified"
+
+
+def test_debug_backend_reads_plan_only_emits_json(capsys) -> None:
+    async def run() -> int:
+        class FakeBackend:
+            def state_snapshot(self):
+                return {}
+        args = argparse.Namespace(
+            debug_command="backend-reads",
+            operation="all",
+            plan_only=True,
+            no_history=False,
+            keep_open=False,
+            json=True,
+        )
+        from promptbranch_cli import cmd_debug
+        return await cmd_debug(FakeBackend(), args)
+
+    rc = asyncio.run(run())
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["ok"] is True
+    assert out["schema"] == "promptbranch.backend_reads.plan"
+    assert "task_list" in out["operations"]
+    assert "source_list" in out["operations"]
+
+
+def test_debug_backend_reads_collects_task_and_source_payloads(capsys) -> None:
+    async def run() -> int:
+        class FakeBackend:
+            def state_snapshot(self):
+                return {"conversation_url": "https://chatgpt.com/g/demo/c/abc"}
+
+            async def list_project_chats(self, *, keep_open=False, include_history_fallback=True):
+                assert keep_open is False
+                assert include_history_fallback is True
+                return {
+                    "ok": True,
+                    "chats": [{"id": "abc", "title": "Current", "conversation_url": "https://chatgpt.com/g/demo/c/abc"}],
+                    "source_counts": {"project_endpoint": 1},
+                }
+
+            async def list_project_sources(self, *, keep_open=False):
+                assert keep_open is False
+                return {
+                    "ok": True,
+                    "sources": [{"title": "demo.zip"}],
+                    "count": 1,
+                }
+
+        args = argparse.Namespace(
+            debug_command="backend-reads",
+            operation="all",
+            plan_only=False,
+            no_history=False,
+            keep_open=False,
+            json=True,
+        )
+        from promptbranch_cli import cmd_debug
+        return await cmd_debug(FakeBackend(), args)
+
+    rc = asyncio.run(run())
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["status"] == "metadata_gap"
+    assert out["diagnostics"]["task_list"]["backend_first_satisfied"] is True
+    assert out["diagnostics"]["source_list"]["metadata_gap"] is True

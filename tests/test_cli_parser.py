@@ -1233,3 +1233,14 @@ def test_parser_accepts_project_source_add_json_for_legacy_contract() -> None:
     assert args.file == "demo.zip"
     assert args.profile_wait_timeout_seconds == 600
     assert args.json is True
+
+
+def test_parser_accepts_debug_backend_reads_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["debug", "backend-reads", "--operation", "task_list", "--plan-only", "--json"])
+
+    assert args.command == "debug"
+    assert args.debug_command == "backend-reads"
+    assert args.operation == "task_list"
+    assert args.plan_only is True
+    assert args.json is True
