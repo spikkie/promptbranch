@@ -1329,3 +1329,30 @@ def test_parser_accepts_src_queue_plan_command() -> None:
     assert args.workspace_url.endswith("/project")
     assert args.file == "demo.zip"
     assert args.json is True
+
+
+def test_parser_accepts_release_lifecycle_dry_run_scheduler_context() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "release",
+        "lifecycle",
+        "--artifact",
+        "demo.zip",
+        "--version",
+        "v0.1.50",
+        "--workspace-url",
+        "https://chatgpt.com/g/g-p-demo/project",
+        "--service-id",
+        "default",
+        "--dry-run",
+        "--json",
+    ])
+
+    assert args.command == "release"
+    assert args.release_command == "lifecycle"
+    assert args.artifact == "demo.zip"
+    assert args.version == "v0.1.50"
+    assert args.workspace_url.endswith("/project")
+    assert args.service_id == "default"
+    assert args.plan is True
+    assert args.json is True

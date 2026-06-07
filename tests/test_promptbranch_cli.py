@@ -12328,10 +12328,10 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
                     "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
                     "project_name": "demo-project",
                     "conversation_url": "https://chatgpt.com/g/demo/c/abc",
-                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.49.zip",
-                    "artifact_version": "v0.1.49",
-                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.49.zip",
-                    "source_version": "v0.1.49",
+                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.50.zip",
+                    "artifact_version": "v0.1.50",
+                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.50.zip",
+                    "source_version": "v0.1.50",
                 }
 
             async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
@@ -12449,7 +12449,7 @@ def test_parallel_ask_plan_blocks_release_request_when_baseline_is_stale(capsys,
     assert payload["ok"] is False
     assert payload["status"] == "parallel_ask_baseline_stale"
     assert payload["baseline_safety"]["status"] == "stale_release_baseline_blocked"
-    assert payload["baseline_safety"]["runtime_version"] == "v0.1.49"
+    assert payload["baseline_safety"]["runtime_version"] == "v0.1.50"
     assert payload["baseline_safety"]["protocol_baseline_version"] == "v0.1.40"
     assert payload["automation_performed"] is False
 
@@ -12560,3 +12560,42 @@ def test_src_queue_plan_command_fails_closed_without_workspace(capsys, tmp_path)
     assert payload["status"] == "missing_context"
     assert "workspace_url" in payload["missing_context"]
     assert payload["mutation_executed"] is False
+
+
+def test_release_lifecycle_plan_includes_scheduler_and_source_queue(capsys, tmp_path) -> None:
+    import zipfile
+
+    artifact = tmp_path / "chatgpt_claudecode_workflow-2_v0.1.50.zip"
+    with zipfile.ZipFile(artifact, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("VERSION", "v0.1.50\n")
+        zf.writestr("README.md", "candidate\n")
+
+    rc = main([
+        "release",
+        "lifecycle",
+        "--artifact",
+        str(artifact),
+        "--version",
+        "v0.1.50",
+        "--target-version",
+        "v0.1.51",
+        "--workspace-url",
+        "https://chatgpt.com/g/g-p-demo/project",
+        "--plan",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "release_lifecycle"
+    assert payload["plan_only"] is True
+    scheduler = payload["scheduler_integration"]
+    assert scheduler["ok"] is True
+    assert scheduler["action"] == "release_lifecycle_scheduler_plan"
+    assert scheduler["queue_policy"]["per_repo_lifecycle_serialized"] is True
+    assert scheduler["queue_policy"]["source_upload_uses_source_queue_plan"] is True
+    assert payload["source_upload_queue_plan"]["scheduler_operation"] == "src_add"
+    assert payload["lifecycle_planning"]["source_upload_uses_source_queue_plan"] is True
+    assert payload["project_source_mutated"] is False
+    assert payload["mutating_actions_executed"] is False
