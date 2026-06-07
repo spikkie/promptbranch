@@ -89,6 +89,7 @@ from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_source_queue import build_source_mutation_queue_plan
+from promptbranch_release_scheduler import build_release_lifecycle_scheduler_plan
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -14133,6 +14134,18 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     except ValueError:
         policy_rel = str(policy_path)
     git_plan = _release_git_safety_plan(repo_root=repo_root, config_payload=config_payload, expected_paths=[policy_rel])
+    state_snapshot = backend.state_snapshot() if hasattr(backend, "state_snapshot") else {}
+    scheduler_plan = build_release_lifecycle_scheduler_plan(
+        artifact_path=str(artifact_payload.get("path") or getattr(args, "artifact", "") or ""),
+        artifact_version=requested_version or artifact_version,
+        target_version=target_version,
+        repo_path=str(repo_root),
+        state_snapshot=state_snapshot,
+        workspace_url=getattr(args, "workspace_url", None),
+        account_id=getattr(args, "account_id", None) or "default",
+        service_id=getattr(args, "service_id", None) or "default",
+        repo_id=None,
+    )
 
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -14158,6 +14171,13 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         if isinstance(item, dict) and item.get("code") not in existing_blocker_codes:
             blockers.append(item)
             existing_blocker_codes.add(item.get("code"))
+    if not scheduler_plan.get("ok"):
+        warnings.append({
+            "code": "release_lifecycle_scheduler_plan_incomplete",
+            "severity": "warning",
+            "message": "Release lifecycle scheduler/source-queue plan is incomplete; provide --workspace-url or current workspace state before execution.",
+            "missing_context": scheduler_plan.get("missing_context") or [],
+        })
 
     phase_plan = [
         {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
@@ -14196,9 +14216,15 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "policy_file": str(policy_path),
         "policy_file_repo_relative": policy_rel,
         "git_safety_plan": git_plan,
+        "scheduler_integration": scheduler_plan,
+        "source_upload_queue_plan": scheduler_plan.get("source_upload_queue_plan"),
         "lifecycle_planning": {
             "schema_version": 1,
             "read_only": True,
+            "scheduler_plan_status": scheduler_plan.get("status"),
+            "scheduler_plan_ok": scheduler_plan.get("ok"),
+            "scheduler_plan_missing_context": scheduler_plan.get("missing_context") or [],
+            "source_upload_uses_source_queue_plan": bool((scheduler_plan.get("queue_policy") or {}).get("source_upload_uses_source_queue_plan")),
             "install_plan_status": install_plan_payload.get("status"),
             "install_plan_ok": install_plan_payload.get("ok"),
             "install_plan_blocker_codes": install_plan_payload.get("blocker_codes") or [],
@@ -20023,7 +20049,10 @@ def make_parser() -> argparse.ArgumentParser:
     release_lifecycle.add_argument("--target-version", help="Next target version.")
     release_lifecycle.add_argument("--config", default=".promptbranch-release.yml", help="Release lifecycle config path. Defaults to .promptbranch-release.yml.")
     release_lifecycle.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
-    release_lifecycle.add_argument("--plan", action="store_true", help="Emit lifecycle plan without executing lifecycle mutations.")
+    release_lifecycle.add_argument("--workspace-url", help="Override workspace/project URL for scheduler/source-upload lock planning.")
+    release_lifecycle.add_argument("--account-id", default="default", help="Account id used in scheduler lock planning. Defaults to default.")
+    release_lifecycle.add_argument("--service-id", default="default", help="Service/browser profile id used in scheduler lock planning. Defaults to default.")
+    release_lifecycle.add_argument("--plan", "--dry-run", dest="plan", action="store_true", help="Emit lifecycle plan without executing lifecycle mutations.")
     release_lifecycle.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification phases.")
     release_lifecycle.add_argument("--hook-timeout", type=float, default=3600.0, help="Timeout in seconds per acceptance hook during lifecycle execution. Defaults to 3600.")
     release_lifecycle.add_argument("--health-url", help="Service health URL for the doctor phase.")

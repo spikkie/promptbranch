@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: implementation current through `v0.1.49`; source mutation queue planning is available per workspace, while live source mutation execution remains routed through the existing guarded commands  
+Status: implementation current through `v0.1.50`; release lifecycle plan now exposes scheduler locks and delegates Project Source upload to the source mutation queue plan, while live lifecycle execution remains guarded by existing lifecycle commands  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -337,6 +337,31 @@ service_profile:{service_id}:exclusive
 The emitted verification plan requires before/after source-list snapshots, expected source delta verification, collateral-change detection, and state update only after verified readback. This keeps the earlier source-save race contained: UI transitions are not treated as persistence proof.
 
 Boundary: `pb src add`, `pb src sync`, and `pb src rm` execution behavior is unchanged in this slice.
+
+## v0.1.50 — Release lifecycle scheduler integration
+
+`v0.1.50` connects the native release lifecycle plan to the same scheduler/resource-lock model used by task, ask, and source planning. The lifecycle remains guarded by the existing release commands, but the read-only plan now exposes the locks that future execution must acquire before mutation.
+
+The lifecycle scheduler plan is embedded in:
+
+```bash
+pb release lifecycle --plan --json --artifact <candidate.zip> --version <version> --workspace-url <project-url>
+pb release lifecycle --dry-run --json --artifact <candidate.zip> --version <version> --workspace-url <project-url>
+```
+
+The scheduler integration declares these lifecycle-wide locks:
+
+```text
+git_repo:{repo_path}:exclusive
+artifact:{repo_id}:exclusive
+workspace:{project_id}:write
+sources:{project_id}:exclusive
+service_profile:{service_id}:exclusive
+```
+
+The Project Source upload phase delegates to the `v0.1.49` source queue planner. That means release lifecycle source upload must use the same before/after source-list snapshots, expected source-delta verification, collateral-change detection, and state-update-after-verified-readback rule as standalone source mutations.
+
+Boundary: this slice does not execute the lifecycle through a new scheduler. It only makes the lifecycle scheduler and source-upload queue plan visible and testable.
 
 ## Definition of done for the architecture line
 
