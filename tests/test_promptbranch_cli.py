@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -12598,4 +12598,150 @@ def test_release_lifecycle_plan_includes_scheduler_and_source_queue(capsys, tmp_
     assert payload["source_upload_queue_plan"]["scheduler_operation"] == "src_add"
     assert payload["lifecycle_planning"]["source_upload_uses_source_queue_plan"] is True
     assert payload["project_source_mutated"] is False
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_reconcile_current_reports_stale_current_and_recommended_adopt_command(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    artifact = repo / "chatgpt_claudecode_workflow-2_v0.1.50.zip"
+    _write_test_release_zip(artifact, "v0.1.50")
+    stale = repo / "chatgpt_claudecode_workflow-2_v0.1.40.zip"
+    _write_test_release_zip(stale, "v0.1.40")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(stale),
+        filename=stale.name,
+        kind="adopted_release",
+        version="v0.1.40",
+        repo_path=None,
+        sha256=hashlib.sha256(stale.read_bytes()).hexdigest(),
+        size_bytes=stale.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=stale.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": stale.name,
+                "artifact_version": "v0.1.40",
+                "source_ref": stale.name,
+                "source_version": "v0.1.40",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(artifact),
+        version="v0.1.50",
+        target_version="v0.1.51",
+        repo_path=str(repo),
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_reconcile_current(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "reconciliation_required"
+    assert payload["has_stale_baseline"] is True
+    assert payload["release_lifecycle_execution_blocked_until_reconciled"] is True
+    assert payload["current_versions"]["registry_current_version"] == "v0.1.40"
+    assert payload["artifact_version"] == "v0.1.50"
+    assert payload["recommended_commands"]["adopt_current_artifact"] == (
+        f"pb artifact adopt {artifact.name} --from-project-source --local-path {artifact} --json"
+    )
+    assert payload["mutating_actions_executed"] is False
+
+
+def test_release_lifecycle_plan_blocks_when_artifact_current_is_stale(capsys, tmp_path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".promptbranch-release.yml").write_text(
+        """
+schema_version: 1
+artifact:
+  prefix: chatgpt_claudecode_workflow-2_
+  suffix: .zip
+  version_file: VERSION
+  policy_file: .promptbranch-project.json
+install:
+  preserve:
+    - .git/
+git:
+  commit_release: false
+  push_release: false
+  unsafe_paths:
+    - .pb_profile/
+hooks:
+  preflight:
+    command: python3 -c 'print("ok")'
+""".lstrip(),
+        encoding="utf-8",
+    )
+    artifact = repo / "chatgpt_claudecode_workflow-2_v0.1.50.zip"
+    _write_test_release_zip(artifact, "v0.1.50")
+    stale = repo / "chatgpt_claudecode_workflow-2_v0.1.40.zip"
+    _write_test_release_zip(stale, "v0.1.40")
+
+    profile = tmp_path / "profile"
+    ArtifactRegistry(profile).add(ArtifactRecord(
+        path=str(stale),
+        filename=stale.name,
+        kind="adopted_release",
+        version="v0.1.40",
+        repo_path=None,
+        sha256=hashlib.sha256(stale.read_bytes()).hexdigest(),
+        size_bytes=stale.stat().st_size,
+        file_count=2,
+        created_at="2026-06-02T00:00:00Z",
+        source_ref=stale.name,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    ))
+
+    class FakeBackend:
+        def state_snapshot(self) -> dict[str, object]:
+            return {
+                "artifact_ref": stale.name,
+                "artifact_version": "v0.1.40",
+                "source_ref": stale.name,
+                "source_version": "v0.1.40",
+                "resolved_project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+            }
+
+    args = argparse.Namespace(
+        artifact=str(artifact),
+        version="v0.1.50",
+        target_version="v0.1.51",
+        config=str(repo / ".promptbranch-release.yml"),
+        repo_path=str(repo),
+        plan=True,
+        commit=False,
+        push=False,
+        workspace_url="https://chatgpt.com/g/g-p-demo/project",
+        account_id="default",
+        service_id="default",
+        keep_open=False,
+        skip_service_health=True,
+        health_url=None,
+        health_timeout=3.0,
+        source_timeout=60.0,
+        hook_timeout=3600.0,
+        message=None,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_release_lifecycle(FakeBackend(), args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "blocked"
+    assert "release_current_reconciliation_required" in payload["blocker_codes"]
+    assert payload["current_reconciliation"]["status"] == "reconciliation_required"
+    assert payload["lifecycle_planning"]["current_reconciliation_required"] is True
     assert payload["mutating_actions_executed"] is False
