@@ -8,6 +8,7 @@ import re
 import shlex
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -72,12 +73,20 @@ class _SharedProfileAsyncLock:
     _locks: dict[str, threading.Lock] = {}
     _active_operations: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, profile_dir: str, *, wait_timeout_seconds: float = 30.0):
+    def __init__(
+        self,
+        profile_dir: str,
+        *,
+        wait_timeout_seconds: float = 30.0,
+        stale_lock_seconds: float = 300.0,
+    ):
         self.profile_dir = str(Path(profile_dir).expanduser().resolve())
         self.wait_timeout_seconds = max(0.001, float(wait_timeout_seconds))
+        self.stale_lock_seconds = max(0.001, float(stale_lock_seconds))
         self._thread_lock = self._lock_for_profile(self.profile_dir)
         self._lock_file = None
         self._operation_name = "browser_operation"
+        self._operation_id: str | None = None
         self._acquired_at = None
         self.last_waited_seconds = 0.0
 
@@ -96,18 +105,81 @@ class _SharedProfileAsyncLock:
             return dict(cls._active_operations.get(profile_dir) or {})
 
     @classmethod
-    def _set_active_operation(cls, profile_dir: str, operation_name: str) -> None:
+    def _set_active_operation(cls, profile_dir: str, operation_name: str, *, operation_id: str, owner: "_SharedProfileAsyncLock") -> None:
+        now = time.time()
+        task = None
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
         with cls._locks_guard:
             cls._active_operations[profile_dir] = {
                 "operation_name": operation_name,
+                "operation_id": operation_id,
                 "pid": os.getpid(),
-                "started_at": time.time(),
+                "started_at": now,
+                "started_monotonic": time.monotonic(),
+                "owner": owner,
+                "task": task,
+                "task_name": task.get_name() if task is not None else None,
             }
 
     @classmethod
-    def _clear_active_operation(cls, profile_dir: str) -> None:
+    def _clear_active_operation(cls, profile_dir: str, *, operation_id: str | None = None) -> None:
         with cls._locks_guard:
-            cls._active_operations.pop(profile_dir, None)
+            if operation_id is None:
+                cls._active_operations.pop(profile_dir, None)
+                return
+            active = cls._active_operations.get(profile_dir)
+            if not active or active.get("operation_id") == operation_id:
+                cls._active_operations.pop(profile_dir, None)
+
+    @staticmethod
+    def _active_task_done(active: dict[str, Any]) -> bool:
+        task = active.get("task")
+        try:
+            return bool(task is not None and task.done())
+        except Exception:
+            return False
+
+    @staticmethod
+    def _active_elapsed_seconds(active: dict[str, Any]) -> float | None:
+        started_monotonic = active.get("started_monotonic")
+        if started_monotonic is None:
+            started_at = active.get("started_at")
+            if started_at is None:
+                return None
+            try:
+                return max(0.0, time.time() - float(started_at))
+            except (TypeError, ValueError):
+                return None
+        try:
+            return max(0.0, time.monotonic() - float(started_monotonic))
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _active_lock_expired(cls, active: dict[str, Any], *, stale_lock_seconds: float) -> bool:
+        if not active:
+            return False
+        if cls._active_task_done(active):
+            return True
+        elapsed = cls._active_elapsed_seconds(active)
+        return bool(elapsed is not None and elapsed >= stale_lock_seconds)
+
+    @classmethod
+    def _active_public_payload(cls, active: dict[str, Any], *, stale_lock_seconds: float) -> dict[str, Any]:
+        elapsed = cls._active_elapsed_seconds(active)
+        return {
+            "active_operation": active.get("operation_name"),
+            "active_operation_id": active.get("operation_id"),
+            "active_pid": active.get("pid"),
+            "active_elapsed_seconds": round(elapsed, 3) if elapsed is not None else None,
+            "active_task_done": cls._active_task_done(active),
+            "active_task_name": active.get("task_name"),
+            "stale_lock_seconds": stale_lock_seconds,
+            "stale_lock_expired": cls._active_lock_expired(active, stale_lock_seconds=stale_lock_seconds),
+        }
 
     @property
     def lock_path(self) -> Path:
@@ -122,7 +194,7 @@ class _SharedProfileAsyncLock:
         return _SharedProfileAsyncLockLease(self, operation_name, wait_timeout_seconds=wait_timeout_seconds)
 
     @classmethod
-    def status_for_profile(cls, profile_dir: str) -> dict[str, Any]:
+    def status_for_profile(cls, profile_dir: str, *, stale_lock_seconds: float = 300.0) -> dict[str, Any]:
         resolved = str(Path(profile_dir).expanduser().resolve())
         active = cls._active_operation_for_profile(resolved)
         lock_path = Path(resolved) / ".promptbranch-browser-profile.lock"
@@ -148,16 +220,16 @@ class _SharedProfileAsyncLock:
                         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             except OSError:
                 external_lock_held = False
-        started_at = active.get("started_at")
-        elapsed = round(time.time() - float(started_at), 3) if started_at else None
+        active_public = cls._active_public_payload(active, stale_lock_seconds=stale_lock_seconds) if active else {}
         owner_active = bool(active) or external_lock_held
-        active_operation = active.get("operation_name") if owner_active else None
-        active_pid = active.get("pid") if owner_active else None
+        active_operation = active_public.get("active_operation") if owner_active else None
+        active_pid = active_public.get("active_pid") if owner_active else None
         if owner_active and not active_operation:
             active_operation = lock_file_payload.get("operation")
         if owner_active and not active_pid:
             active_pid = lock_file_payload.get("pid")
         stale_lock_file = bool(lock_file_payload and not owner_active)
+        stale_lock_expired = bool(active_public.get("stale_lock_expired")) if active else False
         return {
             "ok": True,
             "action": "browser_status",
@@ -166,8 +238,14 @@ class _SharedProfileAsyncLock:
             "lock_path": str(lock_path),
             "owner_active": owner_active,
             "active_operation": active_operation,
+            "active_operation_id": active_public.get("active_operation_id"),
             "active_pid": active_pid,
-            "active_elapsed_seconds": elapsed if owner_active else None,
+            "active_elapsed_seconds": active_public.get("active_elapsed_seconds") if owner_active else None,
+            "active_task_done": active_public.get("active_task_done") if owner_active else None,
+            "active_task_name": active_public.get("active_task_name") if owner_active else None,
+            "stale_lock_seconds": stale_lock_seconds,
+            "stale_lock_expired": stale_lock_expired if owner_active else False,
+            "stale_lock_recoverable": bool(active and stale_lock_expired),
             "last_operation": lock_file_payload.get("operation") if stale_lock_file else None,
             "last_pid": lock_file_payload.get("pid") if stale_lock_file else None,
             "last_acquired_at": lock_file_payload.get("acquired_at") if stale_lock_file else None,
@@ -194,13 +272,33 @@ class _SharedProfileAsyncLock:
         acquired = await asyncio.to_thread(self._thread_lock.acquire, True, wait_timeout)
         waited = time.monotonic() - started
         self.last_waited_seconds = round(waited, 3)
+        stale_recovery_result: dict[str, Any] | None = None
         if not acquired:
             active = self._active_operation_for_profile(self.profile_dir)
-            active_operation = active.get("operation_name") or "unknown_browser_operation"
+            stale_recovery_result = await self._recover_stale_active_operation(
+                active,
+                reason="thread_lock_wait_timeout",
+            )
+            if stale_recovery_result.get("expired"):
+                reacquire_started = time.monotonic()
+                acquired = await asyncio.to_thread(self._thread_lock.acquire, True, 0.001)
+                waited += time.monotonic() - reacquire_started
+                self.last_waited_seconds = round(waited, 3)
+
+        if not acquired:
+            active = self._active_operation_for_profile(self.profile_dir)
+            active_payload = self._active_public_payload(active, stale_lock_seconds=self.stale_lock_seconds) if active else {}
+            active_operation = active_payload.get("active_operation") or "unknown_browser_operation"
             raise BrowserProfileBusyError(
                 f"browser profile is busy; waited {waited:.1f}s for {self._operation_name} while {active_operation} owns the profile",
                 operation_name=self._operation_name,
                 active_operation=active_operation,
+                active_operation_id=active_payload.get("active_operation_id"),
+                active_elapsed_seconds=active_payload.get("active_elapsed_seconds"),
+                stale_lock_seconds=self.stale_lock_seconds,
+                stale_lock_expired=active_payload.get("stale_lock_expired"),
+                stale_lock_recovery_attempted=bool(stale_recovery_result),
+                stale_lock_recovery_result=stale_recovery_result,
                 waited_seconds=round(waited, 3),
                 retry_after_seconds=max(1.0, wait_timeout),
                 profile_dir=self.profile_dir,
@@ -214,37 +312,103 @@ class _SharedProfileAsyncLock:
                 await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 active = self._active_operation_for_profile(self.profile_dir)
-                active_operation = active.get("operation_name") or "external_promptbranch_process"
+                active_payload = self._active_public_payload(active, stale_lock_seconds=self.stale_lock_seconds) if active else {}
+                active_operation = active_payload.get("active_operation") or "external_promptbranch_process"
                 raise BrowserProfileBusyError(
                     f"browser profile is locked by another process for {active_operation}",
                     operation_name=self._operation_name,
                     active_operation=active_operation,
+                    active_operation_id=active_payload.get("active_operation_id"),
+                    active_elapsed_seconds=active_payload.get("active_elapsed_seconds"),
+                    stale_lock_seconds=self.stale_lock_seconds,
+                    stale_lock_expired=active_payload.get("stale_lock_expired"),
+                    stale_lock_recovery_attempted=bool(stale_recovery_result),
+                    stale_lock_recovery_result=stale_recovery_result,
                     waited_seconds=round(waited, 3),
                     retry_after_seconds=max(1.0, wait_timeout),
                     profile_dir=self.profile_dir,
                 ) from exc
             self._acquired_at = time.time()
-            self._set_active_operation(self.profile_dir, self._operation_name)
+            self._operation_id = uuid.uuid4().hex
+            self._set_active_operation(
+                self.profile_dir,
+                self._operation_name,
+                operation_id=self._operation_id,
+                owner=self,
+            )
             self._lock_file.seek(0)
             self._lock_file.truncate()
             self._lock_file.write(f"pid={os.getpid()}\n")
             self._lock_file.write(f"operation={self._operation_name}\n")
+            self._lock_file.write(f"operation_id={self._operation_id}\n")
             self._lock_file.write(f"profile_dir={self.profile_dir}\n")
             self._lock_file.write(f"acquired_at={self._acquired_at}\n")
+            self._lock_file.write(f"stale_lock_seconds={self.stale_lock_seconds}\n")
             self._lock_file.flush()
             return self
         except Exception:
+            self._release_file_lock_handle()
             self._release_thread_lock()
+            self._operation_id = None
             raise
 
+    async def _recover_stale_active_operation(self, active: dict[str, Any], *, reason: str) -> dict[str, Any]:
+        if not active:
+            return {"attempted": False, "reason": "no_active_operation"}
+        active_payload = self._active_public_payload(active, stale_lock_seconds=self.stale_lock_seconds)
+        if not active_payload.get("stale_lock_expired"):
+            return {"attempted": False, "reason": "active_operation_not_stale", **active_payload}
+        owner = active.get("owner")
+        operation_id = active.get("operation_id")
+        if not isinstance(owner, _SharedProfileAsyncLock) or not operation_id:
+            return {"attempted": False, "reason": "active_owner_unavailable", **active_payload}
+        return await owner._force_release_stale_operation(str(operation_id), reason=reason, active_payload=active_payload)
+
+    async def _force_release_stale_operation(self, operation_id: str, *, reason: str, active_payload: dict[str, Any]) -> dict[str, Any]:
+        active = self._active_operation_for_profile(self.profile_dir)
+        if active.get("operation_id") != operation_id:
+            return {"attempted": True, "expired": False, "reason": "active_operation_changed", **active_payload}
+        if not self._active_lock_expired(active, stale_lock_seconds=self.stale_lock_seconds):
+            return {"attempted": True, "expired": False, "reason": "active_operation_no_longer_stale", **active_payload}
+        self._release_file_lock_handle()
+        self._clear_active_operation(self.profile_dir, operation_id=operation_id)
+        self._release_thread_lock()
+        if self._operation_id == operation_id:
+            self._operation_id = None
+            self._acquired_at = None
+        return {
+            "attempted": True,
+            "expired": True,
+            "reason": reason,
+            "recovery_action": "force_released_stale_profile_lock",
+            **active_payload,
+        }
+
+    def _release_file_lock_handle(self) -> None:
+        if self._lock_file is None:
+            return
+        handle = self._lock_file
+        self._lock_file = None
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        try:
+            handle.close()
+        except OSError:
+            pass
+
     async def _release(self) -> None:
+        operation_id = self._operation_id
         try:
             if self._lock_file is not None:
                 await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_UN)
                 self._lock_file.close()
                 self._lock_file = None
         finally:
-            self._clear_active_operation(self.profile_dir)
+            self._clear_active_operation(self.profile_dir, operation_id=operation_id)
+            self._operation_id = None
+            self._acquired_at = None
             self._release_thread_lock()
 
     def _release_thread_lock(self) -> None:
@@ -283,6 +447,7 @@ class ChatGPTAutomationSettings:
     retry_backoff_seconds: float = 2.0
     clear_singleton_locks: bool = False
     profile_lock_wait_seconds: float = 30.0
+    profile_stale_lock_seconds: float = 300.0
     slow_mo_ms: int = 0
     debug: bool = False
     debug_artifact_dir: str = "debug_artifacts"
@@ -302,12 +467,19 @@ class ChatGPTAutomationService:
 
     def __init__(self, settings: ChatGPTAutomationSettings):
         self.settings = settings
-        self._lock = _SharedProfileAsyncLock(settings.profile_dir, wait_timeout_seconds=settings.profile_lock_wait_seconds)
+        self._lock = _SharedProfileAsyncLock(
+            settings.profile_dir,
+            wait_timeout_seconds=settings.profile_lock_wait_seconds,
+            stale_lock_seconds=settings.profile_stale_lock_seconds,
+        )
         self._recent_project_chats: dict[str, dict[str, Any]] = {}
         self._recent_project_sources: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     def browser_status(self) -> dict[str, Any]:
-        return _SharedProfileAsyncLock.status_for_profile(self.settings.profile_dir)
+        return _SharedProfileAsyncLock.status_for_profile(
+            self.settings.profile_dir,
+            stale_lock_seconds=self.settings.profile_stale_lock_seconds,
+        )
 
     @staticmethod
     def _extract_project_id(url: Optional[str]) -> Optional[str]:

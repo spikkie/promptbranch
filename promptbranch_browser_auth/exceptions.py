@@ -125,6 +125,12 @@ class BrowserProfileBusyError(TimeoutError):
         waited_seconds: float | None = None,
         retry_after_seconds: float | None = None,
         profile_dir: str | None = None,
+        active_elapsed_seconds: float | None = None,
+        active_operation_id: str | None = None,
+        stale_lock_seconds: float | None = None,
+        stale_lock_expired: bool | None = None,
+        stale_lock_recovery_attempted: bool | None = None,
+        stale_lock_recovery_result: dict | None = None,
     ) -> None:
         super().__init__(message)
         self.operation_name = operation_name
@@ -132,6 +138,12 @@ class BrowserProfileBusyError(TimeoutError):
         self.waited_seconds = waited_seconds
         self.retry_after_seconds = retry_after_seconds
         self.profile_dir = profile_dir
+        self.active_elapsed_seconds = active_elapsed_seconds
+        self.active_operation_id = active_operation_id
+        self.stale_lock_seconds = stale_lock_seconds
+        self.stale_lock_expired = stale_lock_expired
+        self.stale_lock_recovery_attempted = stale_lock_recovery_attempted
+        self.stale_lock_recovery_result = stale_lock_recovery_result or None
 
     def to_payload(self) -> dict:
         return {
@@ -141,9 +153,15 @@ class BrowserProfileBusyError(TimeoutError):
             "error_type": type(self).__name__,
             "operation": self.operation_name,
             "active_operation": self.active_operation,
+            "active_elapsed_seconds": self.active_elapsed_seconds,
+            "active_operation_id": self.active_operation_id,
+            "stale_lock_seconds": self.stale_lock_seconds,
+            "stale_lock_expired": self.stale_lock_expired,
+            "stale_lock_recovery_attempted": self.stale_lock_recovery_attempted,
+            "stale_lock_recovery_result": self.stale_lock_recovery_result,
             "waited_seconds": self.waited_seconds,
             "retry_after_seconds": self.retry_after_seconds,
             "profile_dir": self.profile_dir,
             "timeout_layer": "browser_profile_lock",
-            "recovery_hint": "A browser-backed operation is already using the shared profile. Retry after the active operation finishes, or use async job/status support when available.",
+            "recovery_hint": "A browser-backed operation is already using the shared profile. Retry after the active operation finishes, inspect pb browser status --json, or let stale-lock recovery expire abandoned ownership.",
         }
