@@ -133,7 +133,7 @@ def test_build_persistence_source_candidates_prefers_rendered_identity(browser_c
     ]
 
 
-def test_verify_project_source_persistence_checks_current_surface_before_refresh(browser_client: ChatGPTBrowserClient) -> None:
+def test_verify_project_source_persistence_requires_refresh_after_current_surface_match(browser_client: ChatGPTBrowserClient) -> None:
     page = object()
     calls: list[tuple[str, object]] = []
 
@@ -155,7 +155,12 @@ def test_verify_project_source_persistence_checks_current_surface_before_refresh
         )
     )
 
-    assert persisted == {"identity": "pasted.txt Document"}
+    assert persisted == {
+        "identity": "pasted.txt Document",
+        "_promptbranch_verification_mode": "post_refresh",
+        "_promptbranch_ui_card_seen_before_refresh": True,
+        "_promptbranch_post_refresh_attempt": 1,
+    }
     assert calls == [
         (
             "wait",
@@ -166,7 +171,23 @@ def test_verify_project_source_persistence_checks_current_surface_before_refresh
                 "accept_single_new_card": False,
                 "timeout_ms": 10_000,
             },
-        )
+        ),
+        (
+            "goto",
+            page,
+            "https://chatgpt.com/g/g-p-123/project?tab=sources",
+            "project-source-add-persistence-refresh",
+        ),
+        (
+            "wait",
+            page,
+            {
+                "source_match_candidates": ["pasted.txt Document"],
+                "before_sources": None,
+                "accept_single_new_card": False,
+                "timeout_ms": 15_000,
+            },
+        ),
     ]
 
 
@@ -226,7 +247,12 @@ def test_verify_project_source_persistence_refreshes_after_pre_refresh_timeout(b
         )
     )
 
-    assert persisted == {"identity": "pasted.txt Document"}
+    assert persisted == {
+        "identity": "pasted.txt Document",
+        "_promptbranch_verification_mode": "post_refresh",
+        "_promptbranch_ui_card_seen_before_refresh": False,
+        "_promptbranch_post_refresh_attempt": 1,
+    }
     assert calls[0][0] == "wait"
     assert calls[0][3] == 1
     assert calls[1] == (
@@ -504,7 +530,7 @@ def test_wait_for_project_source_save_request_quiet_requires_relevant_requests_t
 
 
 
-def test_wait_for_project_source_save_request_quiet_accepts_committed_stale_inflight(browser_client: ChatGPTBrowserClient) -> None:
+def test_wait_for_project_source_save_request_quiet_rejects_committed_stale_inflight(browser_client: ChatGPTBrowserClient) -> None:
     class _QuietPage:
         def __init__(self) -> None:
             self.wait_calls: list[int] = []
@@ -531,30 +557,27 @@ def test_wait_for_project_source_save_request_quiet_accepts_committed_stale_infl
             "last_activity": now - 1.0,
         }
 
-        settled = loop.run_until_complete(
-            browser_client._wait_for_project_source_save_request_quiet(
-                page,
-                watch,
-                source_kind="text",
-                timeout_ms=1000,
-                observation_window_ms=200,
-                quiet_window_ms=50,
-                stale_inflight_after_commit_grace_ms=100,
-                poll_interval_ms=10,
+        with pytest.raises(ResponseTimeoutError) as excinfo:
+            loop.run_until_complete(
+                browser_client._wait_for_project_source_save_request_quiet(
+                    page,
+                    watch,
+                    source_kind="text",
+                    timeout_ms=120,
+                    observation_window_ms=40,
+                    quiet_window_ms=20,
+                    stale_inflight_after_commit_grace_ms=30,
+                    poll_interval_ms=10,
+                )
             )
-        )
     finally:
         asyncio.set_event_loop(None)
         loop.close()
 
-    assert settled["saw_relevant"] is True
-    assert settled["saw_commit"] is True
-    assert settled["started"] == 2
-    assert settled["finished"] == 1
-    assert settled["inflight"] == 1
-    assert settled["stale_inflight_after_commit"] is True
-    assert settled["quiet_now"] is True
-    assert settled["quiet_reason"] == "committed_with_stale_inflight_grace"
+    message = str(excinfo.value)
+    assert "inflight=1" in message
+    assert "stale_inflight_after_commit=True" in message
+    assert "quiet_reason=stale_inflight_after_commit_not_quiet" in message
 
 def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_window(browser_client: ChatGPTBrowserClient) -> None:
     class _QuietPage:
