@@ -85,7 +85,15 @@ from promptbranch_parallel_ask import (
     parallel_ask_plan_payload,
     render_parallel_ask_summary,
 )
-from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan, classify_task_list_payload, source_list_read_routing, task_list_read_routing
+from promptbranch_backend_reads import (
+    backend_debug_diagnostics,
+    backend_debug_plan,
+    backend_reads_diagnostics,
+    backend_reads_plan,
+    classify_task_list_payload,
+    source_list_read_routing,
+    task_list_read_routing,
+)
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_source_queue import build_source_mutation_queue_plan
@@ -7022,7 +7030,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
         "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
-        "debug": ["chats", "task-list", "tasks", "rate-limit", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
+        "debug": ["chats", "task-list", "tasks", "rate-limit", "backend", "projects", "conversations", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "parallel": ["policy", "task", "show", "ask", "--task", "--targets", "--tasks", "--all", "--concurrency", "--plan-only", "--deep-history", "--protocol", "--prompt-file", "--target-version", "--release-type", "--json", "--keep-open"],
         "src": ["list", "add", "rm", "remove", "sync", "queue-plan", "--operation", "--workspace-url", "--file", "--name", "--source-name", "--service-id", "--account-id", "--json"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
@@ -19344,6 +19352,49 @@ async def cmd_debug(backend: CommandBackend, args: argparse.Namespace) -> int:
         print(f"modal_detected={str(bool(modal.get('detected'))).lower()}")
         print(f"summary={result.get('artifact_dir')}/summary.json")
         return 0 if result.get("status") != "rate_limited" else 2
+    if args.debug_command == "backend":
+        scope = getattr(args, "backend_scope", None) or "all"
+        if getattr(args, "plan_only", False):
+            result = backend_debug_plan(scope)
+        else:
+            projects_payload = None
+            conversations_payload = None
+            if scope in {"all", "projects"}:
+                try:
+                    projects_payload = await backend.list_projects(keep_open=args.keep_open)
+                except Exception as exc:
+                    projects_payload = {
+                        "ok": False,
+                        "status": "project_backend_probe_failed",
+                        "error": str(exc),
+                        "error_type": exc.__class__.__name__,
+                    }
+            if scope in {"all", "conversations"}:
+                try:
+                    conversations_payload = await backend.list_project_chats(
+                        keep_open=args.keep_open,
+                        include_history_fallback=not getattr(args, "no_history", False),
+                    )
+                except Exception as exc:
+                    conversations_payload = {
+                        "ok": False,
+                        "status": "conversation_backend_probe_failed",
+                        "error": str(exc),
+                        "error_type": exc.__class__.__name__,
+                    }
+            result = backend_debug_diagnostics(
+                scope=scope,
+                projects_payload=projects_payload,
+                conversations_payload=conversations_payload,
+            )
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("ok") else 2
+        print(f"status={result.get('status')}")
+        print(f"scope={result.get('scope')}")
+        print(f"diagnostic_count={result.get('diagnostic_count', 0)}")
+        print("Use --json for full backend diagnostics.")
+        return 0 if result.get("ok") else 2
     if args.debug_command == "parallel-plan":
         result = parallel_architecture_payload(getattr(args, "operation", None))
         if args.json:
@@ -20812,6 +20863,12 @@ def make_parser() -> argparse.ArgumentParser:
     debug_rate_limit.add_argument("--probe-backend", action="store_true", help="Perform one low-volume /backend-api/conversations probe unless a cooldown is already active.")
     debug_rate_limit.add_argument("--wait-ms", type=int, default=750, help="Milliseconds to observe backend responses after navigation.")
     debug_rate_limit.add_argument("--keep-open", action="store_true", help="Keep the browser open after debug collection.")
+    debug_backend = debug_subparsers.add_parser("backend", help="Diagnose read-only ChatGPT backend project/conversation endpoints without mutating state.")
+    debug_backend.add_argument("backend_scope", nargs="?", choices=["projects", "conversations"], help="Limit diagnostics to one backend surface.")
+    debug_backend.add_argument("--json", action="store_true", help="Emit backend diagnostics as JSON.")
+    debug_backend.add_argument("--plan-only", action="store_true", help="Show expected endpoint families and status taxonomy without probing ChatGPT.")
+    debug_backend.add_argument("--no-history", action="store_true", help="Skip conversation history fallback while collecting conversation diagnostics.")
+    debug_backend.add_argument("--keep-open", action="store_true", help="Keep the browser/service session open after diagnostics.")
     debug_parallel_plan = debug_subparsers.add_parser("parallel-plan", help="Show Promptbranch parallel execution architecture and command resource classifications.")
     debug_parallel_plan.add_argument("--json", action="store_true", help="Emit the parallel execution plan as JSON.")
     debug_parallel_plan.add_argument("--operation", choices=sorted(OPERATION_CLASSES), help="Show one operation classification instead of the full registry.")

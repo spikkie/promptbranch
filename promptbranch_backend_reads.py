@@ -6,6 +6,211 @@ BACKEND_TASK_SOURCES = ("snorlax", "project_endpoint", "history", "history_detai
 FALLBACK_TASK_SOURCES = ("dom", "current_page", "recent_state", "current_state")
 SOURCE_BACKEND_SIGNALS = ("backend", "project_endpoint", "snorlax", "api", "network")
 
+
+
+BACKEND_DIAGNOSTIC_STATUS_VALUES = (
+    "ok",
+    "rate_limited",
+    "forbidden",
+    "unauthenticated",
+    "backend_schema_changed",
+    "backend_unavailable",
+)
+
+BACKEND_DIAGNOSTIC_ENDPOINTS: dict[str, dict[str, Any]] = {
+    "projects": {
+        "scope": "projects",
+        "operation": "project_backend_probe",
+        "method": "GET",
+        "endpoint_family": "snorlax_sidebar",
+        "known_paths": ["/backend-api/gizmos/snorlax/sidebar"],
+        "mutation_allowed": False,
+        "expected_shape": "project/sidebar payload with project records or visible project list metadata",
+    },
+    "conversations": {
+        "scope": "conversations",
+        "operation": "conversation_backend_probe",
+        "method": "GET",
+        "endpoint_family": "project_conversations_or_history",
+        "known_paths": [
+            "/backend-api/gizmos/{project_id}/conversations",
+            "/backend-api/conversations",
+            "/backend-api/conversation/{conversation_id}",
+        ],
+        "mutation_allowed": False,
+        "expected_shape": "project-scoped conversation records, history records, or detail metadata",
+    },
+}
+
+
+def _textish(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _extract_http_status(payload: Any) -> int | None:
+    data = _as_mapping(payload)
+    for key in ("http_status", "status_code", "response_status"):
+        value = data.get(key)
+        try:
+            if value is not None:
+                return int(value)
+        except (TypeError, ValueError):
+            pass
+    response = data.get("response")
+    if isinstance(response, dict):
+        for key in ("status", "status_code"):
+            try:
+                if response.get(key) is not None:
+                    return int(response.get(key))
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _extract_retry_after(payload: Any) -> str | int | float | None:
+    data = _as_mapping(payload)
+    for key in ("retry_after", "retry_after_seconds", "retry-after"):
+        if data.get(key) is not None:
+            return data.get(key)
+    headers = data.get("headers")
+    if isinstance(headers, dict):
+        for key, value in headers.items():
+            if str(key).casefold() == "retry-after":
+                return value
+    return None
+
+
+def _shape_summary(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        keys = sorted(str(key) for key in payload.keys())[:40]
+        summary: dict[str, Any] = {
+            "type": "object",
+            "key_count": len(payload),
+            "keys": keys,
+        }
+        for list_key in ("items", "projects", "conversations", "sources", "records", "data"):
+            value = payload.get(list_key)
+            if isinstance(value, list):
+                summary[f"{list_key}_count"] = len(value)
+        return summary
+    if isinstance(payload, list):
+        return {"type": "array", "count": len(payload)}
+    if payload is None:
+        return {"type": "null"}
+    return {"type": type(payload).__name__}
+
+
+def classify_backend_diagnostic_payload(payload: Any) -> dict[str, Any]:
+    """Classify a raw read-only ChatGPT backend probe result.
+
+    This deliberately avoids trusting the backend schema.  It records the HTTP
+    status, retry-after signal, modal/rate-limit hints, and only a shallow shape
+    summary so diagnostics remain safe to publish in logs.
+    """
+
+    data = _as_mapping(payload)
+    http_status = _extract_http_status(data)
+    retry_after = _extract_retry_after(data)
+    text = " ".join(
+        _textish(data.get(key))
+        for key in ("status", "error", "message", "modal_text", "body_text")
+    ).casefold()
+    modal = data.get("modal") if isinstance(data.get("modal"), dict) else {}
+    modal_text = _textish(modal.get("text") or modal.get("message")).casefold()
+    combined = f"{text} {modal_text}"
+
+    if http_status == 429 or retry_after is not None or "too many requests" in combined or "rate limit" in combined or "rate_limited" in combined:
+        status = "rate_limited"
+    elif http_status == 401 or "unauthenticated" in combined or "login" in combined and "required" in combined:
+        status = "unauthenticated"
+    elif http_status == 403 or "forbidden" in combined or "access denied" in combined:
+        status = "forbidden"
+    elif http_status is not None and http_status >= 500:
+        status = "backend_unavailable"
+    elif data.get("ok") is False and http_status is None:
+        status = "backend_unavailable"
+    elif data.get("schema_changed") or data.get("metadata_gap"):
+        status = "backend_schema_changed"
+    else:
+        shape = _shape_summary(data)
+        has_known_content = any(
+            str(key).endswith("_count") and isinstance(value, int) and value > 0
+            for key, value in shape.items()
+        ) or bool(data.get("ok", True))
+        status = "ok" if has_known_content else "backend_schema_changed"
+
+    return {
+        "ok": status == "ok",
+        "status": status,
+        "http_status": http_status,
+        "retry_after": retry_after,
+        "rate_limit_detected": status == "rate_limited",
+        "modal_detected": bool(modal.get("detected")),
+        "response_shape": _shape_summary(data),
+    }
+
+
+def backend_debug_plan(scope: str = "all") -> dict[str, Any]:
+    if scope not in {"all", "projects", "conversations"}:
+        return {
+            "ok": False,
+            "action": "debug_backend",
+            "schema": "promptbranch.backend.diagnostic",
+            "schema_version": "1.0",
+            "status": "unknown_scope",
+            "scope": scope,
+            "known_scopes": ["all", "projects", "conversations"],
+        }
+    selected = BACKEND_DIAGNOSTIC_ENDPOINTS if scope == "all" else {scope: BACKEND_DIAGNOSTIC_ENDPOINTS[scope]}
+    return {
+        "ok": True,
+        "action": "debug_backend",
+        "schema": "promptbranch.backend.diagnostic",
+        "schema_version": "1.0",
+        "status": "planned",
+        "scope": scope,
+        "runtime_integration": "read_only_backend_diagnostic",
+        "mutation_allowed": False,
+        "status_values": list(BACKEND_DIAGNOSTIC_STATUS_VALUES),
+        "endpoints": selected,
+    }
+
+
+def backend_debug_diagnostics(*, scope: str = "all", projects_payload: Any | None = None, conversations_payload: Any | None = None) -> dict[str, Any]:
+    result = backend_debug_plan(scope)
+    if not result.get("ok"):
+        return result
+    diagnostics: dict[str, Any] = {}
+    if scope in {"all", "projects"} and projects_payload is not None:
+        item = classify_backend_diagnostic_payload(projects_payload)
+        item.update({"scope": "projects", "endpoint_family": BACKEND_DIAGNOSTIC_ENDPOINTS["projects"]["endpoint_family"]})
+        diagnostics["projects"] = item
+    if scope in {"all", "conversations"} and conversations_payload is not None:
+        item = classify_backend_diagnostic_payload(conversations_payload)
+        item.update({"scope": "conversations", "endpoint_family": BACKEND_DIAGNOSTIC_ENDPOINTS["conversations"]["endpoint_family"]})
+        diagnostics["conversations"] = item
+    statuses = [item.get("status") for item in diagnostics.values() if isinstance(item, dict)]
+    priority = ["rate_limited", "unauthenticated", "forbidden", "backend_unavailable", "backend_schema_changed"]
+    status = "diagnosed" if diagnostics else "planned"
+    for candidate in priority:
+        if candidate in statuses:
+            status = candidate
+            break
+    if diagnostics and status == "diagnosed" and all(value == "ok" for value in statuses):
+        status = "ok"
+    result.update({
+        "status": status,
+        "ok": status in {"planned", "diagnosed", "ok"},
+        "diagnostics": diagnostics,
+        "diagnostic_count": len(diagnostics),
+    })
+    return result
+
+
 READ_OPERATION_PLANS: dict[str, dict[str, Any]] = {
     "task_list": {
         "operation": "task_list",
