@@ -416,7 +416,8 @@ def test_source_version_consistency_detects_promptbranch_version_file_drift(tmp_
 
 
 
-def test_source_version_consistency_accepts_parameterized_compose_default(tmp_path: Path) -> None:
+def test_source_version_consistency_accepts_parameterized_compose_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(suite, "PACKAGE_VERSION", "0.1.1.1")
     (tmp_path / "VERSION").write_text("v0.1.1.1\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.1.1"\n', encoding="utf-8")
     (tmp_path / "promptbranch_version.py").write_text('PACKAGE_VERSION = "0.1.1.1"\n', encoding="utf-8")
