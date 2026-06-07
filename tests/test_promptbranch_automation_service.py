@@ -637,3 +637,69 @@ def test_profile_lock_wait_override_allows_waiting_operation(monkeypatch, tmp_pa
     result = asyncio.run(run_contention())
     assert result["ok"] is True
     assert events == ["ask-start", "ask-end", "source-add-start"]
+
+
+def test_profile_scoped_lock_expires_stale_add_project_source_owner(tmp_path):
+    from promptbranch_automation.service import _SharedProfileAsyncLock
+
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def run_stale_recovery():
+        holder = _SharedProfileAsyncLock(
+            str(profile_dir),
+            wait_timeout_seconds=0.001,
+            stale_lock_seconds=0.001,
+        )
+        waiter = _SharedProfileAsyncLock(
+            str(profile_dir),
+            wait_timeout_seconds=0.001,
+            stale_lock_seconds=0.001,
+        )
+        await holder._acquire("add_project_source")
+        active = _SharedProfileAsyncLock._active_operations[str(profile_dir.resolve())]
+        active["started_monotonic"] = active["started_monotonic"] - 60.0
+        active["started_at"] = active["started_at"] - 60.0
+
+        await waiter._acquire("remove_project_source")
+        status = _SharedProfileAsyncLock.status_for_profile(
+            str(profile_dir),
+            stale_lock_seconds=0.001,
+        )
+        await waiter._release()
+        return status
+
+    status = asyncio.run(run_stale_recovery())
+    assert status["status"] == "busy"
+    assert status["active_operation"] == "remove_project_source"
+    assert status["active_operation_id"]
+    assert status["stale_lock_seconds"] == 0.001
+
+
+def test_browser_status_reports_stale_lock_diagnostics(tmp_path):
+    from promptbranch_automation.service import _SharedProfileAsyncLock
+
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def run_status():
+        holder = _SharedProfileAsyncLock(
+            str(profile_dir),
+            wait_timeout_seconds=0.001,
+            stale_lock_seconds=0.001,
+        )
+        await holder._acquire("add_project_source")
+        active = _SharedProfileAsyncLock._active_operations[str(profile_dir.resolve())]
+        active["started_monotonic"] = active["started_monotonic"] - 60.0
+        active["started_at"] = active["started_at"] - 60.0
+        status = _SharedProfileAsyncLock.status_for_profile(
+            str(profile_dir),
+            stale_lock_seconds=0.001,
+        )
+        await holder._release()
+        return status
+
+    status = asyncio.run(run_status())
+    assert status["status"] == "busy"
+    assert status["active_operation"] == "add_project_source"
+    assert status["stale_lock_expired"] is True
+    assert status["stale_lock_recoverable"] is True
+    assert status["active_elapsed_seconds"] >= 60.0
