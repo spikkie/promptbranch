@@ -10647,6 +10647,194 @@ def _release_version_shape(value: Any) -> str:
     return "unknown"
 
 
+
+
+def _release_current_reconciliation_payload(
+    backend: Any,
+    args: argparse.Namespace,
+    *,
+    artifact_payload: dict[str, Any] | None = None,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Plan adoption/registry reconciliation for the installed runtime head.
+
+    This is intentionally read-only.  It does not update the artifact registry,
+    Promptbranch state, Project Sources, policy files, or Git state.  It exists
+    to prevent later lifecycle routing from treating a stale adopted baseline as
+    the next release base when runtime/source installation has moved ahead.
+    """
+
+    repo = repo_root or Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    registry = _artifact_registry_from_args(args)
+    current_payload = _artifact_current_payload(backend, registry)
+    artifact = artifact_payload or _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo)
+    requested_version = _candidate_version_normalized(getattr(args, "version", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    runtime_version = _candidate_version_normalized((current_payload.get("runtime") or {}).get("version"))
+    artifact_version = _candidate_version_normalized(artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
+    artifact_filename = str(artifact.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name or "")
+    artifact_path = str(artifact.get("path") or getattr(args, "artifact", "") or "")
+    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
+    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+
+    adopted_source_version = _candidate_version_normalized(baseline_roles.get("adopted_source_version"))
+    adopted_artifact_version = _candidate_version_normalized(baseline_roles.get("adopted_artifact_version"))
+    registry_current_version = _candidate_version_normalized(baseline_roles.get("registry_current_version"))
+    adopted_source_ref = baseline_roles.get("adopted_source_ref")
+    adopted_artifact_ref = baseline_roles.get("adopted_artifact_ref")
+    registry_current_ref = baseline_roles.get("registry_current_ref")
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not artifact.get("attempted"):
+        block("reconcile_current_artifact_required", "reconcile-current requires --artifact ZIP so the intended adopted baseline is explicit.")
+    elif not artifact.get("ok"):
+        block("reconcile_current_artifact_invalid", "Candidate/current artifact ZIP did not pass verification.", artifact_status=artifact.get("status"), blocking_errors=artifact.get("blocking_errors") or [])
+    if requested_version and artifact_version and requested_version != artifact_version:
+        block("reconcile_current_version_mismatch", "Requested --version differs from artifact ZIP version.", requested_version=requested_version, artifact_version=artifact_version)
+    if artifact_version and runtime_version and artifact_version != runtime_version:
+        warn("reconcile_current_artifact_runtime_mismatch", "Artifact version differs from installed runtime version; verify this is an intentional repair/adoption target.", artifact_version=artifact_version, runtime_version=runtime_version)
+
+    current_versions = {
+        "adopted_source_version": adopted_source_version,
+        "adopted_artifact_version": adopted_artifact_version,
+        "registry_current_version": registry_current_version,
+    }
+    current_refs = {
+        "adopted_source_ref": adopted_source_ref,
+        "adopted_artifact_ref": adopted_artifact_ref,
+        "registry_current_ref": registry_current_ref,
+    }
+    matches = {
+        "state_artifact_matches_artifact": bool(artifact_filename and state.get("artifact_ref") == artifact_filename and artifact_version and _candidate_version_normalized(state.get("artifact_version")) == artifact_version),
+        "state_source_matches_artifact": bool(artifact_filename and state.get("source_ref") == artifact_filename and artifact_version and _candidate_version_normalized(state.get("source_version")) == artifact_version),
+        "registry_current_matches_artifact": bool(artifact_filename and registry_current.get("filename") == artifact_filename and artifact_version and _candidate_version_normalized(registry_current.get("version")) == artifact_version and registry_current.get("kind") == "adopted_release"),
+        "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact") is True,
+        "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact") is True,
+    }
+    current_aligned = all(matches.values())
+    has_stale_baseline = bool(artifact_version and (
+        adopted_source_version and adopted_source_version != artifact_version
+        or adopted_artifact_version and adopted_artifact_version != artifact_version
+        or registry_current_version and registry_current_version != artifact_version
+    ))
+    missing_current = not any(current_versions.values())
+
+    adopt_command = None
+    if artifact_filename and artifact_path:
+        adopt_command = f"pb artifact adopt {artifact_filename} --from-project-source --local-path {artifact_path} --json"
+    policy_command = None
+    if artifact_path and (artifact_version or requested_version):
+        version_for_command = artifact_version or requested_version
+        target_fragment = f" --target-version {target_version}" if target_version else ""
+        policy_command = f"pb release policy-sync --artifact {artifact_path} --version {version_for_command}{target_fragment} --json"
+    baseline_status_command = f"pb release baseline-status --version {artifact_version or requested_version or '<accepted-version>'} --json"
+
+    if blockers:
+        status = "reconciliation_blocked"
+        ok = False
+        next_action = "resolve_blockers"
+    elif current_aligned:
+        status = "current_aligned"
+        ok = True
+        next_action = "continue"
+    elif has_stale_baseline or missing_current:
+        status = "reconciliation_required"
+        ok = False
+        next_action = "adopt_current_artifact"
+        warn(
+            "artifact_current_reconciliation_required",
+            "Runtime/source installation is ahead of the adopted artifact/source registry baseline; reconcile before routing future release lifecycle execution.",
+            artifact_version=artifact_version,
+            current_versions=current_versions,
+        )
+    else:
+        status = "reconciliation_incomplete"
+        ok = False
+        next_action = "inspect_artifact_current"
+        warn(
+            "artifact_current_partial_mismatch",
+            "Artifact/source/registry current state is not fully aligned with the requested artifact.",
+            matches=matches,
+        )
+
+    return {
+        "ok": ok,
+        "action": "release_reconcile_current",
+        "status": status,
+        "schema_version": 1,
+        "read_only": True,
+        "planning_only": True,
+        "repo_path": str(repo),
+        "artifact": artifact,
+        "artifact_ref": artifact_filename or None,
+        "artifact_version": artifact_version,
+        "runtime_version": runtime_version,
+        "requested_version": requested_version,
+        "target_version": target_version,
+        "artifact_current": current_payload,
+        "current_versions": current_versions,
+        "current_refs": current_refs,
+        "matches": matches,
+        "current_aligned": current_aligned,
+        "has_stale_baseline": has_stale_baseline,
+        "missing_current": missing_current,
+        "next_action": next_action,
+        "recommended_commands": {
+            "adopt_current_artifact": adopt_command,
+            "policy_sync": policy_command,
+            "verify_current": "pb artifact current --json",
+            "baseline_status": baseline_status_command,
+        },
+        "release_lifecycle_execution_blocked_until_reconciled": not current_aligned,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "project_source_mutated": False,
+        "policy_sync_performed": False,
+        "git_commit_performed": False,
+        "git_push_performed": False,
+        "mutating_actions_executed": False,
+        "warnings": warnings,
+        "warning_codes": [item["code"] for item in warnings],
+        "blockers": blockers,
+        "blocker_codes": [item["code"] for item in blockers],
+        "operator_instruction": (
+            "Artifact/source/registry current state already matches the requested artifact; future release lifecycle routing may continue."
+            if current_aligned else
+            "Reconcile the local artifact/source baseline before future release lifecycle routing. Use the recommended adopt command after confirming the ZIP is visible exactly once in Project Sources."
+        ),
+    }
+
+
+async def cmd_release_reconcile_current(backend: Any, args: argparse.Namespace) -> int:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    artifact_payload = _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo_root)
+    payload = _release_current_reconciliation_payload(
+        backend,
+        args,
+        artifact_payload=artifact_payload,
+        repo_root=repo_root,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"ok={str(bool(payload.get('ok'))).lower()}")
+        command = (payload.get("recommended_commands") or {}).get("adopt_current_artifact")
+        if command and not payload.get("current_aligned"):
+            print(f"adopt_current_artifact={command}")
+    return 0 if payload.get("ok") else 1
+
 def _release_install_baseline_comparison(
     *,
     args: argparse.Namespace,
@@ -14179,6 +14367,29 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
             "missing_context": scheduler_plan.get("missing_context") or [],
         })
 
+    current_reconciliation = _release_current_reconciliation_payload(
+        backend,
+        args,
+        artifact_payload=artifact_payload,
+        repo_root=repo_root,
+    )
+    for item in current_reconciliation.get("warnings") or []:
+        if isinstance(item, dict) and item.get("code") not in {w.get("code") for w in warnings}:
+            warnings.append(item)
+    current_reconciliation_blocks_lifecycle = bool(
+        current_reconciliation.get("has_stale_baseline")
+        or current_reconciliation.get("status") == "reconciliation_incomplete"
+    )
+    if current_reconciliation_blocks_lifecycle:
+        block(
+            "release_current_reconciliation_required",
+            "Artifact registry/adoption current state must be reconciled before release lifecycle execution can route from this artifact.",
+            reconcile_status=current_reconciliation.get("status"),
+            artifact_version=current_reconciliation.get("artifact_version"),
+            current_versions=current_reconciliation.get("current_versions"),
+            recommended_command=(current_reconciliation.get("recommended_commands") or {}).get("adopt_current_artifact"),
+        )
+
     phase_plan = [
         {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
         {"phase": "install", "command": "pb release install --artifact {artifact} --version {version} --target-version {target_version} --upload-source --json", "will_execute_in_plan": False, "will_execute": not plan_only},
@@ -14218,6 +14429,7 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
         "git_safety_plan": git_plan,
         "scheduler_integration": scheduler_plan,
         "source_upload_queue_plan": scheduler_plan.get("source_upload_queue_plan"),
+        "current_reconciliation": current_reconciliation,
         "lifecycle_planning": {
             "schema_version": 1,
             "read_only": True,
@@ -14232,6 +14444,8 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
             "install_plan": install_plan_payload.get("install_plan"),
             "install_target_plan": install_plan_payload.get("install_target_plan"),
             "baseline_comparison": install_plan_payload.get("baseline_comparison"),
+            "current_reconciliation_status": current_reconciliation.get("status"),
+            "current_reconciliation_required": bool(current_reconciliation_blocks_lifecycle),
             "would_mutate": False,
             "mutating_actions_executed": False,
         },
@@ -15441,6 +15655,8 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_lifecycle_status(backend, args)
     if args.release_command == "doctor":
         return await cmd_release_doctor(backend, args)
+    if args.release_command == "reconcile-current":
+        return await cmd_release_reconcile_current(backend, args)
     if args.release_command == "config":
         return await cmd_release_config(backend, args)
     if args.release_command == "install":
@@ -20147,6 +20363,14 @@ def make_parser() -> argparse.ArgumentParser:
     release_doctor.add_argument("--skip-project-sources", action="store_true", help="Skip read-only Project Sources listing.")
     release_doctor.add_argument("--keep-open", action="store_true")
     release_doctor.add_argument("--json", action="store_true")
+
+    release_reconcile_current = release_subparsers.add_parser("reconcile-current", help="Read-only plan for reconciling artifact registry/adoption current state to a verified installed release artifact.")
+    release_reconcile_current.add_argument("--artifact", required=True, help="Installed/current release ZIP that should become the adopted artifact/source baseline.")
+    release_reconcile_current.add_argument("--version", help="Expected installed/current release version such as v0.1.50.")
+    release_reconcile_current.add_argument("--target-version", help="Next target version for follow-up policy guidance.")
+    release_reconcile_current.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+    release_reconcile_current.add_argument("--profile-dir", help="Promptbranch profile directory containing artifact registry/state.")
+    release_reconcile_current.add_argument("--json", action="store_true")
 
     release_config = release_subparsers.add_parser("config", help="Read-only .promptbranch-release.yml parser and validator.")
     release_config.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")

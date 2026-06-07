@@ -637,6 +637,24 @@ def test_parser_accepts_release_lifecycle_status_command() -> None:
         "--json",
     ])
     assert args.command == "release"
+    reconcile_args = parser.parse_args([
+        "release", "reconcile-current",
+        "--artifact", "./chatgpt_claudecode_workflow-2_v0.1.50.zip",
+        "--version", "v0.1.50",
+        "--target-version", "v0.1.51",
+        "--repo-path", "/tmp/repo",
+        "--profile-dir", "/tmp/profile",
+        "--json",
+    ])
+    assert reconcile_args.command == "release"
+    assert reconcile_args.release_command == "reconcile-current"
+    assert reconcile_args.artifact == "./chatgpt_claudecode_workflow-2_v0.1.50.zip"
+    assert reconcile_args.version == "v0.1.50"
+    assert reconcile_args.target_version == "v0.1.51"
+    assert reconcile_args.repo_path == "/tmp/repo"
+    assert reconcile_args.profile_dir == "/tmp/profile"
+    assert reconcile_args.json is True
+
     assert args.release_command == "lifecycle-status"
     assert args.version == "v0.0.274"
     assert args.target_version == "v0.0.274"
