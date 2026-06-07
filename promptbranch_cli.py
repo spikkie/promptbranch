@@ -88,6 +88,7 @@ from promptbranch_parallel_ask import (
 from promptbranch_backend_reads import backend_reads_diagnostics, backend_reads_plan, classify_task_list_payload, source_list_read_routing, task_list_read_routing
 from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
+from promptbranch_source_queue import build_source_mutation_queue_plan
 from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -7022,6 +7023,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "rate-limit", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "parallel": ["policy", "task", "show", "ask", "--task", "--targets", "--tasks", "--all", "--concurrency", "--plan-only", "--deep-history", "--protocol", "--prompt-file", "--target-version", "--release-type", "--json", "--keep-open"],
+        "src": ["list", "add", "rm", "remove", "sync", "queue-plan", "--operation", "--workspace-url", "--file", "--name", "--source-name", "--service-id", "--account-id", "--json"],
         "project-create": ["--icon", "--color", "--memory-mode", "--keep-open"],
         "project-list": ["--json", "--current", "--keep-open"],
         "project-resolve": ["--keep-open"],
@@ -17930,7 +17932,43 @@ async def cmd_browser(backend: CommandBackend, args: argparse.Namespace) -> int:
     raise RuntimeError(f"Unknown browser command: {args.browser_command}")
 
 
+async def cmd_src_queue_plan(backend: CommandBackend, args: argparse.Namespace) -> int:
+    snapshot = backend.state_snapshot() if hasattr(backend, "state_snapshot") else {}
+    source_kind = getattr(args, "type", None) or "file"
+    file_path = getattr(args, "file", None) or getattr(args, "file_path", None)
+    display_name = getattr(args, "name", None)
+    if source_kind == "file" and display_name:
+        display_name = Path(display_name).name
+    elif source_kind == "file" and file_path and not display_name:
+        display_name = Path(file_path).name
+    payload = build_source_mutation_queue_plan(
+        operation=getattr(args, "operation", None),
+        state_snapshot=snapshot,
+        workspace_url=getattr(args, "workspace_url", None),
+        account_id=getattr(args, "account_id", None) or "default",
+        service_id=getattr(args, "service_id", None) or "default",
+        repo_path=getattr(args, "repo_path", None),
+        source_kind=source_kind,
+        file_path=file_path,
+        display_name=display_name,
+        source_name=getattr(args, "source_name", None),
+        sync_path=getattr(args, "path", None),
+        overwrite_existing=not bool(getattr(args, "no_overwrite", False)),
+        exact=bool(getattr(args, "exact", False)),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"workspace_id={(payload.get('workspace') or {}).get('workspace_id')}")
+        print(f"scheduler_operation={payload.get('scheduler_operation')}")
+        print(f"queue_required={str((payload.get('queue_policy') or {}).get('queue_required')).lower()}")
+    return 0 if payload.get("ok") else 2
+
+
 async def cmd_src(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.src_command == "queue-plan":
+        return await cmd_src_queue_plan(backend, args)
     if args.src_command == "list":
         return await cmd_project_source_list(backend, args)
     if args.src_command == "add":
@@ -19871,6 +19909,22 @@ def make_parser() -> argparse.ArgumentParser:
     src_list = src_subparsers.add_parser("list", help="List sources for the current workspace.")
     src_list.add_argument("--json", action="store_true", help="Emit the full source list payload as JSON.")
     src_list.add_argument("--keep-open", action="store_true")
+
+    src_queue_plan = src_subparsers.add_parser("queue-plan", help="Plan per-workspace source mutation queue locks and verification without mutating sources.")
+    src_queue_plan.add_argument("--operation", required=True, choices=["add", "sync", "remove", "rm"], help="Source mutation to plan.")
+    src_queue_plan.add_argument("--workspace-url", help="Override workspace/project URL used for per-workspace source locks.")
+    src_queue_plan.add_argument("--account-id", default="default", help="Account id used in resource planning. Defaults to default.")
+    src_queue_plan.add_argument("--service-id", default="default", help="Service/browser profile id used in resource planning. Defaults to default.")
+    src_queue_plan.add_argument("--repo-path", default=".", help="Repo path for src_sync resource planning. Defaults to current directory.")
+    src_queue_plan.add_argument("--path", default=".", help="Repo path that src sync would package. Defaults to current directory.")
+    src_queue_plan.add_argument("--type", choices=["link", "text", "file"], default="file")
+    src_queue_plan.add_argument("--value", help="Source payload for link/text planning.")
+    src_queue_plan.add_argument("--file", dest="file", help="Local file path for source-add planning.")
+    src_queue_plan.add_argument("--name", help="Optional display name/title for source-add planning.")
+    src_queue_plan.add_argument("--source-name", help="Source name/snippet for source removal planning.")
+    src_queue_plan.add_argument("--no-overwrite", action="store_true", help="Plan source add without replacement of an existing display name.")
+    src_queue_plan.add_argument("--exact", action="store_true", help="Plan source removal with exact visible text matching.")
+    src_queue_plan.add_argument("--json", action="store_true", help="Emit source queue plan as JSON.")
 
     src_add = src_subparsers.add_parser("add", help="Add a source to the current workspace.")
     src_add.add_argument("file_path", nargs="?", help="Local file path for file sources. Equivalent to --file.")

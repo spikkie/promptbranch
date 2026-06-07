@@ -1305,3 +1305,27 @@ def test_parser_accepts_parallel_ask_plan_command() -> None:
     assert args.target_version == "v0.1.48"
     assert args.intent_kind == "parallel_task_request"
     assert args.json is True
+
+
+def test_parser_accepts_src_queue_plan_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "src",
+        "queue-plan",
+        "--operation",
+        "add",
+        "--workspace-url",
+        "https://chatgpt.com/g/g-p-demo/project",
+        "--file",
+        "demo.zip",
+        "--name",
+        "demo.zip",
+        "--json",
+    ])
+
+    assert args.command == "src"
+    assert args.src_command == "queue-plan"
+    assert args.operation == "add"
+    assert args.workspace_url.endswith("/project")
+    assert args.file == "demo.zip"
+    assert args.json is True

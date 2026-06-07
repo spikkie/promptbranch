@@ -1,6 +1,6 @@
 # Promptbranch Parallel Execution Architecture
 
-Status: implementation current through `v0.1.48.1`; protocol-bound parallel ask planning is available as a planning-only surface with stale release-baseline guards, while ask execution remains future scheduler scope  
+Status: implementation current through `v0.1.49`; source mutation queue planning is available per workspace, while live source mutation execution remains routed through the existing guarded commands  
 Scope: Promptbranch / `chatgpt_claudecode_workflow-2`
 
 ## Goal
@@ -311,8 +311,32 @@ Every slice must add tests. Later slices keep prior tests and add their own focu
 | `v0.1.47.1` | Repair this architecture document so the status header and slice plan match the accepted release history. | doc consistency test + compileall + strict JSON smoke for `pb parallel policy --json` |
 | `v0.1.48` | Add protocol-bound parallel ask planning across different conversations while serializing same-conversation writes. | prior tests + `pytest -q tests/test_promptbranch_parallel_ask.py`; `pb parallel ask "summarize status" --task 1 --task 2 --plan-only --protocol --json \| python3 -m json.tool` |
 | `v0.1.48.1` | Repair parallel ask protocol planning so non-release plans do not infer stale release targets and release-style plans fail closed on stale baselines unless explicitly overridden. | stale-baseline regression tests + `pb parallel ask ... --plan-only --protocol --json` strict JSON smoke |
-| `v0.1.49` | Queue source mutations per workspace with transactional verification. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; source mutation dry-run JSON smoke |
+| `v0.1.49` | Add planning-only source mutation queue and verification plans per workspace. | prior tests + `pytest -q tests/test_promptbranch_source_mutation_queue.py`; `pb src queue-plan --operation add --workspace-url <project> --file demo.zip --json \| python3 -m json.tool` |
 | `v0.1.50` | Integrate release lifecycle with scheduler locks and source upload queue. | prior tests + `pytest -q tests/test_promptbranch_release_lifecycle_scheduler.py`; release lifecycle dry-run JSON smoke |
+
+
+## v0.1.49 — Source mutation queue planning per workspace
+
+`v0.1.49` adds a source-specific planning surface before changing live mutation routing:
+
+```bash
+pb src queue-plan --operation add --workspace-url <project-url> --file candidate.zip --json
+pb src queue-plan --operation sync --workspace-url <project-url> --path . --json
+pb src queue-plan --operation remove --workspace-url <project-url> --source-name candidate.zip --json
+```
+
+The command does not add, sync, or remove Project Sources. It only renders the queue locks and verification sequence required for a future executor.
+
+Source mutations serialize on the workspace source surface:
+
+```text
+sources:{project_id}:exclusive
+service_profile:{service_id}:exclusive
+```
+
+The emitted verification plan requires before/after source-list snapshots, expected source delta verification, collateral-change detection, and state update only after verified readback. This keeps the earlier source-save race contained: UI transitions are not treated as persistence proof.
+
+Boundary: `pb src add`, `pb src sync`, and `pb src rm` execution behavior is unchanged in this slice.
 
 ## Definition of done for the architecture line
 
