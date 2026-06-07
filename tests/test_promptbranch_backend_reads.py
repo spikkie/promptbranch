@@ -103,3 +103,46 @@ def test_source_list_read_routing_blocks_backend_first_on_metadata_gap() -> None
     assert payload["selected_path"] == "explicit_fallback_metadata_gap"
     assert payload["metadata_gap"] is True
     assert payload["backend_first_satisfied"] is False
+
+
+
+def test_backend_debug_plan_exposes_read_only_project_and_conversation_surfaces() -> None:
+    from promptbranch_backend_reads import backend_debug_plan
+
+    payload = backend_debug_plan()
+
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.backend.diagnostic"
+    assert payload["mutation_allowed"] is False
+    assert "projects" in payload["endpoints"]
+    assert "conversations" in payload["endpoints"]
+    assert "rate_limited" in payload["status_values"]
+    assert payload["endpoints"]["projects"]["known_paths"] == ["/backend-api/gizmos/snorlax/sidebar"]
+
+
+def test_backend_debug_payload_classifies_rate_limit_and_retry_after() -> None:
+    from promptbranch_backend_reads import classify_backend_diagnostic_payload
+
+    payload = classify_backend_diagnostic_payload({
+        "ok": False,
+        "http_status": 429,
+        "headers": {"retry-after": "120"},
+        "message": "Too many requests",
+    })
+
+    assert payload["status"] == "rate_limited"
+    assert payload["rate_limit_detected"] is True
+    assert payload["retry_after"] == "120"
+
+
+def test_backend_debug_diagnostics_reports_backend_schema_changed() -> None:
+    from promptbranch_backend_reads import backend_debug_diagnostics
+
+    payload = backend_debug_diagnostics(
+        scope="projects",
+        projects_payload={"ok": True, "schema_changed": True, "http_status": 200},
+    )
+
+    assert payload["status"] == "backend_schema_changed"
+    assert payload["ok"] is False
+    assert payload["diagnostics"]["projects"]["endpoint_family"] == "snorlax_sidebar"
