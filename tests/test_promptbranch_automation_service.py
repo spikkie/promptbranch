@@ -557,7 +557,9 @@ def test_browser_status_reports_active_operation_and_profile_available(monkeypat
     busy, available = asyncio.run(run_status_checks())
     assert busy["status"] == "busy"
     assert busy["active_operation"] == "ask_question"
-    assert busy["queue_enabled"] is False
+    assert busy["queue_enabled"] is True
+    assert busy["queue_mode"] == "bounded_wait_for_single_service_profile"
+    assert busy["active_elapsed_seconds"] is not None
     assert available["status"] == "available"
     assert available["active_operation"] is None
     assert available["active_pid"] is None

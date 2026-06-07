@@ -4803,6 +4803,11 @@ class ChatGPTBrowserClient:
             save_watch=save_request_watch,
         )
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
+        verification_mode = (persisted_source or {}).get("_promptbranch_verification_mode") if isinstance(persisted_source, dict) else None
+        ui_card_seen_before_refresh = bool(
+            (persisted_source or {}).get("_promptbranch_ui_card_seen_before_refresh")
+        ) if isinstance(persisted_source, dict) else False
+        post_refresh_attempt = (persisted_source or {}).get("_promptbranch_post_refresh_attempt") if isinstance(persisted_source, dict) else None
         result = {
             "ok": True,
             "action": "add",
@@ -4812,6 +4817,11 @@ class ChatGPTBrowserClient:
             "source_match_requested": requested_match,
             "source_match_candidates": persistence_candidates,
             "persistence_verified": True,
+            "verification_mode": verification_mode or "post_refresh",
+            "ui_card_seen": ui_card_seen_before_refresh,
+            "post_refresh_verified": True,
+            "post_refresh_attempt": post_refresh_attempt,
+            "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
@@ -15050,12 +15060,17 @@ class ChatGPTBrowserClient:
                 )
                 or (not saw_relevant and observation_window_elapsed)
             )
-            quiet_now = normal_quiet or stale_inflight_after_commit
+            # A commit request that is still inflight is not a safe persistence
+            # boundary.  Live v0.1.50.2 source-add verification overclaimed
+            # success after seeing one finished request while another relevant
+            # upload/commit request was still inflight.  Keep the stale-inflight
+            # flag as diagnostic evidence, but do not treat it as quiet.
+            quiet_now = normal_quiet
             quiet_reason = None
             if normal_quiet:
                 quiet_reason = "no_inflight_quiet" if saw_relevant else "observation_window_no_relevant_requests"
             elif stale_inflight_after_commit:
-                quiet_reason = "committed_with_stale_inflight_grace"
+                quiet_reason = "stale_inflight_after_commit_not_quiet"
             last_state = {
                 "source_kind": source_kind,
                 "saw_relevant": saw_relevant,
@@ -15113,27 +15128,38 @@ class ChatGPTBrowserClient:
         sources_url = self._project_sources_url(project_url)
         last_error: ResponseTimeoutError | None = None
 
-        # First re-read the current Sources surface without navigating.  The
-        # previous implementation refreshed immediately, which can hide whether
-        # a just-saved text source appeared late or whether verification raced
-        # the post-save UI.  Persistence remains authoritative: if this probe
-        # fails, the refresh-based verification below still runs.
+        # First re-read the current Sources surface without navigating.  This
+        # is useful operator evidence, but it is not persistence proof: a live
+        # v0.1.50.2 incident showed a transient/new DOM card and an unfinished
+        # save request followed by a successful `persistence_verified=true` even
+        # though a later source-list call could not prove the source existed.
+        # Treat this as provisional UI-card evidence and require the refreshed
+        # Sources surface below before returning success.
+        pre_refresh_source: Optional[dict[str, str]] = None
         try:
             self._log(
                 "project-source-add",
-                "verifying project source persistence before refresh",
+                "checking provisional project source visibility before refresh",
                 project_url=project_url,
                 source_match_candidates=source_match_candidates,
                 before_source_count=len(before_sources or []),
                 save_watch_summary=self._project_source_save_watch_summary(save_watch),
                 timeout_ms=pre_refresh_timeout_ms,
             )
-            return await self._wait_for_source_presence(
+            pre_refresh_source = await self._wait_for_source_presence(
                 page,
                 source_match_candidates=source_match_candidates,
                 before_sources=before_sources,
                 accept_single_new_card=before_sources is not None,
                 timeout_ms=pre_refresh_timeout_ms,
+            )
+            self._log(
+                "project-source-add",
+                "provisional project source card observed before refresh; requiring refreshed persistence proof",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                provisional_source=self._preferred_source_card_identity(pre_refresh_source) if isinstance(pre_refresh_source, dict) else None,
+                save_watch_summary=self._project_source_save_watch_summary(save_watch),
             )
         except ResponseTimeoutError as exc:
             last_error = exc
@@ -15170,13 +15196,19 @@ class ChatGPTBrowserClient:
             )
             await self._goto(page, sources_url, label=label)
             try:
-                return await self._wait_for_source_presence(
+                persisted = await self._wait_for_source_presence(
                     page,
                     source_match_candidates=source_match_candidates,
                     before_sources=None,
                     accept_single_new_card=False,
                     timeout_ms=timeout_ms,
                 )
+                if isinstance(persisted, dict):
+                    persisted = dict(persisted)
+                    persisted["_promptbranch_verification_mode"] = "post_refresh"
+                    persisted["_promptbranch_ui_card_seen_before_refresh"] = pre_refresh_source is not None
+                    persisted["_promptbranch_post_refresh_attempt"] = attempt + 1
+                return persisted
             except ResponseTimeoutError as exc:
                 last_error = exc
                 empty_state_visible = await self._project_sources_empty_state_visible(page)
