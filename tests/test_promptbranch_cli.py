@@ -12328,10 +12328,10 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
                     "resolved_project_home_url": "https://chatgpt.com/g/demo/project",
                     "project_name": "demo-project",
                     "conversation_url": "https://chatgpt.com/g/demo/c/abc",
-                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.48.1.zip",
-                    "artifact_version": "v0.1.48.1",
-                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.48.1.zip",
-                    "source_version": "v0.1.48.1",
+                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.49.zip",
+                    "artifact_version": "v0.1.49",
+                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.49.zip",
+                    "source_version": "v0.1.49",
                 }
 
             async def list_project_chats(self, *, keep_open=False, include_history_fallback=False):
@@ -12359,7 +12359,7 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
             plan_only=True,
             protocol=True,
             deep_history=False,
-            target_version="v0.1.49",
+            target_version="v0.1.50",
             release_type="normal",
             intent_kind="software_release_request",
             baseline_artifact=None,
@@ -12386,7 +12386,7 @@ def test_parallel_ask_plan_builds_protocol_requests_and_serializes_same_conversa
     assert payload["concurrency"] == 2
     assert payload["serial_groups"][0]["serialization_required"] is True
     assert payload["protocol_requests"][0]["request"]["schema"] == "promptbranch.ask.request"
-    assert payload["protocol_requests"][0]["request"]["artifact"]["target_version"] == "v0.1.49"
+    assert payload["protocol_requests"][0]["request"]["artifact"]["target_version"] == "v0.1.50"
     assert payload["baseline_safety"]["status"] == "fresh"
     assert payload["protocol_requests"][0]["request"]["task"]["conversation_id"] == "abc"
 
@@ -12449,7 +12449,7 @@ def test_parallel_ask_plan_blocks_release_request_when_baseline_is_stale(capsys,
     assert payload["ok"] is False
     assert payload["status"] == "parallel_ask_baseline_stale"
     assert payload["baseline_safety"]["status"] == "stale_release_baseline_blocked"
-    assert payload["baseline_safety"]["runtime_version"] == "v0.1.48.1"
+    assert payload["baseline_safety"]["runtime_version"] == "v0.1.49"
     assert payload["baseline_safety"]["protocol_baseline_version"] == "v0.1.40"
     assert payload["automation_performed"] is False
 
@@ -12516,3 +12516,47 @@ def test_parallel_ask_plan_default_non_release_does_not_infer_target_from_stale_
     assert "target_version" not in request["artifact"]
     assert request["artifact"]["target_version_policy"] == "not_applicable_for_non_release_parallel_plan"
     assert payload["automation_performed"] is False
+
+
+def test_src_queue_plan_command_emits_workspace_serialization_json(capsys) -> None:
+    rc = main([
+        "--project-url",
+        "https://chatgpt.com/g/g-p-demo/project",
+        "src",
+        "queue-plan",
+        "--operation",
+        "add",
+        "--file",
+        "demo.zip",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "source_mutation_queue_plan"
+    assert payload["scheduler_operation"] == "src_add"
+    assert payload["mutation_executed"] is False
+    assert payload["queue_policy"]["per_workspace_source_mutations_serialized"] is True
+    assert payload["workspace"]["workspace_id"] == "g-p-demo"
+
+
+def test_src_queue_plan_command_fails_closed_without_workspace(capsys, tmp_path) -> None:
+    rc = main([
+        "--profile-dir",
+        str(tmp_path / "profile"),
+        "src",
+        "queue-plan",
+        "--operation",
+        "remove",
+        "--source-name",
+        "demo.zip",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "missing_context"
+    assert "workspace_url" in payload["missing_context"]
+    assert payload["mutation_executed"] is False
