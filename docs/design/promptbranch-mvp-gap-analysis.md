@@ -1,20 +1,20 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.54`
-Baseline: `chatgpt_claudecode_workflow-2_v0.1.53.zip`
-Status: design-path consolidation and living-design reconciliation
+Release: `v0.1.55`
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.54.1.zip`
+Status: read-only grill/state-machine transition validation
 
 ## Purpose
 
-This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline accepted at `v0.1.53`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
+This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline assumed accepted at `v0.1.54.1`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
 
 ## Current accepted baseline
 
 ```text
-accepted baseline: chatgpt_claudecode_workflow-2_v0.1.53.zip
-runtime/source/artifact/registry: v0.1.53
-full-test evidence: green
-next normal release: v0.1.54
+accepted baseline: chatgpt_claudecode_workflow-2_v0.1.54.1.zip
+runtime/source/artifact/registry: v0.1.54.1 assumed from accepted repair
+full-test evidence: deferred for narrow development slice
+next normal release: v0.1.55
 ```
 
 ## Consolidation decision
@@ -29,12 +29,13 @@ This makes `docs/design/` the canonical home for active architecture/design mate
 
 ## Implemented / proven
 
-- `v0.1.53` is accepted and baseline-current verified.
+- `v0.1.53` was accepted and baseline-current verified; `v0.1.54.1` is the assumed current repair baseline for this normal continuation slice.
 - Backend diagnostics are integrated.
 - Source overwrite/profile-lock concurrency is fixed enough to pass full release-control.
 - Docker Compose service image tagging no longer hardcodes the release version; release scripts derive image metadata from `VERSION`.
 - Read-only orchestration context/decision/evidence validation exists.
 - Read-only grill envelope validation exists with ChatGPT/manual-fixture provider policy and Ollama rejection.
+- Read-only grill validation now checks k8s-game MVP state-machine project identity and stage-specific transition recommendations.
 - Living-design docs-status validation exists.
 
 ## Partially implemented
@@ -54,10 +55,10 @@ This makes `docs/design/` the canonical home for active architecture/design mate
 
 ## Next safe slice options
 
-After v0.1.54 is accepted, choose one narrow slice:
+After v0.1.55 is accepted, choose one narrow slice:
 
-1. Connect read-only grill validation to the k8s-game MVP state machine transition rules.
-2. Add more schema-backed G0-G6 grill fixtures under `docs/design/orchestration/examples/`.
-3. Extend docs-status so it also checks the consolidated orchestration design root.
+1. Add more schema-backed G0-G6 grill fixtures under `docs/design/orchestration/examples/`.
+2. Add a separate accepted-event fixture/validator that consumes a valid grill recommendation without mutating runtime state.
+3. Extend docs-status so it also checks the consolidated orchestration design root and grill/state-machine transition coverage.
 
-Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the path migration.
+Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
