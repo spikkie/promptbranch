@@ -15,7 +15,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 ORCH = ROOT / "docs" / "design" / "orchestration"
 GRILL_SCHEMA_ID = "promptbranch.orchestration.grill"
-STATE_MACHINE_PATH = ORCH / "state_machines" / "k8s_game_mvp.state_machine.json"
 ALLOWED_STAGES = {
     "G0_intent",
     "G1_mvp",
@@ -24,15 +23,6 @@ ALLOWED_STAGES = {
     "G4_implementation",
     "G5_release_deployment",
     "G6_maintenance",
-}
-STAGE_TRANSITION_RECOMMENDATIONS = {
-    "G0_intent": ("draft", "intake_accepted"),
-    "G1_mvp": ("intake_accepted", "grill_me_accepted"),
-    "G2_architecture": ("grill_me_accepted", "architecture_accepted"),
-    "G3_slice": ("architecture_accepted", "slice_plan_accepted"),
-    "G4_implementation": ("slice_plan_accepted", "implementation_candidate"),
-    "G5_release_deployment": ("implementation_candidate", "artifact_verified"),
-    "G6_maintenance": ("deployment_smoke_passed", "maintenance_ready"),
 }
 ALLOWED_PROVIDERS = {"chatgpt", "manual_fixture"}
 REJECTED_PROVIDERS = {"ollama", "local_llm", "unknown"}
@@ -46,39 +36,8 @@ def read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_state_machine(path: Path = STATE_MACHINE_PATH) -> dict[str, Any]:
-    value = read_json(path)
-    transitions = value.get("transitions")
-    if not isinstance(transitions, list):
-        raise ValueError(f"{path} must contain a transitions list")
-    return value
-
-
-def state_machine_transition_pairs(machine: dict[str, Any]) -> set[tuple[str, str]]:
-    pairs: set[tuple[str, str]] = set()
-    for transition in machine.get("transitions", []):
-        if isinstance(transition, dict):
-            from_state = str(transition.get("from") or "").strip()
-            to_state = str(transition.get("to") or "").strip()
-            if from_state and to_state:
-                pairs.add((from_state, to_state))
-    return pairs
-
-
-def validate_grill_envelope(
-    value: dict[str, Any],
-    *,
-    source: str = "<memory>",
-    state_machine: dict[str, Any] | None = None,
-) -> list[str]:
+def validate_grill_envelope(value: dict[str, Any], *, source: str = "<memory>") -> list[str]:
     errors: list[str] = []
-    if state_machine is None:
-        try:
-            state_machine = load_state_machine()
-        except Exception as exc:  # noqa: BLE001 - validator should report deterministic setup errors.
-            errors.append(f"{source}: failed to load state machine: {exc}")
-            state_machine = {}
-    transition_pairs = state_machine_transition_pairs(state_machine)
 
     if value.get("schema") != GRILL_SCHEMA_ID:
         errors.append(f"{source}: schema must be {GRILL_SCHEMA_ID}")
@@ -93,14 +52,8 @@ def validate_grill_envelope(
     if not isinstance(project, dict):
         errors.append(f"{source}: project must be an object")
         project = {}
-    project_id = str(project.get("id") or "").strip()
-    if not project_id:
+    if not str(project.get("id") or "").strip():
         errors.append(f"{source}: project.id is required")
-    elif state_machine.get("project_id") and project_id != state_machine.get("project_id"):
-        errors.append(
-            f"{source}: project.id {project_id!r} must match state machine project_id "
-            f"{state_machine.get('project_id')!r}"
-        )
     if not str(project.get("role") or "").strip():
         errors.append(f"{source}: project.role is required")
 
@@ -170,21 +123,6 @@ def validate_grill_envelope(
         if not str(recommendation.get(key) or "").strip():
             errors.append(f"{source}: next_state_recommendation.{key} is required")
 
-    from_state = str(recommendation.get("from") or "").strip()
-    to_state = str(recommendation.get("to") or "").strip()
-    if from_state and to_state:
-        if (from_state, to_state) not in transition_pairs:
-            errors.append(
-                f"{source}: next_state_recommendation {from_state!r}->{to_state!r} "
-                "is not a k8s-game MVP state-machine transition"
-            )
-        expected_transition = STAGE_TRANSITION_RECOMMENDATIONS.get(str(stage))
-        if expected_transition and (from_state, to_state) != expected_transition:
-            errors.append(
-                f"{source}: stage {stage} must recommend transition "
-                f"{expected_transition[0]!r}->{expected_transition[1]!r}, got {from_state!r}->{to_state!r}"
-            )
-
     return errors
 
 
@@ -194,17 +132,13 @@ def example_paths() -> list[Path]:
 
 def validate_paths(paths: list[Path]) -> list[str]:
     errors: list[str] = []
-    try:
-        state_machine = load_state_machine()
-    except Exception as exc:  # noqa: BLE001 - CLI validator should report deterministic setup errors.
-        return [f"{STATE_MACHINE_PATH.relative_to(ROOT)}: failed to read state machine: {exc}"]
     for path in paths:
         try:
             value = read_json(path)
         except Exception as exc:  # noqa: BLE001 - CLI validator should report all readable errors.
             errors.append(f"{path}: failed to read JSON: {exc}")
             continue
-        errors.extend(validate_grill_envelope(value, source=str(path.relative_to(ROOT)), state_machine=state_machine))
+        errors.extend(validate_grill_envelope(value, source=str(path.relative_to(ROOT))))
     return errors
 
 
@@ -218,18 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     if errors:
         print(json.dumps({"ok": False, "status": "grill_invalid", "errors": errors}, indent=2))
         return 1
-    print(
-        json.dumps(
-            {
-                "ok": True,
-                "status": "grill_examples_valid",
-                "validated_count": len(paths),
-                "state_machine": str(STATE_MACHINE_PATH.relative_to(ROOT)),
-                "transition_policy": STAGE_TRANSITION_RECOMMENDATIONS,
-            },
-            indent=2,
-        )
-    )
+    print(json.dumps({"ok": True, "status": "grill_examples_valid", "validated_count": len(paths)}, indent=2))
     return 0
 
 

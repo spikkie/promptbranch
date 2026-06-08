@@ -34,8 +34,8 @@
     "decision": "continue"
   },
   "next_state_recommendation": {
-    "from": "implementation_candidate",
-    "to": "artifact_verified",
-    "reason": "Release/deployment grill may recommend the next evidence target, but artifact verification and deployment remain external evidence-producing gates."
+    "from": "grill_pending",
+    "to": "grill_reviewed",
+    "reason": "Example envelope is structurally valid and remains proposal-only until Promptbranch accepts a later event."
   }
 }

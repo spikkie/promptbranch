@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.55`  
+Release: `v0.1.54`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -118,8 +118,7 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
-- `v0.1.54.1` is the assumed accepted repair baseline for the source verification line and `v0.1.55` is the next normal JSON orchestration state MVP release.
-- Grill validation now checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
+- `v0.1.53` is the accepted/full-test-green baseline and `v0.1.54` is the next normal design-path consolidation release.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
@@ -182,7 +181,7 @@ Promptbranch CLI
 | Track | Goal | Current state | Next movement |
 |---|---|---|---|
 | JSON orchestration state MVP | Actual MVP: typed proposal/event/evidence state | high/low-level canvases and orchestration surfaces exist | keep this as the central MVP in docs and diagrams |
-| Grilling model | ChatGPT challenges intent/scope/evidence without becoming authority | G0-G6 model documented and checked against the k8s-game MVP state machine | add accepted-event fixtures after read-only transition validation stays stable |
+| Grilling model | ChatGPT challenges intent/scope/evidence without becoming authority | G0-G6 model documented | add more schema-backed proof examples |
 | Shell model | Stable workspace/task/artifact grammar | mostly established | continue documenting canonical forms |
 | MCP/local agent | Promptbranch-native host/client/server loop | read-only paths exist | harden host-smoke/run/skill flows |
 | Skills | Reusable local operating procedures | read-only skill registry exists | keep local-only until validation is stronger |
