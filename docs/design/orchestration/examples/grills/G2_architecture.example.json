@@ -34,8 +34,8 @@
     "decision": "continue"
   },
   "next_state_recommendation": {
-    "from": "grill_pending",
-    "to": "grill_reviewed",
-    "reason": "Example envelope is structurally valid and remains proposal-only until Promptbranch accepts a later event."
+    "from": "grill_me_accepted",
+    "to": "architecture_accepted",
+    "reason": "Architecture grill may recommend the architecture boundary; the recommendation remains proposal-only and cannot mutate source or state by itself."
   }
 }

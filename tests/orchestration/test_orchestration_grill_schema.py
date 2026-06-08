@@ -80,3 +80,32 @@ def test_grill_schema_file_is_valid_json() -> None:
     assert schema["properties"]["schema"]["const"] == "promptbranch.orchestration.grill"
     assert "ollama" not in schema["properties"]["provider"]["properties"]["kind"]["enum"]
     assert "local_llm" not in schema["properties"]["provider"]["properties"]["kind"]["enum"]
+
+
+def test_grill_next_state_recommendation_must_match_state_machine_transition() -> None:
+    module = _load_validator()
+    example = module.read_json(module.example_paths()[0])
+    candidate = copy.deepcopy(example)
+    candidate["next_state_recommendation"]["from"] = "draft"
+    candidate["next_state_recommendation"]["to"] = "maintenance_ready"
+    errors = module.validate_grill_envelope(candidate)
+    assert any("is not a k8s-game MVP state-machine transition" in error for error in errors)
+
+
+def test_grill_stage_recommendation_must_match_expected_transition() -> None:
+    module = _load_validator()
+    example = module.read_json(module.example_paths()[0])
+    candidate = copy.deepcopy(example)
+    candidate["next_state_recommendation"]["from"] = "intake_accepted"
+    candidate["next_state_recommendation"]["to"] = "grill_me_accepted"
+    errors = module.validate_grill_envelope(candidate)
+    assert any("stage G0_intent must recommend transition" in error for error in errors)
+
+
+def test_grill_project_id_must_match_state_machine_project() -> None:
+    module = _load_validator()
+    example = module.read_json(module.example_paths()[0])
+    candidate = copy.deepcopy(example)
+    candidate["project"]["id"] = "different-project"
+    errors = module.validate_grill_envelope(candidate)
+    assert any("must match state machine project_id" in error for error in errors)
