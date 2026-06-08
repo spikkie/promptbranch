@@ -13507,16 +13507,37 @@ class ChatGPTBrowserClient:
     ) -> list[str]:
         candidates: list[str] = []
 
-        def add(candidate: Optional[str]) -> None:
+        requested_file_anchors: set[str] = set()
+        if source_kind == "file":
+            for value in [requested_match, *(source_match_candidates or [])]:
+                normalized_value = self._normalize_source_match_text(value)
+                if not normalized_value or self._is_generic_source_metadata_only_value(normalized_value):
+                    continue
+                anchor = re.sub(
+                    r"\s+(?:document|file contents may not be accessible)$",
+                    "",
+                    normalized_value,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if anchor:
+                    requested_file_anchors.add(anchor.lower())
+
+        def add(candidate: Optional[str], *, from_matched_card: bool = False) -> None:
             normalized = self._normalize_source_match_text(candidate)
-            if normalized and normalized not in candidates:
+            if not normalized or self._is_generic_source_metadata_only_value(normalized):
+                return
+            if source_kind == "file" and from_matched_card:
+                normalized_lower = normalized.lower()
+                if requested_file_anchors and not any(anchor in normalized_lower for anchor in requested_file_anchors):
+                    return
+            if normalized not in candidates:
                 candidates.append(normalized)
 
         add(requested_match)
         for candidate in source_match_candidates or []:
             add(candidate)
         for candidate in self._source_card_identity_candidates(matched_card):
-            add(candidate)
+            add(candidate, from_matched_card=True)
 
         # ChatGPT can render ad-hoc text sources as a generic uploaded-note card
         # such as "pasted.txt Document" instead of the text body or caller label.
@@ -13833,13 +13854,14 @@ class ChatGPTBrowserClient:
         exact_safe: bool = False,
         anchor_safe: bool = False,
     ) -> Optional[dict[str, str]]:
-        normalized_candidates = [
-            self._normalize_source_match_text(candidate).lower()
-            for candidate in (source_match_candidates or [])
-            if self._normalize_source_match_text(candidate)
-        ]
+        normalized_candidates = []
+        for candidate in source_match_candidates or []:
+            normalized_candidate = self._normalize_source_match_text(candidate)
+            if not normalized_candidate or self._is_generic_source_metadata_only_value(normalized_candidate):
+                continue
+            normalized_candidates.append(normalized_candidate.lower())
         if not normalized_candidates:
-            return cards[0] if cards else None
+            return cards[0] if cards and not source_match_candidates else None
 
         best_card: Optional[dict[str, str]] = None
         best_score = -1
@@ -15318,11 +15340,12 @@ class ChatGPTBrowserClient:
         accept_single_new_card: bool = False,
         timeout_ms: int = 20_000,
     ) -> Optional[dict[str, str]]:
-        candidates = [
-            self._normalize_source_match_text(candidate)
-            for candidate in (source_match_candidates or ([] if source_match is None else [source_match]))
-            if self._normalize_source_match_text(candidate)
-        ]
+        candidates: list[str] = []
+        for candidate in source_match_candidates or ([] if source_match is None else [source_match]):
+            normalized_candidate = self._normalize_source_match_text(candidate)
+            if not normalized_candidate or self._is_generic_source_metadata_only_value(normalized_candidate):
+                continue
+            candidates.append(normalized_candidate)
         if not candidates and not before_sources:
             await page.wait_for_timeout(1_500)
             return None
@@ -15337,7 +15360,11 @@ class ChatGPTBrowserClient:
             cards = await self._snapshot_project_source_cards(page)
 
             if accept_single_new_card and not before_keys and len(cards) == 1:
-                return cards[0]
+                if not candidates:
+                    return cards[0]
+                matched_single_card = self._match_source_card(cards, candidates)
+                if matched_single_card is not None:
+                    return matched_single_card
 
             if before_keys:
                 new_cards = [
@@ -15347,7 +15374,7 @@ class ChatGPTBrowserClient:
                 matched_new_card = self._match_source_card(new_cards, candidates)
                 if matched_new_card is not None:
                     return matched_new_card
-                if accept_single_new_card and len(new_cards) == 1:
+                if accept_single_new_card and len(new_cards) == 1 and not candidates:
                     return new_cards[0]
                 if new_cards and not candidates:
                     return new_cards[0]
