@@ -34,8 +34,8 @@
     "decision": "continue"
   },
   "next_state_recommendation": {
-    "from": "grill_pending",
-    "to": "grill_reviewed",
-    "reason": "Example envelope is structurally valid and remains proposal-only until Promptbranch accepts a later event."
+    "from": "slice_plan_accepted",
+    "to": "implementation_candidate",
+    "reason": "Implementation grill may recommend moving toward an implementation candidate; the model still cannot execute tools or package artifacts."
   }
 }
