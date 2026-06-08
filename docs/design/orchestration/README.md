@@ -25,10 +25,10 @@ v0.1.0 was intentionally documentation/data-surface first. v0.1.40 reconciles th
 ## Contents
 
 ```text
-orchestration/docs/            Human-readable architecture and operating docs
-orchestration/schemas/         JSON schema contracts for context, decision, evidence, grill
-orchestration/examples/        Small fixture examples for future validation, including G0-G6 grill examples
-orchestration/state_machines/  First project-specific state machine, k8s-game-mvp
+docs/design/orchestration/docs/            Human-readable architecture and operating docs
+docs/design/orchestration/schemas/         JSON schema contracts for context, decision, evidence, grill
+docs/design/orchestration/examples/        Small fixture examples for future validation, including G0-G6 grill examples
+docs/design/orchestration/state_machines/  First project-specific state machine, k8s-game-mvp
 ```
 
 ## Design rule

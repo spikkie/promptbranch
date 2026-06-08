@@ -21,7 +21,7 @@
   ],
   "next_action": {
     "kind": "create_planning_artifact",
-    "target": "orchestration/docs/k8s_game_mvp_contract.md",
+    "target": "docs/design/orchestration/docs/k8s_game_mvp_contract.md",
     "target_version": "v0.1.0"
   },
   "execution_authority": {
