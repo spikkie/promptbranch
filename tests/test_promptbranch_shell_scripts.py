@@ -771,14 +771,16 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     run_script = (root / "run_chatgpt_service.sh").read_text(encoding="utf-8")
 
-    assert 'docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans' in script
-    assert 'docker compose -p "${compose_project_name}" -f "${compose_file}" build --pull' in script
-    assert 'docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans' in script
+    assert 'run_docker_compose down --remove-orphans' in script
+    assert 'run_docker_compose build --pull' in script
+    assert 'run_docker_compose up -d --force-recreate --remove-orphans' in script
     assert 'service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"' in script
     assert 'service version mismatch: expected {expected}, got {actual!r}' in script
     assert 'Docker container was not recreated' in script
     assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
     assert 'up --build --force-recreate "$@"' in run_script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE_TAG' in script
+    assert 'release_version_plain_from_version_file' in script
 
 
 
@@ -795,10 +797,12 @@ def test_release_control_uses_single_default_runtime_identity() -> None:
     assert 'service_base_url="http://localhost:${service_port}"' in script
     assert 'CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json' in script
     assert 'name: chatgpt_claudecode_workflow' in compose
-    assert 'image: promptbranch-service:' in compose
+    assert 'image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}' in compose
     assert '      - "8000:8000"' in compose
     assert 'export COMPOSE_PROJECT_NAME="chatgpt_claudecode_workflow"' in run_script
     assert 'export PROMPTBRANCH_SERVICE_PORT="8000"' in run_script
+    assert 'release_version_plain_from_version_file VERSION' in run_script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE_TAG' in script
     assert 'export CHATGPT_SERVICE_BASE_URL="http://localhost:8000"' in run_script
 
 

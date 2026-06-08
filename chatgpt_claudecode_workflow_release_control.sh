@@ -1450,6 +1450,37 @@ stop_test_session_log() {
 }
 
 compose_file="docker-compose.chatgpt-service.yml"
+
+release_version_plain_from_version_file() {
+  local version_file="VERSION"
+  [[ -f "${version_file}" ]] || return 1
+  local value
+  value="$(tr -d '\r\n[:space:]' < "${version_file}")"
+  value="${value#v}"
+  [[ -n "${value}" ]] || return 1
+  printf '%s\n' "${value}"
+}
+
+promptbranch_service_image_tag() {
+  if [[ -n "${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE_TAG}"
+    return 0
+  fi
+  release_version_plain_from_version_file
+}
+
+compose_env_prefix() {
+  local image_tag
+  image_tag="$(promptbranch_service_image_tag)"
+  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q'     "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}"
+}
+
+run_docker_compose() {
+  local image_tag
+  image_tag="$(promptbranch_service_image_tag)"
+  COMPOSE_PROJECT_NAME="${compose_project_name}"   PROMPTBRANCH_SERVICE_PORT="${service_port}"   CHATGPT_SERVICE_BASE_URL="${service_base_url}"   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}"   docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
+}
+
 service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"
 service_container_before_json="${release_log_dir}/docker_container_before.${ver}.json"
 service_container_after_json="${release_log_dir}/docker_container_after.${ver}.json"
@@ -1459,7 +1490,7 @@ compose_service_container_id() {
   if ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
-  COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps -q 2>/dev/null | head -n 1 || true
+  run_docker_compose ps -q 2>/dev/null | head -n 1 || true
 }
 
 write_container_inspect_json() {
@@ -1559,15 +1590,15 @@ deploy_promptbranch_service_detached() {
     echo "service_port: ${service_port}"
     echo "service_base_url: ${service_base_url}"
     echo "expected_version: ${ver#v}"
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} build --pull"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --pull
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
+    run_docker_compose down --remove-orphans
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} build --pull"
+    run_docker_compose build --pull
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
+    run_docker_compose up -d --force-recreate --remove-orphans
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
+    run_docker_compose ps
+    run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
   } >"${service_start_log}" 2>&1
 
   container_id="$(compose_service_container_id)"
@@ -1588,15 +1619,15 @@ deploy_promptbranch_service_detached() {
   {
     echo "== Docker service no-cache rebuild fallback =="
     echo "reason: service version did not match expected ${ver#v} after normal recreate"
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" down --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} build --no-cache --pull"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" build --no-cache --pull
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" up -d --force-recreate --remove-orphans
-    echo "+ COMPOSE_PROJECT_NAME=${compose_project_name} PROMPTBRANCH_SERVICE_PORT=${service_port} docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps
-    COMPOSE_PROJECT_NAME="${compose_project_name}" PROMPTBRANCH_SERVICE_PORT="${service_port}" CHATGPT_SERVICE_BASE_URL="${service_base_url}" docker compose -p "${compose_project_name}" -f "${compose_file}" ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
+    run_docker_compose down --remove-orphans
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} build --no-cache --pull"
+    run_docker_compose build --no-cache --pull
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
+    run_docker_compose up -d --force-recreate --remove-orphans
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
+    run_docker_compose ps
+    run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
   } >>"${service_start_log}" 2>&1
 
   container_id="$(compose_service_container_id)"
