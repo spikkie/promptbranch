@@ -575,3 +575,90 @@ def test_project_remove_cleanup_reports_final_browser_profile_busy(monkeypatch) 
     assert cleanup_steps[-1].name == "project_remove_cleanup"
     assert cleanup_steps[-1].ok is False
     assert cleanup_steps[-1].details["status"] == "browser_profile_busy"
+
+
+def _http_status_error_with_detail(detail: dict) -> Exception:
+    import httpx
+
+    request = httpx.Request("POST", "http://localhost:8000/v1/project-sources")
+    response = httpx.Response(423, json={"detail": detail}, request=request)
+    return httpx.HTTPStatusError("locked", request=request, response=response)
+
+
+def test_docker_service_adapter_retries_fresh_same_family_source_lock(monkeypatch, tmp_path) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import DockerServiceAdapter
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=30.0,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    )
+    calls = {"count": 0}
+
+    def fake_add(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise _http_status_error_with_detail(
+                {
+                    "status": "browser_profile_busy",
+                    "operation": "add_project_source",
+                    "active_operation": "add_project_source",
+                    "active_elapsed_seconds": 0.5,
+                    "stale_lock_expired": False,
+                    "retry_after_seconds": 0.001,
+                }
+            )
+        return {"ok": True, "persistence_verified": True}
+
+    monkeypatch.setattr(adapter, "_add_project_source_sync", fake_add)
+
+    result = asyncio.run(
+        adapter.add_project_source(
+            source_kind="file",
+            file_path=str(tmp_path / "demo.zip"),
+            overwrite_existing=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["profile_contention_retried"] is True
+    assert result["profile_contention_retry_attempts"] == 1
+    assert calls["count"] == 2
+
+
+def test_docker_service_adapter_does_not_retry_stale_source_lock(monkeypatch, tmp_path) -> None:
+    import asyncio
+    import httpx
+    from promptbranch_full_integration_test import DockerServiceAdapter
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=30.0,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+    )
+
+    def fake_add(*args, **kwargs):
+        raise _http_status_error_with_detail(
+            {
+                "status": "browser_profile_busy",
+                "operation": "add_project_source",
+                "active_operation": "add_project_source",
+                "active_elapsed_seconds": 400.0,
+                "stale_lock_expired": True,
+                "retry_after_seconds": 0.001,
+            }
+        )
+
+    monkeypatch.setattr(adapter, "_add_project_source_sync", fake_add)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(
+            adapter.add_project_source(
+                source_kind="file",
+                file_path=str(tmp_path / "demo.zip"),
+                overwrite_existing=True,
+            )
+        )

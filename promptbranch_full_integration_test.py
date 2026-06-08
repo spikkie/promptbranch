@@ -9,7 +9,7 @@ import time
 from io import StringIO
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from dotenv import load_dotenv
 
@@ -18,6 +18,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_mcp import handle_mcp_jsonrpc_message, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
+    BrowserProfileBusyError,
     BotChallengeError,
     ManualLoginRequiredError,
     ResponseTimeoutError,
@@ -27,6 +28,10 @@ from promptbranch_browser_auth.exceptions import (
 DEFAULT_PROJECT_URL = "https://chatgpt.com/"
 DEFAULT_PROFILE_DIR = "./.pb_profile"
 DEFAULT_MAX_RETRIES = 1
+SOURCE_MUTATION_PROFILE_WAIT_SECONDS = 120.0
+SOURCE_MUTATION_BUSY_RETRY_MIN_SECONDS = 0.25
+SOURCE_MUTATION_BUSY_RETRY_MAX_SECONDS = 5.0
+SOURCE_MUTATION_OPERATIONS = {"add_project_source", "remove_project_source"}
 
 CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "mcp_smoke",
@@ -301,6 +306,7 @@ def build_settings(args: argparse.Namespace, *, project_url: str) -> ChatGPTAuto
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
         clear_singleton_locks=bool(getattr(args, 'clear_singleton_locks', False)),
+        profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
     )
 
 
@@ -325,6 +331,80 @@ class DockerServiceAdapter:
             token=self.token,
             timeout=self.timeout_seconds,
         )
+
+    @staticmethod
+    def _browser_busy_payload(exc: Exception) -> dict[str, Any] | None:
+        response = getattr(exc, "response", None)
+        if response is None:
+            return None
+        try:
+            payload = response.json()
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        detail = payload.get("detail")
+        if isinstance(detail, dict):
+            return dict(detail)
+        return None
+
+    @classmethod
+    def _is_fresh_same_family_source_busy(cls, exc: Exception) -> bool:
+        payload = cls._browser_busy_payload(exc)
+        if not payload or payload.get("status") != "browser_profile_busy":
+            return False
+        active_operation = str(payload.get("active_operation") or "")
+        requested_operation = str(payload.get("operation") or "")
+        if active_operation not in SOURCE_MUTATION_OPERATIONS:
+            return False
+        if requested_operation and requested_operation not in SOURCE_MUTATION_OPERATIONS:
+            return False
+        if payload.get("stale_lock_expired") is True:
+            return False
+        return True
+
+    @classmethod
+    def _source_busy_retry_delay(cls, exc: Exception, attempt: int) -> float:
+        payload = cls._browser_busy_payload(exc) or {}
+        raw_retry_after = payload.get("retry_after_seconds")
+        try:
+            retry_after = float(raw_retry_after)
+        except (TypeError, ValueError):
+            retry_after = SOURCE_MUTATION_BUSY_RETRY_MIN_SECONDS * attempt
+        return max(
+            SOURCE_MUTATION_BUSY_RETRY_MIN_SECONDS,
+            min(SOURCE_MUTATION_BUSY_RETRY_MAX_SECONDS, retry_after),
+        )
+
+    async def _run_source_mutation_with_profile_retry(
+        self,
+        operation: Callable[[], dict[str, Any]],
+        *,
+        max_wait_seconds: float = SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        attempt = 0
+        last_busy_payload: dict[str, Any] | None = None
+        while True:
+            attempt += 1
+            try:
+                result = await asyncio.to_thread(operation)
+            except Exception as exc:
+                if not self._is_fresh_same_family_source_busy(exc):
+                    raise
+                last_busy_payload = self._browser_busy_payload(exc)
+                elapsed = time.monotonic() - started
+                if elapsed >= max_wait_seconds:
+                    raise
+                delay = min(self._source_busy_retry_delay(exc, attempt), max(0.001, max_wait_seconds - elapsed))
+                await asyncio.sleep(delay)
+                continue
+            if isinstance(result, dict) and last_busy_payload is not None:
+                result = dict(result)
+                result.setdefault("profile_contention_retried", True)
+                result.setdefault("profile_contention_retry_attempts", max(0, attempt - 1))
+                result.setdefault("profile_contention_last_busy", last_busy_payload)
+            return result
 
     async def run_login_check(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await asyncio.to_thread(self._run_login_check_sync, keep_open)
@@ -415,14 +495,15 @@ class DockerServiceAdapter:
         keep_open: bool = False,
         overwrite_existing: bool = True,
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
-            self._add_project_source_sync,
-            source_kind,
-            value,
-            file_path,
-            display_name,
-            keep_open,
-            overwrite_existing,
+        return await self._run_source_mutation_with_profile_retry(
+            lambda: self._add_project_source_sync(
+                source_kind,
+                value,
+                file_path,
+                display_name,
+                keep_open,
+                overwrite_existing,
+            )
         )
 
     def _add_project_source_sync(
@@ -443,6 +524,7 @@ class DockerServiceAdapter:
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
                 project_url=self.project_url,
+                profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
             )
 
     async def remove_project_source(
