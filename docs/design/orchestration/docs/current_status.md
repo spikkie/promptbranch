@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.55
+# JSON Orchestration State MVP — Current Status after v0.1.53
 
-Updated for release: v0.1.55
+Updated for release: v0.1.54
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through `v0.1.54.1` and the v0.1.55 read-only grill/state-machine transition validation slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through `v0.1.53` and the v0.1.54 design-path consolidation slice.
 
 The project remains on the same strategic goal:
 
@@ -18,12 +18,12 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest assumed accepted baseline:  v0.1.54.1
-current development release:       v0.1.55
-orchestration goal:                still active
-execution authority:               Promptbranch only
-critical-path provider:            ChatGPT only
-local/Ollama provider:             rejected until new ADR + tests
+latest accepted baseline:        v0.1.53
+current reconciliation release:   v0.1.54
+orchestration goal:              still active
+execution authority:             Promptbranch only
+critical-path provider:          ChatGPT only
+local/Ollama provider:           rejected until new ADR + tests
 ```
 
 ## What has been completed
@@ -36,24 +36,21 @@ v0.1.38  Added browser profile lease/pool support so live tests do not collide o
 v0.1.39  Added read-only rate-limit diagnostics and backend API surface documentation.
 v0.1.40  Reconciled these detours and added the read-only grill schema foundation.
 v0.1.41-v0.1.53  Hardened backend diagnostics, source mutation locks, VERSION-driven service metadata, and release adoption verification.
-v0.1.54  Consolidated the orchestration design/control surfaces under docs/design/orchestration and refreshed the living MVP design references.
-v0.1.54.1  Repaired Project Source file persistence verification so file-source matches must be filename-anchored.
-v0.1.55  Connects read-only grill validation to the k8s-game MVP state-machine transition rules.
+v0.1.54  Consolidates the orchestration design/control surfaces under docs/design/orchestration and refreshes the living MVP design references.
 ```
 
 ## Drift assessment
 
 The releases after the original `v0.1.0` plan are not goal drift by themselves. They are operational hardening needed to make the control plane safer.
 
-The remaining risk is not conceptual drift, but authority drift:
+The drift was documentation drift:
 
 ```text
-A ChatGPT grill envelope can recommend a next state.
-Promptbranch must verify that the recommendation is allowed by the state machine.
-The recommendation must remain proposal-only until a later accepted-event path records it.
+The original orchestration docs still described the planned v0.1.1-v0.1.4 path as if it were the active release sequence.
+The actual line spent many releases hardening release-control, profile isolation, task/message handling, and rate-limit behavior.
 ```
 
-v0.1.55 reduces that risk by validating each committed G0-G6 grill fixture against the canonical k8s-game MVP state machine. Invalid transitions, stage/transition mismatches, and project/state-machine mismatches now fail the read-only grill validator.
+This release corrects that by documenting the detour and resuming the next orchestration slice: read-only grill envelopes.
 
 ## Active safety boundary
 
@@ -71,12 +68,12 @@ Promptbranch may validate grill envelopes. It must not treat a grill output as a
 
 ## Next planned orchestration work
 
-After this release is accepted, the next narrow slice should remain read-only and may be selected from the consolidated living design:
+After this release is accepted, the next narrow slice should be selected from the consolidated living design and may connect grill validation to the k8s-game MVP state machine without introducing mutation:
 
 ```text
-- add more schema-backed G0-G6 grill fixtures under docs/design/orchestration/examples/
-- add a separate accepted-event fixture/validator that consumes a valid grill recommendation without mutating runtime state
-- extend docs-status so it checks the consolidated orchestration design root and grill/state-machine transition coverage
+- map G0-G6 grill stages to allowed state-machine transitions
+- keep output read-only
+- reject invalid transition recommendations
+- preserve provider.kind policy
+- preserve model_may_execute=false
 ```
-
-Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
