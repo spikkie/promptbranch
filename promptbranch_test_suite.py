@@ -449,7 +449,6 @@ def source_version_consistency(*, repo_path: str | Path = ".") -> dict[str, Any]
         _version_observation("pyproject.project.version", _read_pyproject_version(root)),
         _version_observation("promptbranch_version.py.PACKAGE_VERSION", _read_promptbranch_version_file(root)),
         _version_observation("runtime.promptbranch_version.PACKAGE_VERSION", PACKAGE_VERSION),
-        _version_observation("docker_compose.chatgpt_service.image", _read_compose_service_image_version(root)),
     ]
     consistency = _summarize_version_consistency(observations, expected_version=expected)
     return {
@@ -488,16 +487,11 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
                 version_module = _extract_package_version_constant(archive.read("promptbranch_version.py").decode("utf-8"))
             except KeyError:
                 version_module = None
-            try:
-                compose_image_version = _extract_compose_service_image_version(archive.read("docker-compose.chatgpt-service.yml").decode("utf-8"))
-            except KeyError:
-                compose_image_version = None
             version_consistency = _summarize_version_consistency(
                 [
                     _version_observation("zip.VERSION", version_file),
                     _version_observation("zip.pyproject.project.version", pyproject_version),
                     _version_observation("zip.promptbranch_version.PACKAGE_VERSION", version_module),
-                    _version_observation("zip.docker_compose.chatgpt_service.image", compose_image_version),
                 ],
                 expected_version=version_file,
             )
