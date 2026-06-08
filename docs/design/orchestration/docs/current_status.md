@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.39
+# JSON Orchestration State MVP — Current Status after v0.1.53
 
-Updated for release: v0.1.40
+Updated for release: v0.1.54
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual release line through `v0.1.39`.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through `v0.1.53` and the v0.1.54 design-path consolidation slice.
 
 The project remains on the same strategic goal:
 
@@ -18,8 +18,8 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest reconciled input release: v0.1.39
-current reconciliation release:   v0.1.40
+latest accepted baseline:        v0.1.53
+current reconciliation release:   v0.1.54
 orchestration goal:              still active
 execution authority:             Promptbranch only
 critical-path provider:          ChatGPT only
@@ -34,7 +34,9 @@ v0.1.1  Continued orchestration foundation and validation work.
 v0.1.20-v0.1.37  Hardened release-control, task/message, source/artifact, and validation surfaces needed by the shell workflow.
 v0.1.38  Added browser profile lease/pool support so live tests do not collide on the same profile.
 v0.1.39  Added read-only rate-limit diagnostics and backend API surface documentation.
-v0.1.40  Reconciles these detours and adds the read-only grill schema foundation.
+v0.1.40  Reconciled these detours and added the read-only grill schema foundation.
+v0.1.41-v0.1.53  Hardened backend diagnostics, source mutation locks, VERSION-driven service metadata, and release adoption verification.
+v0.1.54  Consolidates the orchestration design/control surfaces under docs/design/orchestration and refreshes the living MVP design references.
 ```
 
 ## Drift assessment
@@ -66,7 +68,7 @@ Promptbranch may validate grill envelopes. It must not treat a grill output as a
 
 ## Next planned orchestration work
 
-After this release is accepted, the next narrow slice should connect grill validation to the k8s-game MVP state machine without introducing mutation:
+After this release is accepted, the next narrow slice should be selected from the consolidated living design and may connect grill validation to the k8s-game MVP state machine without introducing mutation:
 
 ```text
 - map G0-G6 grill stages to allowed state-machine transitions

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-ORCH = ROOT / "orchestration"
+ORCH = ROOT / "docs" / "design" / "orchestration"
 GRILL_SCHEMA_ID = "promptbranch.orchestration.grill"
 ALLOWED_STAGES = {
     "G0_intent",

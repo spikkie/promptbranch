@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.38`  
+Release: `v0.1.54`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -23,9 +23,9 @@ The living design document and diagram are not a competing MVP. They are the upd
 
 Read the actual MVP from these repo-relative sources:
 
-- `orchestration/docs/json_orchestration_state_mvp.md`
-- `orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md`
-- `orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md`
 
 Use the high-level canvas for the intent, architecture, and grilling model. Use the low-level canvas for the concrete repository layout, scope boundary, setup sequence, schemas, examples, tests, and release surfaces.
 
@@ -68,24 +68,32 @@ The most important design invariant is that these scopes must be tracked indepen
 
 ### Actual MVP surfaces
 
-The actual MVP is represented by the orchestration source tree:
+The actual MVP is now represented by the consolidated design/control tree under `docs/design`:
 
 ```text
-orchestration/
-  docs/
-    json_orchestration_state_mvp.md
-    json_orchestration_state_mvp_v0_1_0_high_level_canvas.md
-    json_orchestration_state_mvp_v0_1_0_low_level_canvas.md
-    global_mvp_plan.md
-    detailed_mvp_setup_plan.md
-    k8s_game_mvp_contract.md
-    proposal_vs_accepted_event.md
-    llm_provider_policy.md
-  decisions/
-  schemas/
-  examples/
-  state_machines/
+docs/design/
+  promptbranch-mvp-living-design.md
+  promptbranch-mvp-living-design.drawio
+  promptbranch-parallel-execution-architecture.md
+  orchestration/
+    README.md
+    docs/
+      current_status.md
+      json_orchestration_state_mvp.md
+      json_orchestration_state_mvp_v0_1_0_high_level_canvas.md
+      json_orchestration_state_mvp_v0_1_0_low_level_canvas.md
+      global_mvp_plan.md
+      detailed_mvp_setup_plan.md
+      k8s_game_mvp_contract.md
+      proposal_vs_accepted_event.md
+      llm_provider_policy.md
+    decisions/
+    schemas/
+    examples/
+    state_machines/
 ```
+
+The previous root-level `orchestration/` directory was a design/control surface, not runtime code. In v0.1.54 it is intentionally moved under `docs/design/orchestration/` so the project has one canonical design home.
 
 The MVP thesis is:
 
@@ -110,6 +118,8 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
+- `v0.1.53` is the accepted/full-test-green baseline and `v0.1.54` is the next normal design-path consolidation release.
+- Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
 ### Current development-line reality
@@ -211,14 +221,15 @@ After each release slice:
 The draw.io source refers to these repo-relative documentation files:
 
 - `docs/design/promptbranch-mvp-living-design.drawio`
-- `orchestration/docs/json_orchestration_state_mvp.md`
-- `orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md`
-- `orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md`
-- `orchestration/docs/global_mvp_plan.md`
-- `orchestration/docs/detailed_mvp_setup_plan.md`
-- `orchestration/docs/k8s_game_mvp_contract.md`
-- `orchestration/docs/proposal_vs_accepted_event.md`
-- `orchestration/docs/llm_provider_policy.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md`
+- `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md`
+- `docs/design/orchestration/docs/global_mvp_plan.md`
+- `docs/design/orchestration/docs/detailed_mvp_setup_plan.md`
+- `docs/design/orchestration/docs/k8s_game_mvp_contract.md`
+- `docs/design/orchestration/docs/proposal_vs_accepted_event.md`
+- `docs/design/orchestration/docs/llm_provider_policy.md`
+- `docs/design/promptbranch-mvp-gap-analysis.md`
 - `Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt`
 - `promptbranch_claude_code_shell_mcp_operating_model.updated-2026-05-03.md`
 - `promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md`

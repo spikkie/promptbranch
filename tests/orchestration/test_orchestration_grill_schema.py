@@ -52,14 +52,14 @@ def test_grill_rejects_model_execution_and_unvalidated_output() -> None:
 
 def test_grill_foundation_files_exist() -> None:
     expected = [
-        "orchestration/schemas/grill.schema.json",
+        "docs/design/orchestration/schemas/grill.schema.json",
         "scripts/orchestration/validate_grill.py",
-        "orchestration/docs/current_status.md",
-        "orchestration/docs/release_line_reconciliation.md",
+        "docs/design/orchestration/docs/current_status.md",
+        "docs/design/orchestration/docs/release_line_reconciliation.md",
         "docs/release-v0.1.40.md",
     ]
     expected.extend(
-        f"orchestration/examples/grills/{stage}.example.json"
+        f"docs/design/orchestration/examples/grills/{stage}.example.json"
         for stage in [
             "G0_intent",
             "G1_mvp",
@@ -75,7 +75,7 @@ def test_grill_foundation_files_exist() -> None:
 
 
 def test_grill_schema_file_is_valid_json() -> None:
-    schema = json.loads((ROOT / "orchestration/schemas/grill.schema.json").read_text(encoding="utf-8"))
+    schema = json.loads((ROOT / "docs/design/orchestration/schemas/grill.schema.json").read_text(encoding="utf-8"))
     assert schema["$id"] == "promptbranch.orchestration.grill.schema.json"
     assert schema["properties"]["schema"]["const"] == "promptbranch.orchestration.grill"
     assert "ollama" not in schema["properties"]["provider"]["properties"]["kind"]["enum"]

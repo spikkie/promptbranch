@@ -2,7 +2,7 @@
 
 ## Problem
 
-The original `orchestration/docs/global_mvp_plan.md` planned the early `v0.1.x` line as:
+The original `docs/design/orchestration/docs/global_mvp_plan.md` planned the early `v0.1.x` line as:
 
 ```text
 v0.1.0  foundation docs/data surfaces
