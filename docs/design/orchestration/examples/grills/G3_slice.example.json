@@ -34,8 +34,8 @@
     "decision": "continue"
   },
   "next_state_recommendation": {
-    "from": "grill_pending",
-    "to": "grill_reviewed",
-    "reason": "Example envelope is structurally valid and remains proposal-only until Promptbranch accepts a later event."
+    "from": "architecture_accepted",
+    "to": "slice_plan_accepted",
+    "reason": "Slice grill may recommend a narrow slice plan; Promptbranch must validate transition and evidence before any accepted event is recorded."
   }
 }
