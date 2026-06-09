@@ -7086,6 +7086,22 @@ The next normal release continues from the accepted Promptbranch baseline.
 """.lstrip(),
         encoding="utf-8",
     )
+    (design_dir / "promptbranch-living-design-overview.html").write_text(
+        f"""
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Promptbranch Living Design</title></head>
+<body>
+<h1>Promptbranch Living Design</h1>
+<p>Release `{version}`</p>
+<p>Source: docs/design/promptbranch-mvp-living-design.drawio</p>
+<p>PB authority model: Promptbranch is the deterministic control plane. ChatGPT is the reasoning and execution surface.</p>
+<p>Workspace Task Artifact backend-first reads transactional writes ask/reply artifact baseline model MCP/agent layer release lifecycle.</p>
+</body>
+</html>
+""".lstrip(),
+        encoding="utf-8",
+    )
 
 def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
@@ -7138,6 +7154,10 @@ After each release slice:
     assert payload["drawio"]["diagram_count"] >= 4
     assert payload["missing_reference_count"] == 0
     assert payload["blocker_codes"] == []
+    assert payload["application_design"]["ok"] is True
+    assert payload["baseline_evidence"]["ok"] is True
+    assert payload["living_design_overview"]["ok"] is True
+    assert payload["living_design_overview"]["missing_phrase_count"] == 0
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["project_source_mutated"] is False

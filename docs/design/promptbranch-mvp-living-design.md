@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.60`  
+Release: `v0.1.61`  
 Status: source-of-truth design note plus editable draw.io source and PB application design freshness guard  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -128,6 +128,7 @@ Tools/tests/deployment = evidence producers
 - `v0.1.59` extends `pb release docs-status` so the PB application design document and all three editable diagram sources are checked as read-only release surfaces. Missing role/scope language, missing draw.io references, or missing required draw.io pages now block docs-status.
 
 - `v0.1.60` adds `docs/design/promptbranch-release-baseline-evidence.md` and extends `pb release docs-status` with a `baseline_evidence` guard. The guard documents and validates that the locally accepted Promptbranch artifact is authoritative after adoption, even when a transient sandbox ZIP checksum differs from the accepted local artifact.
+- `v0.1.61` adds `docs/design/promptbranch-living-design-overview.html` and `docs/design/promptbranch-living-design-overview.md` as repo-owned documentation for the editable living-design draw.io source and the whole PB authority model. It extends `pb release docs-status` with a `living_design_overview` guard and targeted tests that verify the HTML references `docs/design/promptbranch-mvp-living-design.drawio` and the PB control-plane / ChatGPT execution-surface split.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 

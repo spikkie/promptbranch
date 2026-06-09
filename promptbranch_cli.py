@@ -10168,6 +10168,89 @@ def _pb_release_baseline_evidence_status(*, repo_root: Path, expected_version: s
     }
 
 
+
+PB_LIVING_DESIGN_OVERVIEW_HTML = "docs/design/promptbranch-living-design-overview.html"
+PB_LIVING_DESIGN_OVERVIEW_REQUIRED_PHRASES = [
+    "docs/design/promptbranch-mvp-living-design.drawio",
+    "PB authority model",
+    "Promptbranch is the deterministic control plane",
+    "ChatGPT is the reasoning",
+    "Workspace",
+    "Task",
+    "Artifact",
+    "backend-first reads",
+    "transactional writes",
+    "ask/reply",
+    "artifact baseline model",
+    "MCP/agent layer",
+    "release lifecycle",
+]
+
+
+def _pb_living_design_overview_status(*, repo_root: Path, expected_version: str | None) -> dict[str, Any]:
+    """Read-only guard for the repo-owned living-design HTML overview."""
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    html_rel = PB_LIVING_DESIGN_OVERVIEW_HTML
+    html_path = (repo_root / html_rel).resolve()
+    html_text = ""
+    try:
+        html_path.relative_to(repo_root)
+    except ValueError:
+        block("living_design_overview_not_repo_bound", "Living-design overview HTML leaves the repository.", path=str(html_path))
+    if not html_path.is_file():
+        block("living_design_overview_missing", "Living-design overview HTML is missing.", path=html_rel)
+    else:
+        try:
+            html_text = html_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("living_design_overview_read_error", "Living-design overview HTML could not be read.", path=html_rel, error=str(exc))
+
+    missing_phrases: list[str] = []
+    if html_text:
+        for phrase in PB_LIVING_DESIGN_OVERVIEW_REQUIRED_PHRASES:
+            if phrase not in html_text:
+                missing_phrases.append(phrase)
+        if missing_phrases:
+            block(
+                "living_design_overview_required_phrase_missing",
+                "Living-design overview HTML is missing required draw.io/PB-authority documentation language.",
+                missing_phrases=missing_phrases,
+            )
+        if expected_version and expected_version not in html_text:
+            block(
+                "living_design_overview_release_marker_mismatch",
+                "Expected version is not mentioned in the living-design overview HTML.",
+                expected_version=expected_version,
+            )
+        if "<html" not in html_text.lower() or "</html>" not in html_text.lower():
+            block("living_design_overview_html_invalid", "Living-design overview does not look like a complete HTML document.", path=html_rel)
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "html": {
+            "path": html_rel,
+            "present": html_path.is_file(),
+            "size_bytes": html_path.stat().st_size if html_path.is_file() else None,
+        },
+        "required_phrase_count": len(PB_LIVING_DESIGN_OVERVIEW_REQUIRED_PHRASES),
+        "missing_phrase_count": len(missing_phrases),
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
 def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expected_version: str | None) -> dict[str, Any]:
     doc_path = (repo_root / design_doc).resolve()
     drawio_path = (repo_root / drawio).resolve()
@@ -10247,6 +10330,15 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
     for item in baseline_evidence.get("blockers") or []:
         blockers.append(item)
 
+    living_design_overview = _pb_living_design_overview_status(
+        repo_root=repo_root,
+        expected_version=expected_version,
+    )
+    for item in living_design_overview.get("warnings") or []:
+        warnings.append(item)
+    for item in living_design_overview.get("blockers") or []:
+        blockers.append(item)
+
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
@@ -10262,6 +10354,7 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
         "drawio": drawio_status,
         "application_design": application_design,
         "baseline_evidence": baseline_evidence,
+        "living_design_overview": living_design_overview,
         "reference_count": len(references),
         "references": reference_status,
         "missing_reference_count": sum(1 for item in reference_status if not item.get("exists")),
@@ -10331,7 +10424,7 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int:
-    """Read-only status/validation for the living MVP design document and draw.io source."""
+    """Read-only status/validation for the living MVP design document, draw.io source, and HTML overview."""
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     expected_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
@@ -10371,7 +10464,7 @@ async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int
             "git_commit",
             "git_push",
         ],
-        "operator_instruction": "Read-only living design, PB application design, and accepted-baseline evidence validation. Keep Markdown, editable draw.io sources, and baseline-evidence semantics updated together after each MVP/release slice.",
+        "operator_instruction": "Read-only living design, PB application design, accepted-baseline evidence, and living-design HTML overview validation. Keep Markdown, editable draw.io sources, and baseline-evidence semantics updated together after each MVP/release slice.",
     })
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
