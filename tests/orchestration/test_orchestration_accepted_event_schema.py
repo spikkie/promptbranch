@@ -21,16 +21,36 @@ def _load_validator():
 def test_committed_accepted_event_examples_are_valid() -> None:
     module = _load_validator()
     paths = module.example_paths()
-    assert len(paths) == 1
+    assert len(paths) == 7
     assert module.validate_paths(paths) == []
+
+
+def test_committed_accepted_event_examples_cover_all_grill_stages() -> None:
+    module = _load_validator()
+    stages = {module.read_json(path)["source_grill"]["stage"] for path in module.example_paths()}
+    assert stages == {
+        "G0_intent",
+        "G1_mvp",
+        "G2_architecture",
+        "G3_slice",
+        "G4_implementation",
+        "G5_release_deployment",
+        "G6_maintenance",
+    }
 
 
 def test_accepted_event_foundation_files_exist() -> None:
     expected = [
         "docs/design/orchestration/schemas/accepted_event.schema.json",
         "docs/design/orchestration/examples/accepted_events/G0_intent.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G1_mvp.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G2_architecture.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G3_slice.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G4_implementation.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G5_release_deployment.accepted_event.example.json",
+        "docs/design/orchestration/examples/accepted_events/G6_maintenance.accepted_event.example.json",
         "scripts/orchestration/validate_accepted_event.py",
-        "docs/release-v0.1.56.md",
+        "docs/release-v0.1.57.md",
     ]
     missing = [path for path in expected if not (ROOT / path).exists()]
     assert missing == []
