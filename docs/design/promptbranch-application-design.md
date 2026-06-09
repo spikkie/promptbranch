@@ -1,12 +1,13 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.60`  
+Release: `v0.1.61`  
 Status: design documentation, editable draw.io source update, and docs-status freshness guard  
-Related editable diagrams:
+Related editable diagrams and overview:
 
 - `docs/design/promptbranch-class-diagram.drawio`
 - `docs/design/promptbranch-mvp-living-design.drawio`
 - `docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio`
+- `docs/design/promptbranch-living-design-overview.html`
 
 ## Purpose
 
@@ -174,10 +175,14 @@ The release should be validated with:
 
 ```bash
 python3 -m pytest -q tests/test_promptbranch_application_design_doc.py
-python3 promptbranch_cli.py release docs-status --version v0.1.60 --json
+python3 promptbranch_cli.py release docs-status --version v0.1.61 --json
 python3 -m compileall -q .
 ```
 
 `docs-status` remains read-only and now validates both the living design Markdown
 and the PB application design surface. The targeted test validates this design
 document and the draw.io pages across all three editable diagram files.
+
+## v0.1.61 HTML overview integration
+
+`v0.1.61` adds `docs/design/promptbranch-living-design-overview.html` as a repo-owned, human-readable overview of `docs/design/promptbranch-mvp-living-design.drawio` and the PB authority model. The page is release-checked by `pb release docs-status` through the `living_design_overview` guard.

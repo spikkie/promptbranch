@@ -1,6 +1,6 @@
-# JSON Orchestration State MVP — Current Status after v0.1.60
+# JSON Orchestration State MVP — Current Status after v0.1.61
 
-Updated for release: v0.1.60
+Updated for release: v0.1.61
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Artifacts still go through Final Artifact Intake.
 
 ```text
 latest accepted baseline:          v0.1.59
-current development release:       v0.1.60
+current development release:       v0.1.61
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -45,6 +45,7 @@ v0.1.57  Extends accepted-event fixture coverage to G1-G6 so every committed gri
 v0.1.58  Adds PB application design documentation plus activity, data-flow, state-transition, role-component, and release-state draw.io pages.
 v0.1.59  Makes the PB application design surface release-checkable through docs-status and blocks missing role/scope language or missing draw.io pages.
 v0.1.60  Adds accepted-baseline evidence documentation and docs-status guard coverage for candidate/installed/adopted artifact semantics.
+v0.1.61  Integrates living-design HTML overview into repo documentation and adds release-checkable HTML/draw.io/PB-authority-model validation.
 ```
 
 ## Drift assessment
@@ -75,7 +76,7 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.60 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence docs-status guards are documentation validation only and do not widen execution authority.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.61 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence and living-design overview docs-status guards are documentation validation only and do not widen execution authority.
 
 ## Next planned orchestration work
 

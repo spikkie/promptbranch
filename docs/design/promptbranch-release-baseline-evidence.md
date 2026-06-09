@@ -1,8 +1,11 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.60`
+Release: `v0.1.61`
 
 ## Purpose
+
+Introduced in `v0.1.60`; refreshed in `v0.1.61` as part of the living-design HTML overview integration.
+
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
 
