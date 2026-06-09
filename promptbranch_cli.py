@@ -10255,16 +10255,19 @@ def _pb_living_design_overview_status(*, repo_root: Path, expected_version: str 
 PB_DOCS_SITE_CONFIG = "mkdocs.yml"
 PB_DOCS_SITE_ENTRYPOINTS = [
     "docs/index.md",
+    "docs/site.md",
     "docs/design/index.md",
     "docs/releases/index.md",
 ]
 PB_DOCS_SITE_MARKDOWN_LINK_SOURCES = [
     "docs/index.md",
+    "docs/site.md",
     "docs/design/index.md",
     "docs/releases/index.md",
     "docs/design/promptbranch-living-design-overview.md",
 ]
 PB_DOCS_SITE_STATIC_REQUIRED_REFERENCES = [
+    "docs/site.md",
     "docs/design/promptbranch-living-design-overview.html",
     "docs/design/promptbranch-living-design-overview.md",
     "docs/design/promptbranch-application-design.md",
@@ -10284,6 +10287,16 @@ PB_DOCS_SITE_REQUIRED_PHRASES = [
     "transactional writes",
     "artifact baseline semantics",
     "release lifecycle",
+]
+PB_DOCS_SITE_BUILD_POLICY = "docs/site.md"
+PB_DOCS_SITE_BUILD_READINESS_REQUIRED_PHRASES = [
+    "source-only documentation site policy",
+    "Material for MkDocs",
+    "mkdocs serve",
+    "mkdocs build",
+    "site/",
+    "must not be committed",
+    "pb release docs-status",
 ]
 PB_DOCS_SITE_MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 PB_DOCS_SITE_MKDOCS_NAV_TARGET_RE = re.compile(r":\s*([A-Za-z0-9_./-]+\.(?:md|html|drawio|png|svg))\s*(?:#.*)?$")
@@ -10501,6 +10514,22 @@ def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> di
     if generated_site_path.exists():
         block("docs_site_generated_output_committed", "Generated MkDocs site output must not be committed or packaged as source.", path="site/")
 
+    build_policy_text = markdown_texts.get(PB_DOCS_SITE_BUILD_POLICY, "")
+    missing_build_readiness_phrases = [
+        phrase for phrase in PB_DOCS_SITE_BUILD_READINESS_REQUIRED_PHRASES if phrase not in build_policy_text
+    ]
+    preview_command_documented = "mkdocs serve" in build_policy_text
+    build_command_documented = "mkdocs build" in build_policy_text
+    generated_site_forbidden = "site/" in build_policy_text and "must not be committed" in build_policy_text
+    requires_committed_site_output = False
+    if missing_build_readiness_phrases:
+        block(
+            "docs_site_build_readiness_phrase_missing",
+            "Documentation site build-readiness policy is missing required source-only operation language.",
+            path=PB_DOCS_SITE_BUILD_POLICY,
+            missing_phrases=missing_build_readiness_phrases,
+        )
+
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
@@ -10520,6 +10549,16 @@ def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> di
         "required_phrase_count": len(PB_DOCS_SITE_REQUIRED_PHRASES),
         "missing_phrase_count": len(missing_phrases),
         "generated_site_present": generated_site_path.exists(),
+        "build_readiness": {
+            "ok": not missing_build_readiness_phrases and preview_command_documented and build_command_documented and generated_site_forbidden and not requires_committed_site_output,
+            "docs_site_policy": PB_DOCS_SITE_BUILD_POLICY,
+            "preview_command_documented": preview_command_documented,
+            "build_command_documented": build_command_documented,
+            "generated_site_forbidden": generated_site_forbidden,
+            "requires_committed_site_output": requires_committed_site_output,
+            "missing_phrase_count": len(missing_build_readiness_phrases),
+            "missing_phrases": missing_build_readiness_phrases,
+        },
         "link_integrity": {
             "ok": not missing_targets and not not_repo_bound_targets,
             "checked_link_count": len(link_targets),

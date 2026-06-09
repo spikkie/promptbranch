@@ -1,6 +1,6 @@
 # Promptbranch Living Design Overview HTML
 
-Release: `v0.1.63`
+Release: `v0.1.64`
 
 This page publishes the standalone HTML overview for the editable Promptbranch living-design source:
 
@@ -21,3 +21,8 @@ This overview is now linked from `docs/index.md`, `docs/design/index.md`, and `m
 ## v0.1.63 link-integrity guard
 
 This bridge page is now included in docs-site link-integrity validation. Its links to the HTML overview, editable draw.io source, and living-design Markdown must remain repo-local and present.
+
+
+## v0.1.64 build-readiness guard
+
+The living-design overview remains source-controlled documentation. It is linked from `mkdocs.yml`, `docs/index.md`, and `docs/site.md`; generated `site/` output remains forbidden from release ZIPs.

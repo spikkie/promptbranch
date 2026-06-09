@@ -1,10 +1,10 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.63`
+Release: `v0.1.64`
 
 ## Purpose
 
-Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, and in `v0.1.63` for docs-site link-integrity validation.
+Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, in `v0.1.63` for docs-site link-integrity validation, and in `v0.1.64` for docs-site build-readiness validation.
 
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
@@ -112,3 +112,8 @@ The documentation site scaffold is source evidence only. `mkdocs.yml` and the do
 ## v0.1.63 documentation link-integrity evidence
 
 The accepted-baseline evidence model now also protects documentation navigation. A candidate release must not merely contain the right docs; its `mkdocs.yml` navigation and Markdown entrypoint links must resolve to repo-local files before the candidate is considered documentation-fresh. This remains read-only validation and does not alter artifact adoption authority.
+
+
+## v0.1.64 documentation build-readiness evidence
+
+Documentation build readiness is source evidence only. `docs/site.md` documents local preview/build commands and the generated-output exclusion rule. `docs_site.build_readiness.ok=true` confirms that the source tree is operationally understandable without treating rendered `site/` output as an accepted artifact or Project Source baseline.

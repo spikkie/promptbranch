@@ -15,6 +15,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Site operation: site.md
   - Design:
       - Overview: design/index.md
       - Living design overview: design/promptbranch-living-design-overview.md
@@ -26,6 +27,7 @@ nav:
       - Orchestration current status: design/orchestration/docs/current_status.md
   - Releases:
       - Overview: releases/index.md
+      - v0.1.64: release-v0.1.64.md
       - v0.1.63: release-v0.1.63.md
       - v0.1.62: release-v0.1.62.md
       - v0.1.61: release-v0.1.61.md
@@ -46,5 +48,7 @@ markdown_extensions:
 # - docs/design/promptbranch-mvp-living-design.md
 # - docs/design/promptbranch-mvp-gap-analysis.md
 # - docs/design/orchestration/docs/current_status.md
+# - docs/site.md
+# - docs/release-v0.1.64.md
 # - docs/release-v0.1.63.md
 # - docs/release-v0.1.62.md

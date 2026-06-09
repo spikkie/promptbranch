@@ -1,6 +1,6 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.63`
+Release: `v0.1.64`
 Baseline: `chatgpt_claudecode_workflow-2_v0.1.61.zip`
 Status: PB application design docs-status / diagram-freshness guard
 
@@ -14,7 +14,7 @@ This document records the current gap between the living design, the consolidate
 accepted baseline: chatgpt_claudecode_workflow-2_v0.1.61.zip
 runtime/source/artifact/registry: v0.1.61 accepted baseline
 full-test evidence: deferred for narrow documentation/validation slice
-next normal release: v0.1.63
+next normal release: v0.1.64
 ```
 
 ## Consolidation decision
@@ -83,3 +83,8 @@ Do not start game implementation or write-capable orchestration until the design
 ## v0.1.63 update
 
 `v0.1.63` closes the documentation-navigation drift gap by adding link-integrity validation to the docs-site guard. MkDocs navigation and key Markdown entrypoint links must resolve to existing repo-local files, while generated `site/` output remains out of scope.
+
+
+## v0.1.64 update
+
+`v0.1.64` closes the documentation build-readiness gap by adding `docs/site.md` and validating that local preview/build commands and the generated `site/` exclusion rule are documented. The release remains source-only: no rendered `site/` output, publishing workflow, runtime behavior, source mutation, browser automation, or artifact-adoption behavior changes are included.
