@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.55`  
+Release: `v0.1.55.1`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -119,6 +119,7 @@ Tools/tests/deployment = evidence producers
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
 - `v0.1.54.1` is the assumed accepted repair baseline for the source verification line and `v0.1.55` is the next normal JSON orchestration state MVP release.
+- `v0.1.55.1` is a repair-only release for the grill validator CLI path-label handling defect; it does not advance the JSON Orchestration State MVP slice.
 - Grill validation now checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
