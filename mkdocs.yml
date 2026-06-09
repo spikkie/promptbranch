@@ -1,0 +1,48 @@
+site_name: Promptbranch Documentation
+site_description: Promptbranch control-plane, architecture, release, and living-design documentation.
+site_url: ''
+repo_name: chatgpt_claudecode_workflow-2
+use_directory_urls: false
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Design:
+      - Overview: design/index.md
+      - Living design overview: design/promptbranch-living-design-overview.md
+      - Living design HTML: design/promptbranch-living-design-overview.html
+      - Application design: design/promptbranch-application-design.md
+      - Release baseline evidence: design/promptbranch-release-baseline-evidence.md
+      - MVP living design: design/promptbranch-mvp-living-design.md
+      - MVP gap analysis: design/promptbranch-mvp-gap-analysis.md
+      - Orchestration current status: design/orchestration/docs/current_status.md
+  - Releases:
+      - Overview: releases/index.md
+      - v0.1.62: release-v0.1.62.md
+      - v0.1.61: release-v0.1.61.md
+      - v0.1.60: release-v0.1.60.md
+      - v0.1.59: release-v0.1.59.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+
+# Release-checkable repo-relative design references:
+# - docs/design/promptbranch-living-design-overview.html
+# - docs/design/promptbranch-living-design-overview.md
+# - docs/design/promptbranch-application-design.md
+# - docs/design/promptbranch-release-baseline-evidence.md
+# - docs/design/promptbranch-mvp-living-design.md
+# - docs/design/promptbranch-mvp-gap-analysis.md
+# - docs/design/orchestration/docs/current_status.md
+# - docs/release-v0.1.62.md

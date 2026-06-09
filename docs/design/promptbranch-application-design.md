@@ -1,7 +1,7 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.61`  
-Status: design documentation, editable draw.io source update, and docs-status freshness guard  
+Release: `v0.1.62`  
+Status: documentation site scaffold, editable design-source navigation, and docs-status freshness guard  
 Related editable diagrams and overview:
 
 - `docs/design/promptbranch-class-diagram.drawio`
@@ -175,7 +175,7 @@ The release should be validated with:
 
 ```bash
 python3 -m pytest -q tests/test_promptbranch_application_design_doc.py
-python3 promptbranch_cli.py release docs-status --version v0.1.61 --json
+python3 promptbranch_cli.py release docs-status --version v0.1.62 --json
 python3 -m compileall -q .
 ```
 
@@ -186,3 +186,8 @@ document and the draw.io pages across all three editable diagram files.
 ## v0.1.61 HTML overview integration
 
 `v0.1.61` adds `docs/design/promptbranch-living-design-overview.html` as a repo-owned, human-readable overview of `docs/design/promptbranch-mvp-living-design.drawio` and the PB authority model. The page is release-checked by `pb release docs-status` through the `living_design_overview` guard.
+
+
+## v0.1.62 documentation site scaffold
+
+`v0.1.62` adds `mkdocs.yml`, `docs/index.md`, `docs/design/index.md`, and `docs/releases/index.md` as source-controlled navigation surfaces for the PB design documentation. The scaffold intentionally targets Material for MkDocs but does not commit rendered `site/` output. The `docs_site` guard in `pb release docs-status` verifies that the navigation points to the living design overview, PB application design, release baseline evidence, current-status docs, and recent release notes.
