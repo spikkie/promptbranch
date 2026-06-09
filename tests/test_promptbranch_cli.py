@@ -7102,6 +7102,28 @@ The next normal release continues from the accepted Promptbranch baseline.
 """.lstrip(),
         encoding="utf-8",
     )
+    (design_dir / "promptbranch-living-design-overview.md").write_text(
+        f"""
+# Promptbranch Living Design Overview HTML
+
+Release: `{version}`
+
+- HTML overview: [docs/design/promptbranch-living-design-overview.html](promptbranch-living-design-overview.html)
+- Editable draw.io source: [docs/design/promptbranch-mvp-living-design.drawio](promptbranch-mvp-living-design.drawio)
+- Living design Markdown: [docs/design/promptbranch-mvp-living-design.md](promptbranch-mvp-living-design.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-mvp-gap-analysis.md").write_text(
+        f"""
+# Promptbranch MVP Gap Analysis
+
+Release: `{version}`
+
+The docs-site fixture keeps this gap-analysis page present so MkDocs navigation and Markdown links resolve during release docs-status validation.
+""".lstrip(),
+        encoding="utf-8",
+    )
 
     # promptbranch_docs_site_fixture
     (repo / "mkdocs.yml").write_text(
@@ -7120,6 +7142,7 @@ nav:
       - MVP gap analysis: docs/design/promptbranch-mvp-gap-analysis.md
       - Orchestration current status: docs/design/orchestration/docs/current_status.md
   - Releases:
+      - {version}: docs/release-{version}.md
       - v0.1.62: docs/release-v0.1.62.md
 """.lstrip(),
         encoding="utf-8",
@@ -7145,6 +7168,7 @@ Workspace Task Artifact backend-first reads transactional writes artifact baseli
 - [MVP living design](design/promptbranch-mvp-living-design.md)
 - [MVP gap analysis](design/promptbranch-mvp-gap-analysis.md)
 - [Orchestration current status](design/orchestration/docs/current_status.md)
+- [{version} release note](release-{version}.md)
 - [v0.1.62 release note](release-v0.1.62.md)
 """.lstrip(),
         encoding="utf-8",
@@ -7171,6 +7195,7 @@ Release: `{version}`
 
 Release: `{version}`
 
+- [{version}](../release-{version}.md)
 - [v0.1.62](../release-v0.1.62.md)
 - [v0.1.61](../release-v0.1.61.md)
 - [v0.1.60](../release-v0.1.60.md)
@@ -7178,7 +7203,7 @@ Release: `{version}`
 """.lstrip(),
         encoding="utf-8",
     )
-    for rel in ["v0.1.59", "v0.1.60", "v0.1.61", "v0.1.62"]:
+    for rel in [version, "v0.1.59", "v0.1.60", "v0.1.61", "v0.1.62"]:
         (docs_dir / f"release-{rel}.md").write_text(f"# Release {rel}\n", encoding="utf-8")
     status_dir = design_dir / "orchestration" / "docs"
     status_dir.mkdir(parents=True, exist_ok=True)
@@ -7242,6 +7267,8 @@ After each release slice:
     assert payload["docs_site"]["ok"] is True
     assert payload["docs_site"]["config"]["path"] == "mkdocs.yml"
     assert payload["docs_site"]["generated_site_present"] is False
+    assert payload["docs_site"]["link_integrity"]["ok"] is True
+    assert payload["docs_site"]["link_integrity"]["missing_targets"] == []
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["project_source_mutated"] is False

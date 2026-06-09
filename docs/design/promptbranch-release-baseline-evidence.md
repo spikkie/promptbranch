@@ -1,10 +1,10 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.62`
+Release: `v0.1.63`
 
 ## Purpose
 
-Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview and in `v0.1.62` for the documentation site scaffold.
+Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, and in `v0.1.63` for docs-site link-integrity validation.
 
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
@@ -107,3 +107,8 @@ The accepted baseline is the ZIP that Promptbranch reports as the current adopte
 ## v0.1.62 documentation-site evidence
 
 The documentation site scaffold is source evidence only. `mkdocs.yml` and the docs index pages help humans find the authoritative design and release documents, but rendered `site/` output is generated material and is not an accepted baseline signal.
+
+
+## v0.1.63 documentation link-integrity evidence
+
+The accepted-baseline evidence model now also protects documentation navigation. A candidate release must not merely contain the right docs; its `mkdocs.yml` navigation and Markdown entrypoint links must resolve to repo-local files before the candidate is considered documentation-fresh. This remains read-only validation and does not alter artifact adoption authority.

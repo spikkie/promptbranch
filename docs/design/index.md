@@ -1,6 +1,6 @@
 # Promptbranch design documentation
 
-Release: `v0.1.62`
+Release: `v0.1.63`
 
 This index groups the PB design surfaces that should be read together when continuing the architecture, documentation, or release-control line.
 
@@ -27,3 +27,8 @@ This index groups the PB design surfaces that should be read together when conti
 - Writes are transactional and verified before state changes.
 - Candidate, installed, and adopted artifacts remain distinct.
 - Rendered documentation output belongs outside source control.
+
+
+## v0.1.63 link-integrity rule
+
+Every link from this index is part of the release-checkable documentation surface. If a referenced design file is renamed or removed, `pb release docs-status --json` must block the candidate until navigation is repaired.

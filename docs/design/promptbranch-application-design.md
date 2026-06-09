@@ -1,6 +1,6 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.62`  
+Release: `v0.1.63`  
 Status: documentation site scaffold, editable design-source navigation, and docs-status freshness guard  
 Related editable diagrams and overview:
 
@@ -191,3 +191,8 @@ document and the draw.io pages across all three editable diagram files.
 ## v0.1.62 documentation site scaffold
 
 `v0.1.62` adds `mkdocs.yml`, `docs/index.md`, `docs/design/index.md`, and `docs/releases/index.md` as source-controlled navigation surfaces for the PB design documentation. The scaffold intentionally targets Material for MkDocs but does not commit rendered `site/` output. The `docs_site` guard in `pb release docs-status` verifies that the navigation points to the living design overview, PB application design, release baseline evidence, current-status docs, and recent release notes.
+
+
+## v0.1.63 documentation link-integrity guard
+
+`v0.1.63` extends the documentation-site guard from simple scaffold checks to repo-local link integrity. The guard verifies that MkDocs navigation entries and Markdown links from the documentation entrypoints resolve to existing files. This keeps the PB authority model discoverable without requiring generated `site/` output or a local MkDocs installation during release validation.
