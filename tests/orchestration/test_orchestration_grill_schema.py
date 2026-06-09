@@ -109,3 +109,37 @@ def test_grill_project_id_must_match_state_machine_project() -> None:
     candidate["project"]["id"] = "different-project"
     errors = module.validate_grill_envelope(candidate)
     assert any("must match state machine project_id" in error for error in errors)
+
+
+def test_validate_paths_accepts_repo_relative_fixture_without_traceback(tmp_path, monkeypatch) -> None:
+    module = _load_validator()
+    monkeypatch.chdir(ROOT)
+    fixture = ROOT / ".tmp_validation_pytest" / "G0_bad_provider.example.json"
+    fixture.parent.mkdir(exist_ok=True)
+    try:
+        candidate = module.read_json(module.example_paths()[0])
+        candidate["provider"]["kind"] = "ollama"
+        fixture.write_text(json.dumps(candidate, indent=2), encoding="utf-8")
+
+        errors = module.validate_paths([Path(".tmp_validation_pytest/G0_bad_provider.example.json")])
+
+        assert any("provider.kind rejected" in error for error in errors)
+        assert all("Traceback" not in error for error in errors)
+    finally:
+        if fixture.exists():
+            fixture.unlink()
+        if fixture.parent.exists():
+            fixture.parent.rmdir()
+
+
+def test_validate_paths_accepts_external_absolute_fixture_without_traceback(tmp_path) -> None:
+    module = _load_validator()
+    candidate = module.read_json(module.example_paths()[0])
+    candidate["provider"]["kind"] = "ollama"
+    fixture = tmp_path / "G0_bad_provider.example.json"
+    fixture.write_text(json.dumps(candidate, indent=2), encoding="utf-8")
+
+    errors = module.validate_paths([fixture])
+
+    assert any("provider.kind rejected" in error for error in errors)
+    assert all("Traceback" not in error for error in errors)

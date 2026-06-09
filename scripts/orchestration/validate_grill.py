@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2].resolve()
 ORCH = ROOT / "docs" / "design" / "orchestration"
 GRILL_SCHEMA_ID = "promptbranch.orchestration.grill"
 STATE_MACHINE_PATH = ORCH / "state_machines" / "k8s_game_mvp.state_machine.json"
@@ -38,11 +38,29 @@ ALLOWED_PROVIDERS = {"chatgpt", "manual_fixture"}
 REJECTED_PROVIDERS = {"ollama", "local_llm", "unknown"}
 
 
+def display_path(path: Path) -> str:
+    """Return a stable source label for repo-local and external CLI paths.
+
+    The CLI accepts both committed repo-relative examples and ad-hoc fixtures
+    created by tests/operators.  Source labels must never traceback merely
+    because the fixture is outside the repository or was passed as a relative
+    path.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return str(path)
+    try:
+        return str(resolved.relative_to(ROOT))
+    except ValueError:
+        return str(resolved)
+
+
 def read_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
         value = json.load(fh)
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise ValueError(f"{display_path(path)} must contain a JSON object")
     return value
 
 
@@ -197,14 +215,14 @@ def validate_paths(paths: list[Path]) -> list[str]:
     try:
         state_machine = load_state_machine()
     except Exception as exc:  # noqa: BLE001 - CLI validator should report deterministic setup errors.
-        return [f"{STATE_MACHINE_PATH.relative_to(ROOT)}: failed to read state machine: {exc}"]
+        return [f"{display_path(STATE_MACHINE_PATH)}: failed to read state machine: {exc}"]
     for path in paths:
         try:
             value = read_json(path)
         except Exception as exc:  # noqa: BLE001 - CLI validator should report all readable errors.
-            errors.append(f"{path}: failed to read JSON: {exc}")
+            errors.append(f"{display_path(path)}: failed to read JSON: {exc}")
             continue
-        errors.extend(validate_grill_envelope(value, source=str(path.relative_to(ROOT)), state_machine=state_machine))
+        errors.extend(validate_grill_envelope(value, source=display_path(path), state_machine=state_machine))
     return errors
 
 
