@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.55
+# JSON Orchestration State MVP — Current Status after v0.1.56
 
-Updated for release: v0.1.55
+Updated for release: v0.1.56
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through `v0.1.54.1` and the v0.1.55 read-only grill/state-machine transition validation slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted repair `v0.1.55.1` and the v0.1.56 read-only accepted-event fixture validation slice.
 
 The project remains on the same strategic goal:
 
@@ -18,8 +18,8 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest assumed accepted baseline:  v0.1.54.1
-current development release:       v0.1.55
+latest accepted baseline:          v0.1.55.1
+current development release:       v0.1.56
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -39,6 +39,8 @@ v0.1.41-v0.1.53  Hardened backend diagnostics, source mutation locks, VERSION-dr
 v0.1.54  Consolidated the orchestration design/control surfaces under docs/design/orchestration and refreshed the living MVP design references.
 v0.1.54.1  Repaired Project Source file persistence verification so file-source matches must be filename-anchored.
 v0.1.55  Connects read-only grill validation to the k8s-game MVP state-machine transition rules.
+v0.1.55.1  Repairs grill validator CLI path-label handling without advancing MVP scope.
+v0.1.56  Adds a read-only accepted-event fixture and validator that consumes a valid grill recommendation without mutating runtime state.
 ```
 
 ## Drift assessment
@@ -53,7 +55,9 @@ Promptbranch must verify that the recommendation is allowed by the state machine
 The recommendation must remain proposal-only until a later accepted-event path records it.
 ```
 
-v0.1.55 reduces that risk by validating each committed G0-G6 grill fixture against the canonical k8s-game MVP state machine. Invalid transitions, stage/transition mismatches, and project/state-machine mismatches now fail the read-only grill validator.
+v0.1.55 reduced that risk by validating each committed G0-G6 grill fixture against the canonical k8s-game MVP state machine. Invalid transitions, stage/transition mismatches, and project/state-machine mismatches now fail the read-only grill validator.
+
+v0.1.56 adds the next boundary: a committed accepted-event fixture must reference a valid grill fixture, preserve the source grill SHA-256, match the source recommendation, and match the canonical k8s-game MVP state machine. The fixture remains data-only and cannot record live workflow state.
 
 ## Active safety boundary
 
@@ -67,16 +71,16 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes. It must not treat a grill output as an accepted event until a later accepted-event path explicitly validates and records it.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.56 the accepted event remains a committed read-only fixture only; it does not update Promptbranch runtime state or artifact/source registries.
 
 ## Next planned orchestration work
 
 After this release is accepted, the next narrow slice should remain read-only and may be selected from the consolidated living design:
 
 ```text
-- add more schema-backed G0-G6 grill fixtures under docs/design/orchestration/examples/
-- add a separate accepted-event fixture/validator that consumes a valid grill recommendation without mutating runtime state
-- extend docs-status so it checks the consolidated orchestration design root and grill/state-machine transition coverage
+- add more accepted-event fixtures for G1-G6 so every grill stage has a read-only accepted-event counterpart
+- add rejected-event fixtures that prove invalid grill recommendations remain non-authoritative
+- extend docs-status so it checks accepted-event fixture coverage and source-grill hash freshness
 ```
 
 Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.

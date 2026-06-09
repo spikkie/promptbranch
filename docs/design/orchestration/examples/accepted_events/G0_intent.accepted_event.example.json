@@ -1,0 +1,42 @@
+{
+  "schema": "promptbranch.orchestration.accepted_event",
+  "schema_version": "1.0",
+  "event_id": "k8s-game-mvp.G0_intent.accepted.fixture.v1",
+  "project": {
+    "id": "k8s-game-mvp",
+    "role": "orchestration-model-test-vehicle"
+  },
+  "source_grill": {
+    "path": "docs/design/orchestration/examples/grills/G0_intent.example.json",
+    "stage": "G0_intent",
+    "sha256": "3b9d14cc6d4953d81ee94216d1ce14ef936719edb404deec2d18de32f7f48990"
+  },
+  "accepted_transition": {
+    "from": "draft",
+    "to": "intake_accepted",
+    "reason": "The G0 intent grill recommendation is accepted as a committed read-only fixture only; this release does not mutate runtime workflow state."
+  },
+  "decision": "accepted",
+  "constraints": {
+    "fixture_only": true,
+    "runtime_state_mutation_allowed": false,
+    "source_mutation_allowed": false,
+    "artifact_adoption_allowed": false,
+    "deployment_allowed": false,
+    "model_may_execute": false,
+    "promptbranch_must_validate": true
+  },
+  "evidence": {
+    "validated_by": [
+      "scripts/orchestration/validate_grill.py",
+      "scripts/orchestration/validate_accepted_event.py"
+    ],
+    "validation_status": "read_only_fixture_validated",
+    "validation_notes": [
+      "The source grill envelope is valid.",
+      "The accepted transition matches the source grill recommendation and the k8s-game MVP state machine.",
+      "The accepted event fixture is data only and cannot mutate source, artifacts, deployment, or runtime workflow state."
+    ]
+  },
+  "notes": "This fixture proves the proposal-to-accepted-event validation boundary without recording live workflow state."
+}
