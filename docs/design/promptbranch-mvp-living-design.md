@@ -127,7 +127,7 @@ Tools/tests/deployment = evidence producers
 - `v0.1.58` adds application-level PB design documentation and extends the existing editable draw.io sources with activity, data-flow, state-transition, role-component, and release-state pages. See `docs/design/promptbranch-application-design.md`, `docs/design/promptbranch-class-diagram.drawio`, `docs/design/promptbranch-mvp-living-design.drawio`, and `docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio`.
 - `v0.1.59` extends `pb release docs-status` so the PB application design document and all three editable diagram sources are checked as read-only release surfaces. Missing role/scope language, missing draw.io references, or missing required draw.io pages now block docs-status.
 
-- `v0.1.60` hardens Project Source add stability for release-control scripts by returning `source_add_triggered_not_verified` when the upload/process commit is observed but refreshed DOM persistence does not verify before timeout. This avoids a transport-level 504 while preserving explicit `persistence_verified=false` operator evidence.
+- `v0.1.60` adds `docs/design/promptbranch-release-baseline-evidence.md` and extends `pb release docs-status` with a `baseline_evidence` guard. The guard documents and validates that the locally accepted Promptbranch artifact is authoritative after adoption, even when a transient sandbox ZIP checksum differs from the accepted local artifact.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 

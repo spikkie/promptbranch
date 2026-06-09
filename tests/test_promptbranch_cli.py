@@ -6447,6 +6447,8 @@ hooks:
     assert payload["suggested_commands"]["next_development_checkpoint_after_build"] == payload["next_development_checkpoint_after_build"]
     assert payload["warning_codes"] == []
     assert payload["blocker_codes"] == []
+    assert payload["baseline_evidence"]["ok"] is True
+    assert payload["baseline_evidence"]["missing_phrase_count"] == 0
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["project_source_mutated"] is False
@@ -7062,6 +7064,26 @@ Release-checkable invariants:
     )
     (lifecycle_dir / "promptbranch_lifecycle_commands.drawio").write_text(
         '<mxfile><diagram name="PB Release State Transitions"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-release-baseline-evidence.md").write_text(
+        f"""
+# Promptbranch Release Baseline Evidence
+
+Release: `{version}`
+
+After adoption, the locally accepted Promptbranch artifact is authoritative.
+
+Use `pb artifact current --json` and `pb release baseline-status --json` to verify accepted baseline state.
+
+Required indicators include `registry_current.kind = adopted_release` and `code_matches_adopted_source = true`.
+
+Evidence roles include transient sandbox ZIP, candidate ZIP, installed ZIP, locally accepted artifact, Project Source baseline, and runtime package version.
+
+full-test evidence may be stale, so focused-validation evidence must be described honestly for narrow documentation releases.
+
+The next normal release continues from the accepted Promptbranch baseline.
+""".lstrip(),
         encoding="utf-8",
     )
 

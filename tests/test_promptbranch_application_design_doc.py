@@ -18,7 +18,7 @@ def _diagram_names(path: Path) -> set[str]:
 def test_promptbranch_application_design_doc_declares_pb_and_chatgpt_roles() -> None:
     text = DESIGN_DOC.read_text(encoding="utf-8")
 
-    assert "Release: `v0.1.59`" in text
+    assert "Release: `v0.1.60`" in text
     assert "pb          = local deterministic control plane" in text
     assert "ChatGPT     = reasoning/conversation surface" in text
     assert "Assistant prose is advisory" in text
@@ -69,7 +69,7 @@ def test_docs_status_includes_pb_application_design_freshness_guard(capsys) -> N
     from promptbranch_cli import cmd_release_docs_status
 
     args = argparse.Namespace(
-        version="v0.1.59",
+        version="v0.1.60",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",
@@ -85,6 +85,9 @@ def test_docs_status_includes_pb_application_design_freshness_guard(capsys) -> N
     assert payload["application_design"]["ok"] is True
     assert payload["application_design"]["missing_phrase_count"] == 0
     assert payload["application_design"]["blocker_codes"] == []
+    assert payload["baseline_evidence"]["ok"] is True
+    assert payload["baseline_evidence"]["missing_phrase_count"] == 0
+    assert payload["baseline_evidence"]["blocker_codes"] == []
     guarded_paths = {item["path"] for item in payload["application_design"]["drawio_sources"]}
     assert guarded_paths == {
         "docs/design/promptbranch-class-diagram.drawio",

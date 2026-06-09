@@ -1,64 +1,40 @@
-# Release v0.1.60 — Project Source committed-write stability hardening
+# Release v0.1.60
 
-`v0.1.60` continues from accepted baseline `chatgpt_claudecode_workflow-2_v0.1.59.zip`.
+## Summary
 
-## Problem
+`v0.1.60` is a documentation and validation release built from accepted baseline `chatgpt_claudecode_workflow-2_v0.1.59.zip`.
 
-A live `promptbranch src add ib_forex_trading.0.247.3.1.zip` run returned HTTP 504 after ChatGPT accepted the upload/process commit requests, but the refreshed Sources tab did not show the source card before the verification timeout.
+It adds a release-checkable accepted-baseline evidence model so operators and future assistants can distinguish candidate ZIPs, transient sandbox ZIP checksums, installed runtime state, locally accepted Promptbranch artifacts, Project Source baselines, stale full-test evidence, and focused-validation evidence.
 
-That failure mode is operationally risky for release-control scripts because a blind retry may create duplicates or repeat an overwrite while the remote Project Source state is still settling.
+## Scope
 
-## Change
+In scope:
 
-For file/text source adds, Promptbranch now distinguishes:
+- add `docs/design/promptbranch-release-baseline-evidence.md`;
+- extend `pb release docs-status` with a read-only `baseline_evidence` guard;
+- add targeted tests for the baseline evidence document and docs-status payload;
+- update release/version/current-status documentation to `v0.1.60`.
 
-- verified persistence: refreshed Sources tab confirms the card;
-- committed-but-unverified write: upload/process commit requests finished successfully, but refreshed DOM persistence did not verify before timeout;
-- hard failure: no commit proof, failed request, browser/profile failure, auth failure, or overwrite/remove failure.
+Out of scope:
 
-Committed-but-unverified writes now return structured JSON instead of surfacing as a transport-level 504:
-
-```json
-{
-  "ok": true,
-  "status": "source_add_triggered_not_verified",
-  "persistence_verified": false,
-  "project_source_mutated": true,
-  "verification_mode": "commit_observed_unverified",
-  "operator_review_required": true,
-  "source_add_verification_required": true
-}
-```
-
-This keeps existing shell scripts from aborting only because UI refresh verification lagged, while preserving an explicit warning that persistence was not proven.
-
-## Files changed
-
-- `promptbranch_browser_auth/client.py`
-- `chatgpt_browser_auth/client.py`
-- `tests/test_project_source_capabilities.py`
-- version surfaces
+- runtime behavior changes;
+- source mutation changes;
+- browser automation changes;
+- backend API changes;
+- artifact adoption behavior changes;
+- new artifact intake/download behavior;
+- full release lifecycle implementation.
 
 ## Validation
 
+Focused validation for this candidate should include:
+
 ```bash
-python3 -m pytest -q tests/test_project_source_capabilities.py
+python3 -m pytest -q tests/test_promptbranch_release_baseline_evidence_doc.py
+python3 -m pytest -q tests/test_promptbranch_application_design_doc.py
+python3 -m pytest -q tests/test_promptbranch_cli.py -k 'release_docs_status'
+python3 promptbranch_cli.py release docs-status --version v0.1.60 --json
 python3 -m compileall -q .
 ```
 
-Result:
-
-```text
-42 passed
-compileall passed
-```
-
-## Operator guidance
-
-When this status appears, do not immediately retry the same source add. First run:
-
-```bash
-promptbranch src list --json
-```
-
-If the source is visible, continue. If it is still absent after a later list, rerun source add once with overwrite enabled.
+Full tests are not required by this slice unless local adoption policy demands them.
