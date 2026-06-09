@@ -1,20 +1,20 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.61`
-Baseline: `chatgpt_claudecode_workflow-2_v0.1.58.zip`
+Release: `v0.1.62`
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.61.zip`
 Status: PB application design docs-status / diagram-freshness guard
 
 ## Purpose
 
-This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline accepted at `v0.1.58`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
+This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline accepted at `v0.1.61`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
 
 ## Current accepted baseline
 
 ```text
-accepted baseline: chatgpt_claudecode_workflow-2_v0.1.58.zip
-runtime/source/artifact/registry: v0.1.58 accepted baseline
+accepted baseline: chatgpt_claudecode_workflow-2_v0.1.61.zip
+runtime/source/artifact/registry: v0.1.61 accepted baseline
 full-test evidence: deferred for narrow documentation/validation slice
-next normal release: v0.1.61
+next normal release: v0.1.62
 ```
 
 ## Consolidation decision
@@ -73,3 +73,8 @@ Do not start game implementation or write-capable orchestration until the design
 ## v0.1.61 update
 
 `v0.1.61` closes the documentation-publication gap for the living design by moving the standalone HTML overview into the repository and adding regression coverage for the draw.io reference and PB authority model. The documentation remains static/read-only and does not change runtime, source mutation, browser automation, or artifact adoption behavior.
+
+
+## v0.1.62 update
+
+`v0.1.62` closes the documentation-discoverability gap by adding a source-controlled Material for MkDocs scaffold and a `docs_site` docs-status guard. The scaffold links the living-design HTML overview, editable draw.io source, PB application design, release baseline evidence, MVP design surfaces, current orchestration status, and release notes from one navigable entrypoint. No rendered site output, runtime behavior, source mutation, browser automation, or artifact-adoption behavior changes are included.

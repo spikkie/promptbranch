@@ -1,10 +1,10 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.61`
+Release: `v0.1.62`
 
 ## Purpose
 
-Introduced in `v0.1.60`; refreshed in `v0.1.61` as part of the living-design HTML overview integration.
+Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview and in `v0.1.62` for the documentation site scaffold.
 
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
@@ -86,7 +86,7 @@ base:   chatgpt_claudecode_workflow-2_v0.1.59.zip
 target: chatgpt_claudecode_workflow-2_v0.1.60.zip
 ```
 
-After `v0.1.60` is adopted, the same rule moves the next normal release target to `v0.1.61`.
+After `v0.1.61` is adopted, the same rule moves the next normal release target to `v0.1.62`.
 
 ## Non-authoritative signals
 
@@ -102,3 +102,8 @@ Do not use these alone as accepted-baseline proof:
 ## Release-checkable invariant
 
 The accepted baseline is the ZIP that Promptbranch reports as the current adopted release after adoption. If there is a checksum conflict between a transient sandbox ZIP and the local accepted artifact, the local accepted artifact checksum wins for future continuation.
+
+
+## v0.1.62 documentation-site evidence
+
+The documentation site scaffold is source evidence only. `mkdocs.yml` and the docs index pages help humans find the authoritative design and release documents, but rendered `site/` output is generated material and is not an accepted baseline signal.

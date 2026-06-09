@@ -10251,6 +10251,144 @@ def _pb_living_design_overview_status(*, repo_root: Path, expected_version: str 
         "blockers": blockers,
     }
 
+
+PB_DOCS_SITE_CONFIG = "mkdocs.yml"
+PB_DOCS_SITE_ENTRYPOINTS = [
+    "docs/index.md",
+    "docs/design/index.md",
+    "docs/releases/index.md",
+]
+PB_DOCS_SITE_REQUIRED_REFERENCES = [
+    "docs/design/promptbranch-living-design-overview.html",
+    "docs/design/promptbranch-living-design-overview.md",
+    "docs/design/promptbranch-application-design.md",
+    "docs/design/promptbranch-release-baseline-evidence.md",
+    "docs/design/promptbranch-mvp-living-design.md",
+    "docs/design/promptbranch-mvp-gap-analysis.md",
+    "docs/design/orchestration/docs/current_status.md",
+    "docs/release-v0.1.62.md",
+]
+PB_DOCS_SITE_REQUIRED_PHRASES = [
+    "Material for MkDocs",
+    "Promptbranch is the deterministic control plane",
+    "ChatGPT is the reasoning",
+    "Workspace",
+    "Task",
+    "Artifact",
+    "backend-first reads",
+    "transactional writes",
+    "artifact baseline semantics",
+    "release lifecycle",
+]
+
+
+def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> dict[str, Any]:
+    """Read-only guard for the source-controlled documentation site scaffold."""
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    config_rel = PB_DOCS_SITE_CONFIG
+    config_path = (repo_root / config_rel).resolve()
+    config_text = ""
+    try:
+        config_path.relative_to(repo_root)
+    except ValueError:
+        block("docs_site_config_not_repo_bound", "Documentation site config leaves the repository.", path=str(config_path))
+    if not config_path.is_file():
+        block("docs_site_config_missing", "Documentation site config is missing.", path=config_rel)
+    else:
+        try:
+            config_text = config_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("docs_site_config_read_error", "Documentation site config could not be read.", path=config_rel, error=str(exc))
+
+    entrypoints: list[dict[str, Any]] = []
+    entrypoint_texts: dict[str, str] = {}
+    for rel_path in PB_DOCS_SITE_ENTRYPOINTS:
+        abs_path = (repo_root / rel_path).resolve()
+        repo_bound = True
+        try:
+            abs_path.relative_to(repo_root)
+        except ValueError:
+            repo_bound = False
+            block("docs_site_entrypoint_not_repo_bound", "Documentation site entrypoint leaves the repository.", path=rel_path)
+        text = ""
+        if not abs_path.is_file():
+            block("docs_site_entrypoint_missing", "Documentation site entrypoint is missing.", path=rel_path)
+        else:
+            try:
+                text = abs_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                block("docs_site_entrypoint_read_error", "Documentation site entrypoint could not be read.", path=rel_path, error=str(exc))
+        entrypoint_texts[rel_path] = text
+        entrypoints.append({
+            "path": rel_path,
+            "repo_bound": repo_bound,
+            "present": abs_path.is_file(),
+            "size_bytes": abs_path.stat().st_size if abs_path.is_file() else None,
+        })
+
+    combined_text = "\n".join([config_text, *entrypoint_texts.values()])
+    missing_references = [reference for reference in PB_DOCS_SITE_REQUIRED_REFERENCES if reference not in combined_text]
+    if missing_references:
+        block(
+            "docs_site_required_reference_missing",
+            "Documentation site scaffold does not reference required PB design/release surfaces.",
+            missing_references=missing_references,
+        )
+
+    missing_phrases = [phrase for phrase in PB_DOCS_SITE_REQUIRED_PHRASES if phrase not in combined_text]
+    if missing_phrases:
+        block(
+            "docs_site_required_phrase_missing",
+            "Documentation site scaffold is missing required PB authority/navigation language.",
+            missing_phrases=missing_phrases,
+        )
+
+    if config_text and "name: material" not in config_text:
+        block("docs_site_material_theme_missing", "mkdocs.yml must declare Material for MkDocs as the intended theme.", path=config_rel)
+    if config_text and "site_name:" not in config_text:
+        block("docs_site_site_name_missing", "mkdocs.yml must declare site_name.", path=config_rel)
+    if expected_version and expected_version not in combined_text:
+        block(
+            "docs_site_release_marker_mismatch",
+            "Expected version is not mentioned in the documentation site scaffold.",
+            expected_version=expected_version,
+        )
+
+    generated_site_path = repo_root / "site"
+    if generated_site_path.exists():
+        block("docs_site_generated_output_committed", "Generated MkDocs site output must not be committed or packaged as source.", path="site/")
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "config": {
+            "path": config_rel,
+            "present": config_path.is_file(),
+            "size_bytes": config_path.stat().st_size if config_path.is_file() else None,
+            "theme": "material" if "name: material" in config_text else None,
+        },
+        "entrypoints": entrypoints,
+        "required_reference_count": len(PB_DOCS_SITE_REQUIRED_REFERENCES),
+        "missing_reference_count": len(missing_references),
+        "required_phrase_count": len(PB_DOCS_SITE_REQUIRED_PHRASES),
+        "missing_phrase_count": len(missing_phrases),
+        "generated_site_present": generated_site_path.exists(),
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
 def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expected_version: str | None) -> dict[str, Any]:
     doc_path = (repo_root / design_doc).resolve()
     drawio_path = (repo_root / drawio).resolve()
@@ -10339,6 +10477,15 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
     for item in living_design_overview.get("blockers") or []:
         blockers.append(item)
 
+    docs_site = _pb_docs_site_status(
+        repo_root=repo_root,
+        expected_version=expected_version,
+    )
+    for item in docs_site.get("warnings") or []:
+        warnings.append(item)
+    for item in docs_site.get("blockers") or []:
+        blockers.append(item)
+
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
@@ -10355,6 +10502,7 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
         "application_design": application_design,
         "baseline_evidence": baseline_evidence,
         "living_design_overview": living_design_overview,
+        "docs_site": docs_site,
         "reference_count": len(references),
         "references": reference_status,
         "missing_reference_count": sum(1 for item in reference_status if not item.get("exists")),
@@ -10424,7 +10572,7 @@ async def cmd_release_config(backend: Any, args: argparse.Namespace) -> int:
 
 
 async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int:
-    """Read-only status/validation for the living MVP design document, draw.io source, and HTML overview."""
+    """Read-only status/validation for the living MVP design document, draw.io source, HTML overview, and documentation site scaffold."""
 
     repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
     expected_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
@@ -10464,7 +10612,7 @@ async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int
             "git_commit",
             "git_push",
         ],
-        "operator_instruction": "Read-only living design, PB application design, accepted-baseline evidence, and living-design HTML overview validation. Keep Markdown, editable draw.io sources, and baseline-evidence semantics updated together after each MVP/release slice.",
+        "operator_instruction": "Read-only living design, PB application design, accepted-baseline evidence, living-design HTML overview, and docs-site scaffold validation. Keep Markdown, editable draw.io sources, baseline-evidence semantics, and MkDocs navigation updated together after each MVP/release slice.",
     })
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -20689,7 +20837,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_evidence_status.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file for artifact naming context. Defaults to .promptbranch-release.yml.")
     release_evidence_status.add_argument("--json", action="store_true")
 
-    release_docs_status = release_subparsers.add_parser("docs-status", help="Read-only living MVP design document and draw.io source validator.")
+    release_docs_status = release_subparsers.add_parser("docs-status", help="Read-only living MVP design, draw.io, HTML overview, and documentation site validator.")
     release_docs_status.add_argument("--version", help="Expected version marker to check in the living design document. Defaults to the running Promptbranch version.")
     release_docs_status.add_argument("--design-doc", default="docs/design/promptbranch-mvp-living-design.md", help="Repo-relative living design Markdown path.")
     release_docs_status.add_argument("--drawio", default="docs/design/promptbranch-mvp-living-design.drawio", help="Repo-relative editable draw.io source path.")

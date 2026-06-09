@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.61`  
+Release: `v0.1.62`  
 Status: source-of-truth design note plus editable draw.io source and PB application design freshness guard  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -444,3 +444,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ### v0.1.41 — parallel execution architecture first slice
 
 `v0.1.41` opens the Promptbranch parallel execution architecture line. The slice documents the resource-lock model in `docs/design/promptbranch-parallel-execution-architecture.md`, adds the `promptbranch_parallel.py` operation classification registry, exposes the plan through `pb debug parallel-plan --json`, and routes browser-client `_log` diagnostics to stderr so JSON stdout can become strict enough for future parallel runners. This slice does not add the scheduler or service-profile queue yet; it creates the executable metadata and test plan that later slices must build on.
+
+
+## v0.1.62 documentation site scaffold
+
+`v0.1.62` adds a Material-for-MkDocs-style source scaffold: `mkdocs.yml`, `docs/index.md`, `docs/design/index.md`, and `docs/releases/index.md`. The new `docs_site` guard in `pb release docs-status` verifies that these navigation surfaces reference the living-design HTML overview, PB application design, release baseline evidence, MVP living design, MVP gap analysis, orchestration current status, and recent release notes. Rendered `site/` output remains out of scope and must not be committed.

@@ -7103,6 +7103,87 @@ The next normal release continues from the accepted Promptbranch baseline.
         encoding="utf-8",
     )
 
+    # promptbranch_docs_site_fixture
+    (repo / "mkdocs.yml").write_text(
+        f"""
+site_name: Promptbranch Documentation
+theme:
+  name: material
+nav:
+  - Home: docs/index.md
+  - Design:
+      - Living design overview: docs/design/promptbranch-living-design-overview.md
+      - Living design HTML: docs/design/promptbranch-living-design-overview.html
+      - Application design: docs/design/promptbranch-application-design.md
+      - Release baseline evidence: docs/design/promptbranch-release-baseline-evidence.md
+      - MVP living design: docs/design/promptbranch-mvp-living-design.md
+      - MVP gap analysis: docs/design/promptbranch-mvp-gap-analysis.md
+      - Orchestration current status: docs/design/orchestration/docs/current_status.md
+  - Releases:
+      - v0.1.62: docs/release-v0.1.62.md
+""".lstrip(),
+        encoding="utf-8",
+    )
+    docs_dir = repo / "docs"
+    releases_dir = docs_dir / "releases"
+    releases_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "index.md").write_text(
+        f"""
+# Promptbranch documentation
+
+Release: `{version}`
+
+Material for MkDocs source scaffold.
+
+Promptbranch is the deterministic control plane. ChatGPT is the reasoning and execution surface.
+Workspace Task Artifact backend-first reads transactional writes artifact baseline semantics release lifecycle.
+
+- [Living design overview](design/promptbranch-living-design-overview.md)
+- [Living design HTML](design/promptbranch-living-design-overview.html)
+- [Application design](design/promptbranch-application-design.md)
+- [Release baseline evidence](design/promptbranch-release-baseline-evidence.md)
+- [MVP living design](design/promptbranch-mvp-living-design.md)
+- [MVP gap analysis](design/promptbranch-mvp-gap-analysis.md)
+- [Orchestration current status](design/orchestration/docs/current_status.md)
+- [v0.1.62 release note](release-v0.1.62.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (design_dir / "index.md").write_text(
+        f"""
+# Promptbranch design documentation
+
+Release: `{version}`
+
+- [Living design overview](promptbranch-living-design-overview.md)
+- [Living design HTML](promptbranch-living-design-overview.html)
+- [Application design](promptbranch-application-design.md)
+- [Release baseline evidence](promptbranch-release-baseline-evidence.md)
+- [MVP living design](promptbranch-mvp-living-design.md)
+- [MVP gap analysis](promptbranch-mvp-gap-analysis.md)
+- [Orchestration current status](orchestration/docs/current_status.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (releases_dir / "index.md").write_text(
+        f"""
+# Promptbranch releases
+
+Release: `{version}`
+
+- [v0.1.62](../release-v0.1.62.md)
+- [v0.1.61](../release-v0.1.61.md)
+- [v0.1.60](../release-v0.1.60.md)
+- [v0.1.59](../release-v0.1.59.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    for rel in ["v0.1.59", "v0.1.60", "v0.1.61", "v0.1.62"]:
+        (docs_dir / f"release-{rel}.md").write_text(f"# Release {rel}\n", encoding="utf-8")
+    status_dir = design_dir / "orchestration" / "docs"
+    status_dir.mkdir(parents=True, exist_ok=True)
+    (status_dir / "current_status.md").write_text("# current status\n", encoding="utf-8")
+
 def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     design_dir = repo / "docs" / "design"
@@ -7158,6 +7239,9 @@ After each release slice:
     assert payload["baseline_evidence"]["ok"] is True
     assert payload["living_design_overview"]["ok"] is True
     assert payload["living_design_overview"]["missing_phrase_count"] == 0
+    assert payload["docs_site"]["ok"] is True
+    assert payload["docs_site"]["config"]["path"] == "mkdocs.yml"
+    assert payload["docs_site"]["generated_site_present"] is False
     assert payload["mutating_actions_executed"] is False
     assert payload["adoption_performed"] is False
     assert payload["project_source_mutated"] is False
