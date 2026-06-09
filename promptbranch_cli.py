@@ -10258,7 +10258,13 @@ PB_DOCS_SITE_ENTRYPOINTS = [
     "docs/design/index.md",
     "docs/releases/index.md",
 ]
-PB_DOCS_SITE_REQUIRED_REFERENCES = [
+PB_DOCS_SITE_MARKDOWN_LINK_SOURCES = [
+    "docs/index.md",
+    "docs/design/index.md",
+    "docs/releases/index.md",
+    "docs/design/promptbranch-living-design-overview.md",
+]
+PB_DOCS_SITE_STATIC_REQUIRED_REFERENCES = [
     "docs/design/promptbranch-living-design-overview.html",
     "docs/design/promptbranch-living-design-overview.md",
     "docs/design/promptbranch-application-design.md",
@@ -10266,7 +10272,6 @@ PB_DOCS_SITE_REQUIRED_REFERENCES = [
     "docs/design/promptbranch-mvp-living-design.md",
     "docs/design/promptbranch-mvp-gap-analysis.md",
     "docs/design/orchestration/docs/current_status.md",
-    "docs/release-v0.1.62.md",
 ]
 PB_DOCS_SITE_REQUIRED_PHRASES = [
     "Material for MkDocs",
@@ -10280,10 +10285,103 @@ PB_DOCS_SITE_REQUIRED_PHRASES = [
     "artifact baseline semantics",
     "release lifecycle",
 ]
+PB_DOCS_SITE_MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+PB_DOCS_SITE_MKDOCS_NAV_TARGET_RE = re.compile(r":\s*([A-Za-z0-9_./-]+\.(?:md|html|drawio|png|svg))\s*(?:#.*)?$")
+
+
+def _docs_site_release_reference(expected_version: str | None) -> str | None:
+    if not expected_version:
+        return None
+    version = expected_version if str(expected_version).startswith("v") else f"v{expected_version}"
+    return f"docs/release-{version}.md"
+
+
+def _docs_site_target_is_external(target: str) -> bool:
+    lowered = target.strip().lower()
+    return (
+        not lowered
+        or lowered.startswith("#")
+        or lowered.startswith("mailto:")
+        or lowered.startswith("tel:")
+        or lowered.startswith("data:")
+        or "://" in lowered
+    )
+
+
+def _docs_site_target_without_fragment(target: str) -> str:
+    return target.strip().split("#", 1)[0].split("?", 1)[0]
+
+
+def _resolve_docs_site_target(repo_root: Path, *, source_rel: str, target: str, mkdocs_nav: bool = False) -> dict[str, Any] | None:
+    """Resolve a docs-site source target to a repo-relative path without reading external resources."""
+
+    raw_target = target.strip().strip('"').strip("'")
+    if _docs_site_target_is_external(raw_target):
+        return None
+    target_no_fragment = _docs_site_target_without_fragment(raw_target)
+    if not target_no_fragment:
+        return None
+
+    if target_no_fragment.startswith("/"):
+        candidate_rel = target_no_fragment.lstrip("/")
+    elif target_no_fragment.startswith("docs/"):
+        candidate_rel = target_no_fragment
+    elif mkdocs_nav:
+        candidate_rel = f"docs/{target_no_fragment}"
+    else:
+        candidate_rel = str((Path(source_rel).parent / target_no_fragment).as_posix())
+
+    abs_path = (repo_root / candidate_rel).resolve()
+    repo_bound = True
+    resolved_rel = candidate_rel
+    try:
+        resolved_rel = abs_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        repo_bound = False
+
+    return {
+        "source": source_rel,
+        "target": raw_target,
+        "resolved_path": resolved_rel,
+        "repo_bound": repo_bound,
+        "exists": abs_path.is_file() if repo_bound else False,
+    }
+
+
+def _extract_docs_site_link_targets(*, repo_root: Path, config_text: str, markdown_texts: dict[str, str]) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+
+    for line in config_text.splitlines():
+        match = PB_DOCS_SITE_MKDOCS_NAV_TARGET_RE.search(line)
+        if not match:
+            continue
+        resolved = _resolve_docs_site_target(
+            repo_root,
+            source_rel=PB_DOCS_SITE_CONFIG,
+            target=match.group(1),
+            mkdocs_nav=True,
+        )
+        if resolved is not None:
+            resolved["kind"] = "mkdocs_nav"
+            targets.append(resolved)
+
+    for source_rel, text in markdown_texts.items():
+        for match in PB_DOCS_SITE_MARKDOWN_LINK_RE.finditer(text):
+            resolved = _resolve_docs_site_target(
+                repo_root,
+                source_rel=source_rel,
+                target=match.group(1),
+                mkdocs_nav=False,
+            )
+            if resolved is not None:
+                resolved["kind"] = "markdown_link"
+                targets.append(resolved)
+
+    return targets
 
 
 def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> dict[str, Any]:
-    """Read-only guard for the source-controlled documentation site scaffold."""
+    """Read-only guard for the source-controlled documentation site scaffold and its repo-local links."""
 
     warnings: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
@@ -10332,8 +10430,27 @@ def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> di
             "size_bytes": abs_path.stat().st_size if abs_path.is_file() else None,
         })
 
-    combined_text = "\n".join([config_text, *entrypoint_texts.values()])
-    missing_references = [reference for reference in PB_DOCS_SITE_REQUIRED_REFERENCES if reference not in combined_text]
+    markdown_texts = dict(entrypoint_texts)
+    for rel_path in PB_DOCS_SITE_MARKDOWN_LINK_SOURCES:
+        if rel_path in markdown_texts:
+            continue
+        abs_path = (repo_root / rel_path).resolve()
+        if not abs_path.is_file():
+            block("docs_site_link_source_missing", "Documentation link-integrity source is missing.", path=rel_path)
+            markdown_texts[rel_path] = ""
+            continue
+        try:
+            markdown_texts[rel_path] = abs_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("docs_site_link_source_read_error", "Documentation link-integrity source could not be read.", path=rel_path, error=str(exc))
+            markdown_texts[rel_path] = ""
+
+    combined_text = "\n".join([config_text, *markdown_texts.values()])
+    required_references = list(PB_DOCS_SITE_STATIC_REQUIRED_REFERENCES)
+    release_reference = _docs_site_release_reference(expected_version)
+    if release_reference:
+        required_references.append(release_reference)
+    missing_references = [reference for reference in required_references if reference not in combined_text]
     if missing_references:
         block(
             "docs_site_required_reference_missing",
@@ -10360,6 +10477,26 @@ def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> di
             expected_version=expected_version,
         )
 
+    link_targets = _extract_docs_site_link_targets(
+        repo_root=repo_root,
+        config_text=config_text,
+        markdown_texts=markdown_texts,
+    )
+    not_repo_bound_targets = [target for target in link_targets if not target.get("repo_bound")]
+    missing_targets = [target for target in link_targets if target.get("repo_bound") and not target.get("exists")]
+    if not_repo_bound_targets:
+        block(
+            "docs_site_link_target_not_repo_bound",
+            "Documentation site link target leaves the repository.",
+            targets=not_repo_bound_targets,
+        )
+    if missing_targets:
+        block(
+            "docs_site_link_target_missing",
+            "Documentation site link target does not exist.",
+            targets=missing_targets,
+        )
+
     generated_site_path = repo_root / "site"
     if generated_site_path.exists():
         block("docs_site_generated_output_committed", "Generated MkDocs site output must not be committed or packaged as source.", path="site/")
@@ -10378,11 +10515,19 @@ def _pb_docs_site_status(*, repo_root: Path, expected_version: str | None) -> di
             "theme": "material" if "name: material" in config_text else None,
         },
         "entrypoints": entrypoints,
-        "required_reference_count": len(PB_DOCS_SITE_REQUIRED_REFERENCES),
+        "required_reference_count": len(required_references),
         "missing_reference_count": len(missing_references),
         "required_phrase_count": len(PB_DOCS_SITE_REQUIRED_PHRASES),
         "missing_phrase_count": len(missing_phrases),
         "generated_site_present": generated_site_path.exists(),
+        "link_integrity": {
+            "ok": not missing_targets and not not_repo_bound_targets,
+            "checked_link_count": len(link_targets),
+            "missing_target_count": len(missing_targets),
+            "not_repo_bound_target_count": len(not_repo_bound_targets),
+            "missing_targets": missing_targets,
+            "not_repo_bound_targets": not_repo_bound_targets,
+        },
         "warning_codes": [item["code"] for item in warnings],
         "blocker_codes": [item["code"] for item in blockers],
         "warnings": warnings,

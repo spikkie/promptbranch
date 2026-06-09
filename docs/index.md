@@ -1,6 +1,6 @@
 # Promptbranch documentation
 
-Release: `v0.1.62`
+Release: `v0.1.63`
 
 This documentation entrypoint makes the Promptbranch (`pb`) architecture and release-control material discoverable from one place. It is intentionally a source scaffold for **Material for MkDocs** and does not commit rendered `site/` output.
 
@@ -15,6 +15,7 @@ This documentation entrypoint makes the Promptbranch (`pb`) architecture and rel
 - [MVP gap analysis](design/promptbranch-mvp-gap-analysis.md)
 - [Orchestration current status](design/orchestration/docs/current_status.md)
 - [Release overview](releases/index.md)
+- [v0.1.63 release note](release-v0.1.63.md)
 
 ## Authority model
 
@@ -35,4 +36,10 @@ The docs-status guard intentionally checks these repo-relative source paths:
 - `docs/design/promptbranch-mvp-living-design.md`
 - `docs/design/promptbranch-mvp-gap-analysis.md`
 - `docs/design/orchestration/docs/current_status.md`
+- `docs/release-v0.1.63.md`
 - `docs/release-v0.1.62.md`
+
+
+## v0.1.63 link-integrity guard
+
+The docs-site guard now checks that `mkdocs.yml` navigation entries and Markdown links from the documentation index pages resolve to repo-local files. This prevents broken navigation from silently entering a release candidate.

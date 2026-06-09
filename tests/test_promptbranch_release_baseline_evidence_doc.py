@@ -9,7 +9,7 @@ BASELINE_DOC = Path("docs/design/promptbranch-release-baseline-evidence.md")
 def test_release_baseline_evidence_doc_declares_authoritative_accepted_artifact() -> None:
     text = BASELINE_DOC.read_text(encoding="utf-8")
 
-    assert "Release: `v0.1.62`" in text
+    assert "Release: `v0.1.63`" in text
     assert "After adoption, the locally accepted Promptbranch artifact is authoritative." in text
     assert "transient sandbox ZIP" in text
     assert "locally accepted artifact" in text
@@ -43,7 +43,7 @@ def test_release_docs_status_includes_baseline_evidence_guard(capsys) -> None:
     from promptbranch_cli import cmd_release_docs_status
 
     args = argparse.Namespace(
-        version="v0.1.62",
+        version="v0.1.63",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",

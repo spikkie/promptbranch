@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.62`  
+Release: `v0.1.63`  
 Status: source-of-truth design note plus editable draw.io source and PB application design freshness guard  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -449,3 +449,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ## v0.1.62 documentation site scaffold
 
 `v0.1.62` adds a Material-for-MkDocs-style source scaffold: `mkdocs.yml`, `docs/index.md`, `docs/design/index.md`, and `docs/releases/index.md`. The new `docs_site` guard in `pb release docs-status` verifies that these navigation surfaces reference the living-design HTML overview, PB application design, release baseline evidence, MVP living design, MVP gap analysis, orchestration current status, and recent release notes. Rendered `site/` output remains out of scope and must not be committed.
+
+
+## v0.1.63 documentation site link-integrity guard
+
+`v0.1.63` extends the `docs_site` guard so it validates repo-local link integrity for MkDocs navigation and documentation index links. This closes the gap where the documentation scaffold could exist but point to missing or renamed files. The slice remains documentation-only: no rendered `site/` output, runtime behavior, source mutation, browser automation, or artifact-adoption behavior changes are included.
