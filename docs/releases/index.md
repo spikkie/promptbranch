@@ -1,11 +1,12 @@
 # Promptbranch release documentation
 
-Release: `v0.1.63`
+Release: `v0.1.64`
 
 This index provides a compact path into the current documentation-governance release line.
 
 ## Current documentation-governance releases
 
+- [v0.1.64 — docs-site build-readiness guard](../release-v0.1.64.md)
 - [v0.1.63 — docs-site link-integrity / navigation validation guard](../release-v0.1.63.md)
 - [v0.1.62 — documentation site scaffold / navigation guard](../release-v0.1.62.md)
 - [v0.1.61 — living-design HTML overview integration](../release-v0.1.61.md)
@@ -20,3 +21,8 @@ Every normal release continues from the latest accepted Promptbranch baseline. C
 ## Link-integrity policy
 
 Release documentation referenced from the MkDocs navigation or release index must resolve to repo-local Markdown files. Rendered `site/` output remains generated output and must not be committed.
+
+
+## Build-readiness policy
+
+Release documentation now links to the [documentation site operation](../site.md) page, which defines local preview/build commands and the rule that generated `site/` output remains outside committed source.

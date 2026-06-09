@@ -16,7 +16,7 @@ def test_living_design_html_overview_exists_and_references_drawio_source() -> No
     text = HTML_DOC.read_text(encoding="utf-8")
 
     assert "Promptbranch Living Design" in text
-    assert "v0.1.63" in text
+    assert "v0.1.64" in text
     assert DRAWIO_SOURCE in text
     assert "12 documented pages" in text
     assert "Material for MkDocs" in text
@@ -40,7 +40,7 @@ def test_living_design_html_overview_documents_pb_authority_model() -> None:
 
 def test_release_docs_status_includes_living_design_overview_guard(capsys) -> None:
     args = argparse.Namespace(
-        version="v0.1.63",
+        version="v0.1.64",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",

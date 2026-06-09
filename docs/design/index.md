@@ -1,8 +1,12 @@
 # Promptbranch design documentation
 
-Release: `v0.1.63`
+Release: `v0.1.64`
 
 This index groups the PB design surfaces that should be read together when continuing the architecture, documentation, or release-control line.
+
+## Documentation site operation
+
+- [Documentation site operation](../site.md)
 
 ## Human-facing overview
 
@@ -32,3 +36,8 @@ This index groups the PB design surfaces that should be read together when conti
 ## v0.1.63 link-integrity rule
 
 Every link from this index is part of the release-checkable documentation surface. If a referenced design file is renamed or removed, `pb release docs-status --json` must block the candidate until navigation is repaired.
+
+
+## v0.1.64 build-readiness rule
+
+The documentation site is now release-checkable for build readiness. `docs/site.md` must document `mkdocs serve`, `mkdocs build`, the source-only policy, and the rule that generated `site/` output must not be committed or packaged.

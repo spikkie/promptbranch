@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.63
+# JSON Orchestration State MVP — Current Status after v0.1.64
 
-Updated for release: v0.1.63
+Updated for release: v0.1.64
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.62` and the v0.1.63 documentation site link-integrity guard slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.63` and the v0.1.64 documentation site build-readiness guard slice.
 
 The project remains on the same strategic goal:
 
@@ -19,7 +19,7 @@ Artifacts still go through Final Artifact Intake.
 
 ```text
 latest accepted baseline:          v0.1.61
-current development release:       v0.1.63
+current development release:       v0.1.64
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -48,6 +48,7 @@ v0.1.60  Adds accepted-baseline evidence documentation and docs-status guard cov
 v0.1.61  Integrates living-design HTML overview into repo documentation and adds release-checkable HTML/draw.io/PB-authority-model validation.
 v0.1.62  Adds a Material-for-MkDocs source scaffold and docs_site guard so PB design/release documentation is navigable from one entrypoint without committing rendered site output.
 v0.1.63  Extends docs_site with repo-local link-integrity validation for MkDocs navigation and documentation index links.
+v0.1.64  Extends docs_site with build-readiness validation for docs/site.md, preview/build commands, and generated site output exclusion.
 ```
 
 ## Drift assessment
@@ -78,7 +79,7 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.63 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence, living-design overview, and docs-site docs-status guards are documentation validation only and do not widen execution authority.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.64 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence, living-design overview, and docs-site docs-status guards are documentation validation only and do not widen execution authority.
 
 ## Next planned orchestration work
 
@@ -93,6 +94,6 @@ After this release is accepted, the next narrow slice should remain read-only an
 Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
 
 
-## v0.1.63 release-control status
+## v0.1.64 release-control status
 
-`v0.1.63` remains a documentation-governance release. It does not widen orchestration authority, execution authority, source mutation, artifact adoption, browser automation, or release lifecycle behavior.
+`v0.1.64` remains a documentation-governance release. It does not widen orchestration authority, execution authority, source mutation, artifact adoption, browser automation, or release lifecycle behavior.

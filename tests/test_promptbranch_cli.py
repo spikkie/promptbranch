@@ -7133,6 +7133,7 @@ theme:
   name: material
 nav:
   - Home: docs/index.md
+  - Site operation: docs/site.md
   - Design:
       - Living design overview: docs/design/promptbranch-living-design-overview.md
       - Living design HTML: docs/design/promptbranch-living-design-overview.html
@@ -7161,6 +7162,7 @@ Material for MkDocs source scaffold.
 Promptbranch is the deterministic control plane. ChatGPT is the reasoning and execution surface.
 Workspace Task Artifact backend-first reads transactional writes artifact baseline semantics release lifecycle.
 
+- [Documentation site operation](site.md)
 - [Living design overview](design/promptbranch-living-design-overview.md)
 - [Living design HTML](design/promptbranch-living-design-overview.html)
 - [Application design](design/promptbranch-application-design.md)
@@ -7173,12 +7175,51 @@ Workspace Task Artifact backend-first reads transactional writes artifact baseli
 """.lstrip(),
         encoding="utf-8",
     )
+    (docs_dir / "site.md").write_text(
+        f"""
+# Promptbranch documentation site operation
+
+Release: `{version}`
+
+This page defines the source-only documentation site policy for Material for MkDocs.
+
+Use `mkdocs serve` for local preview.
+Use `mkdocs build` for local build.
+Generated `site/` output must not be committed or packaged as source.
+Use `pb release docs-status --version {version} --json` as the release guard.
+
+- [Documentation home](index.md)
+- [Design overview](design/index.md)
+- [{version} release note](release-{version}.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (docs_dir / "site.md").write_text(
+        f"""
+# Promptbranch documentation site operation
+
+Release: `{version}`
+
+This page defines the source-only documentation site policy for Material for MkDocs.
+
+Use `mkdocs serve` for local preview.
+Use `mkdocs build` for local build.
+Generated `site/` output must not be committed or packaged as source.
+Use `pb release docs-status --version {version} --json` as the release guard.
+
+- [Documentation home](index.md)
+- [Design overview](design/index.md)
+- [{version} release note](release-{version}.md)
+""".lstrip(),
+        encoding="utf-8",
+    )
     (design_dir / "index.md").write_text(
         f"""
 # Promptbranch design documentation
 
 Release: `{version}`
 
+- [Documentation site operation](../site.md)
 - [Living design overview](promptbranch-living-design-overview.md)
 - [Living design HTML](promptbranch-living-design-overview.html)
 - [Application design](promptbranch-application-design.md)

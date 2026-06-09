@@ -136,8 +136,8 @@
       <h1>Promptbranch Living Design</h1>
       <p class="lede">A human-readable explanation of <code>docs/design/promptbranch-mvp-living-design.drawio</code> and of Promptbranch as a whole: the local control plane, ChatGPT project/task surface, JSON protocol, artifact baseline model, MCP/agent layer, and release lifecycle.</p>
       <div class="meta-grid">
-        <div class="mini"><strong>Source baseline</strong><span>chatgpt_claudecode_workflow-2_v0.1.62.zip</span></div>
-        <div class="mini"><strong>Repo integration release</strong><span>v0.1.62</span></div>
+        <div class="mini"><strong>Source baseline</strong><span>chatgpt_claudecode_workflow-2_v0.1.63.zip</span></div>
+        <div class="mini"><strong>Repo integration release</strong><span>v0.1.64</span></div>
         <div class="mini"><strong>Diagram source</strong><span>docs/design/promptbranch-mvp-living-design.drawio</span></div>
         <div class="mini"><strong>Draw.io pages</strong><span>12 documented pages</span></div>
         <div class="mini"><strong>Recommended docs base</strong><span>Material for MkDocs</span></div>
@@ -498,9 +498,11 @@ pb agent run --skill repo-inspection "inspect repo" --path . --json</pre>
     <section class="card" id="v0163-link-integrity">
       <h2>v0.1.63 documentation link-integrity guard</h2>
       <p>Release <code>v0.1.63</code> extends the documentation-site guard so MkDocs navigation and Markdown entrypoint links must resolve to repo-local files. This keeps the PB authority model and living-design source discoverable without committing rendered <code>site/</code> output.</p>
+      <h2>v0.1.64 documentation build-readiness guard</h2>
+      <p>Release <code>v0.1.64</code> adds <code>docs/site.md</code> as the source-only Material for MkDocs operation page and validates documented <code>mkdocs serve</code>, <code>mkdocs build</code>, and generated <code>site/</code> exclusion rules through <code>docs_site.build_readiness</code>.</p>
     </section>
 
-    <div class="footer">Generated from accepted baseline <code>chatgpt_claudecode_workflow-2_v0.1.62.zip</code>. Designed for direct browser viewing, print/PDF export, and Material for MkDocs navigation via mkdocs.yml.</div>
+    <div class="footer">Generated from accepted baseline <code>chatgpt_claudecode_workflow-2_v0.1.63.zip</code>. Designed for direct browser viewing, print/PDF export, and Material for MkDocs navigation via mkdocs.yml.</div>
   </main>
 </div>
 <script>
