@@ -1,6 +1,6 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.59`  
+Release: `v0.1.60`  
 Status: design documentation, editable draw.io source update, and docs-status freshness guard  
 Related editable diagrams:
 
@@ -174,7 +174,7 @@ The release should be validated with:
 
 ```bash
 python3 -m pytest -q tests/test_promptbranch_application_design_doc.py
-python3 promptbranch_cli.py release docs-status --version v0.1.59 --json
+python3 promptbranch_cli.py release docs-status --version v0.1.60 --json
 python3 -m compileall -q .
 ```
 

@@ -1,6 +1,6 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.59`
+Release: `v0.1.60`
 Baseline: `chatgpt_claudecode_workflow-2_v0.1.58.zip`
 Status: PB application design docs-status / diagram-freshness guard
 
@@ -14,7 +14,7 @@ This document records the current gap between the living design, the consolidate
 accepted baseline: chatgpt_claudecode_workflow-2_v0.1.58.zip
 runtime/source/artifact/registry: v0.1.58 accepted baseline
 full-test evidence: deferred for narrow documentation/validation slice
-next normal release: v0.1.59
+next normal release: v0.1.60
 ```
 
 ## Consolidation decision
@@ -65,3 +65,7 @@ After v0.1.59 is accepted, choose one narrow slice:
 3. Add a read-only status/checkpoint command for accepted-event coverage completeness.
 
 Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
+
+## v0.1.60 update
+
+`v0.1.60` closes an operational evidence gap: it documents and validates the distinction between a generated/transient candidate ZIP and the locally accepted Promptbranch artifact. After adoption, the accepted artifact reported by `pb artifact current --json` / `pb release baseline-status --json` is authoritative for continuation.

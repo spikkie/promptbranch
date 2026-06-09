@@ -10085,6 +10085,89 @@ def _pb_application_design_surface_status(*, repo_root: Path, expected_version: 
     }
 
 
+
+PB_RELEASE_BASELINE_EVIDENCE_DOC = "docs/design/promptbranch-release-baseline-evidence.md"
+PB_RELEASE_BASELINE_EVIDENCE_REQUIRED_PHRASES = [
+    "locally accepted Promptbranch artifact is authoritative",
+    "pb artifact current --json",
+    "pb release baseline-status --json",
+    "registry_current.kind = adopted_release",
+    "code_matches_adopted_source = true",
+    "full-test evidence may be stale",
+    "focused-validation evidence",
+    "transient sandbox ZIP",
+    "candidate ZIP",
+    "installed ZIP",
+    "locally accepted artifact",
+    "Project Source baseline",
+    "runtime package version",
+    "next normal release",
+]
+
+
+def _pb_release_baseline_evidence_status(*, repo_root: Path, expected_version: str | None) -> dict[str, Any]:
+    """Read-only freshness guard for accepted-baseline evidence semantics."""
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    doc_rel = PB_RELEASE_BASELINE_EVIDENCE_DOC
+    doc_path = (repo_root / doc_rel).resolve()
+    doc_text = ""
+    try:
+        doc_path.relative_to(repo_root)
+    except ValueError:
+        block("release_baseline_evidence_doc_not_repo_bound", "Release baseline evidence document leaves the repository.", path=str(doc_path))
+    if not doc_path.is_file():
+        block("release_baseline_evidence_doc_missing", "Release baseline evidence document is missing.", path=doc_rel)
+    else:
+        try:
+            doc_text = doc_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("release_baseline_evidence_doc_read_error", "Release baseline evidence document could not be read.", path=doc_rel, error=str(exc))
+
+    missing_phrases: list[str] = []
+    if doc_text:
+        for phrase in PB_RELEASE_BASELINE_EVIDENCE_REQUIRED_PHRASES:
+            if phrase not in doc_text:
+                missing_phrases.append(phrase)
+        if missing_phrases:
+            block(
+                "release_baseline_evidence_required_phrase_missing",
+                "Release baseline evidence document is missing required candidate/adoption/full-test/focused-validation semantics.",
+                missing_phrases=missing_phrases,
+            )
+        if expected_version and expected_version not in doc_text:
+            block(
+                "release_baseline_evidence_release_marker_mismatch",
+                "Expected version is not mentioned in the release baseline evidence document.",
+                expected_version=expected_version,
+            )
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "doc": {
+            "path": doc_rel,
+            "present": doc_path.is_file(),
+            "size_bytes": doc_path.stat().st_size if doc_path.is_file() else None,
+        },
+        "required_phrase_count": len(PB_RELEASE_BASELINE_EVIDENCE_REQUIRED_PHRASES),
+        "missing_phrase_count": len(missing_phrases),
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
+
 def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expected_version: str | None) -> dict[str, Any]:
     doc_path = (repo_root / design_doc).resolve()
     drawio_path = (repo_root / drawio).resolve()
@@ -10155,6 +10238,15 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
     for item in application_design.get("blockers") or []:
         blockers.append(item)
 
+    baseline_evidence = _pb_release_baseline_evidence_status(
+        repo_root=repo_root,
+        expected_version=expected_version,
+    )
+    for item in baseline_evidence.get("warnings") or []:
+        warnings.append(item)
+    for item in baseline_evidence.get("blockers") or []:
+        blockers.append(item)
+
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
@@ -10169,6 +10261,7 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
         },
         "drawio": drawio_status,
         "application_design": application_design,
+        "baseline_evidence": baseline_evidence,
         "reference_count": len(references),
         "references": reference_status,
         "missing_reference_count": sum(1 for item in reference_status if not item.get("exists")),
@@ -10278,7 +10371,7 @@ async def cmd_release_docs_status(backend: Any, args: argparse.Namespace) -> int
             "git_commit",
             "git_push",
         ],
-        "operator_instruction": "Read-only living design validation. Keep the Markdown and editable draw.io source updated together after each MVP/release slice.",
+        "operator_instruction": "Read-only living design, PB application design, and accepted-baseline evidence validation. Keep Markdown, editable draw.io sources, and baseline-evidence semantics updated together after each MVP/release slice.",
     })
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False))

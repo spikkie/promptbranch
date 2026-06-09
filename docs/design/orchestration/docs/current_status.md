@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.59
+# JSON Orchestration State MVP — Current Status after v0.1.60
 
-Updated for release: v0.1.59
+Updated for release: v0.1.60
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.58` and the v0.1.59 PB application design docs-status freshness guard slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.59` and the v0.1.60 accepted-baseline evidence docs-status guard slice.
 
 The project remains on the same strategic goal:
 
@@ -18,8 +18,8 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest accepted baseline:          v0.1.58
-current development release:       v0.1.59
+latest accepted baseline:          v0.1.59
+current development release:       v0.1.60
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -44,6 +44,7 @@ v0.1.56  Adds the first read-only accepted-event fixture and validator that cons
 v0.1.57  Extends accepted-event fixture coverage to G1-G6 so every committed grill stage has a read-only accepted-event counterpart.
 v0.1.58  Adds PB application design documentation plus activity, data-flow, state-transition, role-component, and release-state draw.io pages.
 v0.1.59  Makes the PB application design surface release-checkable through docs-status and blocks missing role/scope language or missing draw.io pages.
+v0.1.60  Adds accepted-baseline evidence documentation and docs-status guard coverage for candidate/installed/adopted artifact semantics.
 ```
 
 ## Drift assessment
@@ -74,7 +75,7 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.59 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application docs-status guard is documentation validation only and does not widen execution authority.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.60 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence docs-status guards are documentation validation only and do not widen execution authority.
 
 ## Next planned orchestration work
 
