@@ -3230,23 +3230,82 @@ class ChatGPTBrowserClient:
             source_kind=normalized_kind,
             before_sources=before_sources,
         )
-        persisted_source = await self._verify_project_source_persistence(
-            page,
-            project_url=project_home_url,
-            source_match_candidates=persistence_candidates,
-            before_sources=before_sources,
-            save_watch=save_request_watch,
-        )
+        try:
+            persisted_source = await self._verify_project_source_persistence(
+                page,
+                project_url=project_home_url,
+                source_match_candidates=persistence_candidates,
+                before_sources=before_sources,
+                save_watch=save_request_watch,
+            )
+        except ResponseTimeoutError as exc:
+            save_request_summary = self._project_source_save_watch_summary(save_request_watch)
+            committed_without_failed_request = bool(
+                normalized_kind in {"text", "file"}
+                and save_request_summary.get("saw_commit")
+                and int(save_request_summary.get("failed") or 0) == 0
+            )
+            if not committed_without_failed_request:
+                raise
+            current_sources = await self._snapshot_project_source_cards(page)
+            result = {
+                "ok": True,
+                "action": "add",
+                "status": "source_add_triggered_not_verified",
+                "project_url": project_home_url,
+                "source_kind": normalized_kind,
+                "source_match": actual_match,
+                "source_match_requested": requested_match,
+                "source_match_candidates": persistence_candidates,
+                "persistence_verified": False,
+                "project_source_mutated": True,
+                "verification_mode": "commit_observed_unverified",
+                "ui_card_seen": matched_source is not None,
+                "post_refresh_verified": False,
+                "post_refresh_attempt": None,
+                "save_request_summary": save_request_summary,
+                "already_exists": duplicate_detected or overwritten_existing,
+                "added": not duplicate_detected,
+                "overwritten": overwritten_existing,
+                "removed_existing": bool(
+                    (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+                    or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+                ),
+                "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+                "operator_review_required": True,
+                "source_add_verification_required": True,
+                "verification_error": str(exc),
+                "current_source_count": len(current_sources),
+                "current_url": await self._safe_page_url(page),
+            }
+            if overwrite_remove_result is not None:
+                result["overwrite_remove_result"] = overwrite_remove_result
+            if capacity_prune_result is not None:
+                result["capacity_prune_result"] = capacity_prune_result
+            if duplicate_notice:
+                result["duplicate_notice"] = duplicate_notice
+            self._log(
+                "project-source-add",
+                "project source write was committed but refreshed persistence was not verified",
+                **result,
+            )
+            if keep_open and self.config.is_headed:
+                await self._pause_for_keep_open(
+                    "Source upload commit was observed, but refreshed persistence was not verified. Press Enter to close the browser... "
+                )
+            return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         result = {
             "ok": True,
             "action": "add",
+            "status": "verified",
             "project_url": project_home_url,
             "source_kind": normalized_kind,
             "source_match": persisted_match,
             "source_match_requested": requested_match,
             "source_match_candidates": persistence_candidates,
             "persistence_verified": True,
+            "project_source_mutated": True,
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
@@ -3255,6 +3314,8 @@ class ChatGPTBrowserClient:
                 or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
             ),
             "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+            "operator_review_required": False,
+            "source_add_verification_required": False,
             "current_url": await self._safe_page_url(page),
         }
         if overwrite_remove_result is not None:
