@@ -1,20 +1,20 @@
 {
   "schema": "promptbranch.orchestration.accepted_event",
   "schema_version": "1.0",
-  "event_id": "k8s-game-mvp.G0_intent.accepted.fixture.v1",
+  "event_id": "k8s-game-mvp.G3_slice.accepted.fixture.v1",
   "project": {
     "id": "k8s-game-mvp",
     "role": "orchestration-model-test-vehicle"
   },
   "source_grill": {
-    "path": "docs/design/orchestration/examples/grills/G0_intent.example.json",
-    "stage": "G0_intent",
-    "sha256": "3b9d14cc6d4953d81ee94216d1ce14ef936719edb404deec2d18de32f7f48990"
+    "path": "docs/design/orchestration/examples/grills/G3_slice.example.json",
+    "stage": "G3_slice",
+    "sha256": "73f885214dcc9678baab247a81244496e9cd7360d23526afe8fe2dc7d54584a5"
   },
   "accepted_transition": {
-    "from": "draft",
-    "to": "intake_accepted",
-    "reason": "The intent grill recommendation is accepted as a committed read-only fixture only; this release does not mutate runtime workflow state."
+    "from": "architecture_accepted",
+    "to": "slice_plan_accepted",
+    "reason": "The slice grill recommendation is accepted as a committed read-only fixture only; this release does not mutate runtime workflow state."
   },
   "decision": "accepted",
   "constraints": {
