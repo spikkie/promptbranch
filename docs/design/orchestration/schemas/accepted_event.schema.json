@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.orchestration.accepted_event.schema.json",
+  "title": "Promptbranch Orchestration Accepted Event Fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "event_id",
+    "project",
+    "source_grill",
+    "accepted_transition",
+    "decision",
+    "constraints",
+    "evidence"
+  ],
+  "properties": {
+    "schema": {
+      "const": "promptbranch.orchestration.accepted_event"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source_grill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "stage",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "accepted_transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "accepted"
+      ]
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_only",
+        "runtime_state_mutation_allowed",
+        "source_mutation_allowed",
+        "artifact_adoption_allowed",
+        "deployment_allowed",
+        "model_may_execute",
+        "promptbranch_must_validate"
+      ],
+      "properties": {
+        "fixture_only": {
+          "const": true
+        },
+        "runtime_state_mutation_allowed": {
+          "const": false
+        },
+        "source_mutation_allowed": {
+          "const": false
+        },
+        "artifact_adoption_allowed": {
+          "const": false
+        },
+        "deployment_allowed": {
+          "const": false
+        },
+        "model_may_execute": {
+          "const": false
+        },
+        "promptbranch_must_validate": {
+          "const": true
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validated_by",
+        "validation_status",
+        "validation_notes"
+      ],
+      "properties": {
+        "validated_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "validation_status": {
+          "type": "string",
+          "enum": [
+            "read_only_fixture_validated"
+          ]
+        },
+        "validation_notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

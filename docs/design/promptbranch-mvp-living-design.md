@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.55.1`  
+Release: `v0.1.56`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -90,6 +90,8 @@ docs/design/
     decisions/
     schemas/
     examples/
+      accepted_events/
+      grills/
     state_machines/
 ```
 
@@ -118,9 +120,9 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
-- `v0.1.54.1` is the assumed accepted repair baseline for the source verification line and `v0.1.55` is the next normal JSON orchestration state MVP release.
-- `v0.1.55.1` is a repair-only release for the grill validator CLI path-label handling defect; it does not advance the JSON Orchestration State MVP slice.
-- Grill validation now checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
+- `v0.1.55.1` is the accepted repair baseline for the grill validator CLI path-label handling defect and the base for the current `v0.1.56` JSON Orchestration State MVP release.
+- Grill validation checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
+- `v0.1.56` adds the first read-only accepted-event fixture and validator. The fixture consumes a valid G0 grill recommendation, checks the source grill hash, and verifies the accepted transition without mutating runtime workflow state.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
@@ -143,7 +145,7 @@ The actual MVP should produce a safe, typed orchestration loop:
 intent
   -> ChatGPT grill proposal
   -> Promptbranch schema/policy validation
-  -> accepted or rejected JSON event
+  -> read-only accepted/rejected JSON event fixture
   -> evidence collection
   -> release artifact candidate
   -> artifact intake verification
