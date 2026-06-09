@@ -9951,6 +9951,140 @@ def _parse_drawio_source(path: Path) -> dict[str, Any]:
     return payload
 
 
+PB_APPLICATION_DESIGN_DOC = "docs/design/promptbranch-application-design.md"
+PB_APPLICATION_DESIGN_DRAWIO_PAGES: dict[str, list[str]] = {
+    "docs/design/promptbranch-class-diagram.drawio": [
+        "PB Application Role Components",
+    ],
+    "docs/design/promptbranch-mvp-living-design.drawio": [
+        "PB Application Activity — pb and ChatGPT Roles",
+        "PB Application Data Flow",
+        "PB Application State Transitions",
+    ],
+    "docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio": [
+        "PB Release State Transitions",
+    ],
+}
+PB_APPLICATION_DESIGN_REQUIRED_PHRASES = [
+    "pb          = local deterministic control plane",
+    "ChatGPT     = reasoning/conversation surface",
+    "Workspace = current ChatGPT Project",
+    "Task      = current chat/conversation inside that project",
+    "Artifact  = current repo/source bundle/release ZIP",
+    "backend-first reads",
+    "transactional writes",
+    "accepted baseline / artifact continuity",
+    "Activity diagram",
+    "Data-flow diagram",
+    "State-transition diagram",
+]
+
+
+def _pb_application_design_surface_status(*, repo_root: Path, expected_version: str | None) -> dict[str, Any]:
+    """Read-only freshness guard for the PB application design document and diagrams."""
+
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    doc_rel = PB_APPLICATION_DESIGN_DOC
+    doc_path = (repo_root / doc_rel).resolve()
+    doc_text = ""
+    try:
+        doc_path.relative_to(repo_root)
+    except ValueError:
+        block("pb_application_design_doc_not_repo_bound", "PB application design document leaves the repository.", path=str(doc_path))
+    if not doc_path.is_file():
+        block("pb_application_design_doc_missing", "PB application design document is missing.", path=doc_rel)
+    else:
+        try:
+            doc_text = doc_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            block("pb_application_design_doc_read_error", "PB application design document could not be read.", path=doc_rel, error=str(exc))
+
+    missing_phrases: list[str] = []
+    if doc_text:
+        for phrase in PB_APPLICATION_DESIGN_REQUIRED_PHRASES:
+            if phrase not in doc_text:
+                missing_phrases.append(phrase)
+        if missing_phrases:
+            block(
+                "pb_application_design_required_phrase_missing",
+                "PB application design document is missing release-checkable role/scope/freshness language.",
+                missing_phrases=missing_phrases,
+            )
+        if expected_version and expected_version not in doc_text:
+            block(
+                "pb_application_design_release_marker_mismatch",
+                "Expected version is not mentioned in the PB application design document.",
+                expected_version=expected_version,
+            )
+
+    references = set(_extract_design_reference_paths(doc_text)) if doc_text else set()
+    drawio_sources: list[dict[str, Any]] = []
+    for rel_path, required_pages in PB_APPLICATION_DESIGN_DRAWIO_PAGES.items():
+        abs_path = (repo_root / rel_path).resolve()
+        try:
+            abs_path.relative_to(repo_root)
+            repo_bound = True
+        except ValueError:
+            repo_bound = False
+        if not repo_bound:
+            block("pb_application_design_drawio_not_repo_bound", "PB application draw.io source leaves the repository.", path=rel_path)
+        status = _parse_drawio_source(abs_path)
+        names = set(status.get("diagram_names") or [])
+        missing_pages = [page for page in required_pages if page not in names]
+        if not status.get("present"):
+            block("pb_application_design_drawio_missing", "Required PB application draw.io source is missing.", path=rel_path)
+        elif not status.get("xml_parsed"):
+            block("pb_application_design_drawio_xml_invalid", "Required PB application draw.io source is not valid XML.", path=rel_path, error=status.get("error"))
+        elif missing_pages:
+            block(
+                "pb_application_design_drawio_page_missing",
+                "Required PB application draw.io page is missing.",
+                path=rel_path,
+                missing_pages=missing_pages,
+            )
+        if doc_text and rel_path not in references:
+            block(
+                "pb_application_design_drawio_reference_missing",
+                "PB application design document does not reference a required draw.io source.",
+                path=rel_path,
+            )
+        drawio_sources.append({
+            "path": rel_path,
+            "repo_bound": repo_bound,
+            "present": bool(status.get("present")),
+            "xml_parsed": bool(status.get("xml_parsed")),
+            "diagram_count": status.get("diagram_count"),
+            "required_pages": required_pages,
+            "missing_pages": missing_pages,
+        })
+
+    severity = "blocked" if blockers else "warning" if warnings else "ok"
+    return {
+        "ok": not blockers,
+        "status": "verified" if not blockers else "blocked",
+        "severity": severity,
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "design_doc": {
+            "path": doc_rel,
+            "present": doc_path.is_file(),
+            "size_bytes": doc_path.stat().st_size if doc_path.is_file() else None,
+        },
+        "drawio_sources": drawio_sources,
+        "required_phrase_count": len(PB_APPLICATION_DESIGN_REQUIRED_PHRASES),
+        "missing_phrase_count": len(missing_phrases),
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
+
 def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expected_version: str | None) -> dict[str, Any]:
     doc_path = (repo_root / design_doc).resolve()
     drawio_path = (repo_root / drawio).resolve()
@@ -10012,6 +10146,15 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
     if doc_text and "After each release slice" not in doc_text:
         warn("living_design_update_protocol_missing", "Living design document does not include the expected update protocol phrase.")
 
+    application_design = _pb_application_design_surface_status(
+        repo_root=repo_root,
+        expected_version=expected_version,
+    )
+    for item in application_design.get("warnings") or []:
+        warnings.append(item)
+    for item in application_design.get("blockers") or []:
+        blockers.append(item)
+
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
         "ok": not blockers,
@@ -10025,6 +10168,7 @@ def _living_design_status(*, repo_root: Path, design_doc: str, drawio: str, expe
             "size_bytes": doc_path.stat().st_size if doc_path.is_file() else None,
         },
         "drawio": drawio_status,
+        "application_design": application_design,
         "reference_count": len(references),
         "references": reference_status,
         "missing_reference_count": sum(1 for item in reference_status if not item.get("exists")),

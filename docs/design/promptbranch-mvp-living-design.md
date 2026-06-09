@@ -1,7 +1,7 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.58`  
-Status: source-of-truth design note plus editable draw.io source  
+Release: `v0.1.59`  
+Status: source-of-truth design note plus editable draw.io source and PB application design freshness guard  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
 
@@ -120,11 +120,12 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
-- `v0.1.57` is the accepted baseline for the full G0-G6 accepted-event fixture coverage slice and the base for the current `v0.1.58` PB application design documentation release.
+- `v0.1.58` is the accepted baseline for the PB application design documentation release and the base for the current `v0.1.59` docs-status freshness guard slice.
 - Grill validation checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
 - `v0.1.56` added the first read-only accepted-event fixture and validator for G0. `v0.1.57` extends that accepted-event fixture coverage to G1-G6 so every committed grill stage has a read-only accepted-event counterpart without mutating runtime workflow state.
 
 - `v0.1.58` adds application-level PB design documentation and extends the existing editable draw.io sources with activity, data-flow, state-transition, role-component, and release-state pages. See `docs/design/promptbranch-application-design.md`, `docs/design/promptbranch-class-diagram.drawio`, `docs/design/promptbranch-mvp-living-design.drawio`, and `docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio`.
+- `v0.1.59` extends `pb release docs-status` so the PB application design document and all three editable diagram sources are checked as read-only release surfaces. Missing role/scope language, missing draw.io references, or missing required draw.io pages now block docs-status.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
@@ -142,8 +143,9 @@ That is intentional during development. It becomes a release problem only if ado
 
 ## PB application design documentation
 
-`v0.1.58` adds `docs/design/promptbranch-application-design.md` as the
-application-level design note for the role split between `pb` and ChatGPT. It
+`v0.1.58` added `docs/design/promptbranch-application-design.md` as the
+application-level design note for the role split between `pb` and ChatGPT.
+`v0.1.59` makes that design note release-checkable through docs-status. It
 contains a Git-readable Mermaid activity diagram, data-flow diagram, and
 state-transition diagram. The same release extends the editable draw.io sources
 with visual pages for those diagrams and related role/release-state views:
@@ -161,6 +163,18 @@ The core rule is unchanged:
 pb validates and gates operational state.
 ChatGPT reasons, grills, and proposes.
 Assistant prose is advisory until pb verifies schema, state, artifacts, and evidence.
+```
+
+The `v0.1.59` docs-status guard requires the PB application design surface to
+remain linked, parseable, and semantically aligned with the authority boundary:
+
+```text
+Workspace = current ChatGPT Project
+Task      = current chat/conversation inside that project
+Artifact  = current repo/source bundle/release ZIP
+backend-first reads
+transactional writes
+accepted baseline / artifact continuity
 ```
 
 ## What we are trying to achieve

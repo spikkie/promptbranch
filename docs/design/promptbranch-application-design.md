@@ -1,7 +1,7 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.58`  
-Status: design documentation and editable draw.io source update  
+Release: `v0.1.59`  
+Status: design documentation, editable draw.io source update, and docs-status freshness guard  
 Related editable diagrams:
 
 - `docs/design/promptbranch-class-diagram.drawio`
@@ -41,6 +41,28 @@ Operational rule:
 Assistant prose is advisory.
 Validated JSON, ZIP checks, tests, and Promptbranch current-state reads are operational.
 ```
+
+## Release-checkable design invariants
+
+`v0.1.59` makes this design surface part of the read-only release
+`docs-status` guard. The guard intentionally checks for these stable phrases so
+future documentation edits cannot silently remove the PB/ChatGPT authority split:
+
+```text
+Workspace = current ChatGPT Project
+Task      = current chat/conversation inside that project
+Artifact  = current repo/source bundle/release ZIP
+```
+
+The guarded design language must continue to describe:
+
+- backend-first reads
+- transactional writes
+- accepted baseline / artifact continuity
+- activity diagram
+- data-flow diagram
+- state-transition diagram
+
 
 ## Activity diagram
 
@@ -152,10 +174,10 @@ The release should be validated with:
 
 ```bash
 python3 -m pytest -q tests/test_promptbranch_application_design_doc.py
-python3 promptbranch_cli.py release docs-status --version v0.1.58 --json
+python3 promptbranch_cli.py release docs-status --version v0.1.59 --json
 python3 -m compileall -q .
 ```
 
-`docs-status` remains read-only and validates the living design Markdown plus its
-editable draw.io source. The new targeted test validates this design document
-and the new draw.io pages across all three editable diagram files.
+`docs-status` remains read-only and now validates both the living design Markdown
+and the PB application design surface. The targeted test validates this design
+document and the draw.io pages across all three editable diagram files.
