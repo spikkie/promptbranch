@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.57
+# JSON Orchestration State MVP — Current Status after v0.1.58
 
-Updated for release: v0.1.57
+Updated for release: v0.1.58
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.56` and the v0.1.57 read-only G0-G6 accepted-event fixture coverage slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.57` and the v0.1.58 PB application design documentation slice.
 
 The project remains on the same strategic goal:
 
@@ -18,8 +18,8 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest accepted baseline:          v0.1.56
-current development release:       v0.1.57
+latest accepted baseline:          v0.1.57
+current development release:       v0.1.58
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -42,6 +42,7 @@ v0.1.55  Connects read-only grill validation to the k8s-game MVP state-machine t
 v0.1.55.1  Repairs grill validator CLI path-label handling without advancing MVP scope.
 v0.1.56  Adds the first read-only accepted-event fixture and validator that consumes a valid G0 grill recommendation without mutating runtime state.
 v0.1.57  Extends accepted-event fixture coverage to G1-G6 so every committed grill stage has a read-only accepted-event counterpart.
+v0.1.58  Adds PB application design documentation plus activity, data-flow, state-transition, role-component, and release-state draw.io pages.
 ```
 
 ## Drift assessment
@@ -72,7 +73,7 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.57 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.58 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application diagrams are documentation surfaces only and do not widen execution authority.
 
 ## Next planned orchestration work
 

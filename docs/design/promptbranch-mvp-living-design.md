@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.57`  
+Release: `v0.1.58`  
 Status: source-of-truth design note plus editable draw.io source  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -120,9 +120,11 @@ Tools/tests/deployment = evidence producers
 - CI-style development flow is explicit: focused development can continue across monotonic dev candidates while full release-control is deferred until the adoption checkpoint.
 - Living design validation exists through `pb release docs-status --json`.
 - Post-adoption baseline alignment can be verified read-only through `pb release baseline-status --json`.
-- `v0.1.56` is the accepted baseline for the first read-only accepted-event fixture validation slice and the base for the current `v0.1.57` JSON Orchestration State MVP release.
+- `v0.1.57` is the accepted baseline for the full G0-G6 accepted-event fixture coverage slice and the base for the current `v0.1.58` PB application design documentation release.
 - Grill validation checks that committed G0-G6 examples recommend only k8s-game MVP state-machine transitions matching their stage.
 - `v0.1.56` added the first read-only accepted-event fixture and validator for G0. `v0.1.57` extends that accepted-event fixture coverage to G1-G6 so every committed grill stage has a read-only accepted-event counterpart without mutating runtime workflow state.
+
+- `v0.1.58` adds application-level PB design documentation and extends the existing editable draw.io sources with activity, data-flow, state-transition, role-component, and release-state pages. See `docs/design/promptbranch-application-design.md`, `docs/design/promptbranch-class-diagram.drawio`, `docs/design/promptbranch-mvp-living-design.drawio`, and `docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio`.
 - Orchestration design/control surfaces are consolidated under `docs/design/orchestration/` as the canonical location.
 - `pb release status-guide --json` now exposes a read-only operator runbook with required commands for the detected context.
 
@@ -136,6 +138,30 @@ development head:  latest monotonic candidate installed/tested with focused chec
 ```
 
 That is intentional during development. It becomes a release problem only if adoption is attempted without full release-control and source/adopt verification.
+
+
+## PB application design documentation
+
+`v0.1.58` adds `docs/design/promptbranch-application-design.md` as the
+application-level design note for the role split between `pb` and ChatGPT. It
+contains a Git-readable Mermaid activity diagram, data-flow diagram, and
+state-transition diagram. The same release extends the editable draw.io sources
+with visual pages for those diagrams and related role/release-state views:
+
+```text
+docs/design/promptbranch-application-design.md
+docs/design/promptbranch-class-diagram.drawio
+docs/design/promptbranch-mvp-living-design.drawio
+docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio
+```
+
+The core rule is unchanged:
+
+```text
+pb validates and gates operational state.
+ChatGPT reasons, grills, and proposes.
+Assistant prose is advisory until pb verifies schema, state, artifacts, and evidence.
+```
 
 ## What we are trying to achieve
 
