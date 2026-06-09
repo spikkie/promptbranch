@@ -7014,6 +7014,57 @@ def test_release_status_guide_selects_baseline_status_for_adopted_current(capsys
     assert payload["mutating_actions_executed"] is False
 
 
+
+def _write_pb_application_design_fixture(repo: Path, version: str) -> None:
+    design_dir = repo / "docs" / "design"
+    lifecycle_dir = repo / "docs" / "diagrams" / "promptbranch-lifecycle"
+    lifecycle_dir.mkdir(parents=True, exist_ok=True)
+    design_dir.mkdir(parents=True, exist_ok=True)
+    (design_dir / "promptbranch-application-design.md").write_text(
+        f"""
+# Promptbranch Application Design
+
+Release: `{version}`
+
+- `docs/design/promptbranch-class-diagram.drawio`
+- `docs/design/promptbranch-mvp-living-design.drawio`
+- `docs/diagrams/promptbranch-lifecycle/promptbranch_lifecycle_commands.drawio`
+
+```text
+pb          = local deterministic control plane
+ChatGPT     = reasoning/conversation surface
+Workspace = current ChatGPT Project
+Task      = current chat/conversation inside that project
+Artifact  = current repo/source bundle/release ZIP
+```
+
+Release-checkable invariants:
+
+- backend-first reads
+- transactional writes
+- accepted baseline / artifact continuity
+
+## Activity diagram
+
+## Data-flow diagram
+
+## State-transition diagram
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-class-diagram.drawio").write_text(
+        '<mxfile><diagram name="PB Application Role Components"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    (design_dir / "promptbranch-mvp-living-design.drawio").write_text(
+        '<mxfile><diagram name="Promptbranch MVP Living Design"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram><diagram name="PB Application Activity — pb and ChatGPT Roles"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram><diagram name="PB Application Data Flow"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram><diagram name="PB Application State Transitions"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    (lifecycle_dir / "promptbranch_lifecycle_commands.drawio").write_text(
+        '<mxfile><diagram name="PB Release State Transitions"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+
 def test_release_docs_status_validates_living_design_sources(capsys, tmp_path) -> None:
     repo = tmp_path / "repo"
     design_dir = repo / "docs" / "design"
@@ -7043,6 +7094,7 @@ After each release slice:
 """.lstrip(),
         encoding="utf-8",
     )
+    _write_pb_application_design_fixture(repo, "v0.1.8")
 
     args = argparse.Namespace(
         version="v0.1.8",
@@ -7061,7 +7113,7 @@ After each release slice:
     assert payload["status"] == "verified"
     assert payload["severity"] == "ok"
     assert payload["drawio"]["xml_parsed"] is True
-    assert payload["drawio"]["diagram_count"] == 1
+    assert payload["drawio"]["diagram_count"] >= 4
     assert payload["missing_reference_count"] == 0
     assert payload["blocker_codes"] == []
     assert payload["mutating_actions_executed"] is False
@@ -7088,6 +7140,7 @@ After each release slice:
 """.lstrip(),
         encoding="utf-8",
     )
+    _write_pb_application_design_fixture(repo, "v0.1.8")
 
     args = argparse.Namespace(
         version="v0.1.8",

@@ -1,20 +1,20 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.58`
-Baseline: `chatgpt_claudecode_workflow-2_v0.1.57.zip`
-Status: PB application design documentation and diagram coverage
+Release: `v0.1.59`
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.58.zip`
+Status: PB application design docs-status / diagram-freshness guard
 
 ## Purpose
 
-This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline accepted at `v0.1.57`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
+This document records the current gap between the living design, the consolidated orchestration design/control surfaces, and the implementation baseline accepted at `v0.1.58`. It is intentionally a design/control document; it does not introduce runtime orchestration behavior.
 
 ## Current accepted baseline
 
 ```text
-accepted baseline: chatgpt_claudecode_workflow-2_v0.1.57.zip
-runtime/source/artifact/registry: v0.1.57 accepted baseline
-full-test evidence: deferred for narrow documentation/design slice
-next normal release: v0.1.58
+accepted baseline: chatgpt_claudecode_workflow-2_v0.1.58.zip
+runtime/source/artifact/registry: v0.1.58 accepted baseline
+full-test evidence: deferred for narrow documentation/validation slice
+next normal release: v0.1.59
 ```
 
 ## Consolidation decision
@@ -29,7 +29,7 @@ This makes `docs/design/` the canonical home for active architecture/design mate
 
 ## Implemented / proven
 
-- `v0.1.57` is accepted and baseline-current verified after full G0-G6 accepted-event fixture coverage.
+- `v0.1.58` is accepted and baseline-current verified after the PB application design documentation and diagram release.
 - Backend diagnostics are integrated.
 - Source overwrite/profile-lock concurrency is fixed enough to pass full release-control.
 - Docker Compose service image tagging no longer hardcodes the release version; release scripts derive image metadata from `VERSION`.
@@ -39,6 +39,7 @@ This makes `docs/design/` the canonical home for active architecture/design mate
 - Read-only accepted-event validation now consumes committed valid grill fixtures for G0-G6, verifies each source hash, and proves each accepted transition matches both the source recommendation and the state machine.
 - Living-design docs-status validation exists.
 - `v0.1.58` adds `docs/design/promptbranch-application-design.md` and extends the existing draw.io sources with activity, data-flow, state-transition, role-component, and release-state pages.
+- `v0.1.59` extends docs-status so those PB application design surfaces are blocked if missing, unreferenced, not parseable, or missing required role/scope/freshness language.
 
 ## Partially implemented
 
@@ -57,10 +58,10 @@ This makes `docs/design/` the canonical home for active architecture/design mate
 
 ## Next safe slice options
 
-After v0.1.58 is accepted, choose one narrow slice:
+After v0.1.59 is accepted, choose one narrow slice:
 
 1. Add rejected-event fixtures that prove invalid grill recommendations cannot become trusted workflow state.
-2. Extend docs-status so it also checks accepted-event fixture coverage and source-grill hash freshness.
+2. Extend docs-status further so it also checks accepted-event fixture coverage and source-grill hash freshness.
 3. Add a read-only status/checkpoint command for accepted-event coverage completeness.
 
 Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
