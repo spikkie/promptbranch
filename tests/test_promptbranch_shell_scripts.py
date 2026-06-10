@@ -775,7 +775,8 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
     assert 'run_docker_compose build --pull' in script
     assert 'run_docker_compose up -d --force-recreate --remove-orphans' in script
     assert 'service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"' in script
-    assert 'service version mismatch: expected {expected}, got {actual!r}' in script
+    assert 'service version mismatch: ' in script
+    assert 'actual_normalized == expected_normalized' in script
     assert 'Docker container was not recreated' in script
     assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
     assert 'up --build --force-recreate "$@"' in run_script
@@ -806,7 +807,7 @@ def test_release_control_uses_single_default_runtime_identity() -> None:
     assert 'export CHATGPT_SERVICE_BASE_URL="http://localhost:8000"' in run_script
 
 
-def test_release_control_health_probe_heredoc_is_valid_python() -> None:
+def _release_control_health_probe_code() -> str:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     match = re.search(
         r"service_health_probe\(\) \{.*?<<'INNERPY'\n(?P<code>.*?)\nINNERPY\n\}",
@@ -814,10 +815,80 @@ def test_release_control_health_probe_heredoc_is_valid_python() -> None:
         flags=re.DOTALL,
     )
     assert match is not None
-    code = match.group("code")
+    return match.group("code")
+
+
+def test_release_control_health_probe_heredoc_is_valid_python() -> None:
+    code = _release_control_health_probe_code()
 
     compile(code, "<release-control-service-health-probe>", "exec")
     assert 'handle.write("\\n")' in code
+
+
+def test_release_control_health_probe_normalizes_v_prefixed_versions(tmp_path: Path, monkeypatch) -> None:
+    import sys
+    import urllib.request
+
+    code = _release_control_health_probe_code()
+    out_path = tmp_path / "health.json"
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "version": "v0.1.71.3"}).encode("utf-8")
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(sys, "argv", ["-", "0.1.71.3", str(out_path), "8000"])
+
+    try:
+        exec(compile(code, "<release-control-service-health-probe>", "exec"), {})
+    except SystemExit as exc:
+        assert exc.code == 0
+    else:
+        raise AssertionError("health probe did not exit")
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["version"] == "v0.1.71.3"
+
+
+def test_release_control_health_probe_prefers_package_version_when_present(tmp_path: Path, monkeypatch) -> None:
+    import sys
+    import urllib.request
+
+    code = _release_control_health_probe_code()
+    out_path = tmp_path / "health.json"
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "package_version": "0.1.71.3", "version": "stale"}).encode("utf-8")
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(sys, "argv", ["-", "v0.1.71.3", str(out_path), "8000"])
+
+    try:
+        exec(compile(code, "<release-control-service-health-probe>", "exec"), {})
+    except SystemExit as exc:
+        assert exc.code == 0
+    else:
+        raise AssertionError("health probe did not exit")
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["package_version"] == "0.1.71.3"
 
 def test_release_control_summary_mentions_service_health_artifact() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")

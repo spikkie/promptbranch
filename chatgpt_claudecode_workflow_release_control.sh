@@ -1519,6 +1519,14 @@ import urllib.request
 expected = sys.argv[1]
 out_path = sys.argv[2]
 last_error = None
+
+def normalize_version(value):
+    text = str(value or "").strip()
+    if text.startswith("v"):
+        text = text[1:]
+    return text
+
+expected_normalized = normalize_version(expected)
 for path in ("/healthz", "/health"):
     url = f"http://127.0.0.1:{sys.argv[3]}" + path
     try:
@@ -1533,10 +1541,15 @@ for path in ("/healthz", "/health"):
             with open(out_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, sort_keys=True)
                 handle.write("\n")
-            actual = str(payload.get("version") or "")
-            if actual == expected:
+            actual = str(payload.get("package_version") or payload.get("version") or "")
+            actual_normalized = normalize_version(actual)
+            if actual_normalized == expected_normalized:
                 raise SystemExit(0)
-            raise SystemExit(f"service version mismatch: expected {expected}, got {actual!r}")
+            raise SystemExit(
+                "service version mismatch: "
+                f"expected {expected} (normalized {expected_normalized}), "
+                f"got {actual!r} (normalized {actual_normalized})"
+            )
     except SystemExit:
         raise
     except Exception as exc:
