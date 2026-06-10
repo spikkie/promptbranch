@@ -3,7 +3,7 @@
 ## Current baseline
 
 ```text
-accepted/current baseline for repair: chatgpt_claudecode_workflow-2_v0.1.71.zip (operator stated fully tested/adopted; checksum evidence not recorded in this file); v0.1.71.1 was not installable due missing root `.gitignore`
+accepted/current baseline for repair: chatgpt_claudecode_workflow-2_v0.1.71.zip (operator stated fully tested/adopted; checksum evidence not recorded in this file); v0.1.71.1 was not installable due missing root `.gitignore`; v0.1.71.2 was rejected for protected `.pb_profile/` ZIP entries; v0.1.71.3 exposed a release-control service health version-format mismatch
 accepted checksum: pending explicit v0.1.71 adoption evidence block
 next normal target: chatgpt_claudecode_workflow-2_v0.1.72.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
@@ -12,7 +12,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP.
+Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP. v0.1.71.3 removes protected `.pb_profile/` packaging. v0.1.71.4 normalizes service health version comparison between bare package versions and canonical `v` versions.
 ```
 
 ## Release / slice plan
@@ -27,7 +27,8 @@ Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and 
 | v0.1.70.1 | Repair missing repo artifact-current fallback | Explicit `pb artifact current --repo <missing>` must fail closed without returning another repo artifact as state | `promptbranch_state.py`, `promptbranch_cli.py`, focused tests, repair note, status docs, version metadata | line advancement, release-set orchestration, project declaration, dependency solving, lifecycle behavior changes | missing-repo focused tests, existing artifact-current focused tests, project control-surface test, compileall, ZIP hygiene, operator adoption evidence | accepted_current |
 | v0.1.71 | Project-scoped multi-repo registry resolution | Make any joined repo resolve the same project artifact registry without remembering a coordinator/main repo | `.promptbranch-repo.json` support, user-local project registry path, `pb project join/status`, `pb repo list/doctor`, artifact current --all project diagnostics, focused tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, Git/deployment operations across repos | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | accepted_current by operator statement; explicit adoption JSON not recorded here |
 | v0.1.71.1 | Repair project registry command alignment | Ensure join creates project registry and artifact-current/repo diagnostics all use the project registry when no explicit `--profile-dir` is supplied | profile-dir explicitness tracking, project registry creation, artifact current --all configured-repo visibility, focused tests, repair note | normal v0.1.72 scope, import/migration command, release-set orchestration, adoption semantics | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | rejected: missing required root `.gitignore` |
-| v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | candidate |
+| v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | rejected: protected `.pb_profile/` ZIP entry |
+| v0.1.71.3 | Repair protected ZIP entry hygiene | Remove protected local Promptbranch state from repair ZIP while preserving v0.1.71.1/v0.1.71.2 behavior | ZIP payload hygiene, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | install ZIP guard, required-root and protected-entry checks, focused tests, compileall, ZIP hygiene | rejected: service health version-format mismatch |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -72,4 +73,32 @@ Reason: v0.1.71.1 failed install ZIP import guard because required root `.gitign
 In scope: restore `.gitignore`, update version metadata, add repair note/status docs, preserve all v0.1.71.1 behavior.
 Out of scope: normal v0.1.72 work, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
 Expected validation: required root-file check, focused project/repo/artifact-current tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
+```
+
+
+## Repair definition — v0.1.71.3
+
+```text
+Release: v0.1.71.3
+Base release: v0.1.71.2 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.71.2 failed install ZIP import guard because protected `.pb_profile/` local state was packaged.
+In scope: remove protected local Promptbranch state from ZIP payload, preserve required root files, update version metadata and repair docs.
+Out of scope: normal v0.1.72 work, project registry changes, release-set orchestration, artifact adoption semantics, deployment behavior.
+Expected validation: protected-entry check, required-root check, focused tests, project control-surface test, compileall, ZIP hygiene, clean extraction validation.
+```
+
+
+## Repair definition — v0.1.71.4
+
+```text
+Release: v0.1.71.4
+Base release: v0.1.71.3 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.71.3 reached a healthy service endpoint returning canonical `v0.1.71.3`, but the release-control service wait gate expected bare `0.1.71.3` and treated the leading `v` as a mismatch.
+In scope: normalize one leading `v` in service health version comparison, prefer `package_version` when health JSON provides it, add focused shell-script regression tests, update repair/status docs and version metadata.
+Out of scope: Docker build behavior beyond avoiding this false mismatch, project registry behavior, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
+Expected validation: focused shell-script health-probe tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
 ```

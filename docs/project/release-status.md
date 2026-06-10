@@ -10,7 +10,9 @@
 | v0.1.70.1 | repair | Missing repo artifact-current fallback repair | accepted_current | focused missing-repo/artifact-current tests; project control-surface test; compileall; ZIP hygiene; operator adoption evidence | DOD-015 done; no slice or line advanced | 24be7e1c993d69ffb3ae50fbd50a45edf8a1af07ed616b107ef895698fc1ed33 |
 | v0.1.71 | normal | Project-scoped multi-repo registry resolution | accepted_current by operator statement | full tests/adoption stated by operator; explicit adoption JSON not recorded here | DOD-016 added/done after focused validation | pending explicit checksum evidence |
 | v0.1.71.1 | repair | Project registry command alignment repair | candidate | project/repo focused tests; artifact-current regression tests; project control-surface test; compileall; ZIP hygiene; full tests not run here | DOD-017 added/done after focused validation; no slice or line advanced | pending adoption evidence |
-| v0.1.71.2 | repair | Required root `.gitignore` packaging repair | candidate | required-root-file check, focused tests, compileall, ZIP hygiene | DOD-018 done | pending |
+| v0.1.71.2 | repair | Required root `.gitignore` packaging repair | rejected | install ZIP import guard failed: protected `.pb_profile/` entry present | DOD-018 done; no line advanced | rejected/superseded |
+| v0.1.71.3 | repair | Protected ZIP entry hygiene | rejected | service health endpoint returned `v0.1.71.3` while release-control expected `0.1.71.3` | packaging hygiene preserved; no line advanced | rejected/superseded |
+| v0.1.71.4 | repair | Service health version normalization | candidate | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | DOD-019 done; no line advanced | pending |
 
 ## ZIP status values
 
