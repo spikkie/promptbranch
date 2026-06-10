@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_current, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -13097,3 +13097,115 @@ def test_src_list_browser_profile_busy_reports_wait_idle_guidance(monkeypatch, c
     assert payload["active_operation"] == "add_project_source"
     assert payload["next_safe_commands"][0] == "pb browser status --json"
     assert payload["next_safe_commands"][1].startswith("pb browser wait-idle")
+
+
+def test_artifact_current_repo_arg_returns_repo_scoped_payload(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    store = ConversationStateStore(profile)
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="my_awx",
+        artifact_ref="my_awx_0.0.200.zip",
+        artifact_version="0.0.200",
+        source_ref="my_awx_0.0.200.zip",
+        source_version="0.0.200",
+    )
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="platform-gitops",
+        artifact_ref="platform-gitops_0.0.4.zip",
+        artifact_version="0.0.4",
+        source_ref="platform-gitops_0.0.4.zip",
+        source_version="0.0.4",
+    )
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_0.0.200.zip"), filename="my_awx_0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_0.0.4.zip"), filename="platform-gitops_0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo="my_awx", all=False, json=True)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["scope"] == {"kind": "repo", "repo_id": "my_awx"}
+    assert payload["state"]["artifact_ref"] == "my_awx_0.0.200.zip"
+    assert payload["registry_current"]["filename"] == "my_awx_0.0.200.zip"
+
+
+def test_artifact_current_all_returns_all_repo_payloads(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    store = ConversationStateStore(profile)
+    store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_0.0.200.zip", artifact_version="0.0.200", source_ref="my_awx_0.0.200.zip", source_version="0.0.200")
+    store.remember_artifact(project_url=project_url, repo_id="platform-gitops", artifact_ref="platform-gitops_0.0.4.zip", artifact_version="0.0.4", source_ref="platform-gitops_0.0.4.zip", source_version="0.0.4")
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_0.0.200.zip"), filename="my_awx_0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_0.0.4.zip"), filename="platform-gitops_0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo=None, all=True, json=True)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["action"] == "artifact_current_all"
+    assert payload["repo_count"] == 2
+    assert payload["repos"]["my_awx"]["state"]["artifact_ref"] == "my_awx_0.0.200.zip"
+    assert payload["repos"]["platform-gitops"]["registry_current"]["filename"] == "platform-gitops_0.0.4.zip"
+
+
+def test_artifact_current_without_repo_blocks_when_multiple_repos_exist(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_0.0.200.zip"), filename="my_awx_0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_0.0.4.zip"), filename="platform-gitops_0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo=None, all=False, json=True)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "ambiguous_repo_scope"
+    assert payload["available_repos"] == ["my_awx", "platform-gitops"]
+
+
+def test_artifact_adopt_records_repo_id_from_filename(capsys, tmp_path) -> None:
+    filename = "my_awx_0.0.200.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "0.0.200")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(artifact=filename, from_project_source=True, local_path=str(zip_path), keep_open=False, json=True, profile_dir=str(profile), repo=None)
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["repo_id"] == "my_awx"
+    registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    assert registry_payload["artifacts"][0]["repo_id"] == "my_awx"
+    assert payload["after_snapshot"]["state"]["repo_id"] == "my_awx"
+
+
+def test_artifact_adopt_rejects_explicit_repo_prefix_mismatch(capsys, tmp_path) -> None:
+    filename = "platform-gitops_0.0.4.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "0.0.4")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(artifact=filename, from_project_source=True, local_path=str(zip_path), keep_open=False, json=True, profile_dir=str(profile), repo="my_awx")
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload["status"] == "repo_artifact_prefix_mismatch"
+    assert not (profile / "promptbranch_artifacts.json").exists()

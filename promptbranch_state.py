@@ -5,6 +5,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+from promptbranch_artifacts import normalize_repo_id
 from urllib.parse import urlparse, urlunparse
 
 from promptbranch_shell_model import SHELL_STATE_SCHEMA_VERSION, normalize_shell_state_snapshot
@@ -205,7 +207,7 @@ class ConversationStateStore:
     def clear(self) -> None:
         self._write({})
 
-    def snapshot(self, project_url: Optional[str] = None) -> dict[str, Any]:
+    def snapshot(self, project_url: Optional[str] = None, *, repo_id: Optional[str] = None) -> dict[str, Any]:
         payload = self._load()
         current = payload.get("current") if isinstance(payload, dict) else None
         resolved_project_home_url = self.project_url_for_operations(project_url)
@@ -221,11 +223,25 @@ class ConversationStateStore:
             project_name = project_name_from_url(resolved_project_home_url)
         current_home = current.get("project_home_url") if isinstance(current, dict) and isinstance(current.get("project_home_url"), str) else None
         current_conversation = current.get("conversation_url") if isinstance(current, dict) and isinstance(current.get("conversation_url"), str) else None
-        artifact_ref = entry.get("artifact_ref") if isinstance(entry.get("artifact_ref"), str) else None
-        artifact_version = entry.get("artifact_version") if isinstance(entry.get("artifact_version"), str) else None
-        source_ref = entry.get("source_ref") if isinstance(entry.get("source_ref"), str) else None
-        source_version = entry.get("source_version") if isinstance(entry.get("source_version"), str) else None
-        updated_at = entry.get("updated_at") if isinstance(entry.get("updated_at"), str) else None
+        artifacts_by_repo = entry.get("artifacts_by_repo") if isinstance(entry.get("artifacts_by_repo"), dict) else {}
+        normalized_repo_id = normalize_repo_id(repo_id)
+        repo_entry: dict[str, Any] = {}
+        if normalized_repo_id:
+            candidate_repo_entry = artifacts_by_repo.get(normalized_repo_id)
+            if isinstance(candidate_repo_entry, dict):
+                repo_entry = candidate_repo_entry
+        elif len(artifacts_by_repo) == 1:
+            only_key = next(iter(artifacts_by_repo))
+            candidate_repo_entry = artifacts_by_repo.get(only_key)
+            if isinstance(candidate_repo_entry, dict):
+                normalized_repo_id = str(only_key)
+                repo_entry = candidate_repo_entry
+        artifact_source = repo_entry if repo_entry else entry
+        artifact_ref = artifact_source.get("artifact_ref") if isinstance(artifact_source.get("artifact_ref"), str) else None
+        artifact_version = artifact_source.get("artifact_version") if isinstance(artifact_source.get("artifact_version"), str) else None
+        source_ref = artifact_source.get("source_ref") if isinstance(artifact_source.get("source_ref"), str) else None
+        source_version = artifact_source.get("source_version") if isinstance(artifact_source.get("source_version"), str) else None
+        updated_at = artifact_source.get("updated_at") if isinstance(artifact_source.get("updated_at"), str) else None
         snapshot = {
             "schema_version": int(payload.get("schema_version") or SHELL_STATE_SCHEMA_VERSION),
             "state_file": str(self._path),
@@ -241,6 +257,9 @@ class ConversationStateStore:
             "source_version": source_version,
             "artifact_ref": artifact_ref,
             "artifact_version": artifact_version,
+            "artifact_repo_id": normalized_repo_id,
+            "artifacts_by_repo": artifacts_by_repo,
+            "artifact_repo_count": len(artifacts_by_repo),
             "updated_at": updated_at,
         }
         shell_state = normalize_shell_state_snapshot(snapshot)
@@ -257,6 +276,7 @@ class ConversationStateStore:
         source_ref: Optional[str] = None,
         source_version: Optional[str] = None,
         project_url: Optional[str] = None,
+        repo_id: Optional[str] = None,
     ) -> None:
         payload = self._load()
         home_url = project_home_url_from_url(project_url)
@@ -269,6 +289,23 @@ class ConversationStateStore:
         if not home_url:
             return
         entry = self._project_entry(payload, home_url) or self._merged_entry(payload, home_url)
+        updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        normalized_repo_id = normalize_repo_id(repo_id)
+        if normalized_repo_id:
+            artifacts_by_repo = entry.get("artifacts_by_repo") if isinstance(entry.get("artifacts_by_repo"), dict) else {}
+            repo_entry = artifacts_by_repo.get(normalized_repo_id) if isinstance(artifacts_by_repo.get(normalized_repo_id), dict) else {}
+            if artifact_ref is not None:
+                repo_entry["artifact_ref"] = artifact_ref
+            if artifact_version is not None:
+                repo_entry["artifact_version"] = artifact_version
+            if source_ref is not None:
+                repo_entry["source_ref"] = source_ref
+            if source_version is not None:
+                repo_entry["source_version"] = source_version
+            repo_entry["updated_at"] = updated_at
+            artifacts_by_repo[normalized_repo_id] = repo_entry
+            entry["artifacts_by_repo"] = artifacts_by_repo
+            entry["artifact_repo_id"] = normalized_repo_id
         if artifact_ref is not None:
             entry["artifact_ref"] = artifact_ref
         if artifact_version is not None:
@@ -277,7 +314,7 @@ class ConversationStateStore:
             entry["source_ref"] = source_ref
         if source_version is not None:
             entry["source_version"] = source_version
-        entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        entry["updated_at"] = updated_at
         self._store_entry(payload, home_url, entry)
         self._write(payload)
 

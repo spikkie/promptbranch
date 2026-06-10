@@ -315,3 +315,60 @@ def test_task_list_cache_round_trips_and_preserves_through_remember(tmp_path: Pa
     cached_after_remember = store.task_list_cache(project_url, max_age_seconds=900)
     assert len(cached_after_remember) == 1
     assert cached_after_remember[0]["conversation_url"] == conversation_url
+
+
+def test_remember_artifact_stores_repo_scoped_artifact_state(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    store.remember_project(project_url, project_name="demo")
+
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="my_awx",
+        artifact_ref="my_awx_0.0.200.zip",
+        artifact_version="0.0.200",
+        source_ref="my_awx_0.0.200.zip",
+        source_version="0.0.200",
+    )
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="platform-gitops",
+        artifact_ref="platform-gitops_0.0.4.zip",
+        artifact_version="0.0.4",
+        source_ref="platform-gitops_0.0.4.zip",
+        source_version="0.0.4",
+    )
+
+    snapshot = store.snapshot(project_url)
+    assert snapshot["artifact_repo_count"] == 2
+    assert snapshot["artifacts_by_repo"]["my_awx"]["artifact_ref"] == "my_awx_0.0.200.zip"
+    assert snapshot["artifacts_by_repo"]["platform-gitops"]["artifact_ref"] == "platform-gitops_0.0.4.zip"
+
+
+def test_snapshot_repo_artifact_returns_requested_repo_state(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    store.remember_project(project_url, project_name="demo")
+    store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_0.0.200.zip", artifact_version="0.0.200")
+    store.remember_artifact(project_url=project_url, repo_id="platform-gitops", artifact_ref="platform-gitops_0.0.4.zip", artifact_version="0.0.4")
+
+    my_awx = store.snapshot(project_url, repo_id="my_awx")
+    platform = store.snapshot(project_url, repo_id="platform-gitops")
+
+    assert my_awx["artifact_ref"] == "my_awx_0.0.200.zip"
+    assert my_awx["artifact_repo_id"] == "my_awx"
+    assert platform["artifact_ref"] == "platform-gitops_0.0.4.zip"
+    assert platform["artifact_repo_id"] == "platform-gitops"
+
+
+def test_legacy_artifact_fields_do_not_override_repo_scoped_state(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    store.remember_project(project_url, project_name="demo")
+    store.remember_artifact(project_url=project_url, artifact_ref="legacy_global_9.9.9.zip", artifact_version="9.9.9")
+    store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_0.0.200.zip", artifact_version="0.0.200")
+
+    snapshot = store.snapshot(project_url, repo_id="my_awx")
+
+    assert snapshot["artifact_ref"] == "my_awx_0.0.200.zip"
+    assert snapshot["artifact_ref"] != "legacy_global_9.9.9.zip"

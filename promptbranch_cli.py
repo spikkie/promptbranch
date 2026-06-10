@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -8104,12 +8104,19 @@ def _artifact_state_project_url(backend: Any) -> Optional[str]:
     return candidate
 
 
-def _artifact_registry_snapshot(registry: ArtifactRegistry) -> dict[str, Any]:
+def _artifact_registry_snapshot(registry: ArtifactRegistry, *, repo_id: str | None = None) -> dict[str, Any]:
     artifacts = registry.list()
+    repo_ids = registry.repo_ids()
+    current = registry.current(repo_id=repo_id) if repo_id else registry.current()
     return {
         "path": str(registry.path),
         "exists": registry.path.exists(),
-        "current": registry.current(),
+        "current": current,
+        "current_all": registry.current_all(),
+        "repo_id": normalize_repo_id(repo_id),
+        "repo_ids": repo_ids,
+        "repo_count": len(repo_ids),
+        "ambiguous_current": bool(not repo_id and registry.is_current_ambiguous()),
         "artifact_count": len(artifacts),
         "filenames": [str(item.get("filename")) for item in artifacts if item.get("filename")],
     }
@@ -8120,6 +8127,8 @@ def _state_artifact_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
         return {}
     return {
         "project_home_url": snapshot.get("resolved_project_home_url"),
+        "repo_id": snapshot.get("artifact_repo_id"),
+        "repo_count": snapshot.get("artifact_repo_count"),
         "artifact_ref": snapshot.get("artifact_ref"),
         "artifact_version": snapshot.get("artifact_version"),
         "source_ref": snapshot.get("source_ref"),
@@ -8974,55 +8983,106 @@ def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list
     return matched, payload
 
 
-def _artifact_current_payload(backend: Any, registry: ArtifactRegistry) -> dict[str, Any]:
-    snapshot = backend.state_snapshot()
-    state = {
-        "artifact_ref": snapshot.get("artifact_ref"),
-        "artifact_version": snapshot.get("artifact_version"),
-        "source_ref": snapshot.get("source_ref"),
-        "source_version": snapshot.get("source_version"),
-        "project_home_url": snapshot.get("resolved_project_home_url"),
-    }
-    registry_current = registry.current()
-    registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
-    registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
-    state_artifact_ref = str(state.get("artifact_ref") or "")
-    state_artifact_version = str(state.get("artifact_version") or "")
-    state_source_ref = str(state.get("source_ref") or "")
-    state_source_version = str(state.get("source_version") or "")
-    runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
-    registry_matches_state = bool(registry_current) and registry_filename == state_artifact_ref and registry_version == state_artifact_version
-    state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and state_artifact_ref == state_source_ref and state_artifact_version == state_source_version
-    code_matches_adopted_source = runtime_version == state_source_version
-    return {
-        "ok": True,
-        "action": "artifact_current",
-        "runtime": {
-            "package_version": CLI_VERSION,
-            "version": runtime_version,
-        },
-        "state": state,
-        "registry_current": registry_current,
-        "baseline_roles": {
-            "runtime_code_version": runtime_version,
-            "adopted_artifact_ref": state_artifact_ref or None,
-            "adopted_artifact_version": state_artifact_version or None,
-            "adopted_source_ref": state_source_ref or None,
-            "adopted_source_version": state_source_version or None,
-            "registry_current_ref": registry_filename or None,
-            "registry_current_version": registry_version or None,
-            "registry_current_kind": (registry_current or {}).get("kind") if registry_current else None,
-            "code_matches_adopted_source": code_matches_adopted_source,
-            "note": "runtime code release may intentionally differ from the adopted Project Source baseline",
-        },
-        "consistency": {
-            "registry_current_matches_state_artifact": registry_matches_state,
-            "state_source_matches_state_artifact": state_source_matches_artifact,
-            "code_version_matches_state_source": code_matches_adopted_source,
-            "project_home_url_present": bool(state.get("project_home_url")),
-        },
-        "registry_file": str(registry.path),
-    }
+def _artifact_current_payload(
+    backend: Any,
+    registry: ArtifactRegistry,
+    *,
+    repo_id: str | None = None,
+    all_repos: bool = False,
+    state_store: ConversationStateStore | None = None,
+) -> dict[str, Any]:
+    normalized_repo_id = normalize_repo_id(repo_id)
+    project_url = _artifact_state_project_url(backend)
+    store = state_store
+
+    def snapshot_for(scope_repo_id: str | None) -> dict[str, Any]:
+        if store is not None:
+            return store.snapshot(project_url, repo_id=scope_repo_id)
+        snapshot = backend.state_snapshot()
+        return snapshot if isinstance(snapshot, dict) else {}
+
+    def single_payload(scope_repo_id: str | None) -> dict[str, Any]:
+        snapshot = snapshot_for(scope_repo_id)
+        state = {
+            "artifact_ref": snapshot.get("artifact_ref"),
+            "artifact_version": snapshot.get("artifact_version"),
+            "source_ref": snapshot.get("source_ref"),
+            "source_version": snapshot.get("source_version"),
+            "project_home_url": snapshot.get("resolved_project_home_url"),
+            "repo_id": scope_repo_id or snapshot.get("artifact_repo_id"),
+        }
+        registry_current = registry.current(repo_id=scope_repo_id) if scope_repo_id else registry.current()
+        registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
+        registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
+        state_artifact_ref = str(state.get("artifact_ref") or "")
+        state_artifact_version = str(state.get("artifact_version") or "")
+        state_source_ref = str(state.get("source_ref") or "")
+        state_source_version = str(state.get("source_version") or "")
+        runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
+        registry_matches_state = bool(registry_current) and registry_filename == state_artifact_ref and registry_version == state_artifact_version
+        state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and state_artifact_ref == state_source_ref and state_artifact_version == state_source_version
+        code_matches_adopted_source = runtime_version == state_source_version
+        return {
+            "ok": True,
+            "action": "artifact_current",
+            "scope": {"kind": "repo" if scope_repo_id else "legacy", "repo_id": scope_repo_id},
+            "runtime": {
+                "package_version": CLI_VERSION,
+                "version": runtime_version,
+            },
+            "state": state,
+            "registry_current": registry_current,
+            "baseline_roles": {
+                "runtime_code_version": runtime_version,
+                "adopted_artifact_ref": state_artifact_ref or None,
+                "adopted_artifact_version": state_artifact_version or None,
+                "adopted_source_ref": state_source_ref or None,
+                "adopted_source_version": state_source_version or None,
+                "registry_current_ref": registry_filename or None,
+                "registry_current_version": registry_version or None,
+                "registry_current_kind": (registry_current or {}).get("kind") if registry_current else None,
+                "registry_current_repo_id": (registry_current or {}).get("repo_id") if registry_current else None,
+                "code_matches_adopted_source": code_matches_adopted_source,
+                "note": "runtime code release may intentionally differ from the adopted Project Source baseline",
+            },
+            "consistency": {
+                "registry_current_matches_state_artifact": registry_matches_state,
+                "state_source_matches_state_artifact": state_source_matches_artifact,
+                "code_version_matches_state_source": code_matches_adopted_source,
+                "project_home_url_present": bool(state.get("project_home_url")),
+            },
+            "registry_file": str(registry.path),
+        }
+
+    if all_repos:
+        repos: dict[str, Any] = {}
+        for current_repo_id in sorted(set(registry.repo_ids()) | set((snapshot_for(None).get("artifacts_by_repo") or {}).keys())):
+            if not current_repo_id:
+                continue
+            repos[current_repo_id] = single_payload(current_repo_id)
+        return {
+            "ok": True,
+            "action": "artifact_current_all",
+            "scope": {"kind": "all_repos"},
+            "repo_count": len(repos),
+            "repos": repos,
+            "registry_file": str(registry.path),
+        }
+
+    if not normalized_repo_id and registry.is_current_ambiguous():
+        available = registry.repo_ids()
+        return {
+            "ok": False,
+            "action": "artifact_current",
+            "status": "ambiguous_repo_scope",
+            "scope": {"kind": "ambiguous"},
+            "repo_count": len(available),
+            "available_repos": available,
+            "next_safe_commands": [*(f"pb artifact current --repo {repo} --json" for repo in available), "pb artifact current --all --json"],
+            "registry_file": str(registry.path),
+        }
+
+    return single_payload(normalized_repo_id)
 
 
 def _version_tuple_for_operator_order(value: Any) -> tuple[int, ...] | None:
@@ -14484,12 +14544,14 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
 
     artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser().resolve()
     zip_check = artifact_payload.get("verification") if isinstance(artifact_payload.get("verification"), dict) else verify_zip_artifact(artifact_path)
+    repo_id = infer_repo_id_from_artifact_filename(artifact_filename)
     record = ArtifactRecord(
         path=str(artifact_path),
         filename=artifact_filename,
         kind="adopted_release",
         version=artifact_version,
         repo_path=None,
+        repo_id=repo_id,
         sha256=str(artifact_payload.get("sha256") or zip_check.get("sha256") or ""),
         size_bytes=int(artifact_payload.get("size_bytes") or zip_check.get("size_bytes") or artifact_path.stat().st_size),
         file_count=int(artifact_payload.get("entry_count") or zip_check.get("entry_count") or 0),
@@ -14504,8 +14566,9 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         artifact_version=artifact_version,
         source_ref=artifact_filename,
         source_version=artifact_version,
+        repo_id=repo_id,
     )
-    current_payload = _artifact_current_payload(backend, registry)
+    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_state_store_from_args(args))
     current_ok, current_checks = _report_artifact_current_matches_candidate(
         current_payload,
         filename=artifact_filename,
@@ -16726,11 +16789,27 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
 
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
-    payload = _artifact_current_payload(backend, registry)
+    repo_id = normalize_repo_id(getattr(args, "repo", None))
+    all_repos = bool(getattr(args, "all", False))
+    if repo_id and all_repos:
+        payload = {"ok": False, "action": "artifact_current", "status": "repo_scope_conflict", "error": "--repo and --all are mutually exclusive"}
+    else:
+        payload = _artifact_current_payload(backend, registry, repo_id=repo_id, all_repos=all_repos, state_store=_state_store_from_args(args))
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
+        if payload.get("status") == "ambiguous_repo_scope":
+            print("status=ambiguous_repo_scope")
+            print(f"available_repos={','.join(payload.get('available_repos') or [])}")
+            return 2
+        if payload.get("action") == "artifact_current_all":
+            print(f"repo_count={payload.get('repo_count')}")
+            for current_repo_id, repo_payload in sorted((payload.get("repos") or {}).items()):
+                state = repo_payload.get("state") if isinstance(repo_payload, dict) else {}
+                print(f"{current_repo_id}.artifact_ref={state.get('artifact_ref') or 'none'}")
+            return 0
         state = payload["state"]
+        print(f"repo_id={state.get('repo_id') or 'none'}")
         print(f"artifact_ref={state.get('artifact_ref') or 'none'}")
         print(f"artifact_version={state.get('artifact_version') or 'none'}")
         current = payload.get("registry_current") or {}
@@ -16738,7 +16817,7 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
         roles = payload.get("baseline_roles") or {}
         print(f"runtime_code_version={roles.get('runtime_code_version') or 'none'}")
         print(f"code_matches_adopted_source={roles.get('code_matches_adopted_source')}")
-    return 0
+    return 0 if payload.get("ok", True) else 2
 
 
 async def cmd_artifact_list(backend: Any, args: argparse.Namespace) -> int:
@@ -18813,12 +18892,14 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
     if not getattr(args, "adopt_if_green", False):
         return emit(preflight, 0)
 
+    repo_id = infer_repo_id_from_artifact_filename(filename)
     record = ArtifactRecord(
         path=str(candidate_path),
         filename=filename,
         kind="adopted_release",
         version=candidate_version,
         repo_path=None,
+        repo_id=repo_id,
         sha256=str(zip_check.get("sha256") or metadata.get("sha256") or ""),
         size_bytes=int(zip_check.get("size_bytes") or metadata.get("size_bytes") or candidate_path.stat().st_size),
         file_count=int(zip_check.get("entry_count") or 0),
@@ -18833,8 +18914,9 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         artifact_version=candidate_version,
         source_ref=filename,
         source_version=candidate_version,
+        repo_id=repo_id,
     )
-    current_payload = _artifact_current_payload(backend, registry)
+    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_state_store_from_args(args))
     current_ok, current_checks = _report_artifact_current_matches_candidate(current_payload, filename=filename, version=candidate_version, require_runtime_code_match=False)
     if not current_ok:
         return emit({**preflight, "ok": False, "status": "artifact_current_mismatch", "local_artifact": artifact_payload, "artifact_current": current_payload, "current_checks": current_checks, "adoption_performed": True, "artifact_registry_updated": True, "state_artifact_updated": True, "state_source_updated": True, "error": "local adoption was attempted, but artifact current does not match the accepted candidate"}, 1)
@@ -18908,6 +18990,17 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     if not filename_version:
         payload = {**base_payload, "status": "invalid_artifact_filename", "error": "artifact filename must end with _vX.Y.Z.zip or _vX.Y.Z.N.zip"}
         return emit(payload, 2)
+    inferred_repo_id = infer_repo_id_from_artifact_filename(filename)
+    requested_repo_id = normalize_repo_id(getattr(args, "repo", None))
+    repo_id = requested_repo_id or inferred_repo_id
+    if not repo_id:
+        payload = {**base_payload, "status": "repo_scope_required", "artifact_version": filename_version, "source_version": filename_version, "error": "artifact adopt requires --repo when the ZIP filename does not expose a repo prefix"}
+        return emit(payload, 2)
+    if requested_repo_id and inferred_repo_id and requested_repo_id != inferred_repo_id:
+        payload = {**base_payload, "status": "repo_artifact_prefix_mismatch", "repo_id": requested_repo_id, "artifact_repo_id": inferred_repo_id, "artifact_version": filename_version, "source_version": filename_version, "error": f"--repo {requested_repo_id} does not match artifact filename repo prefix {inferred_repo_id}"}
+        return emit(payload, 2)
+    base_payload["repo_id"] = repo_id
+    base_payload["scope"] = {"kind": "repo", "repo_id": repo_id}
     if not getattr(args, "from_project_source", False):
         payload = {**base_payload, "status": "project_source_verification_required", "artifact_version": filename_version, "source_version": filename_version, "error": "adopt requires --from-project-source so local state advances only after Project Source verification"}
         return emit(payload, 2)
@@ -19009,6 +19102,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         kind="adopted_release",
         version=filename_version,
         repo_path=None,
+        repo_id=repo_id,
         sha256=str(zip_check.get("sha256") or ""),
         size_bytes=int(zip_check.get("size_bytes") or local_zip.stat().st_size),
         file_count=int(zip_check.get("entry_count") or 0),
@@ -19023,14 +19117,15 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         artifact_version=filename_version,
         source_ref=filename,
         source_version=filename_version,
+        repo_id=repo_id,
     )
-    after_state = backend.state_snapshot()
-    after_registry = _artifact_registry_snapshot(registry)
+    after_state = _state_store_from_args(args).snapshot(project_url, repo_id=repo_id)
+    after_registry = _artifact_registry_snapshot(registry, repo_id=repo_id)
     checks = {
         "source_verified": len(matched_sources) == 1,
         "zip_verified": bool(zip_check.get("ok")),
         "zip_version_matches_filename": zip_version == filename_version,
-        "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename,
+        "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename and str((after_registry.get("current") or {}).get("repo_id") or repo_id) == repo_id,
         "state_artifact_updated": _state_artifact_summary(after_state).get("artifact_ref") == filename and _state_artifact_summary(after_state).get("artifact_version") == filename_version,
         "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == filename and _state_artifact_summary(after_state).get("source_version") == filename_version,
         "project_source_mutated": False,
@@ -19141,6 +19236,7 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
             project_url=project_url,
             artifact_ref=record.filename,
             artifact_version=record.version,
+            repo_id=record.repo_id,
         )
     verify = verify_zip_artifact(record.path)
     payload = {
@@ -21557,6 +21653,8 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
 
     artifact_current = artifact_subparsers.add_parser("current", help="Show the current artifact/source state.")
+    artifact_current.add_argument("--repo", help="Repo id whose current artifact/source state should be shown.")
+    artifact_current.add_argument("--all", action="store_true", help="Show current artifact/source state for all repo scopes.")
     artifact_current.add_argument("--json", action="store_true")
 
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
@@ -21566,6 +21664,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.221.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
+    artifact_adopt.add_argument("--repo", help="Portable repo id for the artifact current-state scope. Defaults to the artifact filename prefix.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
     artifact_adopt.add_argument("--json", action="store_true")
 
