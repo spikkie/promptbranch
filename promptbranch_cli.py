@@ -9001,8 +9001,26 @@ def _artifact_current_payload(
         snapshot = backend.state_snapshot()
         return snapshot if isinstance(snapshot, dict) else {}
 
+    def available_repo_ids() -> list[str]:
+        snapshot = snapshot_for(None)
+        state_repos = (snapshot.get("artifacts_by_repo") or {}).keys() if isinstance(snapshot.get("artifacts_by_repo"), dict) else []
+        return sorted(set(registry.repo_ids()) | {str(item) for item in state_repos if item})
+
     def single_payload(scope_repo_id: str | None) -> dict[str, Any]:
         snapshot = snapshot_for(scope_repo_id)
+        registry_current = registry.current(repo_id=scope_repo_id) if scope_repo_id else registry.current()
+        state_has_artifact = bool(snapshot.get("artifact_ref") or snapshot.get("artifact_version") or snapshot.get("source_ref") or snapshot.get("source_version"))
+        if scope_repo_id and not registry_current and not state_has_artifact:
+            return {
+                "ok": False,
+                "action": "artifact_current",
+                "status": "repo_current_not_found",
+                "scope": {"kind": "repo", "repo_id": scope_repo_id},
+                "state": None,
+                "registry_current": None,
+                "available_repos": available_repo_ids(),
+                "registry_file": str(registry.path),
+            }
         state = {
             "artifact_ref": snapshot.get("artifact_ref"),
             "artifact_version": snapshot.get("artifact_version"),
@@ -9011,7 +9029,6 @@ def _artifact_current_payload(
             "project_home_url": snapshot.get("resolved_project_home_url"),
             "repo_id": scope_repo_id or snapshot.get("artifact_repo_id"),
         }
-        registry_current = registry.current(repo_id=scope_repo_id) if scope_repo_id else registry.current()
         registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
         registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
         state_artifact_ref = str(state.get("artifact_ref") or "")
@@ -9056,7 +9073,7 @@ def _artifact_current_payload(
 
     if all_repos:
         repos: dict[str, Any] = {}
-        for current_repo_id in sorted(set(registry.repo_ids()) | set((snapshot_for(None).get("artifacts_by_repo") or {}).keys())):
+        for current_repo_id in available_repo_ids():
             if not current_repo_id:
                 continue
             repos[current_repo_id] = single_payload(current_repo_id)
@@ -16808,6 +16825,12 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
                 state = repo_payload.get("state") if isinstance(repo_payload, dict) else {}
                 print(f"{current_repo_id}.artifact_ref={state.get('artifact_ref') or 'none'}")
             return 0
+        if payload.get("status") == "repo_current_not_found":
+            scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+            print("status=repo_current_not_found")
+            print(f"repo_id={scope.get('repo_id') or 'none'}")
+            print(f"available_repos={','.join(payload.get('available_repos') or [])}")
+            return 2
         state = payload["state"]
         print(f"repo_id={state.get('repo_id') or 'none'}")
         print(f"artifact_ref={state.get('artifact_ref') or 'none'}")

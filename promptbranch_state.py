@@ -236,7 +236,13 @@ class ConversationStateStore:
             if isinstance(candidate_repo_entry, dict):
                 normalized_repo_id = str(only_key)
                 repo_entry = candidate_repo_entry
-        artifact_source = repo_entry if repo_entry else entry
+        # Explicit repo lookups must not fall back to legacy/global artifact fields.
+        # A missing repo scope should be reported as missing by callers, not rendered
+        # as another repo's current artifact with the requested repo_id rewritten onto it.
+        if normalized_repo_id:
+            artifact_source = repo_entry
+        else:
+            artifact_source = repo_entry if repo_entry else entry
         artifact_ref = artifact_source.get("artifact_ref") if isinstance(artifact_source.get("artifact_ref"), str) else None
         artifact_version = artifact_source.get("artifact_version") if isinstance(artifact_source.get("artifact_version"), str) else None
         source_ref = artifact_source.get("source_ref") if isinstance(artifact_source.get("source_ref"), str) else None

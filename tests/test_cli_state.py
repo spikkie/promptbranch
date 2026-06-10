@@ -361,6 +361,23 @@ def test_snapshot_repo_artifact_returns_requested_repo_state(tmp_path) -> None:
     assert platform["artifact_repo_id"] == "platform-gitops"
 
 
+def test_snapshot_missing_repo_does_not_fallback_to_legacy_or_other_repo(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    store.remember_project(project_url, project_name="demo")
+    store.remember_artifact(project_url=project_url, artifact_ref="legacy_global_9.9.9.zip", artifact_version="9.9.9")
+    store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_0.0.200.zip", artifact_version="0.0.200")
+
+    snapshot = store.snapshot(project_url, repo_id="does-not-exist")
+
+    assert snapshot["artifact_repo_id"] == "does-not-exist"
+    assert snapshot["artifact_ref"] is None
+    assert snapshot["artifact_version"] is None
+    assert snapshot["source_ref"] is None
+    assert snapshot["source_version"] is None
+    assert snapshot["artifacts_by_repo"]["my_awx"]["artifact_ref"] == "my_awx_0.0.200.zip"
+
+
 def test_legacy_artifact_fields_do_not_override_repo_scoped_state(tmp_path) -> None:
     store = ConversationStateStore(str(tmp_path))
     project_url = "https://chatgpt.com/g/g-p-demo/project"

@@ -13175,6 +13175,66 @@ def test_artifact_current_without_repo_blocks_when_multiple_repos_exist(capsys, 
     assert payload["available_repos"] == ["my_awx", "platform-gitops"]
 
 
+def test_artifact_current_missing_repo_returns_not_found_without_legacy_state(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    store = ConversationStateStore(profile)
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="my_awx",
+        artifact_ref="my_awx_0.0.200.zip",
+        artifact_version="0.0.200",
+        source_ref="my_awx_0.0.200.zip",
+        source_version="0.0.200",
+    )
+    store.remember_artifact(
+        project_url=project_url,
+        repo_id="platform-gitops",
+        artifact_ref="platform-gitops_0.0.4.zip",
+        artifact_version="0.0.4",
+        source_ref="platform-gitops_0.0.4.zip",
+        source_version="0.0.4",
+    )
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_0.0.200.zip"), filename="my_awx_0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_0.0.4.zip"), filename="platform-gitops_0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo="does-not-exist", all=False, json=True)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "repo_current_not_found"
+    assert payload["scope"] == {"kind": "repo", "repo_id": "does-not-exist"}
+    assert payload["state"] is None
+    assert payload["registry_current"] is None
+    assert payload["available_repos"] == ["my_awx", "platform-gitops"]
+    serialized = json.dumps(payload)
+    assert "my_awx_0.0.200.zip" not in serialized
+    assert "platform-gitops_0.0.4.zip" not in serialized
+
+
+def test_artifact_current_missing_repo_non_json_does_not_crash(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    store = ConversationStateStore(profile)
+    store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_0.0.200.zip", artifact_version="0.0.200")
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_0.0.200.zip"), filename="my_awx_0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo="does-not-exist", all=False, json=False)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    output = capsys.readouterr().out
+
+    assert exit_code == 2
+    assert "status=repo_current_not_found" in output
+    assert "repo_id=does-not-exist" in output
+    assert "available_repos=my_awx" in output
+
+
 def test_artifact_adopt_records_repo_id_from_filename(capsys, tmp_path) -> None:
     filename = "my_awx_0.0.200.zip"
     zip_path = tmp_path / filename
