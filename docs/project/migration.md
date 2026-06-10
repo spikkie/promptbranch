@@ -1,0 +1,72 @@
+# Migration to Project Control Surface
+
+## Migration status
+
+```text
+in_progress
+```
+
+## Existing planning/status documents
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/mvp-definition-of-done.md` | current_source | `docs/project/definition-of-done.md`, `docs/project/mvp.md` | initial_facts_migrated | Canonical historical MVP DoD source; not deleted. |
+| `docs/design/orchestration/docs/current_status.md` | current_source | `docs/project/status.md`, `docs/project/release-status.md` | initial_facts_migrated | Contains current status through v0.1.66 but has stale accepted-baseline wording; v0.1.66 adoption evidence wins. |
+| `docs/design/orchestration/docs/global_mvp_plan.md` | current_source | `docs/project/mvp.md`, `docs/project/plan.md` | initial_facts_migrated | Strategic JSON orchestration MVP source. |
+| `docs/design/orchestration/docs/detailed_mvp_setup_plan.md` | current_source | `docs/project/plan.md` | referenced | Detailed setup context remains in place. |
+| `docs/design/orchestration/docs/json_orchestration_state_mvp.md` | current_source | `docs/project/mvp.md`, `docs/project/plan.md` | referenced | Data-surface/control-plane MVP context. |
+| `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_high_level_canvas.md` | historical_reference | `docs/project/migration.md` | referenced | Original v0.1.0 canvas; useful history, not current baseline authority. |
+| `docs/design/orchestration/docs/json_orchestration_state_mvp_v0_1_0_low_level_canvas.md` | historical_reference | `docs/project/migration.md` | referenced | Original v0.1.0 setup plan; partially superseded by later accepted releases. |
+| `docs/design/orchestration/docs/release_line_reconciliation.md` | current_source | `docs/project/status.md`, `docs/project/release-status.md` | referenced | Reconciliation context for v0.1.x detours. |
+| `docs/design/orchestration/decisions/ADR-0001-json-orchestration-state-mvp.md` | decision_record | `docs/project/decisions.md` | summarized | Full ADR remains in original location. |
+| `docs/design/orchestration/decisions/ADR-0002-chatgpt-proposal-vs-promptbranch-accepted-event.md` | decision_record | `docs/project/decisions.md` | summarized | Full ADR remains in original location. |
+| `docs/design/orchestration/decisions/ADR-0003-chatgpt-only-llm-provider.md` | decision_record | `docs/project/decisions.md` | summarized | Full ADR remains in original location. |
+| `docs/design/orchestration/decisions/ADR-0004-ollama-bakeoff-failed-threshold.md` | decision_record | `docs/project/decisions.md` | summarized | Full ADR remains in original location. |
+| `docs/design/promptbranch-release-baseline-evidence.md` | current_source | `docs/project/status.md`, `docs/project/decisions.md` | referenced | Baseline evidence terminology and candidate/accepted semantics. |
+| `docs/design/promptbranch-mvp-living-design.md` | current_source | `docs/project/mvp.md`, `docs/project/plan.md` | referenced | Living design remains detailed source. |
+| `docs/design/promptbranch-mvp-living-design.drawio` | current_source | `docs/project/migration.md` | referenced | Visual design source, not duplicated. |
+| `docs/design/promptbranch-living-design-overview.md` | current_source | `docs/project/migration.md` | referenced | Overview remains detailed source. |
+| `docs/design/promptbranch-living-design-overview.html` | current_source | `docs/project/migration.md` | referenced | HTML publication source. |
+| `docs/release-v0.1.65.md` | release_evidence | `docs/project/release-status.md` | summarized | Accepted v0.1.65 release evidence. |
+| `docs/release-v0.1.66.md` | release_evidence | `docs/project/release-status.md`, `docs/project/status.md` | summarized | Accepted v0.1.66 release evidence. |
+| `docs/release-v*.md` | release_evidence | `docs/project/release-status.md` | partial_summary | Historical release notes remain in place. |
+| `docs/repair-v*.md` | release_evidence | `docs/project/release-status.md` | referenced | Historical repair notes remain in place. |
+| `docs/promptbranch_ask_reply_protocol_design_and_mvp_plan.md` | historical_reference | `docs/project/migration.md` | referenced | Protocol design history. |
+| `docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md` | historical_reference | `docs/project/migration.md` | referenced | Earlier current-state doc; superseded by accepted v0.1.66 evidence. |
+| `Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt` | historical_reference | `docs/project/migration.md` | referenced | Operating model history. |
+| `promptbranch_mvp_plan_mcp_ollama_skills_agents_2026-05-03.md` | historical_reference | `docs/project/migration.md` | referenced | Earlier MCP/Ollama/skills MVP plan; superseded where later releases differ. |
+| `promptbranch_native_release_lifecycle_todo.md` | historical_reference | `docs/project/plan.md`, `docs/project/migration.md` | referenced | Native lifecycle target remains useful roadmap but not current implementation status. |
+| session logs and release logs | release_evidence | `docs/project/release-status.md` | referenced | Use as evidence references only; do not copy wholesale. |
+
+## Known migration conflicts
+
+| Topic | Source A | Source B | Current authority | Resolution |
+|---|---|---|---|---|
+| Accepted baseline | Older status docs mention v0.1.61 or earlier accepted baselines | User-provided `pb artifact current --json` confirms v0.1.66 | v0.1.66 adoption evidence | `docs/project/status.md` uses v0.1.66 as accepted/current. |
+| Artifact naming | Older docs use `chatgpt_claudecode_workflow_v0.0.x.zip` | Current project uses `chatgpt_claudecode_workflow-2_v0.1.x.zip` | Current accepted artifact line | `docs/project/*` uses `chatgpt_claudecode_workflow-2_v0.1.66.zip` and next v0.1.67. |
+| MVP identity | Older docs split MCP/agent, artifact intake, JSON orchestration, release lifecycle tracks | Current project needs one continuation control surface | Project control surface | `docs/project/mvp.md` frames these as tracks under one Promptbranch controlled workflow MVP. |
+| Release lifecycle status | Native lifecycle TODO describes future complete lifecycle | v0.1.66 release note says release doctor remains read-only | Accepted v0.1.66 release evidence | `docs/project/status.md` keeps install/upload/adopt/push out of current scope. |
+
+## Migration rules applied
+
+1. Existing planning and status documents are preserved.
+2. Historical documents are referenced rather than deleted.
+3. Accepted baseline evidence overrides stale status text.
+4. Large prose blocks are not copied wholesale.
+5. Durable facts are moved into the control surface.
+6. The migration slice does not change runtime or deployment behavior.
+
+## Migration checklist
+
+| ID | Migration item | Status | Evidence |
+|---|---|---:|---|
+| MIG-001 | Existing plan files identified | done | this file |
+| MIG-002 | MVP definition created/updated | done | `docs/project/mvp.md` |
+| MIG-003 | DoD checklist created/updated | done | `docs/project/definition-of-done.md` |
+| MIG-004 | Current plan migrated | done | `docs/project/plan.md` |
+| MIG-005 | Current status written | done | `docs/project/status.md` |
+| MIG-006 | Release status table initialized | done | `docs/project/release-status.md` |
+| MIG-007 | Decisions migrated | done | `docs/project/decisions.md` |
+| MIG-008 | Obsolete documents marked historical or referenced | done | this file |
+| MIG-009 | Focused validator added | done | `tests/test_project_control_surface.py` |
+| MIG-010 | Candidate adopted/current | open | requires post-adoption `pb artifact current --json` |
