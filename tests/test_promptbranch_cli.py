@@ -12992,3 +12992,108 @@ hooks:
     assert payload["current_reconciliation"]["status"] == "reconciliation_required"
     assert payload["lifecycle_planning"]["current_reconciliation_required"] is True
     assert payload["mutating_actions_executed"] is False
+
+
+def test_browser_wait_idle_polls_until_available(monkeypatch, capsys) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            self.statuses = [
+                {"ok": True, "status": "busy", "owner_active": True, "active_operation": "add_project_source", "external_lock_held": False},
+                {"ok": True, "status": "available", "owner_active": False, "active_operation": None, "external_lock_held": False},
+            ]
+
+        def browser_status(self):
+            return self.statuses.pop(0)
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+    monkeypatch.setattr("promptbranch_cli.asyncio.sleep", fake_sleep)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "browser",
+        "wait-idle",
+        "--timeout",
+        "5",
+        "--poll-seconds",
+        "0.01",
+        "--json",
+    ])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "browser_wait_idle"
+    assert payload["status"] == "available"
+    assert payload["idle"] is True
+    assert payload["attempts"] == 2
+    assert payload["browser_status"]["status"] == "available"
+
+
+def test_src_add_waits_for_browser_idle_after_success(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def add_project_source(self, **kwargs):
+            return {
+                "ok": True,
+                "action": "source_add",
+                "status": "source_added",
+                "project_source_mutated": True,
+                "persistence_verified": True,
+            }
+
+        def browser_status(self):
+            return {"ok": True, "status": "available", "owner_active": False, "active_operation": None, "external_lock_held": False}
+
+    file_path = tmp_path / "demo.zip"
+    file_path.write_bytes(b"zip")
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "add", "--file", str(file_path)])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["browser_profile_released"] is True
+    assert payload["post_mutation_browser_idle"]["action"] == "source_add_post_mutation_wait_idle"
+    assert payload["post_mutation_browser_idle"]["status"] == "available"
+
+
+def test_src_list_browser_profile_busy_reports_wait_idle_guidance(monkeypatch, capsys) -> None:
+    request = httpx.Request("GET", "http://localhost:8000/v1/project-sources")
+    response = httpx.Response(
+        423,
+        request=request,
+        json={
+            "detail": {
+                "ok": False,
+                "status": "browser_profile_busy",
+                "operation": "list_project_sources",
+                "active_operation": "add_project_source",
+                "retry_after_seconds": 30.0,
+            }
+        },
+    )
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def list_project_sources(self, **kwargs):
+            raise httpx.HTTPStatusError("423 Locked", request=request, response=response)
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "list", "--json"])
+
+    assert exit_code == 75
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "source_list"
+    assert payload["status"] == "browser_profile_busy"
+    assert payload["active_operation"] == "add_project_source"
+    assert payload["next_safe_commands"][0] == "pb browser status --json"
+    assert payload["next_safe_commands"][1].startswith("pb browser wait-idle")

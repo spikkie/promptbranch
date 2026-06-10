@@ -13,9 +13,10 @@
 | DOD-007 | Focused project-control-surface validation passes | done | `tests/test_project_control_surface.py` | v0.1.67 |
 | DOD-008 | Full tests pass when required | open | full test log not provided for this slice | - |
 | DOD-009 | ZIP artifact has clean repository-root structure | done | final v0.1.68 ZIP hygiene check | v0.1.68 |
-| DOD-010 | Accepted baseline is verified | done | user-provided `pb artifact current --json` for v0.1.66 | v0.1.66 |
+| DOD-010 | Accepted baseline is verified | done | user-provided `pb artifact current --json` and full-test report for v0.1.68 | v0.1.68 |
 | DOD-011 | New candidate is adopted/current | open | adoption evidence required after install/adopt | - |
 | DOD-012 | Project Sources add performance/transactional diagnostics are covered by focused tests | done | `tests/test_project_source_capabilities.py` targeted v0.1.68 tests | v0.1.68 |
+| DOD-013 | Browser-profile busy source/adoption sequencing is guarded by wait-idle and structured retry guidance | done | `tests/test_promptbranch_cli.py` and `tests/test_cli_parser.py` focused v0.1.69 tests | v0.1.69 |
 
 ## Status values
 

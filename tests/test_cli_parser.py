@@ -1112,6 +1112,13 @@ def test_parser_accepts_browser_status_and_source_add_profile_wait() -> None:
     assert status.browser_command == "status"
     assert status.json is True
 
+    wait_idle = parser.parse_args(["browser", "wait-idle", "--timeout", "5", "--poll-seconds", "0.25", "--json"])
+    assert wait_idle.command == "browser"
+    assert wait_idle.browser_command == "wait-idle"
+    assert wait_idle.timeout == 5
+    assert wait_idle.poll_seconds == 0.25
+    assert wait_idle.json is True
+
     src_add = parser.parse_args([
         "src",
         "add",
@@ -1125,6 +1132,8 @@ def test_parser_accepts_browser_status_and_source_add_profile_wait() -> None:
     assert src_add.src_command == "add"
     assert src_add.wait_for_profile is True
     assert src_add.profile_wait_timeout_seconds == 120
+    assert src_add.no_post_mutation_wait_idle is False
+    assert src_add.post_mutation_idle_timeout_seconds == 180.0
 
     no_queue = parser.parse_args(["src", "add", "--file", "demo.zip", "--no-queue"])
     assert no_queue.no_queue is True
