@@ -20,6 +20,8 @@
 | DOD-014 | Multi-repo artifact current state is repo-scoped and adoption cannot overwrite another repo baseline | done | `tests/test_promptbranch_artifacts.py`, `tests/test_cli_state.py`, and `tests/test_promptbranch_cli.py` focused v0.1.70 tests plus v0.1.70 adoption evidence | v0.1.70 |
 | DOD-015 | Explicit missing repo artifact-current lookup fails closed without leaking another repo state | done | `tests/test_cli_state.py` and `tests/test_promptbranch_cli.py` focused v0.1.70.1 repair tests plus v0.1.70.1 adoption evidence | v0.1.70.1 |
 | DOD-016 | Project-scoped multi-repo registry resolution works from any joined repo without remembering a coordinator profile | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, artifact-current/repo focused tests, project control-surface test, compileall | v0.1.71 |
+| DOD-017 | Project join/list/doctor and artifact-current all use the same project-scoped registry unless `--profile-dir` is explicitly supplied | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, focused artifact-current regression tests, project control-surface test, compileall | v0.1.71.1 |
+| DOD-018 | Repair ZIP includes required root `.gitignore` and passes root-file completeness guard | done | required root-file check and ZIP hygiene for v0.1.71.2 | v0.1.71.2 |
 
 ## Status values
 

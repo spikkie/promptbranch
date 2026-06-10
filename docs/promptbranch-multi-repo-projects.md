@@ -31,3 +31,18 @@ pb artifact current --all --json
 ```
 
 `--profile-dir` remains available as an explicit debug/override path.
+
+
+## Registry resolution rule
+
+When a repository has `.promptbranch-repo.json`, Promptbranch uses the project-scoped registry by default:
+
+```text
+~/.local/state/promptbranch/projects/<project_id>/promptbranch_artifacts.json
+```
+
+An explicit `--profile-dir` remains the override/debug escape hatch. A default-resolved repo-local `.pb_profile` must not disable project registry resolution.
+
+## Migration note
+
+`pb project join` creates the project registry file if it does not exist, but it does not automatically adopt artifacts or migrate old repo-local `.pb_profile/promptbranch_artifacts.json` records. Use adoption/register workflows deliberately so Project Source verification remains explicit.

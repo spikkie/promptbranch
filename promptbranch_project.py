@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from promptbranch_artifacts import normalize_repo_id
+from promptbranch_artifacts import ARTIFACT_REGISTRY_NAME, normalize_repo_id
 from promptbranch_state import project_home_url_from_url
 
 REPO_IDENTITY_FILE_NAME = ".promptbranch-repo.json"
@@ -69,6 +69,18 @@ def project_registry_dir(project_id: str) -> Path:
 
 def project_repo_config_path(project_id: str) -> Path:
     return project_config_home() / _safe_project_id(project_id) / "repos.json"
+
+
+def project_registry_file(project_id: str) -> Path:
+    return project_registry_dir(project_id) / ARTIFACT_REGISTRY_NAME
+
+
+def ensure_project_registry(project_id: str) -> Path:
+    path = project_registry_file(project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps({"schema_version": 1, "artifacts": []}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 def find_repo_identity_path(cwd: str | Path | None = None) -> Path | None:
@@ -174,6 +186,7 @@ def save_local_repo_registry(project_id: str, payload: dict[str, Any]) -> Path:
 
 
 def join_local_repo(identity: PromptbranchRepoIdentity) -> Path:
+    ensure_project_registry(identity.project_id)
     payload = load_local_repo_registry(identity.project_id)
     repos = payload.get("repos") if isinstance(payload.get("repos"), dict) else {}
     repos[identity.repo_id] = {

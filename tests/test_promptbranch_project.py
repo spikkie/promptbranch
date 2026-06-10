@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from promptbranch_project import load_repo_identity, project_registry_dir, project_repo_config_path, write_repo_identity, join_local_repo
+from promptbranch_project import load_repo_identity, project_registry_dir, project_registry_file, project_repo_config_path, write_repo_identity, join_local_repo
 
 
 def test_project_registry_path_is_derived_from_project_id(monkeypatch, tmp_path: Path) -> None:
@@ -14,6 +14,7 @@ def test_project_registry_path_is_derived_from_project_id(monkeypatch, tmp_path:
 
 def test_project_join_identity_and_local_registry(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
     repo = tmp_path / "my_awx"
     path = write_repo_identity(
         repo,
@@ -32,3 +33,6 @@ def test_project_join_identity_and_local_registry(monkeypatch, tmp_path: Path) -
     payload = json.loads(registry.read_text(encoding="utf-8"))
     assert payload["repos"]["my_awx"]["repo_root"] == str(repo.resolve())
     assert project_repo_config_path("kubernetes") == registry
+    registry_file = project_registry_file("kubernetes")
+    assert registry_file.is_file()
+    assert json.loads(registry_file.read_text(encoding="utf-8"))["artifacts"] == []

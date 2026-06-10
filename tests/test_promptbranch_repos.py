@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry
-from promptbranch_cli import _artifact_current_payload, _repo_doctor_payload, _repo_list_payload
+from promptbranch_cli import _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload
 from promptbranch_project import load_repo_identity, project_registry_dir, write_repo_identity, join_local_repo
 from promptbranch_state import ConversationStateStore
 
@@ -135,3 +135,49 @@ def test_missing_repo_lookup_still_fails_closed(monkeypatch, tmp_path: Path) -> 
     assert payload["status"] == "repo_current_not_found"
     assert payload["state"] is None
     assert payload["registry_current"] is None
+
+
+def test_default_resolved_profile_dir_does_not_disable_project_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    legacy_profile = repo / ".pb_profile"
+    monkeypatch.chdir(repo)
+
+    registry = _artifact_registry_from_args(argparse.Namespace(profile_dir=str(legacy_profile), _profile_dir_explicit=False))
+
+    assert registry.path == project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
+
+
+def test_explicit_profile_dir_still_overrides_project_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    explicit_profile = tmp_path / "explicit-profile"
+    monkeypatch.chdir(repo)
+
+    registry = _artifact_registry_from_args(argparse.Namespace(profile_dir=str(explicit_profile), _profile_dir_explicit=True))
+
+    assert registry.path == explicit_profile / "promptbranch_artifacts.json"
+
+
+def test_artifact_current_all_uses_configured_repos_when_project_registry_empty(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    _join_repo(tmp_path, "platform-gitops", "deployment_dependency")
+    project_dir = project_registry_dir("kubernetes")
+    monkeypatch.chdir(repo)
+
+    payload = _artifact_current_payload(
+        None,
+        ArtifactRegistry(project_dir),
+        all_repos=True,
+        state_store=ConversationStateStore(str(project_dir)),
+    )
+
+    assert payload["ok"] is True
+    assert payload["registry_file"] == str(project_dir / "promptbranch_artifacts.json")
+    assert payload["repo_count"] == 2
+    assert payload["repos"]["my_awx"]["status"] == "repo_current_not_found"
+    assert payload["repos"]["platform-gitops"]["status"] == "repo_current_not_found"
