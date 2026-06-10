@@ -1,0 +1,71 @@
+# MVP
+
+## MVP name
+
+```text
+Promptbranch controlled ChatGPT Project workflow MVP
+```
+
+## MVP goal
+
+```text
+Promptbranch provides a safe, repeatable control-plane workflow around ChatGPT Projects: workspace/task/source/artifact state is explicit, LLM output remains proposal-only, release artifacts are verified before adoption, and each next release continues from the accepted baseline.
+```
+
+## Primary user/operator
+
+```text
+Operator/developer using Promptbranch as a CLI-driven workflow shell for ChatGPT Projects and ZIP-based software releases.
+```
+
+## Success signal
+
+```text
+The operator can continue from the accepted baseline, request a narrow release slice, receive a candidate ZIP, verify it, install/adopt it only after validation, and continue the next slice from the newly accepted baseline without relying on remembered state.
+```
+
+## In scope
+
+- Workspace, task, source, and artifact state remain separate.
+- Backend-first reads and transactional write verification remain the reliability model.
+- Protocol-aware ask/reply, artifact intake, candidate verification, and guarded adoption remain the release safety model.
+- JSON orchestration/grill events remain proposal-only until Promptbranch validates and records accepted events.
+- Native release lifecycle work advances through read-only diagnostics and controlled prechecks before mutating install/adopt behavior.
+- Project continuation is documented through `docs/project/`.
+
+## Out of scope
+
+- Autonomous repository editing.
+- Autonomous Project Source overwrite.
+- Automatic artifact adoption from assistant prose.
+- Write-capable MCP execution from model proposals.
+- Local/Ollama critical-path orchestration provider without a passing bakeoff and ADR.
+- Broad shell execution.
+- Kubernetes game implementation or deployment as part of this migration slice.
+
+## Non-goals
+
+- Literal Claude Code parity.
+- Treating ChatGPT as the execution authority.
+- Replacing all repo-local release scripts in one step.
+- Turning documentation migration into MVP completion.
+
+## Critical assumptions
+
+- Accepted baseline evidence from `pb artifact current --json` is authoritative.
+- ZIP artifacts are immutable once accepted.
+- A candidate ZIP is not accepted/current until runtime, state artifact, state source, registry current, and consistency align.
+- Existing planning documents contain useful history and must be preserved.
+
+## Main risks
+
+- Baseline drift if future work continues from a candidate or stale version.
+- Authority drift if assistant proposals are treated as accepted workflow state.
+- Documentation drift if `docs/project/` is not kept current after each release.
+- Scope creep from read-only lifecycle diagnostics into mutating lifecycle behavior before guards are complete.
+
+## MVP boundaries
+
+```text
+This MVP is complete only when the Definition of Done in docs/project/definition-of-done.md is satisfied with evidence.
+```
