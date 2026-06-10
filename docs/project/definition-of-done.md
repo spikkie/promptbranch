@@ -18,7 +18,8 @@
 | DOD-012 | Project Sources add performance/transactional diagnostics are covered by focused tests | done | `tests/test_project_source_capabilities.py` targeted v0.1.68 tests | v0.1.68 |
 | DOD-013 | Browser-profile busy source/adoption sequencing is guarded by wait-idle and structured retry guidance | done | `tests/test_promptbranch_cli.py` and `tests/test_cli_parser.py` focused v0.1.69 tests | v0.1.69 |
 | DOD-014 | Multi-repo artifact current state is repo-scoped and adoption cannot overwrite another repo baseline | done | `tests/test_promptbranch_artifacts.py`, `tests/test_cli_state.py`, and `tests/test_promptbranch_cli.py` focused v0.1.70 tests plus v0.1.70 adoption evidence | v0.1.70 |
-| DOD-015 | Explicit missing repo artifact-current lookup fails closed without leaking another repo state | done | `tests/test_cli_state.py` and `tests/test_promptbranch_cli.py` focused v0.1.70.1 repair tests | v0.1.70.1 |
+| DOD-015 | Explicit missing repo artifact-current lookup fails closed without leaking another repo state | done | `tests/test_cli_state.py` and `tests/test_promptbranch_cli.py` focused v0.1.70.1 repair tests plus v0.1.70.1 adoption evidence | v0.1.70.1 |
+| DOD-016 | Project-scoped multi-repo registry resolution works from any joined repo without remembering a coordinator profile | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, artifact-current/repo focused tests, project control-surface test, compileall | v0.1.71 |
 
 ## Status values
 

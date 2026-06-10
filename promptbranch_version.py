@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-PACKAGE_VERSION = "0.1.70.1"
+PACKAGE_VERSION = "0.1.71"
 VERSION_TAG = f"v{PACKAGE_VERSION}"
 
 

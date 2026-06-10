@@ -111,6 +111,17 @@ from promptbranch_state import (
     project_name_from_url,
 )
 
+from promptbranch_project import (
+    REPO_IDENTITY_FILE_NAME,
+    artifact_prefix_matches,
+    configured_repos,
+    join_local_repo,
+    load_repo_identity,
+    project_repo_config_path,
+    project_registry_dir,
+    write_repo_identity,
+)
+
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
 DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS = 120.0
@@ -7312,8 +7323,27 @@ def _render_completion(shell_name: str, command_name: str) -> str:
     raise ValueError(f"unsupported shell: {shell_name}")
 
 
+def _project_identity_from_cwd(args: argparse.Namespace):
+    if getattr(args, "profile_dir", None):
+        return None
+    try:
+        return load_repo_identity(Path.cwd())
+    except ValueError:
+        return None
+
+
+def _project_profile_dir_from_args(args: argparse.Namespace) -> Path | None:
+    if getattr(args, "profile_dir", None):
+        return None
+    identity = _project_identity_from_cwd(args)
+    if identity is None:
+        return None
+    return project_registry_dir(identity.project_id)
+
+
 def _state_store_from_args(args: argparse.Namespace) -> ConversationStateStore:
-    return ConversationStateStore(args.profile_dir)
+    project_profile = _project_profile_dir_from_args(args)
+    return ConversationStateStore(str(project_profile) if project_profile else args.profile_dir)
 
 
 
@@ -8088,6 +8118,9 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
 
 
 def _artifact_registry_from_args(args: argparse.Namespace) -> ArtifactRegistry:
+    project_profile = _project_profile_dir_from_args(args)
+    if project_profile is not None:
+        return ArtifactRegistry(project_profile)
     return ArtifactRegistry(resolve_profile_dir(getattr(args, "profile_dir", None)))
 
 
@@ -8097,6 +8130,8 @@ def _artifact_output_dir(args: argparse.Namespace, registry: ArtifactRegistry) -
 
 
 def _artifact_state_project_url(backend: Any) -> Optional[str]:
+    if backend is None:
+        return None
     snapshot = backend.state_snapshot()
     candidate = snapshot.get("resolved_project_home_url") if isinstance(snapshot, dict) else None
     if not isinstance(candidate, str) or candidate == DEFAULT_PROJECT_URL:
@@ -9077,10 +9112,23 @@ def _artifact_current_payload(
             if not current_repo_id:
                 continue
             repos[current_repo_id] = single_payload(current_repo_id)
+        identity = None
+        try:
+            identity = load_repo_identity(Path.cwd())
+        except ValueError:
+            identity = None
+        scope = {"kind": "project" if identity is not None else "all_repos"}
+        if identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
+            scope.update({
+                "project_id": identity.project_id,
+                "project_home_url": identity.project_home_url,
+                "repo_id": identity.repo_id,
+                "registry_source": "project_registry",
+            })
         return {
             "ok": True,
             "action": "artifact_current_all",
-            "scope": {"kind": "all_repos"},
+            "scope": scope,
             "repo_count": len(repos),
             "repos": repos,
             "registry_file": str(registry.path),
@@ -16804,6 +16852,182 @@ async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_release_lifecycle(backend, args)
     raise RuntimeError(f"Unknown release command: {args.release_command}")
 
+
+def _current_project_identity_payload(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        identity = load_repo_identity(Path.cwd())
+    except ValueError as exc:
+        return {"ok": False, "status": "project_identity_invalid", "error": str(exc)}
+    if identity is None:
+        return {
+            "ok": False,
+            "status": "project_identity_not_found",
+            "identity_file": REPO_IDENTITY_FILE_NAME,
+            "next_safe_action": "Run pb project join from this repository.",
+        }
+    registry_file = project_registry_dir(identity.project_id) / "promptbranch_artifacts.json"
+    return {
+        "ok": True,
+        "identity": identity.to_dict(),
+        "project_id": identity.project_id,
+        "project_home_url": identity.project_home_url,
+        "repo_id": identity.repo_id,
+        "registry_file": str(registry_file),
+        "registry_source": "project_registry",
+        "local_repo_config_file": str(project_repo_config_path(identity.project_id)),
+    }
+
+
+async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
+    if args.project_command == "join":
+        repo_root = Path(getattr(args, "repo_root", ".") or ".").expanduser().resolve()
+        try:
+            identity_path = write_repo_identity(
+                repo_root,
+                project_id=args.project_id,
+                project_home_url=args.project_home_url,
+                repo_id=args.repo_id,
+                artifact_pattern=getattr(args, "artifact_pattern", None),
+                role=getattr(args, "role", None),
+            )
+            identity = load_repo_identity(repo_root)
+            if identity is None:
+                raise ValueError("project identity was not readable after writing")
+            repo_config_file = join_local_repo(identity)
+            ConversationStateStore(str(project_registry_dir(identity.project_id))).remember_project(identity.project_home_url, project_name=identity.project_id)
+            payload = {
+                "ok": True,
+                "action": "project_join",
+                "status": "joined",
+                "project_id": identity.project_id,
+                "project_home_url": identity.project_home_url,
+                "repo_id": identity.repo_id,
+                "identity_file": str(identity_path),
+                "local_repo_config_file": str(repo_config_file),
+                "registry_file": str(project_registry_dir(identity.project_id) / "promptbranch_artifacts.json"),
+            }
+        except Exception as exc:
+            payload = {"ok": False, "action": "project_join", "status": "join_failed", "error": str(exc)}
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            if payload.get("project_id"):
+                print(f"project_id={payload.get('project_id')}")
+            if payload.get("repo_id"):
+                print(f"repo_id={payload.get('repo_id')}")
+            if payload.get("registry_file"):
+                print(f"registry_file={payload.get('registry_file')}")
+        return 0 if payload.get("ok") else 2
+    if args.project_command == "status":
+        payload = {"action": "project_status", **_current_project_identity_payload(args)}
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status') or ('ok' if payload.get('ok') else 'error')}")
+            if payload.get("project_id"):
+                print(f"project_id={payload.get('project_id')}")
+            if payload.get("repo_id"):
+                print(f"repo_id={payload.get('repo_id')}")
+        return 0 if payload.get("ok") else 2
+    raise RuntimeError(f"Unknown project command: {args.project_command}")
+
+
+def _repo_list_payload(args: argparse.Namespace) -> dict[str, Any]:
+    identity_payload = _current_project_identity_payload(args)
+    if not identity_payload.get("ok"):
+        return {"action": "repo_list", **identity_payload}
+    project_id = str(identity_payload["project_id"])
+    registry = ArtifactRegistry(project_registry_dir(project_id))
+    store = ConversationStateStore(str(project_registry_dir(project_id)))
+    repos_cfg = configured_repos(project_id)
+    registry_ids = registry.repo_ids()
+    all_ids = sorted(set(repos_cfg) | set(registry_ids))
+    repos: list[dict[str, Any]] = []
+    for repo_id in all_ids:
+        current = registry.current(repo_id=repo_id)
+        state = store.snapshot(identity_payload.get("project_home_url"), repo_id=repo_id)
+        cfg = repos_cfg.get(repo_id, {})
+        repos.append({
+            "repo_id": repo_id,
+            "repo_root": cfg.get("repo_root"),
+            "role": cfg.get("role"),
+            "artifact_pattern": cfg.get("artifact_pattern"),
+            "configured": repo_id in repos_cfg,
+            "current_artifact": (current or {}).get("filename") or state.get("artifact_ref"),
+            "current_version": (current or {}).get("version") or state.get("artifact_version"),
+            "status": "current_found" if current else "missing_current_artifact",
+        })
+    return {
+        "ok": True,
+        "action": "repo_list",
+        "project_id": project_id,
+        "project_home_url": identity_payload.get("project_home_url"),
+        "current_repo_id": identity_payload.get("repo_id"),
+        "registry_file": str(registry.path),
+        "registry_source": "project_registry",
+        "local_repo_config_file": str(project_repo_config_path(project_id)),
+        "repo_count": len(repos),
+        "repos": repos,
+    }
+
+
+def _repo_doctor_payload(args: argparse.Namespace) -> dict[str, Any]:
+    base = _repo_list_payload(args)
+    if not base.get("ok"):
+        return {"action": "repo_doctor", **base, "status": base.get("status") or "failed"}
+    checks: list[dict[str, Any]] = []
+    def check(check_id: str, passed: bool, **details: Any) -> None:
+        item = {"id": check_id, "status": "passed" if passed else "failed"}
+        if details:
+            item["details"] = details
+        checks.append(item)
+    project_id = str(base.get("project_id"))
+    repos = base.get("repos") if isinstance(base.get("repos"), list) else []
+    repo_ids = [str(item.get("repo_id")) for item in repos if isinstance(item, dict) and item.get("repo_id")]
+    check("project_identity_found", True)
+    check("project_registry_readable", Path(str(base.get("registry_file"))).exists(), registry_file=base.get("registry_file"))
+    check("repo_ids_unique", len(repo_ids) == len(set(repo_ids)), repo_ids=repo_ids)
+    not_joined = [repo for repo in repos if isinstance(repo, dict) and not repo.get("configured")]
+    check("configured_repos_known", not not_joined, missing_from_local_config=[r.get("repo_id") for r in not_joined])
+    missing_current = [repo.get("repo_id") for repo in repos if isinstance(repo, dict) and repo.get("status") != "current_found"]
+    check("configured_repos_have_current_artifact", not missing_current, missing_current_artifact=missing_current)
+    bad_roots = []
+    bad_patterns = []
+    for repo in repos:
+        if not isinstance(repo, dict):
+            continue
+        root = repo.get("repo_root")
+        if root and not Path(str(root)).expanduser().is_dir():
+            bad_roots.append(repo.get("repo_id"))
+        if not artifact_prefix_matches(str(repo.get("repo_id") or ""), repo.get("artifact_pattern") if isinstance(repo.get("artifact_pattern"), str) else None):
+            bad_patterns.append(repo.get("repo_id"))
+    check("repo_roots_exist", not bad_roots, missing_repo_roots=bad_roots)
+    check("artifact_patterns_match_repo_ids", not bad_patterns, mismatched_patterns=bad_patterns)
+    missing_payload = _artifact_current_payload(None, ArtifactRegistry(project_registry_dir(project_id)), repo_id="__promptbranch_missing_repo_doctor__", state_store=ConversationStateStore(str(project_registry_dir(project_id))))
+    check("missing_repo_lookup_fails_closed", missing_payload.get("status") == "repo_current_not_found", observed_status=missing_payload.get("status"))
+    ok = all(item.get("status") == "passed" for item in checks)
+    return {**base, "action": "repo_doctor", "ok": ok, "status": "passed" if ok else "failed", "checks": checks}
+
+
+async def cmd_repo(backend: Any, args: argparse.Namespace) -> int:
+    if args.repo_command == "list":
+        payload = _repo_list_payload(args)
+    elif args.repo_command == "doctor":
+        payload = _repo_doctor_payload(args)
+    else:
+        raise RuntimeError(f"Unknown repo command: {args.repo_command}")
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status') or ('ok' if payload.get('ok') else 'error')}")
+        if payload.get("project_id"):
+            print(f"project_id={payload.get('project_id')}")
+        for repo in payload.get("repos") or []:
+            print(f"{repo.get('repo_id')}.current_artifact={repo.get('current_artifact') or 'none'}")
+    return 0 if payload.get("ok") else 2
+
+
 async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     repo_id = normalize_repo_id(getattr(args, "repo", None))
@@ -18975,7 +19199,10 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     requested = str(getattr(args, "artifact", "") or "").strip()
     filename = Path(requested).name
     project_url = _artifact_state_project_url(backend)
-    before_state = backend.state_snapshot()
+    identity = _project_identity_from_cwd(args)
+    if (not project_url or project_url == DEFAULT_PROJECT_URL) and identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
+        project_url = identity.project_home_url
+    before_state = _state_store_from_args(args).snapshot(project_url)
     before_registry = _artifact_registry_snapshot(registry)
 
     base_payload: dict[str, Any] = {
@@ -21672,6 +21899,26 @@ def make_parser() -> argparse.ArgumentParser:
     release_adopt.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
     release_adopt.add_argument("--json", action="store_true")
 
+    project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
+    project_subparsers = project.add_subparsers(dest="project_command", required=True)
+    project_join = project_subparsers.add_parser("join", help="Join the current repo to a Promptbranch project registry.")
+    project_join.add_argument("--project-id", required=True, help="Stable Promptbranch project id, for example kubernetes.")
+    project_join.add_argument("--project-home-url", required=True, help="ChatGPT Project home URL.")
+    project_join.add_argument("--repo-id", required=True, help="Portable repo id for this repository.")
+    project_join.add_argument("--artifact-pattern", help="Artifact filename pattern, e.g. my_awx_<version>.zip.")
+    project_join.add_argument("--role", default="member", help="Repo role in the project, e.g. consumer or deployment_dependency.")
+    project_join.add_argument("--repo-root", default=".", help="Repository root to join. Defaults to current directory.")
+    project_join.add_argument("--json", action="store_true")
+    project_status = project_subparsers.add_parser("status", help="Show current repo project identity and registry paths.")
+    project_status.add_argument("--json", action="store_true")
+
+    repo = subparsers.add_parser("repo", help="Project-scoped repo inventory and diagnostics.")
+    repo_subparsers = repo.add_subparsers(dest="repo_command", required=True)
+    repo_list = repo_subparsers.add_parser("list", help="List joined repos and their current artifacts.")
+    repo_list.add_argument("--json", action="store_true")
+    repo_doctor = repo_subparsers.add_parser("doctor", help="Validate project-scoped multi-repo registry health.")
+    repo_doctor.add_argument("--json", action="store_true")
+
     artifact = subparsers.add_parser("artifact", help="Artifact lifecycle commands for local repo snapshots and release ZIPs.")
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
 
@@ -22487,6 +22734,10 @@ async def _async_main(args: argparse.Namespace) -> int:
             return await cmd_parallel(backend, args)
         if args.command == "src":
             return await cmd_src(backend, args)
+        if args.command == "project":
+            return await cmd_project(backend, args)
+        if args.command == "repo":
+            return await cmd_repo(backend, args)
         if args.command == "artifact":
             return await cmd_artifact(backend, args)
         if args.command == "ask-release":
