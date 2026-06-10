@@ -1,11 +1,12 @@
 # Promptbranch release documentation
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 
 This index provides a compact path into the current documentation-governance release line.
 
 ## Current documentation-governance releases
 
+- [v0.1.66 — release doctor config-aware candidate ZIP precheck](../release-v0.1.66.md)
 - [v0.1.65 — release lifecycle config contract guard](../release-v0.1.65.md)
 - [v0.1.64 — docs-site build-readiness guard](../release-v0.1.64.md)
 - [v0.1.63 — docs-site link-integrity / navigation validation guard](../release-v0.1.63.md)
@@ -31,4 +32,9 @@ Release documentation now links to the [documentation site operation](../site.md
 
 ## Lifecycle-config policy
 
-Release documentation now includes the repo-local lifecycle config contract. `pb release config --json` validates `.promptbranch-release.yml` as data and explicitly reports that no hooks, installs, source uploads, artifact adoption, Git commits, or pushes were performed.
+Release documentation includes the repo-local lifecycle config contract. `pb release config --json` validates `.promptbranch-release.yml` as data and explicitly reports that no hooks, installs, source uploads, artifact adoption, Git commits, or pushes were performed.
+
+
+## Release doctor candidate precheck policy
+
+`pb release doctor --artifact ZIP --version VERSION --json` now consumes `.promptbranch-release.yml` when inspecting candidate ZIPs. It reports `candidate_artifact` and `release_config` sections, checks filename/config agreement, VERSION consistency, ZIP layout and hygiene, and accepted-baseline continuity without mutating release state.

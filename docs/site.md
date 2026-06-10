@@ -1,6 +1,6 @@
 # Promptbranch documentation site operation
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 
 This page defines the source-only documentation site policy for Promptbranch. The site is a Material for MkDocs source scaffold; rendered output is generated material and must not be committed or packaged into release ZIPs.
 
@@ -33,7 +33,7 @@ The build may create `site/`, but that output remains generated. Remove it befor
 The release-checkable guard is:
 
 ```bash
-pb release docs-status --version v0.1.65 --json
+pb release docs-status --version v0.1.66 --json
 ```
 
 The guard verifies that:
@@ -50,6 +50,7 @@ The guard verifies that:
 - [Documentation home](index.md)
 - [Design overview](design/index.md)
 - [Release overview](releases/index.md)
+- [v0.1.66 release note](release-v0.1.66.md)
 - [v0.1.65 release note](release-v0.1.65.md)
 - [v0.1.64 release note](release-v0.1.64.md)
 - [Promptbranch living-design overview](design/promptbranch-living-design-overview.md)
@@ -64,3 +65,14 @@ pb release config --json
 ```
 
 This command must parse and validate configuration only. It must not run lifecycle hooks, install a candidate ZIP, upload Project Sources, adopt an artifact, update artifact/source state, commit, or push.
+
+
+## v0.1.66 release doctor candidate precheck
+
+The release doctor now consumes `.promptbranch-release.yml` when an explicit candidate ZIP is provided:
+
+```bash
+pb release doctor --version v0.1.66 --artifact ./chatgpt_claudecode_workflow-2_v0.1.66.zip --json
+```
+
+This remains read-only. It reports candidate ZIP filename/config agreement, VERSION consistency, ZIP root layout, hygiene, nested ZIP checks, and accepted-baseline continuity without installing, uploading, adopting, committing, or pushing.

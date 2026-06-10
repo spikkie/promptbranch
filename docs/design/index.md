@@ -1,6 +1,6 @@
 # Promptbranch design documentation
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 
 This index groups the PB design surfaces that should be read together when continuing the architecture, documentation, or release-control line.
 

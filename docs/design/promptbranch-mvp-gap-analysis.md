@@ -1,6 +1,6 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 Baseline: `chatgpt_claudecode_workflow-2_v0.1.61.zip`
 Status: PB application design docs-status / diagram-freshness guard
 

@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.65
+# JSON Orchestration State MVP — Current Status after v0.1.66
 
-Updated for release: v0.1.65
+Updated for release: v0.1.66
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.64` and the v0.1.65 release lifecycle config contract guard slice.
+This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.65` and the v0.1.66 release doctor candidate ZIP precheck slice.
 
 The project remains on the same strategic goal:
 
@@ -19,7 +19,7 @@ Artifacts still go through Final Artifact Intake.
 
 ```text
 latest accepted baseline:          v0.1.61
-current development release:       v0.1.65
+current development release:       v0.1.66
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -50,6 +50,7 @@ v0.1.62  Adds a Material-for-MkDocs source scaffold and docs_site guard so PB de
 v0.1.63  Extends docs_site with repo-local link-integrity validation for MkDocs navigation and documentation index links.
 v0.1.64  Extends docs_site with build-readiness validation for docs/site.md, preview/build commands, and generated site output exclusion.
 v0.1.65  Adds a read-only release lifecycle config contract guard for .promptbranch-release.yml and pb release config --json.
+v0.1.66  Makes pb release doctor consume .promptbranch-release.yml for read-only candidate ZIP prechecks, filename/config matching, VERSION consistency, ZIP hygiene, and accepted-baseline continuity.
 ```
 
 ## Drift assessment
@@ -80,7 +81,7 @@ The grill layer is still proposal-only:
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.65 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence, living-design overview, and docs-site docs-status guards are documentation validation only and do not widen execution authority.
+Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.66 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence, living-design overview, docs-site docs-status guards, release config guard, and release doctor candidate precheck are validation only and do not widen execution authority.
 
 ## Next planned orchestration work
 
@@ -98,3 +99,8 @@ Do not start game implementation or write-capable orchestration until the design
 ## v0.1.65 release-control status
 
 `v0.1.65` remains a read-only config-contract release. It does not widen orchestration authority, execution authority, source mutation, artifact adoption, browser automation, hook execution, Git mutation, or release lifecycle behavior.
+
+
+## v0.1.66 release doctor candidate precheck rule
+
+Release doctor now consumes `.promptbranch-release.yml` when an explicit candidate ZIP is provided. The command remains read-only and reports candidate evidence only; it must not install, upload Project Sources, execute hooks, adopt artifacts, update state, commit, or push.

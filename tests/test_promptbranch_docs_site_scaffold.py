@@ -33,7 +33,7 @@ def test_documentation_indices_link_pb_architecture_entrypoints() -> None:
         path.read_text(encoding="utf-8") for path in [DOCS_INDEX, SITE_OPERATION, DESIGN_INDEX, RELEASES_INDEX]
     )
 
-    assert "Release: `v0.1.65`" in combined
+    assert "Release: `v0.1.66`" in combined
     assert "Material for MkDocs" in combined
     assert "Promptbranch is the deterministic control plane" in combined
     assert "ChatGPT is the reasoning" in combined
@@ -52,7 +52,7 @@ def test_documentation_indices_link_pb_architecture_entrypoints() -> None:
     assert "docs/design/promptbranch-application-design.md" in combined
     assert "docs/design/promptbranch-release-baseline-evidence.md" in combined
     assert "docs/design/orchestration/docs/current_status.md" in combined
-    assert "docs/release-v0.1.65.md" in combined
+    assert "docs/release-v0.1.66.md" in combined
 
 
 def test_documentation_site_links_resolve_to_repo_files() -> None:
@@ -65,16 +65,16 @@ def test_documentation_site_links_resolve_to_repo_files() -> None:
     assert "mkdocs serve" in combined
     assert "mkdocs build" in combined
     assert "docs/design/promptbranch-living-design-overview.html" in combined
-    assert "docs/release-v0.1.65.md" in combined
+    assert "docs/release-v0.1.66.md" in combined
     assert SITE_OPERATION.is_file()
     assert Path("docs/design/promptbranch-mvp-living-design.drawio").is_file()
     assert Path("docs/design/promptbranch-living-design-overview.html").is_file()
-    assert Path("docs/release-v0.1.65.md").is_file()
+    assert Path("docs/release-v0.1.66.md").is_file()
 
 
 def test_release_docs_status_includes_docs_site_guard(capsys) -> None:
     args = argparse.Namespace(
-        version="v0.1.65",
+        version="v0.1.66",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",

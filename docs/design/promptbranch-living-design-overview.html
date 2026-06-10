@@ -137,7 +137,7 @@
       <p class="lede">A human-readable explanation of <code>docs/design/promptbranch-mvp-living-design.drawio</code> and of Promptbranch as a whole: the local control plane, ChatGPT project/task surface, JSON protocol, artifact baseline model, MCP/agent layer, and release lifecycle.</p>
       <div class="meta-grid">
         <div class="mini"><strong>Source baseline</strong><span>chatgpt_claudecode_workflow-2_v0.1.63.zip</span></div>
-        <div class="mini"><strong>Repo integration release</strong><span>v0.1.65</span></div>
+        <div class="mini"><strong>Repo integration release</strong><span>v0.1.66</span></div>
         <div class="mini"><strong>Diagram source</strong><span>docs/design/promptbranch-mvp-living-design.drawio</span></div>
         <div class="mini"><strong>Draw.io pages</strong><span>12 documented pages</span></div>
         <div class="mini"><strong>Recommended docs base</strong><span>Material for MkDocs</span></div>
@@ -504,6 +504,12 @@ pb agent run --skill repo-inspection "inspect repo" --path . --json</pre>
 
     <div class="footer">Generated from accepted baseline <code>chatgpt_claudecode_workflow-2_v0.1.63.zip</code>. Designed for direct browser viewing, print/PDF export, and Material for MkDocs navigation via mkdocs.yml.</div>
   
+
+    <section>
+      <h2>v0.1.66 release doctor candidate precheck</h2>
+      <p>Release <code>v0.1.66</code> makes <code>pb release doctor --artifact ZIP --version VERSION --json</code> consume <code>.promptbranch-release.yml</code> for read-only candidate ZIP prechecks. It reports <code>release_config</code> and <code>candidate_artifact</code> evidence for filename/config matching, VERSION consistency, ZIP layout, hygiene, and accepted-baseline continuity without installing, uploading, adopting, committing, or pushing.</p>
+    </section>
+
     <section>
       <h2>v0.1.65 release lifecycle config guard</h2>
       <p>Release <code>v0.1.65</code> validates <code>.promptbranch-release.yml</code> as read-only lifecycle policy through <code>pb release config --json</code>. The guard checks artifact naming, repo-relative paths, lifecycle hook templates, and confirms no hooks, installs, uploads, adoption, state updates, commits, or pushes are performed.</p>

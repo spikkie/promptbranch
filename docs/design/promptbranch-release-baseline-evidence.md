@@ -1,10 +1,10 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 
 ## Purpose
 
-Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, in `v0.1.63` for docs-site link-integrity validation, in `v0.1.64` for docs-site build-readiness validation, and in `v0.1.65` for read-only release lifecycle config validation.
+Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, in `v0.1.63` for docs-site link-integrity validation, in `v0.1.64` for docs-site build-readiness validation, in `v0.1.65` for read-only release lifecycle config validation, and in `v0.1.66` for config-aware release doctor candidate ZIP prechecks.
 
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
@@ -122,3 +122,8 @@ Documentation build readiness is source evidence only. `docs/site.md` documents 
 ## v0.1.65 release lifecycle config evidence
 
 `pb release config --json` is a read-only evidence command. It can help an operator verify lifecycle policy before a future install/test/adopt workflow, but it is not adoption evidence by itself. Authoritative accepted-baseline evidence remains `pb artifact current --json` with `registry_current.kind = adopted_release` and `code_matches_adopted_source = true`.
+
+
+## v0.1.66 release doctor candidate evidence
+
+`pb release doctor --artifact ZIP --version VERSION --json` now produces read-only candidate evidence before any lifecycle mutation. The `candidate_artifact` section records filename/config agreement, VERSION consistency, ZIP readability, root layout, hygiene, nested ZIP checks, and accepted-baseline continuity. This evidence can block unsafe candidates, but it is not adoption evidence by itself. Authoritative accepted-baseline evidence still comes from `pb artifact current --json` after adoption.

@@ -1,6 +1,6 @@
 # Promptbranch Living Design Overview HTML
 
-Release: `v0.1.65`
+Release: `v0.1.66`
 
 This page publishes the standalone HTML overview for the editable Promptbranch living-design source:
 
@@ -31,3 +31,8 @@ The living-design overview remains source-controlled documentation. It is linked
 ## v0.1.65 release config guard
 
 Release `v0.1.65` validates `.promptbranch-release.yml` as a source-only lifecycle policy. `pb release config --json` is a read-only guard and does not execute hooks or mutate Promptbranch state.
+
+
+## v0.1.66 release doctor candidate precheck
+
+Release `v0.1.66` makes `pb release doctor --artifact ZIP --version VERSION --json` consume `.promptbranch-release.yml` for read-only candidate ZIP prechecks. It reports `release_config` and `candidate_artifact` evidence for filename/config matching, VERSION consistency, ZIP layout, hygiene, and accepted-baseline continuity without installing, uploading, adopting, committing, or pushing.
