@@ -3,59 +3,53 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.66.zip
-accepted checksum: 2b05556677346aa2f9e1d7449bb1c70fc0c54b8d7cd130f22b6e7083960ec8a3
-latest build input: chatgpt_claudecode_workflow-2_v0.1.67.zip, per explicit operator v0.1.68 request
-next normal target: chatgpt_claudecode_workflow-2_v0.1.68.zip
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.68.zip
+accepted checksum: fd55f38e290d77b2fcae637721ecf2ca25a7d16ceb66954f1a5497cacc30ed6d
+next normal target: chatgpt_claudecode_workflow-2_v0.1.69.zip
 ```
 
 ## Current MVP state
 
 ```text
 MVP status: active, not complete
-DoD status: project-control-surface rows done; v0.1.68 source-add performance/diagnostic row pending validation until candidate checks pass
-active plan slice: Project Sources add performance and transactional diagnostics
-last completed slice with adoption evidence: v0.1.66 release doctor config-aware candidate ZIP precheck
-latest candidate input: v0.1.67 project-control-surface migration
-next planned slice: choose after v0.1.68 adoption evidence or baseline reconciliation
+DoD status: project-control-surface rows done; source-add diagnostics done; browser-idle barrier row pending candidate validation/adoption
+active plan slice: Browser-profile busy retry and source-add idle barrier
+last completed slice with adoption evidence: v0.1.68 Project Sources add performance and transactional diagnostics
+next planned slice: choose after v0.1.69 validation/adoption evidence
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.68.zip candidate after this slice is packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.69.zip candidate after this slice is packaged
 latest installed ZIP: unknown until operator lifecycle evidence
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.66.zip by available adoption evidence
-release status: v0.1.68 candidate, not accepted/current
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.68.zip
+release status: v0.1.69 candidate, not accepted/current
 ```
 
 ## Current risks
 
-- v0.1.67 adoption evidence is not present in `docs/project/`; v0.1.68 is built from v0.1.67 because the operator explicitly requested the next release.
-- Empty Sources snapshots may be stale after ChatGPT UI/upload races; the fast path improves latency but makes post-add verification and recovery guidance critical.
-- Overwrite remains destructive because the old source is removed before replacement persistence is verified.
-- Full browser/live Project Sources validation was not run in this environment.
+- Browser-backed Project Source mutations can complete at the command level while the shared service browser profile still reports an active operation briefly afterward.
+- Release/adoption flows that immediately call `pb src list` or artifact adoption verification can hit `browser_profile_busy` unless they wait for browser-idle or return actionable retry guidance.
+- Full native lifecycle ownership is still broader than this slice; this release only hardens the immediate race.
 
 ## Current blockers
 
-- No blocker for creating the v0.1.68 candidate ZIP.
-- Adoption cannot be claimed until `pb artifact current --json` aligns on v0.1.68.
-- Full test evidence is not available unless the operator runs the full suite.
+- None for the v0.1.69 candidate build.
 
 ## Current unknowns
 
-- Whether v0.1.67 was adopted locally before this request.
-- Whether the live ChatGPT Sources UI still has stale empty-snapshot behavior under repeated source-add operations.
-- Whether the operator wants a later backend-first source listing API to replace part of the UI preflight.
+- Whether every repo-local lifecycle script will use `pb browser wait-idle`; this candidate makes `pb src add` safer by default, but external scripts can still choose to skip or bypass it.
+- Whether a future native `pb release lifecycle` should internalize all source-add/adopt sequencing instead of leaving it in repo-local scripts.
 
 ## Next safe action
 
 ```text
-Install/test the v0.1.68 candidate, run the targeted source-add tests and any required release-control checks, then provide `pb artifact current --json` only after adoption. If v0.1.67 was not adopted, reconcile baseline evidence before treating v0.1.68 as accepted/current.
+Build and validate chatgpt_claudecode_workflow-2_v0.1.69.zip as a candidate. Operator should install/test/adopt only after validation, then provide `pb artifact current --json` evidence.
 ```
 
 ## Last updated
 
 ```text
-v0.1.68 candidate
+v0.1.69 candidate
 ```

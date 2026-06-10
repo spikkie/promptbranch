@@ -119,6 +119,8 @@ DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
 DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS = 90.0
 DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1200.0
 DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS = 600.0
+DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS = 180.0
+DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS = 2.0
 DEFAULT_CONFIG_PATH = "~/.config/promptbranch/config.json"
 LEGACY_CONFIG_PATH = "~/.config/chatgpt-cli/config.json"
 
@@ -4809,8 +4811,100 @@ async def cmd_project_remove(backend: CommandBackend, args: argparse.Namespace) 
     return 0
 
 
+
+def _browser_status_is_idle(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    return (
+        payload.get("status") == "available"
+        and not bool(payload.get("owner_active"))
+        and not payload.get("active_operation")
+        and not bool(payload.get("external_lock_held"))
+    )
+
+
+async def _wait_for_browser_idle(
+    backend: Any,
+    *,
+    timeout_seconds: float = DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS,
+    poll_seconds: float = DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS,
+    action: str = "browser_wait_idle",
+) -> dict[str, Any]:
+    timeout_seconds = max(0.001, float(timeout_seconds))
+    poll_seconds = max(0.001, float(poll_seconds))
+    deadline = time.monotonic() + timeout_seconds
+    attempts = 0
+    last_status: dict[str, Any] | None = None
+    while True:
+        attempts += 1
+        status_payload = await backend.browser_status()
+        if isinstance(status_payload, dict):
+            last_status = dict(status_payload)
+        else:
+            last_status = {"ok": False, "status": "invalid_browser_status_payload", "payload": status_payload}
+        if _browser_status_is_idle(last_status):
+            return {
+                "ok": True,
+                "action": action,
+                "status": "available",
+                "idle": True,
+                "attempts": attempts,
+                "timeout_seconds": timeout_seconds,
+                "poll_seconds": poll_seconds,
+                "browser_status": last_status,
+            }
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {
+                "ok": False,
+                "action": action,
+                "status": "browser_profile_busy_timeout",
+                "idle": False,
+                "attempts": attempts,
+                "timeout_seconds": timeout_seconds,
+                "poll_seconds": poll_seconds,
+                "browser_status": last_status,
+                "operator_action": "retry_after_active_browser_operation_or_use_async_job_status",
+                "next_safe_commands": [
+                    "pb browser status --json",
+                    f"pb browser wait-idle --timeout {timeout_seconds:g} --json",
+                ],
+            }
+        await asyncio.sleep(min(poll_seconds, max(0.001, remaining)))
+
+
+def _browser_profile_busy_next_safe_commands(command: str) -> list[str]:
+    return [
+        "pb browser status --json",
+        f"pb browser wait-idle --timeout {DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS:g} --json",
+        command,
+    ]
+
+
 async def cmd_project_source_list(backend: Any, args: argparse.Namespace) -> int:
-    result = await backend.list_project_sources(keep_open=args.keep_open)
+    try:
+        result = await backend.list_project_sources(keep_open=args.keep_open)
+    except Exception as exc:
+        service_payload = _service_exception_payload(exc, args)
+        if service_payload and service_payload.get("status") == "browser_profile_busy":
+            payload = dict(service_payload)
+            payload.update({
+                "ok": False,
+                "action": "source_list",
+                "status": "browser_profile_busy",
+                "project_source_mutated": False,
+                "source_count": None,
+                "next_safe_commands": _browser_profile_busy_next_safe_commands("pb src list --json"),
+            })
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print(f"status={payload.get('status')}", file=sys.stderr)
+                if payload.get("active_operation"):
+                    print(f"active_operation={payload.get('active_operation')}", file=sys.stderr)
+                print("retry after the active browser operation completes", file=sys.stderr)
+            return 75
+        raise
     sources, payload = _project_source_list_payload(result)
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -4981,10 +5075,25 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
                 display_name=display_name,
                 overwrite_existing=overwrite_existing,
             )
+    if result.get("ok") and not getattr(args, "no_post_mutation_wait_idle", False):
+        idle_result = await _wait_for_browser_idle(
+            backend,
+            timeout_seconds=getattr(args, "post_mutation_idle_timeout_seconds", DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS) or DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS,
+            poll_seconds=getattr(args, "post_mutation_idle_poll_seconds", DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS) or DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS,
+            action="source_add_post_mutation_wait_idle",
+        )
+        result = dict(result)
+        result["post_mutation_browser_idle"] = idle_result
+        result["browser_profile_released"] = bool(idle_result.get("ok"))
+        if not idle_result.get("ok"):
+            result["ok"] = False
+            result["status"] = "source_add_browser_profile_not_idle_after_mutation"
+            result.setdefault("operator_action", "retry_after_active_browser_operation_or_use_async_job_status")
+            result.setdefault("next_safe_commands", _browser_profile_busy_next_safe_commands("pb src list --json"))
     print(json.dumps(result, indent=2, ensure_ascii=False))
     if result.get("ok"):
         return 0
-    return 75 if result.get("status") == "browser_profile_busy" else 1
+    return 75 if result.get("status") in {"browser_profile_busy", "source_add_browser_profile_not_idle_after_mutation"} else 1
 
 
 async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -18806,7 +18915,26 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         payload = {**base_payload, "status": "workspace_not_selected", "artifact_version": filename_version, "source_version": filename_version, "error": "select a workspace before adopting a Project Source artifact"}
         return emit(payload, 2)
 
-    source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+    try:
+        source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+    except Exception as exc:
+        service_payload = _service_exception_payload(exc, args)
+        if service_payload and service_payload.get("status") == "browser_profile_busy":
+            payload = {
+                **base_payload,
+                **service_payload,
+                "action": "artifact_adopt",
+                "status": "browser_profile_busy",
+                "artifact_version": filename_version,
+                "source_version": filename_version,
+                "source_verified": False,
+                "project_source_mutated": False,
+                "source_list": service_payload,
+                "error": "Project Sources could not be verified because the browser profile is still owned by another operation.",
+                "next_safe_commands": _browser_profile_busy_next_safe_commands(f"pb artifact adopt {shlex.quote(filename)} --from-project-source --json"),
+            }
+            return emit(payload, 75)
+        raise
     matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
     if not bool(source_payload.get("ok")):
         payload = {**base_payload, "status": "source_list_unavailable", "artifact_version": filename_version, "source_version": filename_version, "source_list": source_payload, "error": "could not verify Project Sources"}
@@ -19113,6 +19241,27 @@ async def cmd_browser(backend: CommandBackend, args: argparse.Namespace) -> int:
                 print(f"active_elapsed_seconds={result.get('active_elapsed_seconds')}")
             print(f"queue_enabled={str(result.get('queue_enabled')).lower()}")
         return 0
+    if args.browser_command == "wait-idle":
+        result = await _wait_for_browser_idle(
+            backend,
+            timeout_seconds=getattr(args, "timeout", DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS),
+            poll_seconds=getattr(args, "poll_seconds", DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS),
+        )
+        if isinstance(result, dict):
+            result = dict(result)
+            policy = service_browser_queue_policy("src_add")
+            result.setdefault("service_queue", policy)
+            result.setdefault("queue_enabled", bool(policy.get("queue_enabled")))
+            result.setdefault("queue_mode", policy.get("queue_mode"))
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={result.get('status')}")
+            print(f"idle={str(bool(result.get('idle'))).lower()}")
+            browser = result.get("browser_status") if isinstance(result.get("browser_status"), dict) else {}
+            if browser.get("active_operation"):
+                print(f"active_operation={browser.get('active_operation')}")
+        return 0 if result.get("ok") else 75
     raise RuntimeError(f"Unknown browser command: {args.browser_command}")
 
 
@@ -21163,6 +21312,9 @@ def make_parser() -> argparse.ArgumentParser:
     src_add.add_argument("--wait-for-profile", action="store_true", help="Wait for an active browser profile owner before adding the source instead of failing after the default short contention window. In v0.1.44 source add queues by default.")
     src_add.add_argument("--no-queue", action="store_true", help="Disable the v0.1.44 service-profile bounded wait queue and use the service default contention timeout.")
     src_add.add_argument("--profile-wait-timeout-seconds", type=float, help=f"Maximum seconds to wait for the browser profile. Defaults to {SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS} for source add queueing.")
+    src_add.add_argument("--no-post-mutation-wait-idle", action="store_true", help="Do not wait for the browser profile to become idle after a successful source mutation.")
+    src_add.add_argument("--post-mutation-idle-timeout-seconds", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS, help=f"Maximum seconds to wait for browser idle after source add. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS}.")
+    src_add.add_argument("--post-mutation-idle-poll-seconds", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS, help=f"Polling interval while waiting for browser idle after source add. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS}.")
     src_add.add_argument("--json", action="store_true", help="Emit the source-add result as JSON. Source add is JSON-first; this flag is accepted for command-contract consistency.")
     src_add.add_argument("--keep-open", action="store_true")
 
@@ -21232,6 +21384,10 @@ def make_parser() -> argparse.ArgumentParser:
     browser_subparsers = browser.add_subparsers(dest="browser_command", required=True)
     browser_status = browser_subparsers.add_parser("status", help="Show the current shared browser profile owner/status.")
     browser_status.add_argument("--json", action="store_true", help="Emit browser profile monitor status as JSON.")
+    browser_wait_idle = browser_subparsers.add_parser("wait-idle", help="Wait until the shared browser profile is available.")
+    browser_wait_idle.add_argument("--timeout", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS, help=f"Maximum seconds to wait. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS}.")
+    browser_wait_idle.add_argument("--poll-seconds", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS, help=f"Polling interval. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS}.")
+    browser_wait_idle.add_argument("--json", action="store_true", help="Emit wait result as JSON.")
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
