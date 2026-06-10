@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "project_id": "kubernetes",
+  "project_home_url": "https://chatgpt.com/g/g-p-6835d9419f3c8191b86b93e6379879f6-kubernetes/project",
+  "repo_id": "my_awx",
+  "artifact_pattern": "my_awx_<version>.zip",
+  "role": "consumer"
+}

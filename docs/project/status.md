@@ -3,54 +3,53 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.70.zip
-accepted checksum: 99836251f6b07798d2e4c1e8bf978f001dccb0cced6fb64446dd7f098fe620e9
-next repair target: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
-next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.71.zip
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
+accepted checksum: 24be7e1c993d69ffb3ae50fbd50a45edf8a1af07ed616b107ef895698fc1ed33
+next normal target: chatgpt_claudecode_workflow-2_v0.1.71.zip
 ```
 
 ## Current MVP state
 
 ```text
 MVP status: active, not complete
-DoD status: project-control-surface rows done; source-add diagnostics done; browser-idle barrier done; multi-repo artifact current-state done/adopted; missing-repo fallback repair done in candidate after focused validation
-active plan slice: v0.1.70.1 repair — missing repo artifact-current fallback
-last completed slice with adoption evidence: v0.1.70 Multi-repo artifact registry state
-next planned normal slice: choose after v0.1.70.1 validation/adoption evidence
+DoD status: project-control-surface rows done; source-add diagnostics done; browser-idle barrier done; multi-repo artifact current-state done/adopted; missing-repo fallback repair done/adopted; project-scoped multi-repo registry resolution done in candidate after focused validation
+active plan slice: v0.1.71 normal — project-scoped multi-repo registry resolution
+last completed slice with adoption evidence: v0.1.70.1 Missing repo artifact-current fallback repair
+next planned slice: after v0.1.71 adoption, choose next risk-controlled multi-repo or lifecycle hardening slice
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.70.1.zip candidate after this repair is packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.71.zip candidate after this slice is packaged
 latest installed ZIP: unknown until operator lifecycle evidence
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.70.zip
-release status: v0.1.70.1 repair candidate, not accepted/current
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
+release status: v0.1.71 normal candidate, not accepted/current
 ```
 
 ## Current risks
 
-- v0.1.70 correctly supports multi-repo `--all`, valid `--repo`, and ambiguous unscoped-current behavior, but an explicit missing/typo repo lookup could leak another repo artifact state before this repair.
-- The current multi-repo project model is coordinator-registry convention, not a first-class `.promptbranch-repos.json` declaration.
-- Running from another repo directory uses that repo's local `.pb_profile` unless a shared/coordinator profile is explicitly selected.
+- v0.1.71 changes artifact registry resolution for joined repos from repo-local `.pb_profile` convention to project-scoped user-local state; explicit `--profile-dir` remains the debug/override path.
+- Existing repo-local `.pb_profile/promptbranch_artifacts.json` state is not automatically migrated; operators must join repos and adopt/register artifacts into the project registry or keep using `--profile-dir` while migrating.
+- Full test suite has not been run for this candidate.
 
 ## Current blockers
 
-- None for the v0.1.70.1 repair candidate build.
+- None for the v0.1.71 candidate build.
 
 ## Current unknowns
 
-- Whether a future slice should add first-class project/repo declaration commands such as `pb repo list --json` and `pb repo doctor --json`.
-- Whether all operator workflows will consistently run cross-repo checks from the chosen coordinator registry or pass an explicit shared profile.
+- Whether migration tooling for existing repo-local registries should become a separate v0.1.72 slice.
+- Whether release-set/dependency orchestration should be introduced after project-scoped registry resolution stabilizes.
 
 ## Next safe action
 
 ```text
-Install/test chatgpt_claudecode_workflow-2_v0.1.70.1.zip as a repair candidate. Verify `pb artifact current --repo does-not-exist --json` returns repo_current_not_found with state=null and registry_current=null. Also verify valid repo lookups and `pb artifact current --all --json` still work from the coordinator registry.
+Install/test chatgpt_claudecode_workflow-2_v0.1.71.zip as a normal candidate. From each Kubernetes repo, run `pb project join ...`, then verify `pb artifact current --all --json`, `pb repo list --json`, and `pb repo doctor --json` resolve the same project registry without passing `--profile-dir`.
 ```
 
 ## Last updated
 
 ```text
-v0.1.70.1 repair candidate
+v0.1.71 candidate
 ```
