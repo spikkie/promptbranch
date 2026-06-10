@@ -9682,6 +9682,36 @@ def _release_config_hook_name_status(value: Any) -> tuple[bool, str | None]:
     return True, None
 
 
+def _release_config_hook_command_status(command: str) -> tuple[bool, str | None, str | None]:
+    """Validate hook command as a static, repo-local template only.
+
+    The release-config command is a read-only contract validator. It must not
+    execute hooks, but it still rejects commands that embed operator-machine
+    absolute/home-relative paths so future lifecycle execution remains portable.
+    """
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError as exc:
+        return False, "command_parse_error", str(exc)
+    for token in tokens:
+        stripped = token.strip()
+        if not stripped:
+            continue
+        # Allow placeholders to stand in for runtime values; reject concrete
+        # operator-machine paths in the checked-in config.
+        if stripped in {"{artifact}", "{repo_path}", "{version}", "{target_version}"}:
+            continue
+        if stripped.startswith("/") or stripped.startswith("~/") or stripped == "~":
+            return False, "command_must_not_embed_absolute_or_home_path", stripped
+        # Also catch option assignment forms such as --path=/home/user/repo.
+        if "=" in stripped:
+            _, value = stripped.split("=", 1)
+            if value.startswith("/") or value.startswith("~/") or value == "~":
+                return False, "command_must_not_embed_absolute_or_home_path", stripped
+    return True, None, None
+
+
 def _release_config_summary(config: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
     artifact = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
     install = config.get("install") if isinstance(config.get("install"), dict) else {}
@@ -9689,6 +9719,7 @@ def _release_config_summary(config: dict[str, Any], validation: dict[str, Any]) 
     hooks = config.get("hooks") if isinstance(config.get("hooks"), dict) else {}
 
     prefix = str(artifact.get("prefix") or "")
+    version_prefix = str(artifact.get("version_prefix") or "")
     suffix = str(artifact.get("suffix") or "")
     preserve = install.get("preserve") if isinstance(install.get("preserve"), list) else []
     unsafe_paths = git.get("unsafe_paths") if isinstance(git.get("unsafe_paths"), list) else []
@@ -9705,6 +9736,8 @@ def _release_config_summary(config: dict[str, Any], validation: dict[str, Any]) 
                 "placeholders": placeholders,
                 "placeholder_count": len(placeholders),
                 "known_placeholders_only": not bool(set(placeholders) - _RELEASE_CONFIG_ALLOWED_PLACEHOLDERS),
+                "repo_relative": True,
+                "template_valid": not bool(set(placeholders) - _RELEASE_CONFIG_ALLOWED_PLACEHOLDERS),
             })
 
     return {
@@ -9714,8 +9747,9 @@ def _release_config_summary(config: dict[str, Any], validation: dict[str, Any]) 
         "schema_version": config.get("schema_version"),
         "artifact": {
             "prefix": prefix,
+            "version_prefix": version_prefix,
             "suffix": suffix,
-            "filename_pattern": f"{prefix}<version>{suffix}" if prefix or suffix else None,
+            "filename_pattern": f"{prefix}{version_prefix}<version>{suffix}" if prefix or suffix or version_prefix else None,
             "version_file": artifact.get("version_file"),
             "policy_file": artifact.get("policy_file"),
         },
@@ -9776,6 +9810,10 @@ def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
                 block("release_config_artifact_token_invalid", f"artifact.{key} must be a safe filename token, not a path or template.", field=f"artifact.{key}", reason=reason)
             elif reason == "suffix_without_dot":
                 warn("release_config_suffix_without_dot", "artifact.suffix usually starts with a dot, for example .zip.", suffix=artifact.get("suffix"))
+    if artifact.get("version_prefix") is not None:
+        ok, reason = _release_config_artifact_token_status(artifact.get("version_prefix"), field="artifact.version_prefix")
+        if not ok:
+            block("release_config_artifact_token_invalid", "artifact.version_prefix must be a safe filename token, not a path or template.", field="artifact.version_prefix", reason=reason)
     for key in ["version_file", "policy_file"]:
         if artifact.get(key) is not None:
             ok, reason = _release_config_path_status(artifact.get(key))
@@ -9824,6 +9862,9 @@ def _validate_release_config(config: dict[str, Any]) -> dict[str, Any]:
             unsupported = sorted(_release_config_command_placeholders(command) - _RELEASE_CONFIG_ALLOWED_PLACEHOLDERS)
             if unsupported:
                 block("release_config_hook_placeholder_unsupported", "Hook command uses unsupported placeholders.", hook=name, placeholders=unsupported, allowed=sorted(_RELEASE_CONFIG_ALLOWED_PLACEHOLDERS))
+            command_ok, command_reason, command_token = _release_config_hook_command_status(command)
+            if not command_ok:
+                block("release_config_hook_command_path_invalid", "Hook command must not embed absolute or home-relative local machine paths.", hook=name, reason=command_reason, token=command_token)
 
     severity = "blocked" if blockers else "warning" if warnings else "ok"
     return {
@@ -9873,6 +9914,11 @@ def _load_release_config(config_arg: str | None, *, repo_root: Path) -> dict[str
         "severity": validation["severity"],
         "config": config,
         "config_summary": config_summary,
+        "artifact": config_summary.get("artifact"),
+        "install": config_summary.get("install"),
+        "git": config_summary.get("git"),
+        "hooks": {item.get("name"): {key: value for key, value in item.items() if key != "name"} for item in config_summary.get("hooks", []) if isinstance(item, dict)},
+        "read_only_contract": config_summary.get("read_only_contract"),
         "validation": validation,
         "warning_codes": validation["warning_codes"],
         "blocker_codes": validation["blocker_codes"],

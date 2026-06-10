@@ -1,6 +1,6 @@
 # Promptbranch MVP Living Design
 
-Release: `v0.1.64`  
+Release: `v0.1.65`  
 Status: source-of-truth design note plus editable draw.io source and PB application design freshness guard  
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
@@ -459,3 +459,8 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ## v0.1.64 documentation site build-readiness guard
 
 `v0.1.64` adds `docs/site.md` as the operator-facing documentation-site policy page and extends the `docs_site` docs-status guard with `build_readiness`. The guard verifies that `mkdocs serve`, `mkdocs build`, the source-only policy, and the generated `site/` exclusion rule are documented. It does not require MkDocs to be installed and does not commit rendered output.
+
+
+## v0.1.65 release lifecycle config guard
+
+`v0.1.65` introduces the checked release lifecycle config contract. `.promptbranch-release.yml` is validated by `pb release config --json` for safe artifact naming, repo-relative paths, lifecycle hook templates, and read-only behavior. This is a prerequisite for later native lifecycle phases; it does not execute hooks or mutate release state.

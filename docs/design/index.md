@@ -1,6 +1,6 @@
 # Promptbranch design documentation
 
-Release: `v0.1.64`
+Release: `v0.1.65`
 
 This index groups the PB design surfaces that should be read together when continuing the architecture, documentation, or release-control line.
 
@@ -41,3 +41,8 @@ Every link from this index is part of the release-checkable documentation surfac
 ## v0.1.64 build-readiness rule
 
 The documentation site is now release-checkable for build readiness. `docs/site.md` must document `mkdocs serve`, `mkdocs build`, the source-only policy, and the rule that generated `site/` output must not be committed or packaged.
+
+
+## v0.1.65 release lifecycle config rule
+
+Release lifecycle policy now has a checked repo-root contract in `.promptbranch-release.yml`. The `pb release config --json` guard validates the config shape, repo-relative paths, safe hook template placeholders, and absence of embedded absolute local machine paths without executing hooks or mutating state.

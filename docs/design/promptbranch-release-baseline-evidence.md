@@ -1,10 +1,10 @@
 # Promptbranch Release Baseline Evidence
 
-Release: `v0.1.64`
+Release: `v0.1.65`
 
 ## Purpose
 
-Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, in `v0.1.63` for docs-site link-integrity validation, and in `v0.1.64` for docs-site build-readiness validation.
+Introduced in `v0.1.60`; refreshed in `v0.1.61` for the living-design HTML overview, in `v0.1.62` for the documentation site scaffold, in `v0.1.63` for docs-site link-integrity validation, in `v0.1.64` for docs-site build-readiness validation, and in `v0.1.65` for read-only release lifecycle config validation.
 
 
 This document defines the release/adoption evidence model used by Promptbranch after a candidate ZIP has been created, installed, validated, and adopted.
@@ -117,3 +117,8 @@ The accepted-baseline evidence model now also protects documentation navigation.
 ## v0.1.64 documentation build-readiness evidence
 
 Documentation build readiness is source evidence only. `docs/site.md` documents local preview/build commands and the generated-output exclusion rule. `docs_site.build_readiness.ok=true` confirms that the source tree is operationally understandable without treating rendered `site/` output as an accepted artifact or Project Source baseline.
+
+
+## v0.1.65 release lifecycle config evidence
+
+`pb release config --json` is a read-only evidence command. It can help an operator verify lifecycle policy before a future install/test/adopt workflow, but it is not adoption evidence by itself. Authoritative accepted-baseline evidence remains `pb artifact current --json` with `registry_current.kind = adopted_release` and `code_matches_adopted_source = true`.

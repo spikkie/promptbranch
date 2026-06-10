@@ -1,6 +1,6 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.64`  
+Release: `v0.1.65`  
 Status: documentation site scaffold, editable design-source navigation, and docs-status freshness guard  
 Related editable diagrams and overview:
 
@@ -201,3 +201,8 @@ document and the draw.io pages across all three editable diagram files.
 ## v0.1.64 documentation build-readiness guard
 
 `v0.1.64` extends the documentation-site guard with a build-readiness contract. `docs/site.md` documents the source-only Material for MkDocs policy, the `mkdocs serve` preview command, the `mkdocs build` command, and the rule that generated `site/` output must not be committed or packaged. `pb release docs-status --version v0.1.64 --json` reports this under `docs_site.build_readiness`.
+
+
+## v0.1.65 release lifecycle config contract
+
+`v0.1.65` adds a read-only release lifecycle configuration contract around `.promptbranch-release.yml`. The command `pb release config --json` validates artifact naming, version prefix, repo-relative policy/version paths, install-preserve paths, Git unsafe paths, and hook command templates. It rejects embedded absolute or home-relative local machine paths and reports that no hooks, installs, Project Source uploads, artifact adoption, state updates, commits, or pushes were performed.
