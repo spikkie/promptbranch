@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from promptbranch_artifacts import ArtifactRegistry, create_repo_snapshot, default_artifact_filename, iter_repo_files, release_entry_hygiene_violations, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, create_repo_snapshot, default_artifact_filename, iter_repo_files, release_entry_hygiene_violations, verify_zip_artifact
 
 
 def test_default_artifact_filename_prefers_version_file(tmp_path: Path) -> None:
@@ -190,3 +190,128 @@ def test_verify_zip_artifact_rejects_task_messages_txt_transcript(tmp_path: Path
     assert payload["ok"] is False
     assert payload["hygiene_violation_count"] == 1
     assert payload["hygiene_violations"] == ["task_69fd0f07-8a28-8395-8f3d-cb6d758965d7.messages.txt"]
+
+
+def test_artifact_registry_current_is_repo_scoped(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "my_awx_0.0.200.zip"),
+        filename="my_awx_0.0.200.zip",
+        kind="adopted_release",
+        version="0.0.200",
+        repo_path=None,
+        repo_id="my_awx",
+        sha256="a" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T10:00:00Z",
+    ))
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "platform-gitops_0.0.4.zip"),
+        filename="platform-gitops_0.0.4.zip",
+        kind="adopted_release",
+        version="0.0.4",
+        repo_path=None,
+        repo_id="platform-gitops",
+        sha256="b" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T11:00:00Z",
+    ))
+
+    assert registry.current(repo_id="my_awx")["filename"] == "my_awx_0.0.200.zip"
+    assert registry.current(repo_id="platform-gitops")["filename"] == "platform-gitops_0.0.4.zip"
+
+
+def test_artifact_registry_current_all_groups_by_repo(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "my_awx_0.0.200.zip"),
+        filename="my_awx_0.0.200.zip",
+        kind="adopted_release",
+        version="0.0.200",
+        repo_path=None,
+        repo_id="my_awx",
+        sha256="a" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T10:00:00Z",
+    ))
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "my_awx_0.0.201.zip"),
+        filename="my_awx_0.0.201.zip",
+        kind="adopted_release",
+        version="0.0.201",
+        repo_path=None,
+        repo_id="my_awx",
+        sha256="c" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T12:00:00Z",
+    ))
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "platform-gitops_0.0.4.zip"),
+        filename="platform-gitops_0.0.4.zip",
+        kind="adopted_release",
+        version="0.0.4",
+        repo_path=None,
+        repo_id="platform-gitops",
+        sha256="b" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T11:00:00Z",
+    ))
+
+    current_all = registry.current_all()
+
+    assert current_all["my_awx"]["filename"] == "my_awx_0.0.201.zip"
+    assert current_all["platform-gitops"]["filename"] == "platform-gitops_0.0.4.zip"
+
+
+def test_artifact_registry_current_without_repo_rejects_ambiguous_multi_repo_state(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "my_awx_0.0.200.zip"),
+        filename="my_awx_0.0.200.zip",
+        kind="adopted_release",
+        version="0.0.200",
+        repo_path=None,
+        repo_id="my_awx",
+        sha256="a" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T10:00:00Z",
+    ))
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "platform-gitops_0.0.4.zip"),
+        filename="platform-gitops_0.0.4.zip",
+        kind="adopted_release",
+        version="0.0.4",
+        repo_path=None,
+        repo_id="platform-gitops",
+        sha256="b" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T11:00:00Z",
+    ))
+
+    assert registry.current() is None
+    assert registry.is_current_ambiguous() is True
+
+
+def test_artifact_registry_legacy_current_still_works_for_single_repo(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "my_awx_0.0.200.zip"),
+        filename="my_awx_0.0.200.zip",
+        kind="adopted_release",
+        version="0.0.200",
+        repo_path=None,
+        repo_id="my_awx",
+        sha256="a" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-10T10:00:00Z",
+    ))
+
+    assert registry.current()["filename"] == "my_awx_0.0.200.zip"

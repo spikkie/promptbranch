@@ -4,6 +4,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import subprocess
 import zipfile
 from dataclasses import dataclass, asdict
@@ -92,6 +93,33 @@ DISALLOWED_RELEASE_ENTRY_PATTERNS: tuple[str, ...] = (
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+
+def infer_repo_id_from_artifact_filename(filename: str | None) -> str | None:
+    """Return a portable repo identifier inferred from a Promptbranch ZIP name.
+
+    Artifact names normally use ``<repo>_<version>.zip`` where version is
+    ``v1.2.3`` or ``1.2.3`` with an optional numeric repair component.  The
+    repo id is intentionally filename-based instead of path-based so current
+    baseline state remains portable across machines.
+    """
+
+    value = str(filename or "").strip()
+    if not value.endswith(".zip") or "_" not in value:
+        return None
+    stem = value[:-4]
+    prefix, version = stem.rsplit("_", 1)
+    if not prefix or not re.fullmatch(r"v?\d+(?:\.\d+){2,3}", version):
+        return None
+    return prefix
+
+
+def normalize_repo_id(value: str | None) -> str | None:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    return Path(candidate).name.replace(" ", "_")
 
 
 def valid_version_text(value: str | None) -> bool:
@@ -257,6 +285,7 @@ class ArtifactRecord:
     created_at: str
     source_ref: str | None = None
     project_url: str | None = None
+    repo_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -288,6 +317,21 @@ class ArtifactRegistry:
         artifacts = self.load().get("artifacts")
         return [item for item in artifacts if isinstance(item, dict)] if isinstance(artifacts, list) else []
 
+    @staticmethod
+    def _record_repo_id(record: dict[str, Any]) -> str | None:
+        repo_id = normalize_repo_id(record.get("repo_id") if isinstance(record.get("repo_id"), str) else None)
+        if repo_id:
+            return repo_id
+        inferred = infer_repo_id_from_artifact_filename(record.get("filename") if isinstance(record.get("filename"), str) else None)
+        if inferred:
+            return inferred
+        repo_path = record.get("repo_path") if isinstance(record.get("repo_path"), str) else None
+        return normalize_repo_id(repo_path) if repo_path else None
+
+    def repo_ids(self) -> list[str]:
+        ids = {repo_id for item in self.list() if (repo_id := self._record_repo_id(item))}
+        return sorted(ids)
+
     def add(self, record: ArtifactRecord) -> dict[str, Any]:
         payload = self.load()
         artifacts = [item for item in payload.get("artifacts", []) if isinstance(item, dict)]
@@ -302,9 +346,28 @@ class ArtifactRegistry:
         self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return record_payload
 
-    def current(self) -> dict[str, Any] | None:
+    def current(self, repo_id: str | None = None) -> dict[str, Any] | None:
         artifacts = self.list()
+        normalized_repo = normalize_repo_id(repo_id)
+        if normalized_repo:
+            for item in artifacts:
+                if self._record_repo_id(item) == normalized_repo:
+                    return item
+            return None
+        repo_ids = {repo for item in artifacts if (repo := self._record_repo_id(item))}
+        if len(repo_ids) > 1:
+            return None
         return artifacts[0] if artifacts else None
+
+    def current_all(self) -> dict[str, dict[str, Any]]:
+        current_by_repo: dict[str, dict[str, Any]] = {}
+        for item in self.list():
+            repo_id = self._record_repo_id(item) or "__unscoped__"
+            current_by_repo.setdefault(repo_id, item)
+        return current_by_repo
+
+    def is_current_ambiguous(self) -> bool:
+        return len(self.repo_ids()) > 1
 
 
 
@@ -609,6 +672,7 @@ def create_repo_snapshot(
         kind=kind,
         version=version,
         repo_path=str(root),
+        repo_id=normalize_repo_id(root.name),
         sha256=sha256_file(out_path),
         size_bytes=out_path.stat().st_size,
         file_count=len(files),
