@@ -1,6 +1,6 @@
 # Promptbranch Application Design — pb and ChatGPT Responsibilities
 
-Release: `v0.1.65`  
+Release: `v0.1.66`  
 Status: documentation site scaffold, editable design-source navigation, and docs-status freshness guard  
 Related editable diagrams and overview:
 

@@ -9401,6 +9401,196 @@ def _release_doctor_artifact_consistency(
     }
 
 
+
+def _release_doctor_config_summary_for_doctor(config_payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the compact release-config linkage used by release doctor.
+
+    The doctor consumes the same read-only config parser as ``pb release config``
+    and exposes only the contract details needed to reason about a candidate ZIP.
+    It must not execute hooks or mutate release state.
+    """
+
+    artifact = config_payload.get("artifact") if isinstance(config_payload.get("artifact"), dict) else {}
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    return {
+        "ok": bool(config_payload.get("ok")),
+        "status": config_payload.get("status") or ("verified" if config_payload.get("ok") else "missing"),
+        "path": config_payload.get("path"),
+        "present": bool(config_payload.get("present")),
+        "schema_version": config.get("schema_version"),
+        "artifact_prefix": artifact.get("prefix"),
+        "artifact_version_prefix": artifact.get("version_prefix"),
+        "artifact_suffix": artifact.get("suffix"),
+        "version_file": artifact.get("version_file"),
+        "policy_file": artifact.get("policy_file"),
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "warning_codes": list(config_payload.get("warning_codes") or []),
+        "blocker_codes": list(config_payload.get("blocker_codes") or []),
+    }
+
+
+
+def _release_doctor_candidate_artifact_report(
+    *,
+    artifact: dict[str, Any],
+    config_payload: dict[str, Any],
+    expected: dict[str, Any],
+    artifact_current: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize candidate ZIP prechecks using release config and current baseline.
+
+    This is intentionally read-only. It converts the lower-level
+    ``artifact_inspection`` result into a lifecycle-doctor-facing contract that
+    is stable for scripts and future lifecycle phases.
+    """
+
+    attempted = bool(artifact.get("attempted"))
+    release_config = _release_doctor_config_summary_for_doctor(config_payload)
+    warnings: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+
+    def warn(code: str, message: str, **extra: Any) -> None:
+        warnings.append({"code": code, "severity": "warning", "message": message, **extra})
+
+    def block(code: str, message: str, **extra: Any) -> None:
+        blockers.append({"code": code, "severity": "blocked", "message": message, **extra})
+
+    if not attempted:
+        return {
+            "attempted": False,
+            "ok": None,
+            "status": "not_requested",
+            "read_only": True,
+            "mutating_actions_executed": False,
+            "release_config": release_config,
+            "warning_codes": [],
+            "blocker_codes": [],
+            "warnings": [],
+            "blockers": [],
+        }
+
+    artifact_path = artifact.get("path")
+    filename = artifact.get("filename")
+    artifact_version = _candidate_version_normalized(artifact.get("normalized_version") or artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
+    requested_version = expected.get("requested_version_normalized")
+    target_version = expected.get("target_version_normalized")
+    version_file_value = artifact.get("version_file")
+    version_file_normalized = _candidate_version_normalized(version_file_value)
+    layout = artifact.get("layout_checks") if isinstance(artifact.get("layout_checks"), dict) else {}
+    config = config_payload.get("config") if isinstance(config_payload.get("config"), dict) else {}
+    artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
+    prefix = artifact_cfg.get("prefix")
+    version_prefix = artifact_cfg.get("version_prefix")
+    suffix = artifact_cfg.get("suffix")
+    expected_filename = None
+    if prefix and suffix and artifact_version:
+        version_token = artifact_version
+        if version_prefix and not version_token.startswith(str(version_prefix)):
+            version_token = f"{version_prefix}{version_token.removeprefix('v')}"
+        expected_filename = f"{prefix}{version_token}{suffix}"
+    filename_matches_config = bool(expected_filename and filename == expected_filename)
+
+    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    current_baseline_version = _candidate_version_normalized(
+        baseline_roles.get("registry_current_version")
+        or baseline_roles.get("adopted_source_version")
+        or baseline_roles.get("adopted_artifact_version")
+    )
+    current_baseline_ref = (
+        baseline_roles.get("registry_current_ref")
+        or baseline_roles.get("adopted_source_ref")
+        or baseline_roles.get("adopted_artifact_ref")
+    )
+    expected_next_normal = _release_expected_next_normal_version(current_baseline_version)
+    candidate_shape = _release_version_shape(artifact_version)
+    baseline_ok = True
+    baseline_relation = _compare_operator_versions(current_baseline_version, artifact_version) if current_baseline_version and artifact_version else "unknown"
+    if current_baseline_version and artifact_version:
+        if candidate_shape == "normal":
+            baseline_ok = artifact_version == expected_next_normal
+        elif candidate_shape == "repair":
+            baseline_ok = bool(artifact_version.startswith(f"{current_baseline_version}."))
+        else:
+            baseline_ok = False
+
+    zip_opens = bool(layout.get("zip_opens"))
+    wrapper_ok = bool(layout.get("root_has_no_wrapper_folder"))
+    hygiene_ok = bool(layout.get("no_hygiene_violations"))
+    nested_zip_ok = bool(layout.get("no_nested_zip_entries"))
+    version_file_present = bool(layout.get("has_version_file"))
+    version_matches_requested = (not requested_version) or (artifact_version == requested_version)
+    version_matches_target = (not target_version) or (artifact_version == target_version)
+
+    if not artifact.get("present"):
+        block("candidate_artifact_missing", "Candidate artifact path does not exist.", path=artifact_path)
+    if not zip_opens:
+        block("candidate_artifact_zip_invalid", "Candidate artifact is not a readable ZIP.", path=artifact_path)
+    if not wrapper_ok:
+        block("candidate_artifact_wrapper_folder", "Candidate ZIP contains a wrapper folder instead of repo contents at root.", wrapper_folder=artifact.get("wrapper_folder"))
+    if not hygiene_ok:
+        block("candidate_artifact_hygiene_failed", "Candidate ZIP contains generated, cached, temporary, or local-environment files.", hygiene_violation_count=artifact.get("hygiene_violation_count"))
+    if not nested_zip_ok:
+        block("candidate_artifact_nested_zip", "Candidate ZIP contains nested ZIP entries.", nested_zip_count=artifact.get("nested_zip_count"))
+    if not version_file_present or not version_file_normalized:
+        block("candidate_artifact_wrong_version", "Candidate ZIP does not contain a valid VERSION file.", version_file_value=version_file_value)
+    if requested_version and artifact_version and artifact_version != requested_version:
+        warn("candidate_artifact_wrong_version", "Candidate ZIP version differs from requested --version.", artifact_version=artifact_version, requested_version=requested_version)
+    if target_version and artifact_version and artifact_version != target_version:
+        warn("candidate_artifact_target_version_mismatch", "Candidate ZIP version differs from requested --target-version.", artifact_version=artifact_version, target_version=target_version)
+    if config_payload.get("present") and not config_payload.get("ok"):
+        block("release_config_invalid", "Release config exists but did not validate.", blocker_codes=config_payload.get("blocker_codes") or [])
+    if not config_payload.get("present"):
+        warn("release_config_missing", "Release config is missing; filename/config matching was skipped.", path=config_payload.get("path"))
+    elif expected_filename and not filename_matches_config:
+        block("candidate_artifact_wrong_filename", "Candidate filename does not match .promptbranch-release.yml artifact naming policy.", filename=filename, expected_filename=expected_filename)
+    if current_baseline_version and artifact_version and not baseline_ok:
+        block("candidate_artifact_baseline_mismatch", "Candidate version does not match the expected next release from the accepted baseline.", current_baseline=current_baseline_version, expected_next_normal_version=expected_next_normal, candidate_version=artifact_version)
+
+    status = "blocked" if blockers else "warning" if warnings else "verified"
+    return {
+        "attempted": True,
+        "ok": not blockers,
+        "status": status,
+        "severity": "blocked" if blockers else ("warning" if warnings else "ok"),
+        "path": artifact_path,
+        "filename": filename,
+        "exists": bool(artifact.get("present")),
+        "sha256": artifact.get("sha256"),
+        "size_bytes": artifact.get("size_bytes"),
+        "file_count": artifact.get("entry_count"),
+        "entry_count": artifact.get("entry_count"),
+        "version": artifact_version,
+        "normalized_version": artifact_version,
+        "version_matches_requested": version_matches_requested,
+        "version_matches_target": version_matches_target,
+        "filename_matches_config": filename_matches_config,
+        "expected_filename_from_config": expected_filename,
+        "zip_opens": zip_opens,
+        "zip_root_is_repo_contents": wrapper_ok,
+        "version_file_present": version_file_present,
+        "version_file_value": version_file_value,
+        "hygiene_ok": hygiene_ok,
+        "nested_zip_ok": nested_zip_ok,
+        "release_config": release_config,
+        "baseline_continuity": {
+            "ok": baseline_ok,
+            "current_baseline": current_baseline_ref,
+            "current_baseline_version": current_baseline_version,
+            "candidate_version": artifact_version,
+            "candidate_shape": candidate_shape,
+            "version_relation": baseline_relation,
+            "expected_next_normal_version": expected_next_normal,
+        },
+        "read_only": True,
+        "mutating_actions_executed": False,
+        "warnings": warnings,
+        "blockers": blockers,
+        "warning_codes": [item["code"] for item in warnings],
+        "blocker_codes": [item["code"] for item in blockers],
+    }
+
+
 def _release_doctor_lifecycle_phase(
     *,
     consistency: dict[str, Any],
@@ -15957,6 +16147,7 @@ async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -
         str(getattr(args, "artifact", "") or "").strip() or None,
         repo_root=repo_root,
     )
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
 
     health_url = str(getattr(args, "health_url", "") or "").strip()
     if not health_url:
@@ -16035,8 +16226,22 @@ async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -
         artifact_current=artifact_current,
         project_sources=project_sources,
     )
-    combined_warnings = list(consistency.get("warnings") or []) + list(artifact_consistency.get("warnings") or [])
-    combined_blockers = list(consistency.get("blockers") or []) + list(artifact_consistency.get("blockers") or [])
+    candidate_artifact = _release_doctor_candidate_artifact_report(
+        artifact=artifact_inspection,
+        config_payload=config_payload,
+        expected=expected,
+        artifact_current=artifact_current,
+    )
+    combined_warnings = (
+        list(consistency.get("warnings") or [])
+        + list(artifact_consistency.get("warnings") or [])
+        + list(candidate_artifact.get("warnings") or [])
+    )
+    combined_blockers = (
+        list(consistency.get("blockers") or [])
+        + list(artifact_consistency.get("blockers") or [])
+        + list(candidate_artifact.get("blockers") or [])
+    )
     combined_warning_codes = [item.get("code") for item in combined_warnings if item.get("code")]
     combined_blocker_codes = [item.get("code") for item in combined_blockers if item.get("code")]
     lifecycle_phase = _release_doctor_lifecycle_phase(
@@ -16112,7 +16317,10 @@ async def cmd_release_lifecycle_status(backend: Any, args: argparse.Namespace) -
         "installed_distribution": installed_distribution,
         "service_health": service_health,
         "artifact_current": artifact_current,
+        "release_config": _release_doctor_config_summary_for_doctor(config_payload),
+        "release_config_detail": config_payload,
         "artifact_inspection": artifact_inspection,
+        "candidate_artifact": candidate_artifact,
         "project_sources": project_sources,
         "candidate_intake_precondition": candidate_precondition,
         "candidate_next": next_payload,
@@ -16174,6 +16382,7 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         str(getattr(args, "artifact", "") or "").strip() or None,
         repo_root=repo_root,
     )
+    config_payload = _load_release_config(getattr(args, "config", None), repo_root=repo_root)
 
     health_url = str(getattr(args, "health_url", "") or "").strip()
     if not health_url:
@@ -16247,8 +16456,22 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         artifact_current=artifact_current,
         project_sources=project_sources,
     )
-    combined_warnings = list(consistency.get("warnings") or []) + list(artifact_consistency.get("warnings") or [])
-    combined_blockers = list(consistency.get("blockers") or []) + list(artifact_consistency.get("blockers") or [])
+    candidate_artifact = _release_doctor_candidate_artifact_report(
+        artifact=artifact_inspection,
+        config_payload=config_payload,
+        expected=expected,
+        artifact_current=artifact_current,
+    )
+    combined_warnings = (
+        list(consistency.get("warnings") or [])
+        + list(artifact_consistency.get("warnings") or [])
+        + list(candidate_artifact.get("warnings") or [])
+    )
+    combined_blockers = (
+        list(consistency.get("blockers") or [])
+        + list(artifact_consistency.get("blockers") or [])
+        + list(candidate_artifact.get("blockers") or [])
+    )
     combined_warning_codes = [item.get("code") for item in combined_warnings if item.get("code")]
     combined_blocker_codes = [item.get("code") for item in combined_blockers if item.get("code")]
     combined_severity = "blocked" if combined_blockers else "warning" if combined_warnings else "ok"
@@ -16304,7 +16527,10 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
         "installed_distribution": installed_distribution,
         "service_health": service_health,
         "artifact_current": artifact_current,
+        "release_config": _release_doctor_config_summary_for_doctor(config_payload),
+        "release_config_detail": config_payload,
         "artifact_inspection": artifact_inspection,
+        "candidate_artifact": candidate_artifact,
         "project_sources": project_sources,
         "candidate_intake_precondition": candidate_precondition,
         "candidate_next": next_payload,
@@ -21114,6 +21340,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_doctor.add_argument("--version", help="Expected current runtime/release version, such as v0.0.245.5.")
     release_doctor.add_argument("--target-version", help="Optional next target version for operator context.")
     release_doctor.add_argument("--artifact", help="Optional candidate ZIP to inspect read-only for immutability, VERSION, layout, and lifecycle phase.")
+    release_doctor.add_argument("--config", default=".promptbranch-release.yml", help="Lifecycle config file to parse. Defaults to .promptbranch-release.yml.")
     release_doctor.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     release_doctor.add_argument("--health-url", help="Service health URL. Defaults to <service-base-url>/healthz or http://127.0.0.1:8000/healthz.")
     release_doctor.add_argument("--health-timeout", type=float, default=3.0, help="HTTP health probe timeout in seconds. Defaults to 3.")

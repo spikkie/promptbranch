@@ -27,6 +27,7 @@ nav:
       - Orchestration current status: design/orchestration/docs/current_status.md
   - Releases:
       - Overview: releases/index.md
+      - v0.1.66: release-v0.1.66.md
       - v0.1.65: release-v0.1.65.md
       - v0.1.64: release-v0.1.64.md
       - v0.1.63: release-v0.1.63.md
@@ -50,6 +51,7 @@ markdown_extensions:
 # - docs/design/promptbranch-mvp-gap-analysis.md
 # - docs/design/orchestration/docs/current_status.md
 # - docs/site.md
+# - docs/release-v0.1.66.md
 # - docs/release-v0.1.65.md
 # - docs/release-v0.1.64.md
 # - docs/release-v0.1.63.md
