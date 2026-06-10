@@ -1,6 +1,6 @@
 # Promptbranch MVP Gap Analysis
 
-Release: `v0.1.64`
+Release: `v0.1.65`
 Baseline: `chatgpt_claudecode_workflow-2_v0.1.61.zip`
 Status: PB application design docs-status / diagram-freshness guard
 
@@ -14,7 +14,7 @@ This document records the current gap between the living design, the consolidate
 accepted baseline: chatgpt_claudecode_workflow-2_v0.1.61.zip
 runtime/source/artifact/registry: v0.1.61 accepted baseline
 full-test evidence: deferred for narrow documentation/validation slice
-next normal release: v0.1.64
+next normal release: v0.1.65
 ```
 
 ## Consolidation decision
@@ -88,3 +88,8 @@ Do not start game implementation or write-capable orchestration until the design
 ## v0.1.64 update
 
 `v0.1.64` closes the documentation build-readiness gap by adding `docs/site.md` and validating that local preview/build commands and the generated `site/` exclusion rule are documented. The release remains source-only: no rendered `site/` output, publishing workflow, runtime behavior, source mutation, browser automation, or artifact-adoption behavior changes are included.
+
+
+## v0.1.65 update
+
+`v0.1.65` starts the native release lifecycle configuration path by validating `.promptbranch-release.yml` as repo-local data. The gap intentionally left open is lifecycle execution: install, source upload, acceptance hook execution, adoption, policy sync, Git commit, and push remain outside this slice.

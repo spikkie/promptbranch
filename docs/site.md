@@ -1,6 +1,6 @@
 # Promptbranch documentation site operation
 
-Release: `v0.1.64`
+Release: `v0.1.65`
 
 This page defines the source-only documentation site policy for Promptbranch. The site is a Material for MkDocs source scaffold; rendered output is generated material and must not be committed or packaged into release ZIPs.
 
@@ -33,7 +33,7 @@ The build may create `site/`, but that output remains generated. Remove it befor
 The release-checkable guard is:
 
 ```bash
-pb release docs-status --version v0.1.64 --json
+pb release docs-status --version v0.1.65 --json
 ```
 
 The guard verifies that:
@@ -50,5 +50,17 @@ The guard verifies that:
 - [Documentation home](index.md)
 - [Design overview](design/index.md)
 - [Release overview](releases/index.md)
+- [v0.1.65 release note](release-v0.1.65.md)
 - [v0.1.64 release note](release-v0.1.64.md)
 - [Promptbranch living-design overview](design/promptbranch-living-design-overview.md)
+
+
+## Release lifecycle config guard
+
+The documentation site remains source-only, and release lifecycle policy is now also source-only and repo-local. Validate `.promptbranch-release.yml` with:
+
+```bash
+pb release config --json
+```
+
+This command must parse and validate configuration only. It must not run lifecycle hooks, install a candidate ZIP, upload Project Sources, adopt an artifact, update artifact/source state, commit, or push.

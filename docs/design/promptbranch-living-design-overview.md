@@ -1,6 +1,6 @@
 # Promptbranch Living Design Overview HTML
 
-Release: `v0.1.64`
+Release: `v0.1.65`
 
 This page publishes the standalone HTML overview for the editable Promptbranch living-design source:
 
@@ -26,3 +26,8 @@ This bridge page is now included in docs-site link-integrity validation. Its lin
 ## v0.1.64 build-readiness guard
 
 The living-design overview remains source-controlled documentation. It is linked from `mkdocs.yml`, `docs/index.md`, and `docs/site.md`; generated `site/` output remains forbidden from release ZIPs.
+
+
+## v0.1.65 release config guard
+
+Release `v0.1.65` validates `.promptbranch-release.yml` as a source-only lifecycle policy. `pb release config --json` is a read-only guard and does not execute hooks or mutate Promptbranch state.

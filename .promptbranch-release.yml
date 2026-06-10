@@ -2,9 +2,10 @@ schema_version: 1
 
 artifact:
   prefix: chatgpt_claudecode_workflow-2_
+  version_prefix: v
   suffix: .zip
   version_file: VERSION
-  policy_file: .promptbranch-project.json
+  policy_file: .pb_profile/promptbranch_artifacts.json
 
 install:
   preserve:
@@ -28,6 +29,10 @@ git:
     - '.pytest_cache/'
 
 hooks:
+  docs_status:
+    command: python3 promptbranch_cli.py release docs-status --version {version} --json
+  focused_docs_tests:
+    command: python3 -m pytest -q tests/test_promptbranch_docs_site_scaffold.py tests/test_promptbranch_living_design_html_doc.py tests/test_promptbranch_application_design_doc.py tests/test_promptbranch_release_baseline_evidence_doc.py
   doctor:
     command: pb release doctor --version {version} --artifact {artifact} --repo-path {repo_path} --json
   local_acceptance:
