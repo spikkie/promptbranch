@@ -115,10 +115,12 @@ from promptbranch_project import (
     REPO_IDENTITY_FILE_NAME,
     artifact_prefix_matches,
     configured_repos,
+    ensure_project_registry,
     join_local_repo,
     load_repo_identity,
-    project_repo_config_path,
     project_registry_dir,
+    project_registry_file,
+    project_repo_config_path,
     write_repo_identity,
 )
 
@@ -7323,8 +7325,12 @@ def _render_completion(shell_name: str, command_name: str) -> str:
     raise ValueError(f"unsupported shell: {shell_name}")
 
 
+def _explicit_profile_dir_requested(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "_profile_dir_explicit", False))
+
+
 def _project_identity_from_cwd(args: argparse.Namespace):
-    if getattr(args, "profile_dir", None):
+    if _explicit_profile_dir_requested(args):
         return None
     try:
         return load_repo_identity(Path.cwd())
@@ -7333,7 +7339,7 @@ def _project_identity_from_cwd(args: argparse.Namespace):
 
 
 def _project_profile_dir_from_args(args: argparse.Namespace) -> Path | None:
-    if getattr(args, "profile_dir", None):
+    if _explicit_profile_dir_requested(args):
         return None
     identity = _project_identity_from_cwd(args)
     if identity is None:
@@ -9039,7 +9045,14 @@ def _artifact_current_payload(
     def available_repo_ids() -> list[str]:
         snapshot = snapshot_for(None)
         state_repos = (snapshot.get("artifacts_by_repo") or {}).keys() if isinstance(snapshot.get("artifacts_by_repo"), dict) else []
-        return sorted(set(registry.repo_ids()) | {str(item) for item in state_repos if item})
+        configured: set[str] = set()
+        try:
+            identity = load_repo_identity(Path.cwd())
+        except ValueError:
+            identity = None
+        if identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
+            configured = set(configured_repos(identity.project_id).keys())
+        return sorted(set(registry.repo_ids()) | {str(item) for item in state_repos if item} | configured)
 
     def single_payload(scope_repo_id: str | None) -> dict[str, Any]:
         snapshot = snapshot_for(scope_repo_id)
@@ -16865,7 +16878,7 @@ def _current_project_identity_payload(args: argparse.Namespace) -> dict[str, Any
             "identity_file": REPO_IDENTITY_FILE_NAME,
             "next_safe_action": "Run pb project join from this repository.",
         }
-    registry_file = project_registry_dir(identity.project_id) / "promptbranch_artifacts.json"
+    registry_file = project_registry_file(identity.project_id)
     return {
         "ok": True,
         "identity": identity.to_dict(),
@@ -16894,6 +16907,7 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
             if identity is None:
                 raise ValueError("project identity was not readable after writing")
             repo_config_file = join_local_repo(identity)
+            ensure_project_registry(identity.project_id)
             ConversationStateStore(str(project_registry_dir(identity.project_id))).remember_project(identity.project_home_url, project_name=identity.project_id)
             payload = {
                 "ok": True,
@@ -16904,7 +16918,7 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 "repo_id": identity.repo_id,
                 "identity_file": str(identity_path),
                 "local_repo_config_file": str(repo_config_file),
-                "registry_file": str(project_registry_dir(identity.project_id) / "promptbranch_artifacts.json"),
+                "registry_file": str(project_registry_file(identity.project_id)),
             }
         except Exception as exc:
             payload = {"ok": False, "action": "project_join", "status": "join_failed", "error": str(exc)}
@@ -22824,6 +22838,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return help_exit_code
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
+    args._profile_dir_explicit = _option_was_provided(normalized_argv, "--profile-dir")
     if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
         args.debug_browser = True
         args.headless = False

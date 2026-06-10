@@ -3,16 +3,16 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
-accepted checksum: 24be7e1c993d69ffb3ae50fbd50a45edf8a1af07ed616b107ef895698fc1ed33
-next normal target: chatgpt_claudecode_workflow-2_v0.1.71.zip
+accepted/current baseline for repair: chatgpt_claudecode_workflow-2_v0.1.71.zip (operator stated fully tested/adopted; checksum evidence not recorded in this file); v0.1.71.1 was not installable due missing root `.gitignore`
+accepted checksum: pending explicit v0.1.71 adoption evidence block
+next normal target: chatgpt_claudecode_workflow-2_v0.1.72.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduces project-scoped multi-repo registry resolution so any joined repo can resolve the same project artifact registry without remembering a coordinator/main repo or manual --profile-dir.
+Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP.
 ```
 
 ## Release / slice plan
@@ -25,7 +25,9 @@ Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and 
 | v0.1.69 | Browser-profile busy retry and source-add idle barrier | Prevent lifecycle adoption/source-list verification from racing a just-finished Project Source browser mutation | `pb browser wait-idle`, post-source-add idle barrier, structured busy payloads for `src list`/artifact adoption verification, focused tests, status docs | runtime ask behavior, deployment behavior, autonomous execution, broad release lifecycle migration | focused browser/source/adoption parser tests, project control-surface test, compileall, ZIP hygiene; adopted by operator evidence | accepted_current |
 | v0.1.70 | Multi-repo artifact registry state | Make artifact current-state repo-scoped so one repo adoption cannot overwrite another repo baseline | `ArtifactRecord.repo_id`, repo-aware registry current/current_all, repo-scoped state, `pb artifact current --repo/--all`, adopt repo-prefix validation, focused tests, status docs | release-set orchestration, dependency solving, multi-repo lifecycle execution, Project Source upload changes, ZIP packaging changes | focused artifact/state/CLI tests, project control-surface test, compileall, ZIP hygiene, operator adoption evidence | accepted_current |
 | v0.1.70.1 | Repair missing repo artifact-current fallback | Explicit `pb artifact current --repo <missing>` must fail closed without returning another repo artifact as state | `promptbranch_state.py`, `promptbranch_cli.py`, focused tests, repair note, status docs, version metadata | line advancement, release-set orchestration, project declaration, dependency solving, lifecycle behavior changes | missing-repo focused tests, existing artifact-current focused tests, project control-surface test, compileall, ZIP hygiene, operator adoption evidence | accepted_current |
-| v0.1.71 | Project-scoped multi-repo registry resolution | Make any joined repo resolve the same project artifact registry without remembering a coordinator/main repo | `.promptbranch-repo.json` support, user-local project registry path, `pb project join/status`, `pb repo list/doctor`, artifact current --all project diagnostics, focused tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, Git/deployment operations across repos | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | candidate |
+| v0.1.71 | Project-scoped multi-repo registry resolution | Make any joined repo resolve the same project artifact registry without remembering a coordinator/main repo | `.promptbranch-repo.json` support, user-local project registry path, `pb project join/status`, `pb repo list/doctor`, artifact current --all project diagnostics, focused tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, Git/deployment operations across repos | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | accepted_current by operator statement; explicit adoption JSON not recorded here |
+| v0.1.71.1 | Repair project registry command alignment | Ensure join creates project registry and artifact-current/repo diagnostics all use the project registry when no explicit `--profile-dir` is supplied | profile-dir explicitness tracking, project registry creation, artifact current --all configured-repo visibility, focused tests, repair note | normal v0.1.72 scope, import/migration command, release-set orchestration, adoption semantics | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | rejected: missing required root `.gitignore` |
+| v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | candidate |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -42,4 +44,32 @@ Expected validation: project/repo focused pytest, artifact-current regression te
 DoD movement: add DOD-016 for project-scoped multi-repo registry resolution; mark done after focused validation passes.
 Risk: project registry storage changes where artifact current-state is read/written for joined repos; explicit --profile-dir remains the debug/override escape hatch.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
+
+
+## Repair definition — v0.1.71.1
+
+```text
+Release: v0.1.71.1
+Base release: v0.1.71
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.71 field testing showed `pb repo list` and `pb repo doctor` used the new project registry while `pb artifact current --all` could still use the resolved repo-local `.pb_profile`, because default profile resolution was mistaken for an explicit `--profile-dir`.
+In scope: track whether `--profile-dir` was actually provided, create the project registry during `pb project join`, include locally configured repo IDs in project `current --all`, and ensure repo/list/doctor/artifact-current share the project registry by default from joined repos.
+Out of scope: release-set orchestration, automatic Project Source upload, automatic artifact adoption, registry import/migration command, dependency solving, deployment behavior.
+Expected validation: focused project/repo/artifact-current tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
+```
+
+
+## Repair definition — v0.1.71.2
+
+```text
+Release: v0.1.71.2
+Base release: v0.1.71.1 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.71.1 failed install ZIP import guard because required root `.gitignore` was missing.
+In scope: restore `.gitignore`, update version metadata, add repair note/status docs, preserve all v0.1.71.1 behavior.
+Out of scope: normal v0.1.72 work, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
+Expected validation: required root-file check, focused project/repo/artifact-current tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
 ```

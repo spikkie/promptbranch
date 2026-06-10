@@ -3,53 +3,60 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
-accepted checksum: 24be7e1c993d69ffb3ae50fbd50a45edf8a1af07ed616b107ef895698fc1ed33
-next normal target: chatgpt_claudecode_workflow-2_v0.1.71.zip
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.71.zip (operator stated fully tested/adopted; checksum evidence not recorded in this file)
+accepted checksum: pending explicit v0.1.71 adoption evidence block
+next normal target: chatgpt_claudecode_workflow-2_v0.1.72.zip
 ```
 
 ## Current MVP state
 
 ```text
 MVP status: active, not complete
-DoD status: project-control-surface rows done; source-add diagnostics done; browser-idle barrier done; multi-repo artifact current-state done/adopted; missing-repo fallback repair done/adopted; project-scoped multi-repo registry resolution done in candidate after focused validation
-active plan slice: v0.1.71 normal — project-scoped multi-repo registry resolution
-last completed slice with adoption evidence: v0.1.70.1 Missing repo artifact-current fallback repair
-next planned slice: after v0.1.71 adoption, choose next risk-controlled multi-repo or lifecycle hardening slice
+DoD status: project-control-surface rows done; source-add diagnostics done; browser-idle barrier done; multi-repo artifact current-state done/adopted; missing-repo fallback repair done/adopted; project-scoped multi-repo registry resolution repaired in v0.1.71.1 candidate after focused validation; v0.1.71.2 repairs missing required root `.gitignore` packaging defect
+active plan slice: v0.1.71.2 repair — restore required root `.gitignore` in v0.1.71.1 packaging
+last completed slice with adoption evidence: v0.1.71 by operator statement; explicit adoption JSON not recorded here
+next planned slice: after v0.1.71.1 adoption, choose next risk-controlled multi-repo or lifecycle hardening slice
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.71.zip candidate after this slice is packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.71.2.zip candidate after this repair is packaged
 latest installed ZIP: unknown until operator lifecycle evidence
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.70.1.zip
-release status: v0.1.71 normal candidate, not accepted/current
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.71.zip by operator statement; explicit adoption JSON not recorded here
+release status: v0.1.71.2 repair candidate, not accepted/current; v0.1.71.1 rejected by install ZIP import guard because `.gitignore` was missing
 ```
 
 ## Current risks
 
-- v0.1.71 changes artifact registry resolution for joined repos from repo-local `.pb_profile` convention to project-scoped user-local state; explicit `--profile-dir` remains the debug/override path.
-- Existing repo-local `.pb_profile/promptbranch_artifacts.json` state is not automatically migrated; operators must join repos and adopt/register artifacts into the project registry or keep using `--profile-dir` while migrating.
-- Full test suite has not been run for this candidate.
+- v0.1.71.1 fixes a high-risk registry split where project/repo commands could read the new project registry but artifact-current still read the repo-local profile when `args.profile_dir` had only been default-resolved.
+- Existing repo-local `.pb_profile/promptbranch_artifacts.json` state is not automatically migrated by this repair; operators must adopt/register artifacts into the project registry or use an explicit `--profile-dir` during migration.
+- Full test suite has not been run for this repair candidate.
 
 ## Current blockers
 
-- None for the v0.1.71 candidate build.
+- None for the v0.1.71.1 repair candidate build.
 
 ## Current unknowns
 
 - Whether migration tooling for existing repo-local registries should become a separate v0.1.72 slice.
-- Whether release-set/dependency orchestration should be introduced after project-scoped registry resolution stabilizes.
+- Whether `pb project join --from-current` should be added later to reduce manual operator input.
 
 ## Next safe action
 
 ```text
-Install/test chatgpt_claudecode_workflow-2_v0.1.71.zip as a normal candidate. From each Kubernetes repo, run `pb project join ...`, then verify `pb artifact current --all --json`, `pb repo list --json`, and `pb repo doctor --json` resolve the same project registry without passing `--profile-dir`.
+Install/test chatgpt_claudecode_workflow-2_v0.1.71.1.zip as a repair candidate. From each joined Kubernetes repo, verify `pb artifact current --all --json`, `pb repo list --json`, and `pb repo doctor --json` report the same project registry path without passing `--profile-dir`.
 ```
 
 ## Last updated
 
 ```text
-v0.1.71 candidate
+v0.1.71.1 repair candidate
+```
+
+
+## v0.1.71.2 repair note
+
+```text
+The v0.1.71.1 ZIP failed install verification because required root `.gitignore` was missing. v0.1.71.2 restores `.gitignore` and preserves v0.1.71.1 behavior without advancing the normal release line.
 ```
