@@ -12,7 +12,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP. v0.1.71.3 removes protected `.pb_profile/` packaging. v0.1.71.4 normalizes service health version comparison between bare package versions and canonical `v` versions.
+Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP. v0.1.71.3 removes protected `.pb_profile/` packaging. v0.1.71.4 normalizes service health version comparison between bare package versions and canonical `v` versions. v0.1.71.5 fixes the follow-on `VERSION_TAG` double-`v` version-surface defect exposed by full-test import smoke.
 ```
 
 ## Release / slice plan
@@ -29,6 +29,8 @@ Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and 
 | v0.1.71.1 | Repair project registry command alignment | Ensure join creates project registry and artifact-current/repo diagnostics all use the project registry when no explicit `--profile-dir` is supplied | profile-dir explicitness tracking, project registry creation, artifact current --all configured-repo visibility, focused tests, repair note | normal v0.1.72 scope, import/migration command, release-set orchestration, adoption semantics | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | rejected: missing required root `.gitignore` |
 | v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | rejected: protected `.pb_profile/` ZIP entry |
 | v0.1.71.3 | Repair protected ZIP entry hygiene | Remove protected local Promptbranch state from repair ZIP while preserving v0.1.71.1/v0.1.71.2 behavior | ZIP payload hygiene, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | install ZIP guard, required-root and protected-entry checks, focused tests, compileall, ZIP hygiene | rejected: service health version-format mismatch |
+| v0.1.71.4 | Repair service health version normalization | Normalize release-control service health comparison between bare and canonical `v` versions | release-control health wait gate, focused shell-script tests, version metadata, repair/status docs | project-registry behavior, Docker build behavior beyond avoiding false mismatch, adoption semantics | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | rejected: full-test `package_import_smoke` saw `VERSION_TAG=vv0.1.71.4` |
+| v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | candidate |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -101,4 +103,18 @@ Reason: v0.1.71.3 reached a healthy service endpoint returning canonical `v0.1.7
 In scope: normalize one leading `v` in service health version comparison, prefer `package_version` when health JSON provides it, add focused shell-script regression tests, update repair/status docs and version metadata.
 Out of scope: Docker build behavior beyond avoiding this false mismatch, project registry behavior, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
 Expected validation: focused shell-script health-probe tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
+```
+
+
+## Repair definition — v0.1.71.5
+
+```text
+Release: v0.1.71.5
+Base release: v0.1.71.4 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.71.4 full-test import smoke observed `promptbranch_version.VERSION_TAG=vv0.1.71.4`; this double-prefix caused package import/version consistency failure even though other version surfaces normalized correctly.
+In scope: compute `VERSION_TAG` through `version_tag()`, keep package version as bare PEP 440 text, normalize repeated leading `v` input, add regression tests proving `vv0.1.71.5` is rejected/not emitted, update repair/status docs and version metadata.
+Out of scope: Docker behavior, project registry behavior, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
+Expected validation: focused promptbranch_version tests, package import smoke, source version consistency, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
 ```

@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-PACKAGE_VERSION = "v0.1.71.4"
-VERSION_TAG = f"v{PACKAGE_VERSION}"
+PACKAGE_VERSION = "0.1.71.5"
 
 
 def normalize_version(value: object) -> str | None:
     text = str(value or "").strip()
     if not text:
         return None
-    if text.lower().startswith("v"):
+    while text.lower().startswith("v"):
         text = text[1:]
-    return text
+    return text or None
 
 
 def version_tag(value: object = PACKAGE_VERSION) -> str:
     normalized = normalize_version(value) or ""
     return f"v{normalized}" if normalized else ""
+
+
+VERSION_TAG = version_tag(PACKAGE_VERSION)

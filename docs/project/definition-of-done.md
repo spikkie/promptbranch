@@ -23,6 +23,7 @@
 | DOD-017 | Project join/list/doctor and artifact-current all use the same project-scoped registry unless `--profile-dir` is explicitly supplied | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, focused artifact-current regression tests, project control-surface test, compileall | v0.1.71.1 |
 | DOD-018 | Repair ZIP includes required root `.gitignore` and passes root-file completeness guard | done | required root-file check and ZIP hygiene for v0.1.71.2 | v0.1.71.2 |
 | DOD-019 | Release-control Docker service health gate normalizes canonical `v` versions and bare package versions | done | `tests/test_promptbranch_shell_scripts.py` health-probe regression tests | v0.1.71.4 |
+| DOD-020 | `promptbranch_version.VERSION_TAG` is canonical and cannot double-prefix `v` | done | `tests/test_promptbranch_version.py` regression tests reject `vv0.1.71.5` and normalize prefixed inputs | v0.1.71.5 |
 
 ## Status values
 

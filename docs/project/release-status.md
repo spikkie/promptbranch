@@ -12,7 +12,8 @@
 | v0.1.71.1 | repair | Project registry command alignment repair | candidate | project/repo focused tests; artifact-current regression tests; project control-surface test; compileall; ZIP hygiene; full tests not run here | DOD-017 added/done after focused validation; no slice or line advanced | pending adoption evidence |
 | v0.1.71.2 | repair | Required root `.gitignore` packaging repair | rejected | install ZIP import guard failed: protected `.pb_profile/` entry present | DOD-018 done; no line advanced | rejected/superseded |
 | v0.1.71.3 | repair | Protected ZIP entry hygiene | rejected | service health endpoint returned `v0.1.71.3` while release-control expected `0.1.71.3` | packaging hygiene preserved; no line advanced | rejected/superseded |
-| v0.1.71.4 | repair | Service health version normalization | candidate | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | DOD-019 done; no line advanced | pending |
+| v0.1.71.4 | repair | Service health version normalization | rejected | full release-control reached `package_import_smoke` and failed on `promptbranch_version.VERSION_TAG=vv0.1.71.4` | DOD-019 done; no line advanced | rejected/superseded |
+| v0.1.71.5 | repair | `VERSION_TAG` double-v normalization | candidate | focused version-surface tests; package import smoke/version consistency; control-surface test; compileall; ZIP hygiene | DOD-020 done; no line advanced | pending |
 
 ## ZIP status values
 
