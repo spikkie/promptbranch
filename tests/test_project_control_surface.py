@@ -58,6 +58,7 @@ def test_migration_has_mapping_table_and_preserves_old_docs() -> None:
 def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.69.zip" in text
-    assert "2132bec14263f3418cec5707211bd0931dd4d9928c7e8ae50bcb3e9fc3997b56" in text
+    assert "accepted/current baseline with adoption evidence:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.70.zip" in text
+    assert "99836251f6b07798d2e4c1e8bf978f001dccb0cced6fb64446dd7f098fe620e9" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.70.1.zip" in text
