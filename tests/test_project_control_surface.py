@@ -41,6 +41,7 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "v0.1.66" in text
     assert "accepted_current" in text
     assert "v0.1.67" in text
+    assert "v0.1.68" in text
     assert "candidate" in text
 
 
@@ -58,3 +59,4 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "chatgpt_claudecode_workflow-2_v0.1.66.zip" in text
     assert "2b05556677346aa2f9e1d7449bb1c70fc0c54b8d7cd130f22b6e7083960ec8a3" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.67.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.68.zip" in text
