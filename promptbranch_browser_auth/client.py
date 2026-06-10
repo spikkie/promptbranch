@@ -4399,13 +4399,24 @@ class ChatGPTBrowserClient:
             )
             return existing_source
 
+        if not initial_sources:
+            self._log(
+                "project-source-add",
+                "initial file overwrite snapshot is empty; using add-new-source fast path",
+                project_url=project_url,
+                source_match_candidates=source_match_candidates,
+                initial_source_count=0,
+            )
+            return None
+
+        reduced_timeout_ms = min(max(int(timeout_ms or 0), 250), 750)
         self._log(
             "project-source-add",
-            "initial file overwrite snapshot did not find existing source; probing briefly before upload",
+            "initial file overwrite snapshot did not find existing source; using reduced absence probe",
             project_url=project_url,
             source_match_candidates=source_match_candidates,
             initial_source_count=len(initial_sources),
-            timeout_ms=timeout_ms,
+            timeout_ms=reduced_timeout_ms,
         )
         try:
             return await self._wait_for_source_presence(
@@ -4413,47 +4424,19 @@ class ChatGPTBrowserClient:
                 source_match_candidates=source_match_candidates,
                 before_sources=None,
                 accept_single_new_card=False,
-                timeout_ms=timeout_ms,
+                timeout_ms=reduced_timeout_ms,
             )
         except ResponseTimeoutError as exc:
             self._log(
                 "project-source-add",
-                "bounded overwrite preflight did not find existing file source; refreshing once before upload",
+                "reduced overwrite absence probe did not find existing file source; continuing with add",
                 project_url=project_url,
                 source_match_candidates=source_match_candidates,
-                timeout_ms=timeout_ms,
-                error=str(exc),
-            )
-
-        # A prior file add can be persisted by ChatGPT but not visible in the
-        # first Sources tab snapshot of a later HTTP/service request.  Before
-        # treating an overwrite as a fresh add, perform the same verified
-        # read-back path used after mutations.  This is still read-only and
-        # prevents the full integration overwrite step from classifying an
-        # existing file source as a new upload when the initial DOM snapshot was
-        # stale or empty.
-        try:
-            return await self._verify_project_source_persistence(
-                page,
-                project_url=project_url,
-                source_match_candidates=source_match_candidates,
-                before_sources=None,
-                save_watch=None,
-                timeout_ms=6_000,
-                max_refresh_attempts=2,
-                retry_backoff_ms=(1_000,),
-                pre_refresh_timeout_ms=3_000,
-            )
-        except ResponseTimeoutError as exc:
-            self._log(
-                "project-source-add",
-                "no existing file source detected during refreshed overwrite preflight; continuing with add",
-                project_url=project_url,
-                source_match_candidates=source_match_candidates,
-                timeout_ms=timeout_ms,
+                timeout_ms=reduced_timeout_ms,
                 error=str(exc),
             )
             return None
+
 
 
     async def _add_project_source_operation(
@@ -4773,13 +4756,47 @@ class ChatGPTBrowserClient:
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
             duplicate_detected = True
-        except ResponseTimeoutError:
+        except ResponseTimeoutError as exc:
             duplicate_notice = await self._find_project_source_duplicate_notice(
                 page,
                 source_name=canonical_display_name if normalized_kind == "file" else display_name,
             )
             if duplicate_notice:
                 duplicate_detected = True
+            elif overwritten_existing and bool(overwrite_remove_result and overwrite_remove_result.get("removed_via_ui")):
+                current_sources = await self._snapshot_project_source_cards(page)
+                result = {
+                    "ok": False,
+                    "action": "add",
+                    "status": "overwrite_upload_not_verified",
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                    "source_match_candidates": source_match_candidates,
+                    "persistence_verified": False,
+                    "persistence_error": str(exc),
+                    "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+                    "already_exists": True,
+                    "added": False,
+                    "overwritten": True,
+                    "removed_existing": True,
+                    "operator_review_required": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` to inspect whether the replacement source eventually appeared.",
+                        "If the replacement source is absent, the old source was removed before upload verification; re-add the file once the Project Sources surface is stable.",
+                        "If the replacement source is visible, avoid a second overwrite and treat this as a late UI/verification failure.",
+                    ],
+                    "current_source_count": len(current_sources),
+                    "current_source_identities": [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in current_sources[:10]
+                    ],
+                    "current_url": await self._safe_page_url(page),
+                }
+                if overwrite_remove_result is not None:
+                    result["overwrite_remove_result"] = overwrite_remove_result
+                self._log("project-source-add", "project source overwrite upload not verified after removing existing source", **result)
+                return result
             else:
                 raise
         finally:
@@ -4795,13 +4812,67 @@ class ChatGPTBrowserClient:
             source_kind=normalized_kind,
             before_sources=before_sources,
         )
-        persisted_source = await self._verify_project_source_persistence(
-            page,
-            project_url=project_home_url,
-            source_match_candidates=persistence_candidates,
-            before_sources=before_sources,
-            save_watch=save_request_watch,
+        removed_existing_via_ui = bool(
+            (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+            or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
         )
+        try:
+            persisted_source = await self._verify_project_source_persistence(
+                page,
+                project_url=project_home_url,
+                source_match_candidates=persistence_candidates,
+                before_sources=before_sources,
+                save_watch=save_request_watch,
+            )
+        except ResponseTimeoutError as exc:
+            current_sources = await self._snapshot_project_source_cards(page)
+            save_summary = self._project_source_save_watch_summary(save_request_watch)
+            persistence_false_negative_possible = bool(
+                save_summary.get("saw_commit")
+                or int(save_summary.get("finished") or 0) > 0
+            ) and int(save_summary.get("failed") or 0) == 0
+            status = (
+                "overwrite_persistence_not_verified"
+                if overwritten_existing and removed_existing_via_ui
+                else "persistence_not_verified"
+            )
+            result = {
+                "ok": False,
+                "action": "add",
+                "status": status,
+                "project_url": project_home_url,
+                "source_kind": normalized_kind,
+                "source_match": actual_match,
+                "source_match_requested": requested_match,
+                "source_match_candidates": persistence_candidates,
+                "persistence_verified": False,
+                "persistence_error": str(exc),
+                "persistence_false_negative_possible": persistence_false_negative_possible,
+                "save_request_summary": save_summary,
+                "already_exists": duplicate_detected or overwritten_existing,
+                "added": False,
+                "overwritten": overwritten_existing,
+                "removed_existing": removed_existing_via_ui,
+                "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+                "operator_review_required": True,
+                "recovery_guidance": [
+                    "Run `pb src list --json` to inspect the current Project Sources surface before retrying.",
+                    "If the requested source is visible, treat the failure as a persistence verification false negative and avoid removing it again.",
+                    "If the requested source is absent, re-run `pb src add` for the same file after the Project Sources surface is stable.",
+                ],
+                "current_source_count": len(current_sources),
+                "current_source_identities": [
+                    self._preferred_source_card_identity(source) or source.get("text")
+                    for source in current_sources[:10]
+                ],
+                "current_url": await self._safe_page_url(page),
+            }
+            if overwrite_remove_result is not None:
+                result["overwrite_remove_result"] = overwrite_remove_result
+            if capacity_prune_result is not None:
+                result["capacity_prune_result"] = capacity_prune_result
+            self._log("project-source-add", "project source persistence not verified after add", **result)
+            return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         verification_mode = (persisted_source or {}).get("_promptbranch_verification_mode") if isinstance(persisted_source, dict) else None
         ui_card_seen_before_refresh = bool(
@@ -4825,10 +4896,7 @@ class ChatGPTBrowserClient:
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
-            "removed_existing": bool(
-                (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
-                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
-            ),
+            "removed_existing": removed_existing_via_ui,
             "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }

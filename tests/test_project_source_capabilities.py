@@ -1057,13 +1057,14 @@ def test_add_project_source_operation_short_circuits_existing_duplicate_file(bro
 
 
 
-def test_add_project_source_operation_overwrite_refresh_preflight_detects_existing_file(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+def test_add_project_source_operation_uses_empty_snapshot_fast_path_for_new_file(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
     calls: dict[str, object] = {
-        "presence_probe": 0,
-        "refresh_verify": 0,
-        "removed": False,
         "added": False,
+        "presence_calls": 0,
+        "pre_upload_presence_calls": 0,
+        "removed": False,
+        "preflight_verify_calls": 0,
     }
 
     async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
@@ -1076,47 +1077,40 @@ def test_add_project_source_operation_overwrite_refresh_preflight_detects_existi
         return None
 
     async def fake_snapshot(*_args, **_kwargs):
-        # Simulate the live failure shape: the second HTTP request starts with a
-        # stale/empty Sources snapshot even though the previous add persisted.
         return []
 
     async def fake_wait_for_source_presence(*_args, **_kwargs):
-        calls["presence_probe"] += 1
-        raise ResponseTimeoutError("initial stale source surface did not show existing file")
-
-    async def fake_verify_persistence(*_args, **kwargs):
-        calls["refresh_verify"] += 1
-        assert kwargs["source_match_candidates"] == ["itest-file.txt", "itest-file.txt Document"]
-        assert kwargs["before_sources"] is None
-        assert kwargs["max_refresh_attempts"] == 2
+        calls["presence_calls"] = int(calls["presence_calls"]) + 1
+        if not calls["added"]:
+            calls["pre_upload_presence_calls"] = int(calls["pre_upload_presence_calls"]) + 1
+            raise AssertionError("empty initial snapshot must not run overwrite absence preflight")
         return {
             "identity": "itest-file.txt Document",
-            "title": "itest-file.txt",
-            "text": "itest-file.txt Document",
+            "title": "itest-file.txt Document",
+            "text": "itest-file.txt Document · Jun 10, 2026",
         }
 
-    async def fake_remove(*_args, **kwargs):
+    async def fake_remove(*_args, **_kwargs):
         calls["removed"] = True
-        assert kwargs["source_name"] == "itest-file.txt"
-        assert kwargs["exact"] is True
-        return {"ok": True, "removed_via_ui": True, "source_match": "itest-file.txt"}
+        raise AssertionError("new-file fast path must not remove any source")
 
     async def fake_add_file_source(*_args, **_kwargs) -> None:
         calls["added"] = True
 
     async def fake_wait_for_post_save_settle(*_args, **_kwargs):
-        return {"settled": True}
+        return None
 
     async def fake_wait_for_quiet(*_args, **_kwargs):
-        return {"quiet": True}
+        return None
 
-    async def fake_verify_after_upload(*_args, **kwargs):
-        # After removal/re-upload the normal persistence verification should
-        # still be authoritative for the new file source.
+    async def fake_verify_persistence(*_args, **_kwargs):
+        if not calls["added"]:
+            calls["preflight_verify_calls"] = int(calls["preflight_verify_calls"]) + 1
+            raise AssertionError("empty initial snapshot must not run refreshed overwrite preflight")
         return {
             "identity": "itest-file.txt Document",
-            "title": "itest-file.txt",
-            "text": "itest-file.txt Document",
+            "title": "itest-file.txt Document",
+            "text": "itest-file.txt Document · Jun 10, 2026",
         }
 
     async def fake_safe_page_url(*_args, **_kwargs) -> str:
@@ -1136,15 +1130,6 @@ def test_add_project_source_operation_overwrite_refresh_preflight_detects_existi
     browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": False}  # type: ignore[method-assign]
     browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
-    # Switch the persistence verifier after overwrite preflight so final upload
-    # verification is still exercised separately.
-    async def fake_verify_router(*args, **kwargs):
-        if calls["refresh_verify"] == 0:
-            return await fake_verify_persistence(*args, **kwargs)
-        return await fake_verify_after_upload(*args, **kwargs)
-
-    browser_client._verify_project_source_persistence = fake_verify_router  # type: ignore[method-assign]
-
     file_path = tmp_path / "itest-file.txt"
     file_path.write_bytes(b"first")
     result = asyncio.run(
@@ -1159,15 +1144,14 @@ def test_add_project_source_operation_overwrite_refresh_preflight_detects_existi
         )
     )
 
-    assert calls["presence_probe"] >= 1
-    assert calls["refresh_verify"] == 1
-    assert calls["removed"] is True
     assert calls["added"] is True
+    assert calls["removed"] is False
+    assert calls["pre_upload_presence_calls"] == 0
+    assert calls["preflight_verify_calls"] == 0
     assert result["ok"] is True
-    assert result["already_exists"] is True
-    assert result["overwritten"] is True
-    assert result["removed_existing"] is True
-
+    assert result["already_exists"] is False
+    assert result["overwritten"] is False
+    assert result["removed_existing"] is False
 
 
 def test_add_project_source_operation_overwrite_uses_clean_title_and_retries_anchor_lookup(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
@@ -1255,9 +1239,14 @@ def test_add_project_source_operation_overwrite_uses_clean_title_and_retries_anc
 
 
 
-def test_add_project_source_operation_overwrite_probes_after_empty_initial_snapshot(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_snapshot_miss(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
-    calls: dict[str, object] = {"presence_calls": 0, "removed": False, "added": False}
+    calls: dict[str, object] = {
+        "preflight_presence_calls": 0,
+        "post_upload_presence_calls": 0,
+        "removed": False,
+        "added": False,
+    }
 
     async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
         return None
@@ -1269,26 +1258,23 @@ def test_add_project_source_operation_overwrite_probes_after_empty_initial_snaps
         return None
 
     async def fake_snapshot(*_args, **_kwargs):
-        return []
+        return [{"identity": "other-file.txt", "title": "other-file.txt", "text": "other-file.txt"}]
 
-    async def fake_wait_for_source_presence(*_args, **_kwargs):
-        calls["presence_calls"] = int(calls["presence_calls"]) + 1
-        if calls["presence_calls"] == 1:
-            return {
-                "identity": "itest-file.txt Document",
-                "title": "itest-file.txt Document",
-                "text": "itest-file.txt Document · May 11, 2026",
-            }
+    async def fake_wait_for_source_presence(*_args, **kwargs):
+        if not calls["added"]:
+            calls["preflight_presence_calls"] = int(calls["preflight_presence_calls"]) + 1
+            assert kwargs["timeout_ms"] <= 750
+            raise ResponseTimeoutError("reduced absence probe did not find requested source")
+        calls["post_upload_presence_calls"] = int(calls["post_upload_presence_calls"]) + 1
         return {
             "identity": "itest-file.txt Document",
             "title": "itest-file.txt Document",
-            "text": "itest-file.txt Document · May 11, 2026",
+            "text": "itest-file.txt Document · Jun 10, 2026",
         }
 
-    async def fake_remove(*_args, **kwargs):
+    async def fake_remove(*_args, **_kwargs):
         calls["removed"] = True
-        assert kwargs["source_name"] == "itest-file.txt Document"
-        return {"ok": True, "removed_via_ui": True, "source_match": "itest-file.txt Document"}
+        raise AssertionError("absence preflight miss must not remove any source")
 
     async def fake_add_file_source(*_args, **_kwargs) -> None:
         calls["added"] = True
@@ -1303,7 +1289,7 @@ def test_add_project_source_operation_overwrite_probes_after_empty_initial_snaps
         return {
             "identity": "itest-file.txt Document",
             "title": "itest-file.txt Document",
-            "text": "itest-file.txt Document · May 11, 2026",
+            "text": "itest-file.txt Document · Jun 10, 2026",
         }
 
     async def fake_safe_page_url(*_args, **_kwargs) -> str:
@@ -1337,13 +1323,14 @@ def test_add_project_source_operation_overwrite_probes_after_empty_initial_snaps
         )
     )
 
-    assert calls["presence_calls"] >= 2
-    assert calls["removed"] is True
+    assert calls["preflight_presence_calls"] == 1
+    assert calls["post_upload_presence_calls"] == 1
+    assert calls["removed"] is False
     assert calls["added"] is True
     assert result["ok"] is True
-    assert result["already_exists"] is True
-    assert result["overwritten"] is True
-    assert result["removed_existing"] is True
+    assert result["already_exists"] is False
+    assert result["overwritten"] is False
+    assert result["removed_existing"] is False
 
 
 def test_add_project_source_operation_returns_structured_overwrite_failure(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
@@ -1403,6 +1390,157 @@ def test_add_project_source_operation_returns_structured_overwrite_failure(brows
     assert result["operator_review_required"] is True
     assert result["overwrite_source_name"] == "architecture-process_0.1.29.zip"
     assert "remove/delete action" in result["overwrite_remove_error"]
+
+
+def test_add_project_source_operation_reports_removed_existing_when_overwrite_persistence_fails(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+    calls: dict[str, object] = {"removed": False, "added": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{"identity": "release.zip", "title": "release.zip", "text": "release.zip"}]
+
+    async def fake_remove(*_args, **kwargs):
+        calls["removed"] = True
+        assert kwargs["source_name"] == "release.zip"
+        return {"ok": True, "removed_via_ui": True, "source_match": "release.zip"}
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return None
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("post-refresh verification did not find replacement release.zip")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "finished": 1, "failed": 0, "saw_commit": True, "inflight": set()}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert calls["removed"] is True
+    assert calls["added"] is True
+    assert result["ok"] is False
+    assert result["status"] == "overwrite_persistence_not_verified"
+    assert result["overwritten"] is True
+    assert result["removed_existing"] is True
+    assert result["operator_review_required"] is True
+    assert result["persistence_false_negative_possible"] is True
+    assert "pb src list --json" in result["recovery_guidance"][0]
+    assert "post-refresh verification" in result["persistence_error"]
+
+
+def test_add_project_source_operation_returns_persistence_false_negative_diagnostics(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+    page = object()
+    calls: dict[str, object] = {"added": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "new-source.txt Document", "title": "new-source.txt Document", "text": "new-source.txt Document"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return None
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("commit was observed but refreshed card was not found")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "finished": 1, "failed": 0, "saw_commit": True, "inflight": set()}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "new-source.txt"
+    file_path.write_bytes(b"payload")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert calls["added"] is True
+    assert result["ok"] is False
+    assert result["status"] == "persistence_not_verified"
+    assert result["removed_existing"] is False
+    assert result["persistence_false_negative_possible"] is True
+    assert result["save_request_summary"]["saw_commit"] is True
+    assert result["operator_review_required"] is True
+    assert "verification false negative" in result["recovery_guidance"][1]
+
 
 def test_add_project_source_operation_overwrites_duplicate_file_by_default(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
