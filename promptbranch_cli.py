@@ -9114,6 +9114,12 @@ def _artifact_current_payload(
         registry_matches_state = bool(registry_current) and registry_filename == state_artifact_ref and registry_version == state_artifact_version
         state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and state_artifact_ref == state_source_ref and state_artifact_version == state_source_version
         code_matches_adopted_source = runtime_version == state_source_version
+        code_version_relation = (
+            "runtime_source_match"
+            if code_matches_adopted_source
+            else ("external_repo_baseline" if scope_repo_id else "runtime_source_mismatch")
+        )
+        code_version_match_applicable = not bool(scope_repo_id and not code_matches_adopted_source)
         return {
             "ok": True,
             "action": "artifact_current",
@@ -9135,12 +9141,17 @@ def _artifact_current_payload(
                 "registry_current_kind": (registry_current or {}).get("kind") if registry_current else None,
                 "registry_current_repo_id": (registry_current or {}).get("repo_id") if registry_current else None,
                 "code_matches_adopted_source": code_matches_adopted_source,
+                "code_version_relation": code_version_relation,
+                "code_version_match_applicable": code_version_match_applicable,
                 "note": "runtime code release may intentionally differ from the adopted Project Source baseline",
             },
             "consistency": {
                 "registry_current_matches_state_artifact": registry_matches_state,
                 "state_source_matches_state_artifact": state_source_matches_artifact,
                 "code_version_matches_state_source": code_matches_adopted_source,
+                "code_version_relation": code_version_relation,
+                "code_version_match_applicable": code_version_match_applicable,
+                "code_version_match_status": "matches" if code_matches_adopted_source else ("not_applicable_external_repo_baseline" if not code_version_match_applicable else "mismatch"),
                 "project_home_url_present": bool(state.get("project_home_url")),
             },
             "registry_file": str(registry.path),
@@ -19382,15 +19393,19 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
 
     local_zip = _resolve_adopt_local_zip(filename if not Path(requested).is_file() else requested, local_path=getattr(args, "local_path", None), registry=registry)
     if local_zip is None:
+        attempted_local_path = getattr(args, "local_path", None)
         payload = {
             **base_payload,
             "status": "local_artifact_not_found",
             "artifact_version": filename_version,
             "source_version": filename_version,
             "source_verified": bool(from_project_source and len(matched_sources) == 1),
+            "attempted_local_path": str(Path(attempted_local_path).expanduser()) if attempted_local_path else None,
+            "attempted_artifact_ref": filename,
             "source_list": source_payload,
             "matched_source": matched_sources[0] if matched_sources else None,
-            "error": "no local ZIP was found to verify/register; pass the ZIP path or --local-path",
+            "error": "local ZIP was not found at the requested artifact path or --local-path",
+            "next_safe_action": "Create/copy the ZIP at attempted_local_path using the canonical filename, then rerun pb artifact adopt with --local-path.",
         }
         return emit(payload, 1)
     if local_zip.name != filename:
@@ -19458,8 +19473,16 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     )
     after_state = _state_store_from_args(args).snapshot(project_url, repo_id=repo_id)
     after_registry = _artifact_registry_snapshot(registry, repo_id=repo_id)
+    source_verification = {
+        "ok": True if local_only else len(matched_sources) == 1,
+        "status": "local_only" if local_only else ("verified" if len(matched_sources) == 1 else "not_verified"),
+        "source_verified": bool(from_project_source and len(matched_sources) == 1),
+        "project_source_required": bool(from_project_source),
+        "project_source_mutated": False,
+    }
     checks = {
-        "source_verified": True if local_only else len(matched_sources) == 1,
+        "source_verified": bool(from_project_source and len(matched_sources) == 1),
+        "source_verification_ok": bool(source_verification["ok"]),
         "zip_verified": bool(zip_check.get("ok")),
         "zip_version_matches_filename": normalized_zip_version == filename_version,
         "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename and str((after_registry.get("current") or {}).get("repo_id") or repo_id) == repo_id,
@@ -19467,7 +19490,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == filename and _state_artifact_summary(after_state).get("source_version") == filename_version,
         "project_source_mutated": False,
     }
-    ok = all(value for key, value in checks.items() if key != "project_source_mutated")
+    ok = all(value for key, value in checks.items() if key not in {"project_source_mutated", "source_verified"})
     payload = {
         **base_payload,
         "ok": ok,
@@ -19477,6 +19500,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "source_ref": filename,
         "source_version": filename_version,
         "source_verified": bool(from_project_source and len(matched_sources) == 1),
+        "source_verification": source_verification,
         "adoption_mode": "local_only" if local_only else "from_project_source",
         "artifact_registry_updated": True,
         "state_artifact_updated": bool(checks["state_artifact_updated"]),

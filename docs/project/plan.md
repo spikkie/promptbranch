@@ -3,16 +3,17 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.71.5.zip
-accepted checksum: c04b23d8a35bd07d1cb106a52beb0cf6d5e06ee788fec76ff69f0abd0d37d13c
-next normal target: chatgpt_claudecode_workflow-2_v0.1.72.zip
+pinned development baseline: chatgpt_claudecode_workflow-2_v0.1.73.zip
+latest accepted/current baseline with adoption evidence before repair: chatgpt_claudecode_workflow-2_v0.1.72.zip
+accepted checksum for v0.1.72: de4dfec45d53bc1d05f129e2796e51b86468b00e911e8e9e9566d166b4f6acc1
+next repair target: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.71.5 is accepted/current after the repair chain for project-registry alignment, ZIP hygiene, service health version normalization, and VERSION_TAG double-v normalization. v0.1.72 is the next normal slice and adds explicit project registry import ergonomics so operators can migrate existing repo-local current records into the project-scoped registry without manual copying or implicit adoption.
+Keep release slices narrow. v0.1.73 defined canonical artifact naming and `pb artifact adopt --local-only` compatibility for external repo baselines. Field testing against the candlecast multi-repo project registry proved the core path and exposed repair-only diagnostics/status defects. v0.1.73.1 repairs those defects without advancing the normal slice line.
 ```
 
 ## Release / slice plan
@@ -153,4 +154,20 @@ Expected validation: focused artifact/adopt tests, repo doctor pattern tests, pr
 DoD movement: add DOD-022 for canonical artifact naming and adopt compatibility.
 Risk: adoption state mutation must remain explicit and fail closed for non-canonical names and conflicting adoption modes.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
+
+## Repair slice definition — v0.1.73.1
+
+```text
+Release: v0.1.73.1
+Baseline: chatgpt_claudecode_workflow-2_v0.1.73.zip
+Type: repair candidate
+Slice: Canonical artifact adoption diagnostics and external-repo status semantics
+Goal: Repair v0.1.73 adoption/current JSON semantics and ZIP hygiene diagnostics proven during candlecast multi-repo seeding.
+In scope: source_verification object for local-only adoption, attempted_local_path diagnostics, external repo code-version relation fields, `.promptbranch-repo.json` portable identity hygiene validation, tests, repair note, project status docs.
+Out of scope: normal v0.1.74 functionality, release-set orchestration, cross-repo dependency solving, Project Source upload changes, runtime/browser automation, Docker/deployment behavior, historical registry rewriting.
+Expected validation: focused artifact/adopt/current/hygiene tests, project control-surface test, source version consistency, package import smoke, compileall, ZIP hygiene, clean extraction validation.
+DoD movement: add DOD-023 for canonical adoption diagnostics and external-repo current-state reporting.
+Risk: maintain backward-compatible fields while clarifying semantics so existing callers do not break unexpectedly.
+Next step: package repair ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
