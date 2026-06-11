@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -8955,12 +8955,38 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
 
 
 def _artifact_version_from_filename(filename: str) -> str | None:
+    parsed = parse_canonical_artifact_filename(filename)
+    if parsed:
+        return parsed["version"]
     value = Path(str(filename or "")).name
-    match = re.search(r"_(v?\d+\.\d+\.\d+(?:\.\d+)?)\.zip$", value)
+    match = re.search(r"_(v?\d+(?:\.\d+){2,})\.zip$", value)
     if not match:
         return None
     version = match.group(1)
     return version if valid_version_text(version) else None
+
+
+def _canonical_artifact_adopt_parse(filename: str, requested_repo_id: str | None = None) -> dict[str, Any]:
+    parsed = parse_canonical_artifact_filename(filename)
+    if parsed:
+        return {
+            "ok": True,
+            "repo_id": parsed["repo_id"],
+            "version": parsed["version"],
+            "expected_canonical_filename": filename,
+        }
+    inferred_legacy_version = _artifact_version_from_filename(filename)
+    if not inferred_legacy_version:
+        dot_match = re.search(r"(?:_|\.)(v?\d+(?:\.\d+){2,})\.zip$", Path(str(filename or "")).name)
+        inferred_legacy_version = dot_match.group(1) if dot_match else None
+    normalized_version = canonical_version_tag(inferred_legacy_version) if inferred_legacy_version else None
+    expected = canonical_artifact_filename(requested_repo_id or infer_repo_id_from_artifact_filename(filename) or "repo", normalized_version or "v0.0.0")
+    return {
+        "ok": False,
+        "status": "non_canonical_artifact_name",
+        "version": normalized_version,
+        "expected_canonical_filename": expected,
+    }
 
 
 def _artifact_prefix_from_filename(filename: str) -> str | None:
@@ -8973,7 +8999,7 @@ def _artifact_prefix_from_filename(filename: str) -> str | None:
     """
 
     value = Path(str(filename or "")).name
-    match = re.match(r"^(?P<prefix>.+)_(?P<version>v?\d+\.\d+\.\d+(?:\.\d+)?)\.zip$", value)
+    match = re.match(r"^(?P<prefix>.+)_(?P<version>v?\d+(?:\.\d+){2,})\.zip$", value)
     if not match:
         return None
     version = match.group("version")
@@ -19281,64 +19307,78 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     if not filename.endswith(".zip"):
         payload = {**base_payload, "status": "invalid_artifact_filename", "error": "artifact must be a .zip file"}
         return emit(payload, 2)
-    filename_version = _artifact_version_from_filename(filename)
-    if not filename_version:
-        payload = {**base_payload, "status": "invalid_artifact_filename", "error": "artifact filename must end with _vX.Y.Z.zip or _vX.Y.Z.N.zip"}
-        return emit(payload, 2)
-    inferred_repo_id = infer_repo_id_from_artifact_filename(filename)
     requested_repo_id = normalize_repo_id(getattr(args, "repo", None))
-    repo_id = requested_repo_id or inferred_repo_id
-    if not repo_id:
-        payload = {**base_payload, "status": "repo_scope_required", "artifact_version": filename_version, "source_version": filename_version, "error": "artifact adopt requires --repo when the ZIP filename does not expose a repo prefix"}
+    canonical = _canonical_artifact_adopt_parse(filename, requested_repo_id=requested_repo_id)
+    if not canonical.get("ok"):
+        payload = {
+            **base_payload,
+            "status": "non_canonical_artifact_name",
+            "artifact_version": canonical.get("version"),
+            "source_version": canonical.get("version"),
+            "expected_canonical_filename": canonical.get("expected_canonical_filename"),
+            "error": "artifact filename must use canonical <repo_id>_v<version>.zip grammar",
+            "next_safe_action": "Copy or rename the ZIP to the expected canonical filename and rerun pb artifact adopt.",
+        }
         return emit(payload, 2)
-    if requested_repo_id and inferred_repo_id and requested_repo_id != inferred_repo_id:
+    filename_version = str(canonical["version"])
+    inferred_repo_id = str(canonical["repo_id"])
+    repo_id = requested_repo_id or inferred_repo_id
+    if requested_repo_id and requested_repo_id != inferred_repo_id:
         payload = {**base_payload, "status": "repo_artifact_prefix_mismatch", "repo_id": requested_repo_id, "artifact_repo_id": inferred_repo_id, "artifact_version": filename_version, "source_version": filename_version, "error": f"--repo {requested_repo_id} does not match artifact filename repo prefix {inferred_repo_id}"}
         return emit(payload, 2)
     base_payload["repo_id"] = repo_id
     base_payload["scope"] = {"kind": "repo", "repo_id": repo_id}
-    if not getattr(args, "from_project_source", False):
-        payload = {**base_payload, "status": "project_source_verification_required", "artifact_version": filename_version, "source_version": filename_version, "error": "adopt requires --from-project-source so local state advances only after Project Source verification"}
+    local_only = bool(getattr(args, "local_only", False))
+    from_project_source = bool(getattr(args, "from_project_source", False))
+    if local_only and from_project_source:
+        payload = {**base_payload, "status": "conflicting_adoption_modes", "artifact_version": filename_version, "source_version": filename_version, "error": "use either --local-only or --from-project-source, not both"}
         return emit(payload, 2)
-    if not project_url:
+    if not local_only and not from_project_source:
+        payload = {**base_payload, "status": "adoption_mode_required", "artifact_version": filename_version, "source_version": filename_version, "error": "adopt requires --from-project-source or explicit --local-only"}
+        return emit(payload, 2)
+    if from_project_source and not project_url:
         payload = {**base_payload, "status": "workspace_not_selected", "artifact_version": filename_version, "source_version": filename_version, "error": "select a workspace before adopting a Project Source artifact"}
         return emit(payload, 2)
 
-    try:
-        source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
-    except Exception as exc:
-        service_payload = _service_exception_payload(exc, args)
-        if service_payload and service_payload.get("status") == "browser_profile_busy":
+    matched_sources: list[dict[str, Any]] = []
+    source_payload: dict[str, Any] = {"ok": True, "status": "local_only", "sources": [], "matching_expected_count": 0}
+    if from_project_source:
+        try:
+            source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
+        except Exception as exc:
+            service_payload = _service_exception_payload(exc, args)
+            if service_payload and service_payload.get("status") == "browser_profile_busy":
+                payload = {
+                    **base_payload,
+                    **service_payload,
+                    "action": "artifact_adopt",
+                    "status": "browser_profile_busy",
+                    "artifact_version": filename_version,
+                    "source_version": filename_version,
+                    "source_verified": False,
+                    "project_source_mutated": False,
+                    "source_list": service_payload,
+                    "error": "Project Sources could not be verified because the browser profile is still owned by another operation.",
+                    "next_safe_commands": _browser_profile_busy_next_safe_commands(f"pb artifact adopt {shlex.quote(filename)} --from-project-source --json"),
+                }
+                return emit(payload, 75)
+            raise
+        matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
+        if not bool(source_payload.get("ok")):
+            payload = {**base_payload, "status": "source_list_unavailable", "artifact_version": filename_version, "source_version": filename_version, "source_list": source_payload, "error": "could not verify Project Sources"}
+            return emit(payload, 1)
+        if len(matched_sources) != 1:
             payload = {
                 **base_payload,
-                **service_payload,
-                "action": "artifact_adopt",
-                "status": "browser_profile_busy",
+                "status": "project_source_match_count_invalid",
                 "artifact_version": filename_version,
                 "source_version": filename_version,
+                "source_list": source_payload,
                 "source_verified": False,
-                "project_source_mutated": False,
-                "source_list": service_payload,
-                "error": "Project Sources could not be verified because the browser profile is still owned by another operation.",
-                "next_safe_commands": _browser_profile_busy_next_safe_commands(f"pb artifact adopt {shlex.quote(filename)} --from-project-source --json"),
+                "matching_expected_count": len(matched_sources),
+                "error": f"expected exactly one matching Project Source named {filename}, found {len(matched_sources)}",
             }
-            return emit(payload, 75)
-        raise
-    matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
-    if not bool(source_payload.get("ok")):
-        payload = {**base_payload, "status": "source_list_unavailable", "artifact_version": filename_version, "source_version": filename_version, "source_list": source_payload, "error": "could not verify Project Sources"}
-        return emit(payload, 1)
-    if len(matched_sources) != 1:
-        payload = {
-            **base_payload,
-            "status": "project_source_match_count_invalid",
-            "artifact_version": filename_version,
-            "source_version": filename_version,
-            "source_list": source_payload,
-            "source_verified": False,
-            "matching_expected_count": len(matched_sources),
-            "error": f"expected exactly one matching Project Source named {filename}, found {len(matched_sources)}",
-        }
-        return emit(payload, 1)
+            return emit(payload, 1)
 
     local_zip = _resolve_adopt_local_zip(filename if not Path(requested).is_file() else requested, local_path=getattr(args, "local_path", None), registry=registry)
     if local_zip is None:
@@ -19347,10 +19387,10 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
             "status": "local_artifact_not_found",
             "artifact_version": filename_version,
             "source_version": filename_version,
-            "source_verified": True,
+            "source_verified": bool(from_project_source and len(matched_sources) == 1),
             "source_list": source_payload,
-            "matched_source": matched_sources[0],
-            "error": "matching Project Source exists, but no local ZIP was found to verify/register; pass the ZIP path or --local-path",
+            "matched_source": matched_sources[0] if matched_sources else None,
+            "error": "no local ZIP was found to verify/register; pass the ZIP path or --local-path",
         }
         return emit(payload, 1)
     if local_zip.name != filename:
@@ -19372,22 +19412,24 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
             "status": "local_artifact_verification_failed",
             "artifact_version": filename_version,
             "source_version": filename_version,
-            "source_verified": True,
+            "source_verified": bool(from_project_source and len(matched_sources) == 1),
             "local_path": str(local_zip),
             "zip": zip_check,
             "error": "local ZIP failed artifact verification",
         }
         return emit(payload, 1)
-    if zip_version != filename_version:
+    normalized_zip_version = canonical_version_tag(zip_version)
+    if normalized_zip_version != filename_version:
         payload = {
             **base_payload,
             "status": "version_mismatch",
             "artifact_version": filename_version,
             "source_version": filename_version,
             "zip_version": zip_version,
+            "zip_version_normalized": normalized_zip_version,
             "local_path": str(local_zip),
             "zip": zip_check,
-            "error": "filename version and ZIP VERSION differ",
+            "error": "filename version and ZIP VERSION differ after canonical normalization",
         }
         return emit(payload, 1)
 
@@ -19417,9 +19459,9 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     after_state = _state_store_from_args(args).snapshot(project_url, repo_id=repo_id)
     after_registry = _artifact_registry_snapshot(registry, repo_id=repo_id)
     checks = {
-        "source_verified": len(matched_sources) == 1,
+        "source_verified": True if local_only else len(matched_sources) == 1,
         "zip_verified": bool(zip_check.get("ok")),
-        "zip_version_matches_filename": zip_version == filename_version,
+        "zip_version_matches_filename": normalized_zip_version == filename_version,
         "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename and str((after_registry.get("current") or {}).get("repo_id") or repo_id) == repo_id,
         "state_artifact_updated": _state_artifact_summary(after_state).get("artifact_ref") == filename and _state_artifact_summary(after_state).get("artifact_version") == filename_version,
         "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == filename and _state_artifact_summary(after_state).get("source_version") == filename_version,
@@ -19429,12 +19471,13 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     payload = {
         **base_payload,
         "ok": ok,
-        "status": "adopted" if ok else "adoption_verification_failed",
+        "status": ("adopted_local" if local_only and ok else ("adopted" if ok else "adoption_verification_failed")),
         "artifact_ref": filename,
         "artifact_version": filename_version,
         "source_ref": filename,
         "source_version": filename_version,
-        "source_verified": True,
+        "source_verified": bool(from_project_source and len(matched_sources) == 1),
+        "adoption_mode": "local_only" if local_only else "from_project_source",
         "artifact_registry_updated": True,
         "state_artifact_updated": bool(checks["state_artifact_updated"]),
         "state_source_updated": bool(checks["state_source_updated"]),
@@ -19446,7 +19489,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "local_path": str(local_zip),
         "zip": zip_check,
         "source_list": source_payload,
-        "matched_source": matched_sources[0],
+        "matched_source": matched_sources[0] if matched_sources else None,
         "checks": checks,
         "after_snapshot": {
             "artifact_registry": after_registry,
@@ -21986,6 +22029,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
     artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.221.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
+    artifact_adopt.add_argument("--local-only", action="store_true", help="Verify/register a canonical local ZIP as the current repo artifact without Project Source verification.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--repo", help="Portable repo id for the artifact current-state scope. Defaults to the artifact filename prefix.")
     artifact_adopt.add_argument("--keep-open", action="store_true")

@@ -377,7 +377,16 @@ def import_current_registry(
     }
 
 def artifact_prefix_matches(repo_id: str, pattern: str | None) -> bool:
-    if not pattern:
+    """Return true when a configured artifact pattern matches canonical grammar.
+
+    Canonical future pattern is ``<repo_id>_<version>.zip``.  Historical
+    patterns remain readable in older registry records, but repo doctor should
+    fail closed for new project configuration that cannot produce canonical
+    artifact names.
+    """
+
+    normalized = normalize_repo_id(repo_id)
+    if not pattern or not normalized:
         return True
-    prefix = str(pattern).split("<version>", 1)[0].rstrip("_")
-    return not prefix or prefix == repo_id
+    expected = f"{normalized}_<version>.zip"
+    return str(pattern).strip() == expected

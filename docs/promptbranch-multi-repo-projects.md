@@ -93,3 +93,31 @@ pb repo list --json
 pb repo doctor --json
 pb artifact current --all --json
 ```
+
+## Canonical artifact names for multi-repo adoption
+
+From v0.1.73 onward, project-scoped artifact adoption expects canonical artifact filenames:
+
+```text
+<repo_id>_<version>.zip
+```
+
+The version token is always `v`-prefixed in the filename, even if the repo's internal `VERSION` file is bare.
+
+Examples:
+
+```text
+architecture-process_v0.29.0.zip
+ib_forex_trading_v0.248.3.1.zip
+candlecast-src_v0.19.5.94.1.zip
+```
+
+When seeding a project registry from local historical ZIPs, copy legacy names to canonical names first, then adopt with explicit repo scope:
+
+```bash
+pb artifact adopt architecture-process_v0.29.0.zip --repo architecture-process --local-path ~/git/architecture-process/architecture-process_v0.29.0.zip --local-only --json
+pb artifact adopt ib_forex_trading_v0.248.3.1.zip --repo ib_forex_trading --local-path ~/git/ib_forex_trading/source/ib_forex_trading_v0.248.3.1.zip --local-only --json
+pb artifact adopt candlecast-src_v0.19.5.94.1.zip --repo candlecast-src --local-path ~/git/candlecast-src/candlecast-src_v0.19.5.94.1.zip --local-only --json
+```
+
+`--from-project-source` remains available when the ZIP is already present exactly once in ChatGPT Project Sources.

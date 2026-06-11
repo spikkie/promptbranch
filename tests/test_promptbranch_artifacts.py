@@ -4,7 +4,21 @@ import json
 import zipfile
 from pathlib import Path
 
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, create_repo_snapshot, default_artifact_filename, iter_repo_files, release_entry_hygiene_violations, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, default_artifact_filename, infer_repo_id_from_artifact_filename, iter_repo_files, parse_canonical_artifact_filename, release_entry_hygiene_violations, verify_zip_artifact
+
+
+def test_canonical_artifact_filename_accepts_extended_numeric_versions() -> None:
+    assert canonical_artifact_filename("architecture-process", "0.29.0") == "architecture-process_v0.29.0.zip"
+    assert canonical_artifact_filename("ib_forex_trading", "v0.248.3.1") == "ib_forex_trading_v0.248.3.1.zip"
+    assert canonical_artifact_filename("candlecast-src", "0.19.5.94.1") == "candlecast-src_v0.19.5.94.1.zip"
+    assert canonical_version_tag("vv0.19.5.94.1") == "v0.19.5.94.1"
+
+
+def test_parse_canonical_artifact_filename_rejects_legacy_names() -> None:
+    assert parse_canonical_artifact_filename("architecture-process_v0.29.0.zip") == {"repo_id": "architecture-process", "version": "v0.29.0"}
+    assert parse_canonical_artifact_filename("architecture-process_0.29.0.zip") is None
+    assert parse_canonical_artifact_filename("ib_forex_trading.0.248.3.1.zip") is None
+    assert infer_repo_id_from_artifact_filename("architecture-process_0.29.0.zip") == "architecture-process"
 
 
 def test_default_artifact_filename_prefers_version_file(tmp_path: Path) -> None:

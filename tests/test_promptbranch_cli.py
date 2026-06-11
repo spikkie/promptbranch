@@ -13236,7 +13236,7 @@ def test_artifact_current_missing_repo_non_json_does_not_crash(capsys, tmp_path)
 
 
 def test_artifact_adopt_records_repo_id_from_filename(capsys, tmp_path) -> None:
-    filename = "my_awx_0.0.200.zip"
+    filename = "my_awx_v0.0.200.zip"
     zip_path = tmp_path / filename
     _write_test_release_zip(zip_path, "0.0.200")
     profile = tmp_path / "profile"
@@ -13251,11 +13251,72 @@ def test_artifact_adopt_records_repo_id_from_filename(capsys, tmp_path) -> None:
     assert payload["repo_id"] == "my_awx"
     registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
     assert registry_payload["artifacts"][0]["repo_id"] == "my_awx"
+    assert registry_payload["artifacts"][0]["version"] == "v0.0.200"
     assert payload["after_snapshot"]["state"]["repo_id"] == "my_awx"
 
 
+
+
+def test_artifact_adopt_rejects_non_canonical_artifact_name(capsys, tmp_path) -> None:
+    filename = "ib_forex_trading.0.248.3.1.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "0.248.3.1")
+    profile = tmp_path / "profile"
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(artifact=filename, from_project_source=True, local_only=False, local_path=str(zip_path), keep_open=False, json=True, profile_dir=str(profile), repo="ib_forex_trading")
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert payload["status"] == "non_canonical_artifact_name"
+    assert payload["expected_canonical_filename"] == "ib_forex_trading_v0.248.3.1.zip"
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_artifact_adopt_local_only_accepts_extended_canonical_versions(capsys, tmp_path) -> None:
+    filename = "candlecast-src_v0.19.5.94.1.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "0.19.5.94.1")
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    args = argparse.Namespace(artifact=filename, from_project_source=False, local_only=True, local_path=str(zip_path), keep_open=False, json=True, profile_dir=str(profile), repo="candlecast-src")
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "adopted_local"
+    assert payload["repo_id"] == "candlecast-src"
+    assert payload["artifact_version"] == "v0.19.5.94.1"
+    assert payload["zip_version"] if "zip_version" in payload else True
+    assert payload["source_verified"] is False
+    assert payload["checks"]["source_verified"] is True
+    registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    assert registry_payload["artifacts"][0]["filename"] == filename
+    assert registry_payload["artifacts"][0]["version"] == "v0.19.5.94.1"
+
+
+def test_artifact_adopt_local_only_accepts_canonical_architecture_process(capsys, tmp_path) -> None:
+    filename = "architecture-process_v0.29.0.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "0.29.0")
+    profile = tmp_path / "profile"
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
+    args = argparse.Namespace(artifact=filename, from_project_source=False, local_only=True, local_path=str(zip_path), keep_open=False, json=True, profile_dir=str(profile), repo="architecture-process")
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "adopted_local"
+    assert payload["artifact_ref"] == "architecture-process_v0.29.0.zip"
+    assert payload["artifact_version"] == "v0.29.0"
+
+
 def test_artifact_adopt_rejects_explicit_repo_prefix_mismatch(capsys, tmp_path) -> None:
-    filename = "platform-gitops_0.0.4.zip"
+    filename = "platform-gitops_v0.0.4.zip"
     zip_path = tmp_path / filename
     _write_test_release_zip(zip_path, "0.0.4")
     profile = tmp_path / "profile"
