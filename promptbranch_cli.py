@@ -116,6 +116,7 @@ from promptbranch_project import (
     artifact_prefix_matches,
     configured_repos,
     ensure_project_registry,
+    import_current_registry,
     join_local_repo,
     load_repo_identity,
     project_registry_dir,
@@ -16944,6 +16945,36 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
             if payload.get("repo_id"):
                 print(f"repo_id={payload.get('repo_id')}")
         return 0 if payload.get("ok") else 2
+    if args.project_command == "import-current-registry":
+        identity_payload = _current_project_identity_payload(args)
+        if not identity_payload.get("ok"):
+            payload = {"action": "project_import_current_registry", **identity_payload}
+        else:
+            try:
+                identity = load_repo_identity(Path.cwd())
+                if identity is None:
+                    raise ValueError("project identity not found")
+                payload = import_current_registry(
+                    identity,
+                    source_profile_dir=getattr(args, "from_profile_dir", None),
+                    dry_run=bool(getattr(args, "dry_run", False)),
+                    replace=bool(getattr(args, "replace", False)),
+                )
+            except Exception as exc:
+                payload = {"ok": False, "action": "project_import_current_registry", "status": "import_failed", "error": str(exc)}
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"project_id={payload.get('project_id') or ''}")
+            print(f"source_registry_file={payload.get('source_registry_file') or ''}")
+            print(f"target_registry_file={payload.get('target_registry_file') or payload.get('registry_file') or ''}")
+            print(f"planned_import_count={payload.get('planned_import_count', 0)}")
+            print(f"imported_count={payload.get('imported_count', 0)}")
+            print(f"conflict_count={payload.get('conflict_count', 0)}")
+            if payload.get("next_safe_action"):
+                print(f"next_safe_action={payload.get('next_safe_action')}")
+        return 0 if payload.get("ok") else 2
     raise RuntimeError(f"Unknown project command: {args.project_command}")
 
 
@@ -21925,6 +21956,14 @@ def make_parser() -> argparse.ArgumentParser:
     project_join.add_argument("--json", action="store_true")
     project_status = project_subparsers.add_parser("status", help="Show current repo project identity and registry paths.")
     project_status.add_argument("--json", action="store_true")
+    project_import = project_subparsers.add_parser(
+        "import-current-registry",
+        help="Explicitly import current records from an existing repo-local registry into the joined project registry.",
+    )
+    project_import.add_argument("--from-profile-dir", help="Legacy profile directory to import from. Defaults to the current repo's .pb_profile.")
+    project_import.add_argument("--dry-run", action="store_true", help="Plan the import without writing the project registry or project state.")
+    project_import.add_argument("--replace", action="store_true", help="Explicitly replace conflicting current records in the project registry.")
+    project_import.add_argument("--json", action="store_true")
 
     repo = subparsers.add_parser("repo", help="Project-scoped repo inventory and diagnostics.")
     repo_subparsers = repo.add_subparsers(dest="repo_command", required=True)

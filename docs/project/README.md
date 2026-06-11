@@ -21,6 +21,6 @@ When older planning documents conflict with accepted release evidence, the accep
 Current authority starts from:
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.66.zip
-accepted checksum: 2b05556677346aa2f9e1d7449bb1c70fc0c54b8d7cd130f22b6e7083960ec8a3
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.71.5.zip
+accepted checksum: c04b23d8a35bd07d1cb106a52beb0cf6d5e06ee788fec76ff69f0abd0d37d13c
 ```
