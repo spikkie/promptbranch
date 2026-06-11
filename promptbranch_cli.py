@@ -9096,6 +9096,9 @@ def _artifact_current_payload(
                 "available_repos": available_repo_ids(),
                 "registry_file": str(registry.path),
             }
+        registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
+        registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
+        registry_source_ref = str((registry_current or {}).get("source_ref") or registry_filename or "") if registry_current else ""
         state = {
             "artifact_ref": snapshot.get("artifact_ref"),
             "artifact_version": snapshot.get("artifact_version"),
@@ -9104,8 +9107,13 @@ def _artifact_current_payload(
             "project_home_url": snapshot.get("resolved_project_home_url"),
             "repo_id": scope_repo_id or snapshot.get("artifact_repo_id"),
         }
-        registry_filename = str((registry_current or {}).get("filename") or "") if registry_current else ""
-        registry_version = str((registry_current or {}).get("version") or "") if registry_current else ""
+        if scope_repo_id and registry_current and not state_has_artifact:
+            state.update({
+                "artifact_ref": registry_filename or None,
+                "artifact_version": registry_version or None,
+                "source_ref": registry_source_ref or None,
+                "source_version": registry_version or None,
+            })
         state_artifact_ref = str(state.get("artifact_ref") or "")
         state_artifact_version = str(state.get("artifact_version") or "")
         state_source_ref = str(state.get("source_ref") or "")
@@ -13478,6 +13486,37 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         ),
     }
 
+    baseline_evidence_path = (repo_root / PB_RELEASE_BASELINE_EVIDENCE_DOC).resolve()
+    if bool(getattr(args, "include_docs", False)) or baseline_evidence_path.is_file():
+        baseline_evidence = _pb_release_baseline_evidence_status(
+            repo_root=repo_root,
+            expected_version=expected_version,
+        )
+        if bool(getattr(args, "include_docs", False)):
+            for item in baseline_evidence.get("warnings") or []:
+                warnings.append(item)
+            for item in baseline_evidence.get("blockers") or []:
+                blockers.append(item)
+    else:
+        baseline_evidence = {
+            "ok": True,
+            "status": "not_checked",
+            "severity": "ok",
+            "read_only": True,
+            "mutating_actions_executed": False,
+            "doc": {
+                "path": PB_RELEASE_BASELINE_EVIDENCE_DOC,
+                "present": False,
+                "size_bytes": None,
+            },
+            "required_phrase_count": len(PB_RELEASE_BASELINE_EVIDENCE_REQUIRED_PHRASES),
+            "missing_phrase_count": 0,
+            "warning_codes": [],
+            "blocker_codes": [],
+            "warnings": [],
+            "blockers": [],
+        }
+
     status = "baseline_current_verified" if not blockers else "baseline_current_blocked"
     severity = "blocked" if blockers else ("warning" if warnings else "ok")
 
@@ -13506,6 +13545,7 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
         "local_accepted_artifact": local_accepted_artifact,
         "explicit_artifact": explicit_artifact,
         "docs_status": docs_status,
+        "baseline_evidence": baseline_evidence,
         "full_test_evidence": _release_full_test_evidence_summary(repo_root=repo_root, profile_root=_candidate_profile_dir_for_repo(args, repo_root), requested_version=expected_version),
         "baseline_status_usage": baseline_status_usage,
         "release_status_context": release_status_context,

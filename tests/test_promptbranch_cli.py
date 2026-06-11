@@ -5557,7 +5557,7 @@ def test_artifact_mvp_status_reports_no_artifact_protocol_precondition(capsys, t
     assert payload["severity"] == "warning"
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     assert payload["lifecycle_classification"]["candidate_verdict"] == "no_candidate_available"
-    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == "v0.1.0"
+    assert payload["lifecycle_classification"]["versions"]["runtime_code_version"] == _test_runtime_version()
     assert payload["candidate_next"]["status"] == "candidate_next_no_artifact_candidate"
     assert payload["candidate_next"]["recommended_next_command"]["kind"] == "no_artifact_candidate"
     assert payload["candidate_intake_precondition"]["blocks_intake"] is True
@@ -5628,7 +5628,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert "no_artifact_candidate_available" in payload["warning_codes"]
     classification = payload["lifecycle_classification"]
     assert classification["candidate_verdict"] == "no_candidate_available"
-    assert classification["versions"]["runtime_code_version"] == "v0.1.0"
+    assert classification["versions"]["runtime_code_version"] == _test_runtime_version()
     assert classification["versions"]["adopted_project_source_version"] == "v0.0.238"
     assert classification["versions"]["runtime_vs_adopted_source"] == "left_newer"
     assert classification["checks"]["runtime_code_matches_adopted_source"] is False
@@ -5639,7 +5639,7 @@ def test_artifact_mvp_status_warns_when_runtime_differs_from_adopted_source(caps
     assert plan["kind"] == "runtime_source_baseline_mismatch"
     assert plan["safe_action"] == "inspect_and_decide_reconciliation"
     assert plan["read_only"] is True
-    assert plan["versions"]["runtime_code_version"] == "v0.1.0"
+    assert plan["versions"]["runtime_code_version"] == _test_runtime_version()
     assert plan["versions"]["adopted_project_source_version"] == "v0.0.238"
     action_kinds = {item["kind"] for item in plan["next_safe_actions"]}
     assert "inspect_project_sources" in action_kinds
@@ -9265,13 +9265,14 @@ def test_artifact_mvp_dod_reports_missing_document(capsys, tmp_path) -> None:
 
 
 def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.1.0.zip"
+    runtime_version = _test_runtime_version()
+    filename = f"chatgpt_claudecode_workflow_{runtime_version}.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.1.0")
+    _write_test_release_zip(zip_path, runtime_version)
     profile = tmp_path / "profile"
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.1.0", tested=True)
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version=runtime_version, tested=True)
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
     accept_args = argparse.Namespace(
         artifact=filename,
@@ -9293,7 +9294,7 @@ def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsy
 
     status_args = argparse.Namespace(
         artifact=None,
-        version="v0.1.0",
+        version=runtime_version,
         repo_path=str(repo),
         json=True,
         profile_dir=str(profile),
@@ -9308,8 +9309,8 @@ def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsy
     assert payload["operator_verdict"] == "candidate_mvp_complete"
     assert payload["severity"] == "ok"
     assert payload["lifecycle_classification"]["candidate_verdict"] == "candidate_mvp_complete"
-    assert payload["lifecycle_classification"]["versions"]["accepted_candidate_version"] == "v0.1.0"
-    assert payload["mvp_completion"]["accepted_candidate"]["artifact_version"] == "v0.1.0"
+    assert payload["lifecycle_classification"]["versions"]["accepted_candidate_version"] == runtime_version
+    assert payload["mvp_completion"]["accepted_candidate"]["artifact_version"] == runtime_version
     assert payload["candidate_next"]["recommended_next_command"]["kind"] == "candidate_already_accepted"
     assert payload["commands"]["inspect_candidates"] == "pb artifact candidate-status --all --json"
     assert payload["commands"]["inspect_mvp_dod"] == "pb artifact mvp-dod --json"
@@ -13158,6 +13159,44 @@ def test_artifact_current_all_returns_all_repo_payloads(capsys, tmp_path) -> Non
     assert payload["repo_count"] == 2
     assert payload["repos"]["my_awx"]["state"]["artifact_ref"] == "my_awx_0.0.200.zip"
     assert payload["repos"]["platform-gitops"]["registry_current"]["filename"] == "platform-gitops_0.0.4.zip"
+
+
+def test_artifact_current_repo_registry_current_populates_state_when_repo_state_missing(capsys, tmp_path) -> None:
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    registry = ArtifactRegistry(profile)
+    registry.add(ArtifactRecord(
+        path=str(tmp_path / "architecture-process_v0.29.0.zip"),
+        filename="architecture-process_v0.29.0.zip",
+        kind="adopted_release",
+        version="v0.29.0",
+        repo_path=None,
+        repo_id="architecture-process",
+        sha256="a" * 64,
+        size_bytes=10,
+        file_count=2,
+        created_at="2026-06-11T10:00:00Z",
+        source_ref="architecture-process_v0.29.0.zip",
+        project_url=project_url,
+    ))
+
+    args = argparse.Namespace(profile_dir=str(profile), repo="architecture-process", all=False, json=True)
+    exit_code = asyncio.run(cmd_artifact_current(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["state"]["artifact_ref"] == "architecture-process_v0.29.0.zip"
+    assert payload["state"]["artifact_version"] == "v0.29.0"
+    assert payload["state"]["source_ref"] == "architecture-process_v0.29.0.zip"
+    assert payload["state"]["source_version"] == "v0.29.0"
+    assert payload["baseline_roles"]["adopted_artifact_ref"] == "architecture-process_v0.29.0.zip"
+    assert payload["baseline_roles"]["code_version_relation"] == "external_repo_baseline"
+    assert payload["baseline_roles"]["code_version_match_applicable"] is False
+    assert payload["consistency"]["registry_current_matches_state_artifact"] is True
+    assert payload["consistency"]["state_source_matches_state_artifact"] is True
+    assert payload["consistency"]["code_version_match_status"] == "not_applicable_external_repo_baseline"
 
 
 def test_artifact_current_without_repo_blocks_when_multiple_repos_exist(capsys, tmp_path) -> None:

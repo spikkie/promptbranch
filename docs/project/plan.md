@@ -3,17 +3,16 @@
 ## Current baseline
 
 ```text
-pinned development baseline: chatgpt_claudecode_workflow-2_v0.1.73.zip
-latest accepted/current baseline with adoption evidence before repair: chatgpt_claudecode_workflow-2_v0.1.72.zip
-accepted checksum for v0.1.72: de4dfec45d53bc1d05f129e2796e51b86468b00e911e8e9e9566d166b4f6acc1
-next repair target: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
+latest accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
+accepted checksum for v0.1.73.1: 3a032f2470a74903f6f61f9dbdf63dbf98e3154e2fd146e6ea9a757cf7941554
+next repair target: chatgpt_claudecode_workflow-2_v0.1.73.2.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.73 defined canonical artifact naming and `pb artifact adopt --local-only` compatibility for external repo baselines. Field testing against the candlecast multi-repo project registry proved the core path and exposed repair-only diagnostics/status defects. v0.1.73.1 repairs those defects without advancing the normal slice line.
+Keep release slices narrow. v0.1.73 defined canonical artifact naming and `pb artifact adopt --local-only` compatibility for external repo baselines. Field testing against the candlecast multi-repo project registry proved the core path and exposed repair-only diagnostics/status defects. v0.1.73.1 repaired those defects and was adopted/current, but focused validation then exposed stale tests and JSON reporting regressions. v0.1.73.2 repairs only those validation/reporting regressions without advancing the normal slice line.
 ```
 
 ## Release / slice plan
@@ -32,7 +31,10 @@ Keep release slices narrow. v0.1.73 defined canonical artifact naming and `pb ar
 | v0.1.71.3 | Repair protected ZIP entry hygiene | Remove protected local Promptbranch state from repair ZIP while preserving v0.1.71.1/v0.1.71.2 behavior | ZIP payload hygiene, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | install ZIP guard, required-root and protected-entry checks, focused tests, compileall, ZIP hygiene | rejected: service health version-format mismatch |
 | v0.1.71.4 | Repair service health version normalization | Normalize release-control service health comparison between bare and canonical `v` versions | release-control health wait gate, focused shell-script tests, version metadata, repair/status docs | project-registry behavior, Docker build behavior beyond avoiding false mismatch, adoption semantics | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | rejected: full-test `package_import_smoke` saw `VERSION_TAG=vv0.1.71.4` |
 | v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | accepted_current |
-| v0.1.72 | Project registry adoption/import ergonomics | Safely import existing repo-local current artifact records into the project-scoped registry through an explicit dry-run-capable command | `pb project import-current-registry`, registry import helpers, focused import/conflict tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, deployment behavior | focused project/repo import tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | candidate |
+| v0.1.72 | Project registry adoption/import ergonomics | Safely import existing repo-local current artifact records into the project-scoped registry through an explicit dry-run-capable command | `pb project import-current-registry`, registry import helpers, focused import/conflict tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, deployment behavior | focused project/repo import tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | accepted_current |
+| v0.1.73 | Canonical artifact naming and adopt compatibility | Define canonical `<repo_id>_<version>.zip` naming and deterministic local-only adoption | artifact/adopt CLI, docs, focused tests | release-set orchestration, dependency solving, Project Source upload automation, runtime/deployment changes | focused artifact/adopt tests, repo doctor pattern tests, control-surface test, compileall, ZIP hygiene | field_proven / superseded_by_repair |
+| v0.1.73.1 | Canonical artifact adoption diagnostics and external-repo status semantics | Repair local-only adoption diagnostics and external repo code-version relation fields | artifact/current/adopt CLI, hygiene checks, focused tests, repair/status docs | normal v0.1.74 functionality, release-set orchestration, dependency solving, runtime/deployment changes | release workflow exit_code 0, adoption evidence, later focused regression found repair-needed issues | accepted_current / repair_required |
+| v0.1.73.2 | v0.1.73.1 validation/reporting regressions | Restore baseline-status compatibility, external repo state alignment, stale tests, and corrected negative diagnostic coverage | `promptbranch_cli.py`, `tests/test_promptbranch_cli.py`, repair/status docs | normal v0.1.74 functionality, new multi-repo features, candlecast baseline changes | focused regression tests, project/repo tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | planned |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -169,5 +171,22 @@ Out of scope: normal v0.1.74 functionality, release-set orchestration, cross-rep
 Expected validation: focused artifact/adopt/current/hygiene tests, project control-surface test, source version consistency, package import smoke, compileall, ZIP hygiene, clean extraction validation.
 DoD movement: add DOD-023 for canonical adoption diagnostics and external-repo current-state reporting.
 Risk: maintain backward-compatible fields while clarifying semantics so existing callers do not break unexpectedly.
+Next step: package repair ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
+
+
+## Repair slice definition — v0.1.73.2
+
+```text
+Release: v0.1.73.2
+Baseline: chatgpt_claudecode_workflow-2_v0.1.73.1.zip accepted/current with operator adoption evidence.
+Type: repair candidate
+Slice: v0.1.73.1 validation/reporting regressions
+Goal: Repair focused validation failures and real multi-repo artifact-current reporting regression introduced around v0.1.73.1.
+In scope: stale runtime-version test assertions, baseline_evidence compatibility in baseline-status JSON, external repo state fallback from registry current, corrected local-artifact-not-found negative coverage, repair note, project status docs.
+Out of scope: normal v0.1.74 functionality, new multi-repo capabilities, candlecast baseline replacement, release-set orchestration, Project Source upload behavior, runtime/browser automation, Docker/deployment behavior.
+Expected validation: focused artifact/adopt/current/baseline-status/mvp-status tests, project/repo tests, project control-surface test, source version consistency, package import smoke, compileall, ZIP hygiene, clean extraction validation.
+DoD movement: add DOD-024 for v0.1.73.1 validation/reporting regression repair.
+Risk: maintain backward-compatible JSON while preserving the v0.1.73.1 semantic clarification for external repo baselines.
 Next step: package repair ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
