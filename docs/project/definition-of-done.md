@@ -26,6 +26,7 @@
 | DOD-020 | `promptbranch_version.VERSION_TAG` is canonical and cannot double-prefix `v` | done | `tests/test_promptbranch_version.py` regression tests reject `vv0.1.71.5` and normalize prefixed inputs | v0.1.71.5 |
 | DOD-021 | Explicit project registry import ergonomics safely migrate legacy repo-local current records | done | `tests/test_promptbranch_project.py` import-current-registry dry-run/import/conflict tests and project/repo focused validation | v0.1.72 |
 | DOD-022 | Canonical artifact naming and adopt compatibility are release-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/promptbranch-artifact-naming.md`, and focused v0.1.73 validation | v0.1.73 |
+| DOD-023 | Canonical adoption diagnostics and external-repo current-state reporting are repair-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/repair-v0.1.73.1.md`, and focused v0.1.73.1 validation | v0.1.73.1 |
 
 ## Status values
 

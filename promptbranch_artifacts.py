@@ -292,6 +292,81 @@ def release_entry_hygiene_violations(names: Iterable[str]) -> list[str]:
     return sorted(set(bad))
 
 
+_SENSITIVE_PROMPTBRANCH_REPO_KEYS = {
+    "api_key",
+    "access_token",
+    "auth_token",
+    "cookie",
+    "cookies",
+    "password",
+    "refresh_token",
+    "secret",
+    "session",
+    "session_id",
+    "token",
+}
+
+
+def _looks_like_local_absolute_path(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    if re.match(r"^[A-Za-z]:\\", text):
+        return True
+    if not text.startswith("/"):
+        return False
+    first = text.strip("/").split("/", 1)[0]
+    return first in {"home", "mnt", "tmp", "Users", "var", "private", "run", "Volumes"}
+
+
+def _promptbranch_repo_manifest_violations_from_value(value: Any, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_text = str(key)
+            child_path = f"{path}.{key_text}" if path else key_text
+            if key_text.lower() in _SENSITIVE_PROMPTBRANCH_REPO_KEYS and item not in (None, "", [], {}):
+                violations.append(f".promptbranch-repo.json:{child_path}:sensitive_field")
+            violations.extend(_promptbranch_repo_manifest_violations_from_value(item, path=child_path))
+        return violations
+    if isinstance(value, list):
+        for idx, item in enumerate(value):
+            child_path = f"{path}[{idx}]" if path else f"[{idx}]"
+            violations.extend(_promptbranch_repo_manifest_violations_from_value(item, path=child_path))
+        return violations
+    if isinstance(value, str):
+        lowered = value.lower()
+        if _looks_like_local_absolute_path(value):
+            violations.append(f".promptbranch-repo.json:{path}:local_absolute_path")
+        if ".pb_profile" in lowered or ".local/state/promptbranch" in lowered or ".config/promptbranch" in lowered:
+            violations.append(f".promptbranch-repo.json:{path}:local_promptbranch_state_path")
+    return violations
+
+
+def promptbranch_repo_manifest_violations_from_zip(archive: zipfile.ZipFile) -> list[str]:
+    """Validate that .promptbranch-repo.json is portable repo identity only.
+
+    The repo identity manifest is allowed in release ZIPs.  It must not become
+    a carrier for local runtime state, tokens, machine paths, or Promptbranch
+    profile/state locations.
+    """
+
+    names = set(archive.namelist())
+    if ".promptbranch-repo.json" not in names:
+        return []
+    try:
+        raw = archive.read(".promptbranch-repo.json").decode("utf-8", errors="replace")
+    except (KeyError, OSError):
+        return [".promptbranch-repo.json:unreadable"]
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return [".promptbranch-repo.json:invalid_json"]
+    if not isinstance(payload, dict):
+        return [".promptbranch-repo.json:not_object"]
+    return sorted(set(_promptbranch_repo_manifest_violations_from_value(payload)))
+
+
 def iter_repo_files(repo_path: str | Path) -> list[Path]:
     root = Path(repo_path).resolve()
     if not root.is_dir():
@@ -741,6 +816,7 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
         with zipfile.ZipFile(zip_path) as archive:
             names = archive.namelist()
             bad = archive.testzip()
+            promptbranch_repo_manifest_violations = promptbranch_repo_manifest_violations_from_zip(archive)
     except zipfile.BadZipFile:
         return {"ok": False, "error": "bad_zip", "path": str(zip_path)}
     unsafe = [name for name in names if name.startswith("/") or ".." in Path(name).parts]
@@ -751,7 +827,7 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
     if len(top_levels) == 1 and not any("/" not in name.rstrip("/") for name in names if name and not name.endswith("/")):
         wrapper_folder = next(iter(top_levels))
     return {
-        "ok": bad is None and not unsafe and wrapper_folder is None and not hygiene_violations,
+        "ok": bad is None and not unsafe and wrapper_folder is None and not hygiene_violations and not promptbranch_repo_manifest_violations,
         "path": str(zip_path),
         "filename": zip_path.name,
         "sha256": sha256_file(zip_path),
@@ -762,6 +838,8 @@ def verify_zip_artifact(path: str | Path) -> dict[str, Any]:
         "unsafe_entries": unsafe,
         "hygiene_violations": hygiene_violations,
         "hygiene_violation_count": len(hygiene_violations),
+        "promptbranch_repo_manifest_violations": promptbranch_repo_manifest_violations,
+        "promptbranch_repo_manifest_violation_count": len(promptbranch_repo_manifest_violations),
         "nested_zip_entries": nested_zip_entries,
         "nested_zip_count": len(nested_zip_entries),
         "wrapper_folder": wrapper_folder,

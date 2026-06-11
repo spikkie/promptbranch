@@ -13133,6 +13133,9 @@ def test_artifact_current_repo_arg_returns_repo_scoped_payload(capsys, tmp_path)
     assert payload["scope"] == {"kind": "repo", "repo_id": "my_awx"}
     assert payload["state"]["artifact_ref"] == "my_awx_0.0.200.zip"
     assert payload["registry_current"]["filename"] == "my_awx_0.0.200.zip"
+    assert payload["baseline_roles"]["code_version_relation"] == "external_repo_baseline"
+    assert payload["baseline_roles"]["code_version_match_applicable"] is False
+    assert payload["consistency"]["code_version_match_status"] == "not_applicable_external_repo_baseline"
 
 
 def test_artifact_current_all_returns_all_repo_payloads(capsys, tmp_path) -> None:
@@ -13292,7 +13295,15 @@ def test_artifact_adopt_local_only_accepts_extended_canonical_versions(capsys, t
     assert payload["artifact_version"] == "v0.19.5.94.1"
     assert payload["zip_version"] if "zip_version" in payload else True
     assert payload["source_verified"] is False
-    assert payload["checks"]["source_verified"] is True
+    assert payload["source_verification"] == {
+        "ok": True,
+        "status": "local_only",
+        "source_verified": False,
+        "project_source_required": False,
+        "project_source_mutated": False,
+    }
+    assert payload["checks"]["source_verified"] is False
+    assert payload["checks"]["source_verification_ok"] is True
     registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
     assert registry_payload["artifacts"][0]["filename"] == filename
     assert registry_payload["artifacts"][0]["version"] == "v0.19.5.94.1"
@@ -13313,6 +13324,33 @@ def test_artifact_adopt_local_only_accepts_canonical_architecture_process(capsys
     assert payload["status"] == "adopted_local"
     assert payload["artifact_ref"] == "architecture-process_v0.29.0.zip"
     assert payload["artifact_version"] == "v0.29.0"
+
+
+def test_artifact_adopt_missing_local_path_reports_attempted_path(capsys, tmp_path) -> None:
+    filename = "candlecast-src_v0.19.5.94.1.zip"
+    missing_zip = tmp_path / filename
+    profile = tmp_path / "profile"
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=False,
+        local_only=True,
+        local_path=str(missing_zip),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+        repo="candlecast-src",
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "local_artifact_not_found"
+    assert payload["attempted_local_path"] == str(missing_zip)
+    assert payload["attempted_artifact_ref"] == filename
+    assert "--local-path" in payload["next_safe_action"]
 
 
 def test_artifact_adopt_rejects_explicit_repo_prefix_mismatch(capsys, tmp_path) -> None:

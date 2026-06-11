@@ -329,3 +329,48 @@ def test_artifact_registry_legacy_current_still_works_for_single_repo(tmp_path: 
     ))
 
     assert registry.current()["filename"] == "my_awx_0.0.200.zip"
+
+def test_verify_zip_artifact_allows_portable_promptbranch_repo_manifest(tmp_path: Path) -> None:
+    zip_path = tmp_path / "portable.zip"
+    manifest = {
+        "project_id": "candlecast",
+        "project_home_url": "https://chatgpt.com/g/g-p-demo/project",
+        "repo_id": "architecture-process",
+        "role": "architecture_process",
+        "artifact_pattern": "architecture-process_<version>.zip",
+    }
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("VERSION", "v0.29.0\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps(manifest))
+        archive.writestr("README.md", "demo\n")
+
+    payload = verify_zip_artifact(zip_path)
+
+    assert payload["ok"] is True
+    assert payload["hygiene_violations"] == []
+    assert payload["promptbranch_repo_manifest_violations"] == []
+
+
+def test_verify_zip_artifact_rejects_promptbranch_repo_manifest_with_local_state(tmp_path: Path) -> None:
+    zip_path = tmp_path / "local-state.zip"
+    manifest = {
+        "project_id": "candlecast",
+        "repo_id": "architecture-process",
+        "repo_root": "/home/spikkie/git/architecture-process",
+        "state_file": "/home/spikkie/git/architecture-process/.pb_profile/.promptbranch_state.json",
+        "token": "secret-token",
+    }
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("VERSION", "v0.29.0\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps(manifest))
+        archive.writestr("README.md", "demo\n")
+
+    payload = verify_zip_artifact(zip_path)
+
+    assert payload["ok"] is False
+    violations = payload["promptbranch_repo_manifest_violations"]
+    assert any(item.endswith(":repo_root:local_absolute_path") for item in violations)
+    assert any(item.endswith(":state_file:local_absolute_path") for item in violations)
+    assert any(item.endswith(":state_file:local_promptbranch_state_path") for item in violations)
+    assert any(item.endswith(":token:sensitive_field") for item in violations)
+
