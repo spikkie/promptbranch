@@ -46,3 +46,50 @@ An explicit `--profile-dir` remains the override/debug escape hatch. A default-r
 ## Migration note
 
 `pb project join` creates the project registry file if it does not exist, but it does not automatically adopt artifacts or migrate old repo-local `.pb_profile/promptbranch_artifacts.json` records. Use adoption/register workflows deliberately so Project Source verification remains explicit.
+
+
+## Import existing repo-local current registry
+
+`pb project join` creates the identity file and project registry, but it does not copy old repo-local current state automatically. To migrate existing local current records, run an explicit dry-run first from a joined repo:
+
+```bash
+pb project import-current-registry --dry-run --json
+```
+
+By default the command reads from the current repo's legacy profile:
+
+```text
+<repo>/.pb_profile/promptbranch_artifacts.json
+```
+
+and plans imports into:
+
+```text
+~/.local/state/promptbranch/projects/<project_id>/promptbranch_artifacts.json
+```
+
+Use an explicit source profile when importing from another checked-out repo or preserved legacy profile:
+
+```bash
+pb project import-current-registry --from-profile-dir /path/to/repo/.pb_profile --dry-run --json
+```
+
+If the dry-run is correct, run without `--dry-run`:
+
+```bash
+pb project import-current-registry --json
+```
+
+Conflicting current records fail closed. Use `--replace` only when the dry-run shows that replacing the existing project-registry current record is intentional:
+
+```bash
+pb project import-current-registry --replace --json
+```
+
+After import, verify from every joined repo:
+
+```bash
+pb repo list --json
+pb repo doctor --json
+pb artifact current --all --json
+```

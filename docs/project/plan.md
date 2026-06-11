@@ -3,8 +3,8 @@
 ## Current baseline
 
 ```text
-accepted/current baseline for repair: chatgpt_claudecode_workflow-2_v0.1.71.zip (operator stated fully tested/adopted; checksum evidence not recorded in this file); v0.1.71.1 was not installable due missing root `.gitignore`; v0.1.71.2 was rejected for protected `.pb_profile/` ZIP entries; v0.1.71.3 exposed a release-control service health version-format mismatch
-accepted checksum: pending explicit v0.1.71 adoption evidence block
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.71.5.zip
+accepted checksum: c04b23d8a35bd07d1cb106a52beb0cf6d5e06ee788fec76ff69f0abd0d37d13c
 next normal target: chatgpt_claudecode_workflow-2_v0.1.72.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
@@ -12,7 +12,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and is accepted/current by operator evidence. v0.1.71 introduced project-scoped multi-repo registry resolution. v0.1.71.1 is a narrow repair that makes project join create/read the project registry and ensures `pb artifact current --all`, `pb repo list`, and `pb repo doctor` all use the same project-scoped registry from any joined repo. v0.1.71.2 is a packaging repair that restores the required root `.gitignore` omitted from the v0.1.71.1 ZIP. v0.1.71.3 removes protected `.pb_profile/` packaging. v0.1.71.4 normalizes service health version comparison between bare package versions and canonical `v` versions. v0.1.71.5 fixes the follow-on `VERSION_TAG` double-`v` version-surface defect exposed by full-test import smoke.
+Keep release slices narrow. v0.1.71.5 is accepted/current after the repair chain for project-registry alignment, ZIP hygiene, service health version normalization, and VERSION_TAG double-v normalization. v0.1.72 is the next normal slice and adds explicit project registry import ergonomics so operators can migrate existing repo-local current records into the project-scoped registry without manual copying or implicit adoption.
 ```
 
 ## Release / slice plan
@@ -30,7 +30,8 @@ Keep release slices narrow. v0.1.70.1 repaired explicit missing-repo lookup and 
 | v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | rejected: protected `.pb_profile/` ZIP entry |
 | v0.1.71.3 | Repair protected ZIP entry hygiene | Remove protected local Promptbranch state from repair ZIP while preserving v0.1.71.1/v0.1.71.2 behavior | ZIP payload hygiene, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | install ZIP guard, required-root and protected-entry checks, focused tests, compileall, ZIP hygiene | rejected: service health version-format mismatch |
 | v0.1.71.4 | Repair service health version normalization | Normalize release-control service health comparison between bare and canonical `v` versions | release-control health wait gate, focused shell-script tests, version metadata, repair/status docs | project-registry behavior, Docker build behavior beyond avoiding false mismatch, adoption semantics | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | rejected: full-test `package_import_smoke` saw `VERSION_TAG=vv0.1.71.4` |
-| v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | candidate |
+| v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | accepted_current |
+| v0.1.72 | Project registry adoption/import ergonomics | Safely import existing repo-local current artifact records into the project-scoped registry through an explicit dry-run-capable command | `pb project import-current-registry`, registry import helpers, focused import/conflict tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, deployment behavior | focused project/repo import tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | candidate |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -117,4 +118,22 @@ Reason: v0.1.71.4 full-test import smoke observed `promptbranch_version.VERSION_
 In scope: compute `VERSION_TAG` through `version_tag()`, keep package version as bare PEP 440 text, normalize repeated leading `v` input, add regression tests proving `vv0.1.71.5` is rejected/not emitted, update repair/status docs and version metadata.
 Out of scope: Docker behavior, project registry behavior, release-set orchestration, Project Source upload automation, artifact adoption semantics, deployment behavior.
 Expected validation: focused promptbranch_version tests, package import smoke, source version consistency, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
+```
+
+
+## Slice definition — v0.1.72 normal release
+
+```text
+Release: v0.1.72
+Baseline: chatgpt_claudecode_workflow-2_v0.1.71.5.zip accepted/current with operator adoption evidence.
+Type: normal candidate
+Slice: Project registry adoption/import ergonomics
+Goal: migrate existing repo-local `.pb_profile/promptbranch_artifacts.json` current records into the project-scoped registry explicitly, safely, and repeatably.
+In scope: `pb project import-current-registry`, default import source from the joined repo's `.pb_profile`, optional `--from-profile-dir`, `--dry-run`, conflict detection, explicit `--replace`, project state updates for imported current records, focused tests, docs/status updates, version metadata.
+Out of scope: release-set orchestration, cross-repo dependency solving, automatic Project Source upload, automatic artifact adoption, deployment behavior, Docker behavior, broad lifecycle rewrite.
+Expected files: `promptbranch_project.py`, `promptbranch_cli.py`, `tests/test_promptbranch_project.py`, `docs/project/*`, `docs/release-v0.1.72.md`, `docs/promptbranch-multi-repo-projects.md`, version files.
+Expected validation: project import focused tests, repo/project registry focused tests, project control-surface test, source version consistency, package import smoke, compileall, ZIP hygiene, clean extraction focused validation.
+DoD movement: add DOD-021 for explicit project registry import ergonomics; mark done after focused validation passes.
+Risk: importing current records can change project registry truth; dry-run and fail-closed conflict detection are mandatory.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```

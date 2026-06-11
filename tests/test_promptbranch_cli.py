@@ -1978,7 +1978,7 @@ def test_main_version_subcommand_outputs_release(capsys) -> None:
     exit_code = main(["version"])
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "promptbranch 0.1.30"
+    assert captured.out.strip() == f"promptbranch {_TEST_PACKAGE_VERSION}"
 
 
 def test_main_project_source_list_json_emits_source_payload(monkeypatch, capsys, tmp_path) -> None:
@@ -2856,7 +2856,7 @@ def test_phase1_doctor_reports_state_without_mutating(monkeypatch, capsys, tmp_p
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert payload["action"] == "doctor"
-    assert payload["version"] == "0.1.30"
+    assert payload["version"] == _TEST_PACKAGE_VERSION
     assert payload["checks"]["workspace_selected"] is True
 
 

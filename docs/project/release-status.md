@@ -13,7 +13,8 @@
 | v0.1.71.2 | repair | Required root `.gitignore` packaging repair | rejected | install ZIP import guard failed: protected `.pb_profile/` entry present | DOD-018 done; no line advanced | rejected/superseded |
 | v0.1.71.3 | repair | Protected ZIP entry hygiene | rejected | service health endpoint returned `v0.1.71.3` while release-control expected `0.1.71.3` | packaging hygiene preserved; no line advanced | rejected/superseded |
 | v0.1.71.4 | repair | Service health version normalization | rejected | full release-control reached `package_import_smoke` and failed on `promptbranch_version.VERSION_TAG=vv0.1.71.4` | DOD-019 done; no line advanced | rejected/superseded |
-| v0.1.71.5 | repair | `VERSION_TAG` double-v normalization | candidate | focused version-surface tests; package import smoke/version consistency; control-surface test; compileall; ZIP hygiene | DOD-020 done; no line advanced | pending |
+| v0.1.71.5 | repair | `VERSION_TAG` double-v normalization | accepted_current | operator-provided `pb artifact current --json` adoption evidence; full-test evidence not included in adoption block | DOD-020 done; no line advanced; DOD-010 baseline evidence updated | c04b23d8a35bd07d1cb106a52beb0cf6d5e06ee788fec76ff69f0abd0d37d13c |
+| v0.1.72 | normal | Project registry adoption/import ergonomics | candidate | focused project/repo import tests; project control-surface test; compileall; ZIP hygiene; clean extraction validation | DOD-021 done | pending |
 
 ## ZIP status values
 
