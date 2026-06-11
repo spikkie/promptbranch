@@ -27,6 +27,7 @@
 | DOD-021 | Explicit project registry import ergonomics safely migrate legacy repo-local current records | done | `tests/test_promptbranch_project.py` import-current-registry dry-run/import/conflict tests and project/repo focused validation | v0.1.72 |
 | DOD-022 | Canonical artifact naming and adopt compatibility are release-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/promptbranch-artifact-naming.md`, and focused v0.1.73 validation | v0.1.73 |
 | DOD-023 | Canonical adoption diagnostics and external-repo current-state reporting are repair-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/repair-v0.1.73.1.md`, and focused v0.1.73.1 validation | v0.1.73.1 |
+| DOD-024 | v0.1.73.1 validation/reporting regressions are repaired without advancing the normal slice | done | focused artifact/adopt/current/baseline-status/mvp-status tests, project/repo focused tests, project control-surface test, compileall, ZIP hygiene, clean extraction validation | v0.1.73.2 |
 
 ## Status values
 
