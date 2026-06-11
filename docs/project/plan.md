@@ -137,3 +137,20 @@ DoD movement: add DOD-021 for explicit project registry import ergonomics; mark 
 Risk: importing current records can change project registry truth; dry-run and fail-closed conflict detection are mandatory.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+
+## Slice definition — v0.1.73 normal release
+
+```text
+Release: v0.1.73
+Baseline: chatgpt_claudecode_workflow-2_v0.1.72.zip accepted/current with operator adoption evidence.
+Type: normal candidate
+Slice: Canonical artifact naming and adopt compatibility
+Goal: define one artifact filename grammar and make pb artifact adopt deterministic for multi-repo project baselines.
+In scope: canonical <repo_id>_<version>.zip grammar, v-prefixed filename versions, extended numeric versions, v/non-v ZIP VERSION normalization, explicit --local-only adoption, Project Source adoption preserved, focused tests, docs, release/status metadata.
+Out of scope: automatic historical ZIP rewriting, Project Source upload, release-set orchestration, dependency solving, runtime behavior, Docker/deployment changes.
+Expected validation: focused artifact/adopt tests, repo doctor pattern tests, project control-surface test, source version consistency, package import smoke, compileall, ZIP hygiene, clean extraction validation.
+DoD movement: add DOD-022 for canonical artifact naming and adopt compatibility.
+Risk: adoption state mutation must remain explicit and fail closed for non-canonical names and conflicting adoption modes.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```

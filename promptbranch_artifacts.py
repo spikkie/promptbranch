@@ -96,21 +96,72 @@ def utc_now() -> str:
 
 
 
+CANONICAL_ARTIFACT_VERSION_RE = re.compile(r"^v\d+(?:\.\d+){2,}$")
+CANONICAL_ARTIFACT_FILENAME_RE = re.compile(
+    r"^(?P<repo_id>[A-Za-z0-9][A-Za-z0-9_-]*)_(?P<version>v\d+(?:\.\d+){2,})\.zip$"
+)
+
+
+def canonical_version_tag(value: str | None) -> str | None:
+    """Return the canonical artifact filename version token.
+
+    Artifact filenames use exactly one leading ``v`` and at least three
+    numeric components, for example ``v0.1.72`` or ``v0.19.5.94.1``.
+    Internal repo version files may omit the ``v``; filename grammar may not.
+    """
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    while text.lower().startswith("v"):
+        text = text[1:]
+    candidate = f"v{text}"
+    return candidate if CANONICAL_ARTIFACT_VERSION_RE.fullmatch(candidate) else None
+
+
+def parse_canonical_artifact_filename(filename: str | None) -> dict[str, str] | None:
+    """Parse the canonical Promptbranch artifact filename grammar.
+
+    Canonical grammar::
+
+        <repo_id>_<version>.zip
+
+    where ``version`` is a v-prefixed dot-separated numeric token.
+    """
+
+    value = Path(str(filename or "")).name.strip()
+    match = CANONICAL_ARTIFACT_FILENAME_RE.fullmatch(value)
+    if not match:
+        return None
+    return {"repo_id": match.group("repo_id"), "version": match.group("version")}
+
+
+def canonical_artifact_filename(repo_id: str, version: str) -> str | None:
+    normalized_repo = normalize_repo_id(repo_id)
+    normalized_version = canonical_version_tag(version)
+    if not normalized_repo or not normalized_version:
+        return None
+    return f"{normalized_repo}_{normalized_version}.zip"
+
+
 def infer_repo_id_from_artifact_filename(filename: str | None) -> str | None:
     """Return a portable repo identifier inferred from a Promptbranch ZIP name.
 
-    Artifact names normally use ``<repo>_<version>.zip`` where version is
-    ``v1.2.3`` or ``1.2.3`` with an optional numeric repair component.  The
-    repo id is intentionally filename-based instead of path-based so current
-    baseline state remains portable across machines.
+    New artifacts should use the canonical ``<repo_id>_v<version>.zip``
+    grammar.  This inference function still accepts older non-v filenames for
+    read-only compatibility with legacy registry records; mutating commands may
+    enforce the stricter canonical grammar explicitly.
     """
 
+    parsed = parse_canonical_artifact_filename(filename)
+    if parsed:
+        return parsed["repo_id"]
     value = str(filename or "").strip()
     if not value.endswith(".zip") or "_" not in value:
         return None
     stem = value[:-4]
     prefix, version = stem.rsplit("_", 1)
-    if not prefix or not re.fullmatch(r"v?\d+(?:\.\d+){2,3}", version):
+    if not prefix or not re.fullmatch(r"v?\d+(?:\.\d+){2,}", version):
         return None
     return prefix
 
