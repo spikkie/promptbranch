@@ -44,22 +44,49 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+RELEASE_VALIDATION_PYTHON_PLACEHOLDER = "{release_validation_python}"
+RELEASE_VALIDATION_PYTHON_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON"
+
+
+def release_validation_python() -> str:
+    """Return the repo test Python for release-validation groups.
+
+    `pb test full` is normally executed by the installed Promptbranch entrypoint.
+    In pipx/installed use, `sys.executable` points at the Promptbranch runtime
+    venv, which intentionally may not contain developer test dependencies such as
+    pytest. Release-validation groups are repo validation commands, so default to
+    the operator/repo Python instead of the installed CLI interpreter.
+    """
+
+    return os.environ.get(RELEASE_VALIDATION_PYTHON_ENV, "python3")
+
+
+def _release_validation_command(*args: str) -> list[str]:
+    return [RELEASE_VALIDATION_PYTHON_PLACEHOLDER, *args]
+
+
+def _resolve_release_validation_command(command: Sequence[object]) -> list[str]:
+    return [
+        release_validation_python() if str(item) == RELEASE_VALIDATION_PYTHON_PLACEHOLDER else str(item)
+        for item in command
+    ]
+
+
 RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
     "project_control_surface": {
         "required": True,
         "description": "Project MVP/DoD/Plan control-surface validator.",
-        "command": [sys.executable, "-m", "pytest", "-q", "tests/test_project_control_surface.py"],
+        "command": _release_validation_command("-m", "pytest", "-q", "tests/test_project_control_surface.py"),
     },
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",
-        "command": [sys.executable, "-m", "pytest", "-q", "tests/test_promptbranch_version.py"],
+        "command": _release_validation_command("-m", "pytest", "-q", "tests/test_promptbranch_version.py"),
     },
     "artifact_json_contracts": {
         "required": True,
         "description": "Artifact/adoption/current JSON contract regression coverage.",
-        "command": [
-            sys.executable,
+        "command": _release_validation_command(
             "-m",
             "pytest",
             "-q",
@@ -67,25 +94,23 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_cli.py",
             "-k",
             "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status",
-        ],
+        ),
     },
     "repo_project_registry": {
         "required": True,
         "description": "Project-scoped repo registry and repo doctor regression coverage.",
-        "command": [
-            sys.executable,
+        "command": _release_validation_command(
             "-m",
             "pytest",
             "-q",
             "tests/test_promptbranch_project.py",
             "tests/test_promptbranch_repos.py",
-        ],
+        ),
     },
     "browser_scheduler_source_lifecycle": {
         "required": True,
         "description": "Scheduler/source lifecycle and same-profile queue regression coverage.",
-        "command": [
-            sys.executable,
+        "command": _release_validation_command(
             "-m",
             "pytest",
             "-q",
@@ -94,25 +119,24 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_cli.py",
             "-k",
             "scheduler or profile_busy or queue_wait or source_remove or cleanup or release_lifecycle_plan",
-        ],
+        ),
     },
     "release_lifecycle_plan": {
         "required": True,
         "description": "Release lifecycle plan/queue invariants.",
-        "command": [
-            sys.executable,
+        "command": _release_validation_command(
             "-m",
             "pytest",
             "-q",
             "tests/test_promptbranch_cli.py",
             "-k",
             "release_lifecycle_plan",
-        ],
+        ),
     },
     "compileall": {
         "required": True,
         "description": "Repository Python source compiles.",
-        "command": [sys.executable, "-m", "compileall", "-q", "."],
+        "command": _release_validation_command("-m", "compileall", "-q", "."),
     },
 }
 
@@ -122,7 +146,7 @@ def release_validation_group_manifest() -> dict[str, dict[str, Any]]:
         group: {
             "required": bool(spec.get("required")),
             "description": spec.get("description"),
-            "command": [str(item) for item in spec.get("command", [])],
+            "command": _resolve_release_validation_command(spec.get("command", [])),
         }
         for group, spec in RELEASE_VALIDATION_GROUPS.items()
     }
@@ -135,7 +159,7 @@ def _tail_text(text: str, *, max_chars: int = 4000) -> str:
 
 
 def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo_path: Path, timeout_seconds: float = 600.0) -> dict[str, Any]:
-    command = [str(item) for item in spec.get("command") or []]
+    command = _resolve_release_validation_command(spec.get("command") or [])
     if not command:
         return {
             "ok": False,

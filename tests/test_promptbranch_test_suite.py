@@ -566,6 +566,53 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         assert manifest[name]["command"]
 
 
+
+def test_release_validation_groups_default_to_repo_python(monkeypatch) -> None:
+    monkeypatch.delenv(suite.RELEASE_VALIDATION_PYTHON_ENV, raising=False)
+    manifest = suite.release_validation_group_manifest()
+
+    for group in suite.RELEASE_VALIDATION_GROUPS:
+        assert manifest[group]["command"][0] == "python3"
+        assert suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER not in manifest[group]["command"]
+
+
+def test_release_validation_groups_support_python_override(monkeypatch) -> None:
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, "/opt/project-python")
+    manifest = suite.release_validation_group_manifest()
+
+    assert manifest["project_control_surface"]["command"][0] == "/opt/project-python"
+    assert manifest["artifact_json_contracts"]["command"][0] == "/opt/project-python"
+
+
+def test_run_release_validation_group_resolves_python_override(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+
+        class Completed:
+            returncode = 0
+            stdout = "ok"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, "/opt/project-python")
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite._run_release_validation_group(
+        "demo",
+        {
+            "required": True,
+            "description": "demo",
+            "command": [suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER, "-m", "pytest"],
+        },
+        repo_path=tmp_path,
+    )
+
+    assert result["ok"] is True
+    assert captured["command"] == ["/opt/project-python", "-m", "pytest"]
+
 def test_agent_profile_reports_release_validation_groups(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
     (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
