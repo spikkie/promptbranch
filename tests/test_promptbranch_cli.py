@@ -12819,6 +12819,8 @@ def test_release_lifecycle_plan_includes_scheduler_and_source_queue(capsys, tmp_
         zf.writestr("README.md", "candidate\n")
 
     rc = main([
+        "--profile-dir",
+        str(tmp_path / "profile"),
         "release",
         "lifecycle",
         "--artifact",

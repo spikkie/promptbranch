@@ -21,3 +21,5 @@
 | ADR-PROJ-018 | 2026-06-11 | Supersede v0.1.73.2 instead of adopting it | v0.1.73.2 repaired JSON/reporting regressions but failed release-control with browser_profile_busy | v0.1.73.3 rebuilds from accepted/current v0.1.73.1 and carries forward only the validated repair intent |
 | ADR-PROJ-019 | 2026-06-11 | Enforce universal browser-operation scheduler coverage for source/project lifecycle paths | Full release-control can run list/add/remove/cleanup against the same browser profile and must not rely on ad-hoc retry/timeout behavior | Source/project remove and cleanup paths use scheduler-aware waits and expose scheduler diagnostics |
 
+
+| ADR-026 | 2026-06-12 | Isolate scheduler lifecycle-plan tests from ambient profile state | Synthetic plan tests must not depend on the operator repo `.pb_profile` current baseline | v0.1.73.4 changes test setup only and preserves production reconciliation behavior |

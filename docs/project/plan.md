@@ -171,3 +171,5 @@ DoD movement: add DOD-023 for canonical adoption diagnostics and external-repo c
 Risk: maintain backward-compatible fields while clarifying semantics so existing callers do not break unexpectedly.
 Next step: package repair ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+| v0.1.73.4 | Focused scheduler test isolation repair | Keep scheduler repair tests deterministic under real repo profiles | `tests/test_promptbranch_cli.py`, version/docs repair note | production behavior changes, v0.1.74 scope | focused scheduler/JSON-contract tests, release-control | candidate |
