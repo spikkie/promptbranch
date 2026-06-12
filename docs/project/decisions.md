@@ -24,3 +24,4 @@
 
 | ADR-026 | 2026-06-12 | Isolate scheduler lifecycle-plan tests from ambient profile state | Synthetic plan tests must not depend on the operator repo `.pb_profile` current baseline | v0.1.73.4 changes test setup only and preserves production reconciliation behavior |
 | ADR-PROJ-027 | 2026-06-12 | Make release-validation groups explicit in full-test/report evidence | v0.1.73.x repairs showed focused JSON-contract and scheduler tests could be run manually outside the normal release path | v0.1.74 adds a validation matrix, full-test release-validation group execution, report fields, and release-control summary enforcement |
+| ADR-PROJ-028 | 2026-06-12 | Release-validation groups must run with repo/operator Python, not the installed Promptbranch runtime interpreter | `v0.1.74` release-control showed pipx runtime Python lacked pytest | v0.1.74.1 defaults release-validation commands to `python3` and supports `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` override |
