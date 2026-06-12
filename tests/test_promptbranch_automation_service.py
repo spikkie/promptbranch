@@ -703,3 +703,183 @@ def test_browser_status_reports_stale_lock_diagnostics(tmp_path):
     assert status["stale_lock_expired"] is True
     assert status["stale_lock_recoverable"] is True
     assert status["active_elapsed_seconds"] >= 60.0
+
+
+def test_profile_queue_default_matches_advertised_scheduler_timeout(tmp_path):
+    from promptbranch_automation.service import DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS
+
+    profile_dir = tmp_path / ".pb_profile"
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+    ))
+
+    assert svc.settings.profile_lock_wait_seconds == DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS == 600.0
+    assert svc.browser_status()["default_queue_wait_timeout_seconds"] == 600.0
+    assert svc.browser_status()["scheduler_model"] == "single_owner_profile_wait_queue"
+
+
+def test_source_remove_waits_behind_source_list_with_same_profile(monkeypatch, tmp_path):
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_list_project_sources(self, **kwargs):
+        events.append("list-start")
+        await asyncio.sleep(0.03)
+        events.append("list-end")
+        return {"ok": True, "sources": []}
+
+    async def fake_remove_project_source(self, **kwargs):
+        events.append("remove-start")
+        return {"ok": True, "removed": True}
+
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
+    monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.2,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.2,
+    ))
+
+    async def run_sequence():
+        list_task = asyncio.create_task(svc_a.list_project_sources())
+        while svc_a.browser_status().get("active_operation") != "list_project_sources":
+            await asyncio.sleep(0)
+        remove_result = await svc_b.remove_project_source(source_name="Notes", exact=True)
+        list_result = await list_task
+        return list_result, remove_result
+
+    list_result, remove_result = asyncio.run(run_sequence())
+
+    assert list_result["ok"] is True
+    assert remove_result["ok"] is True
+    assert events == ["list-start", "list-end", "remove-start"]
+
+
+def test_project_remove_waits_behind_source_add_with_same_profile(monkeypatch, tmp_path):
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_add_project_source(self, **kwargs):
+        events.append("add-start")
+        await asyncio.sleep(0.03)
+        events.append("add-end")
+        return {"ok": True, "persistence_verified": True}
+
+    async def fake_remove_project(self, **kwargs):
+        events.append("project-remove-start")
+        return {"ok": True, "removed": True}
+
+    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+    monkeypatch.setattr(ChatGPTAutomation, "remove_project", fake_remove_project)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.2,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.2,
+    ))
+
+    async def run_sequence():
+        add_task = asyncio.create_task(svc_a.add_project_source(source_kind="text", value="notes"))
+        while svc_a.browser_status().get("active_operation") != "add_project_source":
+            await asyncio.sleep(0)
+        remove_result = await svc_b.remove_project(profile_lock_wait_seconds=0.2)
+        add_result = await add_task
+        return add_result, remove_result
+
+    add_result, remove_result = asyncio.run(run_sequence())
+
+    assert add_result["ok"] is True
+    assert remove_result["ok"] is True
+    assert events == ["add-start", "add-end", "project-remove-start"]
+
+
+def test_browser_profile_busy_payload_marks_scheduler_path(monkeypatch, tmp_path):
+    from promptbranch_browser_auth.exceptions import BrowserProfileBusyError
+
+    events: list[str] = []
+    profile_dir = tmp_path / ".pb_profile"
+
+    async def fake_ask_question_result(self, **kwargs):
+        events.append("ask-start")
+        await asyncio.sleep(0.05)
+        events.append("ask-end")
+        return {"answer": "done"}
+
+    async def fake_list_project_sources(self, **kwargs):
+        events.append("list-start")
+        return {"ok": True}
+
+    monkeypatch.setattr(ChatGPTAutomation, "ask_question_result", fake_ask_question_result)
+    monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
+
+    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-one/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.001,
+    ))
+    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+        project_url="https://chatgpt.com/g/g-p-two/project",
+        email=None,
+        password=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_patchright=False,
+        profile_lock_wait_seconds=0.001,
+    ))
+
+    async def run_contention() -> BrowserProfileBusyError:
+        ask_task = asyncio.create_task(svc_a.ask_question_result(prompt="hello", retries=0))
+        while "ask-start" not in events:
+            await asyncio.sleep(0)
+        try:
+            await svc_b.list_project_sources()
+        except BrowserProfileBusyError as exc:
+            await ask_task
+            return exc
+        await ask_task
+        raise AssertionError("expected browser profile busy")
+
+    payload = asyncio.run(run_contention()).to_payload()
+
+    assert payload["status"] == "browser_profile_busy"
+    assert payload["scheduler_path"] == "shared_profile_async_lock"
+    assert payload["bypass_detected"] is False
+    assert payload["queue_timeout_seconds"] == 0.001
+    assert payload["queue_wait_seconds"] is not None
+    assert "list-start" not in events

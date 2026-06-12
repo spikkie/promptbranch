@@ -133,6 +133,7 @@ class ProjectEnsureRequest(BaseModel):
 class ProjectRemoveRequest(BaseModel):
     keep_open: bool = False
     project_url: Optional[str] = None
+    profile_lock_wait_seconds: Optional[float] = None
 
 
 class ProjectSourceRemoveRequest(BaseModel):
@@ -140,6 +141,7 @@ class ProjectSourceRemoveRequest(BaseModel):
     exact: bool = False
     keep_open: bool = False
     project_url: Optional[str] = None
+    profile_lock_wait_seconds: Optional[float] = None
 
 
 class ChatGetRequest(BaseModel):
@@ -230,7 +232,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
             clear_singleton_locks=_env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False),
-            profile_lock_wait_seconds=float(os.getenv("PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS", os.getenv("CHATGPT_BROWSER_PROFILE_LOCK_WAIT_SECONDS", "30.0"))),
+            profile_lock_wait_seconds=float(os.getenv("PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS", os.getenv("CHATGPT_BROWSER_PROFILE_LOCK_WAIT_SECONDS", "600.0"))),
             profile_stale_lock_seconds=float(os.getenv("PROMPTBRANCH_BROWSER_PROFILE_STALE_LOCK_SECONDS", os.getenv("CHATGPT_BROWSER_PROFILE_STALE_LOCK_SECONDS", "300.0"))),
             slow_mo_ms=int(os.getenv("CHATGPT_SLOW_MO_MS", "0")),
             debug=_env_flag("CHATGPT_DEBUG_BROWSER", _env_flag("CHATGPT_DEBUG", False)),
@@ -682,7 +684,7 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
 @protected.post("/projects/remove", dependencies=[Depends(require_service_token)])
 async def remove_project(payload: ProjectRemoveRequest) -> dict:
     try:
-        return await _service_for(payload.project_url).remove_project(keep_open=payload.keep_open)
+        return await _service_for(payload.project_url).remove_project(keep_open=payload.keep_open, profile_lock_wait_seconds=payload.profile_lock_wait_seconds)
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 
@@ -739,6 +741,7 @@ async def remove_project_source(payload: ProjectSourceRemoveRequest) -> dict:
             source_name=payload.source_name,
             exact=payload.exact,
             keep_open=payload.keep_open,
+            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)

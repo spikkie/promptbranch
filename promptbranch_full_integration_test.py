@@ -473,7 +473,7 @@ class DockerServiceAdapter:
 
     def _remove_project_sync(self, keep_open: bool) -> dict[str, Any]:
         with self._client() as client:
-            return client.remove_project(keep_open=keep_open, project_url=self.project_url)
+            return client.remove_project(keep_open=keep_open, project_url=self.project_url, profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS)
 
     async def discover_project_source_capabilities(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await asyncio.to_thread(self._discover_project_source_capabilities_sync, keep_open)
@@ -534,11 +534,8 @@ class DockerServiceAdapter:
         exact: bool = False,
         keep_open: bool = False,
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
-            self._remove_project_source_sync,
-            source_name,
-            exact,
-            keep_open,
+        return await self._run_source_mutation_with_profile_retry(
+            lambda: self._remove_project_source_sync(source_name, exact, keep_open)
         )
 
     def _remove_project_source_sync(self, source_name: str, exact: bool, keep_open: bool) -> dict[str, Any]:
@@ -548,6 +545,7 @@ class DockerServiceAdapter:
                 exact=exact,
                 keep_open=keep_open,
                 project_url=self.project_url,
+                profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
             )
 
     async def list_project_chats(

@@ -131,6 +131,10 @@ class BrowserProfileBusyError(TimeoutError):
         stale_lock_expired: bool | None = None,
         stale_lock_recovery_attempted: bool | None = None,
         stale_lock_recovery_result: dict | None = None,
+        queue_wait_seconds: float | None = None,
+        queue_timeout_seconds: float | None = None,
+        scheduler_path: str | None = None,
+        bypass_detected: bool | None = None,
     ) -> None:
         super().__init__(message)
         self.operation_name = operation_name
@@ -144,6 +148,10 @@ class BrowserProfileBusyError(TimeoutError):
         self.stale_lock_expired = stale_lock_expired
         self.stale_lock_recovery_attempted = stale_lock_recovery_attempted
         self.stale_lock_recovery_result = stale_lock_recovery_result or None
+        self.queue_wait_seconds = queue_wait_seconds
+        self.queue_timeout_seconds = queue_timeout_seconds
+        self.scheduler_path = scheduler_path
+        self.bypass_detected = bypass_detected
 
     def to_payload(self) -> dict:
         return {
@@ -162,6 +170,10 @@ class BrowserProfileBusyError(TimeoutError):
             "waited_seconds": self.waited_seconds,
             "retry_after_seconds": self.retry_after_seconds,
             "profile_dir": self.profile_dir,
+            "queue_wait_seconds": self.queue_wait_seconds,
+            "queue_timeout_seconds": self.queue_timeout_seconds,
+            "scheduler_path": self.scheduler_path,
+            "bypass_detected": self.bypass_detected,
             "timeout_layer": "browser_profile_lock",
             "recovery_hint": "A browser-backed operation is already using the shared profile. Retry after the active operation finishes, inspect pb browser status --json, or let stale-lock recovery expire abandoned ownership.",
         }

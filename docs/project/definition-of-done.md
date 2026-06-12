@@ -27,7 +27,8 @@
 | DOD-021 | Explicit project registry import ergonomics safely migrate legacy repo-local current records | done | `tests/test_promptbranch_project.py` import-current-registry dry-run/import/conflict tests and project/repo focused validation | v0.1.72 |
 | DOD-022 | Canonical artifact naming and adopt compatibility are release-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/promptbranch-artifact-naming.md`, and focused v0.1.73 validation | v0.1.73 |
 | DOD-023 | Canonical adoption diagnostics and external-repo current-state reporting are repair-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/repair-v0.1.73.1.md`, and focused v0.1.73.1 validation | v0.1.73.1 |
-| DOD-024 | v0.1.73.1 validation/reporting regressions are repaired without advancing the normal slice | done | focused artifact/adopt/current/baseline-status/mvp-status tests, project/repo focused tests, project control-surface test, compileall, ZIP hygiene, clean extraction validation | v0.1.73.2 |
+| DOD-024 | v0.1.73.1 validation/reporting regressions were repaired in candidate v0.1.73.2 | not_applicable | v0.1.73.2 focused tests passed but release-control failed with browser_profile_busy | v0.1.73.2 |
+| DOD-025 | All browser-touching source/project lifecycle operations are scheduler-mediated with same-profile serialization | done | `tests/test_promptbranch_automation_service.py`, `tests/test_promptbranch_service_client.py`, focused scheduler tests, and `docs/repair-v0.1.73.3.md` | v0.1.73.3 |
 
 ## Status values
 
