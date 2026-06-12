@@ -9066,6 +9066,8 @@ def _artifact_current_payload(
     def snapshot_for(scope_repo_id: str | None) -> dict[str, Any]:
         if store is not None:
             return store.snapshot(project_url, repo_id=scope_repo_id)
+        if backend is None:
+            return {}
         snapshot = backend.state_snapshot()
         return snapshot if isinstance(snapshot, dict) else {}
 

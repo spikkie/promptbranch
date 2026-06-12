@@ -20,7 +20,9 @@
 | v0.1.73.1 | repair | Canonical artifact adoption diagnostics and external-repo status semantics | accepted_current | operator-provided adoption/current evidence; full-test evidence later showed v0.1.73.1 release workflow exit 0 | DOD-023 done; no normal slice advanced | 3a032f2470a74903f6f61f9dbdf63dbf98e3154e2fd146e6ea9a757cf7941554 |
 | v0.1.73.2 | repair | v0.1.73.1 validation/reporting regression repair | superseded | focused JSON-contract tests passed; full release-control failed with browser_profile_busy | DOD-024 superseded by DOD-025 | rejected/superseded |
 | v0.1.73.3 | repair | Universal browser-operation scheduler coverage | superseded | release-control completed exit_code 0; focused scheduler test failed due ambient profile-state dependency | DOD-025 carried forward into v0.1.73.4 | superseded |
-| v0.1.73.4 | repair | Focused scheduler test isolation | candidate | focused scheduler/JSON-contract tests, control-surface tests, ZIP hygiene, release-control required | DOD-026 done after focused validation; adoption pending | pending |
+
+| v0.1.73.4 | repair | Focused scheduler test isolation | accepted_current | operator-provided `pb artifact current --all --json` adoption evidence; full-test evidence not included in adoption block | DOD-026 done; DOD-010 baseline evidence updated | a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858 |
+| v0.1.74 | normal | Release validation suite coverage manifest | candidate | focused tests required; release-control/adoption pending | DOD-027 done after focused validation; DOD-011 pending adoption | pending |
 
 ## ZIP status values
 

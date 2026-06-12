@@ -3,17 +3,16 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
-accepted checksum: 3a032f2470a74903f6f61f9dbdf63dbf98e3154e2fd146e6ea9a757cf7941554
-failed/superseded repair candidate: chatgpt_claudecode_workflow-2_v0.1.73.2.zip
-next repair target: chatgpt_claudecode_workflow-2_v0.1.73.3.zip
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
+accepted checksum: a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858
+next normal target: chatgpt_claudecode_workflow-2_v0.1.74.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.73.1 is accepted/current. v0.1.73.2 repaired JSON/reporting regressions but failed release-control because browser/source cleanup hit browser_profile_busy. v0.1.73.3 supersedes v0.1.73.2 as a repair built from v0.1.73.1, preserving the reporting fixes and adding universal browser-operation scheduler coverage for source/project lifecycle paths.
+Keep release slices narrow. v0.1.73.4 is accepted/current. v0.1.74 is a normal release-validation coverage slice that turns the focused regression suites from the v0.1.73.x repair line into explicit release-validation groups inside `pb test full` and release-control reporting.
 ```
 
 ## Release / slice plan
@@ -173,3 +172,21 @@ Next step: package repair ZIP and require operator install/test/adoption evidenc
 ```
 
 | v0.1.73.4 | Focused scheduler test isolation repair | Keep scheduler repair tests deterministic under real repo profiles | `tests/test_promptbranch_cli.py`, version/docs repair note | production behavior changes, v0.1.74 scope | focused scheduler/JSON-contract tests, release-control | candidate |
+
+
+## Slice definition — v0.1.74 normal release
+
+```text
+Release: v0.1.74
+Baseline: chatgpt_claudecode_workflow-2_v0.1.73.4.zip accepted/current with operator adoption evidence.
+Type: normal candidate
+Slice: Release validation suite coverage manifest
+Goal: make release-control/full-test validation explicitly declare and run the focused regression groups that protected the v0.1.73.x repair line.
+In scope: validation matrix doc, release-validation group metadata, full-test agent profile group execution, test-report group summary, release-control structured summary group summary, focused tests, release/status metadata.
+Out of scope: browser automation behavior changes, Project Source semantic changes, artifact adoption/current behavior changes, multi-repo registry behavior changes, Docker/deployment behavior changes, unrelated pytest cleanup.
+Expected files: `promptbranch_test_suite.py`, `promptbranch_test_report.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_test_report.py`, `docs/project/*`, `docs/release-v0.1.74.md`, version files.
+Expected validation: focused test-suite/report tests, artifact JSON contract tests, scheduler/source lifecycle tests, project/repo/control/version tests, compileall, ZIP hygiene, clean extraction validation, release-control before adoption.
+DoD movement: add DOD-027 for explicit release-validation groups.
+Risk: full release-control may take longer because focused pytest groups are no longer manual/optional.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```

@@ -39,6 +39,17 @@ def _suite_payload(ok: bool = True) -> dict:
             "planned_cooldown_wait_count": 2,
             "recommendation": "No ChatGPT rate-limit evidence observed.",
         },
+        "release_validation_groups": {
+            "ok": True,
+            "action": "release_validation_groups",
+            "status": "passed",
+            "missing_required_groups": [],
+            "groups": {
+                "artifact_json_contracts": {"ok": True, "status": "passed", "required": True},
+                "browser_scheduler_source_lifecycle": {"ok": True, "status": "passed", "required": True},
+                "project_control_surface": {"ok": True, "status": "passed", "required": True},
+            },
+        },
         "safety": {
             "write_tools_blocked": True,
             "model_has_execution_authority": False,
@@ -62,6 +73,8 @@ def test_build_test_report_extracts_last_test_suite_json_from_noisy_log(tmp_path
     assert report["suite"]["rate_limit_summary"]["status"] == "none"
     assert report["suite"]["safety"]["write_tools_blocked"] is True
     assert report["suite"]["package_hygiene"]["ok"] is True
+    assert report["suite"]["release_validation_groups"]["ok"] is True
+    assert "artifact_json_contracts" in report["suite"]["release_validation_groups"]["groups"]
 
 
 

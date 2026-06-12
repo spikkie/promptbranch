@@ -1225,7 +1225,12 @@ except Exception:
     failure_count = 0
 report_status = report.get("status")
 report_ok = report.get("ok") is True
-full_test_green = bool(test_rc == 0 and report_rc == 0 and report_ok and report_status == "verified" and failure_count == 0)
+suite = report.get("suite") if isinstance(report.get("suite"), dict) else {}
+release_validation_groups = suite.get("release_validation_groups") if isinstance(suite.get("release_validation_groups"), dict) else {}
+required_groups = release_validation_groups.get("groups") if isinstance(release_validation_groups.get("groups"), dict) else {}
+missing_required_groups = release_validation_groups.get("missing_required_groups") if isinstance(release_validation_groups.get("missing_required_groups"), list) else []
+release_validation_groups_ok = bool(release_validation_groups.get("ok") is True and not missing_required_groups) if release_validation_groups else False
+full_test_green = bool(test_rc == 0 and report_rc == 0 and report_ok and report_status == "verified" and failure_count == 0 and release_validation_groups_ok)
 classification = report.get("validation_classification") if isinstance(report.get("validation_classification"), dict) else {}
 if not classification:
     classification = {
@@ -1269,6 +1274,12 @@ summary = {
         "failure_count": report.get("failure_count"),
         "error": report_error,
     },
+    "release_validation_groups": {
+        "ok": release_validation_groups_ok,
+        "required_group_count": len(required_groups),
+        "missing_required_groups": missing_required_groups,
+        "groups": release_validation_groups,
+    },
     "service_health": {
         "path": str(service_health_path) if service_health_path else None,
         "ok": service_health.get("ok"),
@@ -1279,6 +1290,8 @@ summary = {
 }
 if report_error:
     summary["limitations"].append("The test report JSON could not be parsed; summary records the failed evidence boundary.")
+if not release_validation_groups_ok:
+    summary["limitations"].append("Required release-validation groups were missing or failed in the full-test report.")
 if service_health_error:
     summary["limitations"].append("Service health JSON was missing or invalid when the full-test evidence summary was generated.")
 

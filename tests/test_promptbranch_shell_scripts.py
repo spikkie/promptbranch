@@ -70,7 +70,7 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "echo unexpected pb args >&2\n"
         "exit 2\n",
         encoding="utf-8",
@@ -143,7 +143,7 @@ def test_release_control_test_transport_localhost_sets_service_base_url_and_writ
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "echo unexpected pb args >&2\n"
         "exit 2\n",
         encoding="utf-8",
@@ -208,7 +208,7 @@ def test_release_control_test_transport_both_runs_direct_and_localhost(tmp_path:
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "echo unexpected pb args >&2\n"
         "exit 2\n",
         encoding="utf-8",
@@ -261,7 +261,7 @@ def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version
         f"artifact='{artifact}'\n"
         f"version='{version}'\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'\"$version\"'\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"artifact verify\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_verify\", \"status\": \"verified\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"src list\" ]]; then echo '{\"ok\": true, \"sources\": [{\"filename\": \"'\"$artifact\"'\"}]}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"artifact adopt\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_adopt\", \"status\": \"adopted\", \"source_verified\": true, \"project_source_mutated\": false, \"artifact_registry_updated\": true, \"state_artifact_updated\": true, \"state_source_updated\": true}'; exit 0; fi\n"
@@ -1212,7 +1212,7 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
         "if [[ \"$1 $2\" == \"artifact intake\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_intake\", \"status\": \"no_artifact\", \"download_performed\": false}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"artifact candidate-run\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_candidate_run\", \"status\": \"candidate_next_inspection_required\", \"mode\": \"plan_only\", \"mutating_actions_executed\": false}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"release lifecycle-status\" ]]; then echo '{\"ok\": true, \"action\": \"release_lifecycle_status\", \"status\": \"passed\", \"severity\": \"ok\", \"lifecycle_phase\": \"adopted_current\", \"operator_verdict\": \"continue_normal_development\", \"warning_codes\": [], \"blocker_codes\": [], \"next_safe_action\": {\"kind\": \"continue_normal_development\"}}'; exit 0; fi\n"
         "echo unexpected promptbranch args >&2\n"
         "exit 2\n",

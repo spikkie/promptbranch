@@ -14,6 +14,7 @@ REQUIRED_FILES = [
     "release-status.md",
     "decisions.md",
     "migration.md",
+    "validation-matrix.md",
 ]
 
 
@@ -44,6 +45,8 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "v0.1.68" in text
     assert "v0.1.69" in text
     assert "v0.1.70" in text
+    assert "v0.1.73.4" in text
+    assert "v0.1.74" in text
     assert "candidate" in text
 
 
@@ -59,5 +62,22 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.73.1.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.73.2.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.73.4.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.74.zip" in text
+
+
+def test_validation_matrix_declares_required_release_groups() -> None:
+    text = read_doc("validation-matrix.md")
+    assert "| Group | Required | Purpose | Representative command |" in text
+    for group in [
+        "project_control_surface",
+        "version_surface",
+        "artifact_json_contracts",
+        "repo_project_registry",
+        "browser_scheduler_source_lifecycle",
+        "release_lifecycle_plan",
+        "compileall",
+        "zip_hygiene",
+    ]:
+        assert group in text
+    assert "missing_required_groups" in text

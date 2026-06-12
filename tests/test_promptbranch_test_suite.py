@@ -11,6 +11,19 @@ def _ok(action: str = "ok", status: str = "verified") -> dict:
     return {"ok": True, "action": action, "status": status}
 
 
+def _release_groups_ok() -> dict:
+    return {
+        "ok": True,
+        "action": "release_validation_groups",
+        "status": "passed",
+        "missing_required_groups": [],
+        "groups": {
+            name: {"ok": True, "status": "passed", "group": name, "required": True}
+            for name in suite.RELEASE_VALIDATION_GROUPS
+        },
+    }
+
+
 def test_agent_profile_runs_local_checks_and_expected_negatives(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
     (tmp_path / ".promptbranch").mkdir()
@@ -37,6 +50,7 @@ def test_agent_profile_runs_local_checks_and_expected_negatives(monkeypatch, tmp
     monkeypatch.setattr(suite, "agent_summarize_log", fake_summarize)
     monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
     monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
+    monkeypatch.setattr(suite, "run_release_validation_groups", lambda **kwargs: _release_groups_ok())
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 
@@ -136,6 +150,7 @@ def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, 
     monkeypatch.setattr(suite, "agent_run", fake_agent_run)
     monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
     monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
+    monkeypatch.setattr(suite, "run_release_validation_groups", lambda **kwargs: _release_groups_ok())
 
     result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
 
@@ -531,3 +546,47 @@ def test_browser_profile_summary_counts_cleanup_failures(monkeypatch) -> None:
     assert result["failed_steps"][0]["scope"] == "cleanup"
     assert result["failed_steps"][0]["name"] == "project_remove_cleanup"
     assert result["failed_steps"][0]["status"] == "browser_profile_busy"
+
+
+
+def test_release_validation_group_manifest_contains_required_release_gate_groups() -> None:
+    manifest = suite.release_validation_group_manifest()
+    required = {
+        "project_control_surface",
+        "version_surface",
+        "artifact_json_contracts",
+        "repo_project_registry",
+        "browser_scheduler_source_lifecycle",
+        "release_lifecycle_plan",
+        "compileall",
+    }
+    assert required.issubset(manifest)
+    for name in required:
+        assert manifest[name]["required"] is True
+        assert manifest[name]["command"]
+
+
+def test_agent_profile_reports_release_validation_groups(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
+    (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
+
+    monkeypatch.setattr(suite, "mcp_host_smoke", lambda **kwargs: _ok("mcp_host_smoke"))
+    monkeypatch.setattr(suite, "mcp_tool_call_via_stdio", lambda *args, **kwargs: _ok("mcp_tool_call"))
+    monkeypatch.setattr(suite, "skill_list", lambda **kwargs: _ok("skill_list"))
+    monkeypatch.setattr(suite, "skill_show", lambda *args, **kwargs: _ok("skill_show"))
+    monkeypatch.setattr(suite, "skill_validate", lambda *args, **kwargs: _ok("skill_validate", "valid"))
+    monkeypatch.setattr(suite, "agent_tool_call", lambda *args, **kwargs: _ok("agent_tool_call"))
+    monkeypatch.setattr(suite, "agent_run", lambda *args, **kwargs: {"ok": False, "action": "agent_run", "status": "risk_rejected"} if args and args[0] in {"sync sources", "create artifact release", "run pytest"} else _ok("agent_run"))
+    monkeypatch.setattr(suite, "agent_summarize_log", lambda path, **kwargs: {"ok": False, "status": "path_outside_repo"} if str(path).startswith("/") else _ok("agent_summarize_log"))
+    monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
+    monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
+    monkeypatch.setattr(suite, "run_release_validation_groups", lambda **kwargs: _release_groups_ok())
+
+    result = asyncio.run(suite.run_test_suite_async(profile="agent", path=str(tmp_path)))
+
+    assert result["ok"] is True
+    groups = result["release_validation_groups"]
+    assert groups["ok"] is True
+    assert groups["missing_required_groups"] == []
+    assert set(suite.RELEASE_VALIDATION_GROUPS).issubset(groups["groups"])
+    assert any(step["name"] == "release_validation_groups" for step in result["steps"])
