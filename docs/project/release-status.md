@@ -23,7 +23,7 @@
 
 | v0.1.73.4 | repair | Focused scheduler test isolation | accepted_current | operator-provided `pb artifact current --all --json` adoption evidence; full-test evidence not included in adoption block | DOD-026 done; DOD-010 baseline evidence updated | a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858 |
 | v0.1.74 | normal | Release validation suite coverage manifest | repair_required | release-control failed because required pytest groups used installed Promptbranch runtime Python without pytest | DOD-027 done but candidate needs repair | pending |
-| v0.1.74.1 | repair | Release-validation pytest runner isolation | candidate | focused tests required; release-control/adoption pending | DOD-028 done after focused validation; DOD-011 pending adoption | pending |
+| v0.1.74.1 | repair | Release-validation pytest runner isolation | repair_required | release-control failed in release-lifecycle plan tests due ambient profile state | DOD-028 done; DOD-029 required | pending |
 
 ## ZIP status values
 
@@ -42,3 +42,4 @@ repair_required
 ## Status rule
 
 A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, state artifact, state source, registry current, and consistency alignment.
+| v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | candidate | focused tests required; release-control/adoption pending | DOD-029 done after focused validation; DOD-011 pending adoption | pending |

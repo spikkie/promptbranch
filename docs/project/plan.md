@@ -190,3 +190,20 @@ DoD movement: add DOD-027 for explicit release-validation groups.
 Risk: full release-control may take longer because focused pytest groups are no longer manual/optional.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+## Slice definition — v0.1.74.2 repair
+
+```text
+Release: v0.1.74.2
+Baseline: accepted/current v0.1.73.4 with v0.1.74/v0.1.74.1 intended release changes carried forward
+Type: repair
+Slice: Release-lifecycle plan test profile isolation
+Goal: Keep synthetic release-lifecycle plan tests independent from ambient operator artifact registry state.
+In scope: `tests/test_promptbranch_cli.py`, version surfaces, project status/release docs, repair note.
+Out of scope: production release reconciliation behavior, Project Source semantics, artifact adoption/current semantics, scheduler/browser behavior, v0.1.75 scope.
+Expected validation: focused release lifecycle plan tests, required release-validation groups, project/repo/control/version tests, compileall, ZIP hygiene, release-control.
+DoD movement: DOD-029 added/done after focused validation; accepted/current verification remains pending.
+Risk: low; test isolation only.
+Next step: run release-control for v0.1.74.2 and adopt only after green evidence.
+```
+
