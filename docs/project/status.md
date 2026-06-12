@@ -6,7 +6,8 @@
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
 accepted checksum: 3a032f2470a74903f6f61f9dbdf63dbf98e3154e2fd146e6ea9a757cf7941554
 failed/superseded repair candidate: chatgpt_claudecode_workflow-2_v0.1.73.2.zip
-next repair target: chatgpt_claudecode_workflow-2_v0.1.73.3.zip
+superseded repair candidate: chatgpt_claudecode_workflow-2_v0.1.73.3.zip
+next repair target: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
 next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.74.zip
 ```
 
@@ -15,19 +16,19 @@ next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.74.
 ```text
 MVP status: active, not complete
 DoD status: DOD-001..DOD-023 done where evidence is listed; DOD-024 from v0.1.73.2 is superseded by DOD-025; adoption-specific rows remain release-specific
-active plan slice: v0.1.73.3 repair — Universal browser-operation scheduler coverage for source/project lifecycle paths
+active plan slice: v0.1.73.4 repair — Focused scheduler test isolation after v0.1.73.3 release-control success
 last accepted/current repair: v0.1.73.1
 failed repair candidate: v0.1.73.2 release-control failed with browser_profile_busy during source/project cleanup
-next planned slice: build/install/test v0.1.73.3, then adopt only after release-control and pb artifact current evidence are green
+next planned slice: build/install/test v0.1.73.4, then adopt only after release-control and pb artifact current evidence are green
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.73.3.zip candidate once packaged
-latest installed ZIP: chatgpt_claudecode_workflow-2_v0.1.73.2.zip failed release-control in provided log
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.73.4.zip candidate once packaged
+latest installed ZIP: chatgpt_claudecode_workflow-2_v0.1.73.3.zip release-control completed with exit_code 0 in provided log; focused scheduler test still needed isolation repair
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.73.1.zip
-release status: v0.1.73.3 repair planned/candidate; not accepted/current
+release status: v0.1.73.4 repair planned/candidate; not accepted/current
 ```
 
 ## Current risks
@@ -39,7 +40,7 @@ release status: v0.1.73.3 repair planned/candidate; not accepted/current
 
 ## Current blockers
 
-- v0.1.73.3 requires local release-control install/test evidence before it can become accepted/current.
+- v0.1.73.4 requires local release-control install/test evidence before it can become accepted/current.
 
 ## Current unknowns
 
@@ -49,11 +50,11 @@ release status: v0.1.73.3 repair planned/candidate; not accepted/current
 ## Next safe action
 
 ```text
-Package chatgpt_claudecode_workflow-2_v0.1.73.3.zip from accepted/current v0.1.73.1, run focused scheduler/JSON-contract tests, then run full release-control. Do not mark accepted/current until pb artifact current --json confirms alignment.
+Package chatgpt_claudecode_workflow-2_v0.1.73.4.zip carrying forward the v0.1.73.3 repair, run focused scheduler/JSON-contract tests, then run full release-control. Do not mark accepted/current until pb artifact current --json confirms alignment.
 ```
 
 ## Last updated
 
 ```text
-v0.1.73.3 repair candidate
+v0.1.73.4 repair candidate
 ```
