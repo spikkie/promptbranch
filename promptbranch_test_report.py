@@ -270,6 +270,9 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
     safety = payload.get("safety")
     if safety is None and isinstance(agent, dict):
         safety = agent.get("safety")
+    release_validation_groups = payload.get("release_validation_groups")
+    if release_validation_groups is None and isinstance(agent, dict):
+        release_validation_groups = agent.get("release_validation_groups")
     return {
         "ok": bool(payload.get("ok")),
         "action": payload.get("action"),
@@ -284,6 +287,7 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "safety": safety if isinstance(safety, dict) else {},
         "package_hygiene": _package_hygiene_from(agent or payload),
         "version_consistency": _version_consistency_from(agent or payload),
+        "release_validation_groups": release_validation_groups if isinstance(release_validation_groups, dict) else {},
     }
 
 

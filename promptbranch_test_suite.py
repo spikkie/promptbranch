@@ -4,6 +4,7 @@ import argparse
 import ast
 import asyncio
 import json
+from datetime import datetime, timezone
 import os
 import re
 import subprocess
@@ -37,6 +38,171 @@ from promptbranch_ask_protocol import BEGIN_REPLY_MARKER, END_REPLY_MARKER, clas
 DEFAULT_ONLY: tuple[str, ...] = ()
 DEFAULT_SKIP: tuple[str, ...] = ()
 TEST_SUITE_PROFILES = ("browser", "agent", "full")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
+    "project_control_surface": {
+        "required": True,
+        "description": "Project MVP/DoD/Plan control-surface validator.",
+        "command": [sys.executable, "-m", "pytest", "-q", "tests/test_project_control_surface.py"],
+    },
+    "version_surface": {
+        "required": True,
+        "description": "VERSION, pyproject, and promptbranch_version consistency.",
+        "command": [sys.executable, "-m", "pytest", "-q", "tests/test_promptbranch_version.py"],
+    },
+    "artifact_json_contracts": {
+        "required": True,
+        "description": "Artifact/adoption/current JSON contract regression coverage.",
+        "command": [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_artifacts.py",
+            "tests/test_promptbranch_cli.py",
+            "-k",
+            "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status",
+        ],
+    },
+    "repo_project_registry": {
+        "required": True,
+        "description": "Project-scoped repo registry and repo doctor regression coverage.",
+        "command": [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_project.py",
+            "tests/test_promptbranch_repos.py",
+        ],
+    },
+    "browser_scheduler_source_lifecycle": {
+        "required": True,
+        "description": "Scheduler/source lifecycle and same-profile queue regression coverage.",
+        "command": [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_automation_service.py",
+            "tests/test_promptbranch_service_client.py",
+            "tests/test_promptbranch_cli.py",
+            "-k",
+            "scheduler or profile_busy or queue_wait or source_remove or cleanup or release_lifecycle_plan",
+        ],
+    },
+    "release_lifecycle_plan": {
+        "required": True,
+        "description": "Release lifecycle plan/queue invariants.",
+        "command": [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_cli.py",
+            "-k",
+            "release_lifecycle_plan",
+        ],
+    },
+    "compileall": {
+        "required": True,
+        "description": "Repository Python source compiles.",
+        "command": [sys.executable, "-m", "compileall", "-q", "."],
+    },
+}
+
+
+def release_validation_group_manifest() -> dict[str, dict[str, Any]]:
+    return {
+        group: {
+            "required": bool(spec.get("required")),
+            "description": spec.get("description"),
+            "command": [str(item) for item in spec.get("command", [])],
+        }
+        for group, spec in RELEASE_VALIDATION_GROUPS.items()
+    }
+
+
+def _tail_text(text: str, *, max_chars: int = 4000) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo_path: Path, timeout_seconds: float = 600.0) -> dict[str, Any]:
+    command = [str(item) for item in spec.get("command") or []]
+    if not command:
+        return {
+            "ok": False,
+            "action": "release_validation_group",
+            "status": "missing_command",
+            "group": group_name,
+            "required": bool(spec.get("required")),
+            "description": spec.get("description"),
+        }
+    started_at = utc_now()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(repo_path),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        ok = completed.returncode == 0
+        return {
+            "ok": ok,
+            "action": "release_validation_group",
+            "status": "passed" if ok else "failed",
+            "group": group_name,
+            "required": bool(spec.get("required")),
+            "description": spec.get("description"),
+            "command": command,
+            "returncode": completed.returncode,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "timeout_seconds": timeout_seconds,
+            "stdout_tail": _tail_text(completed.stdout or ""),
+            "stderr_tail": _tail_text(completed.stderr or ""),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "action": "release_validation_group",
+            "status": "timeout",
+            "group": group_name,
+            "required": bool(spec.get("required")),
+            "description": spec.get("description"),
+            "command": command,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "timeout_seconds": timeout_seconds,
+            "stdout_tail": _tail_text((exc.stdout or "") if isinstance(exc.stdout, str) else ""),
+            "stderr_tail": _tail_text((exc.stderr or "") if isinstance(exc.stderr, str) else ""),
+        }
+
+
+def run_release_validation_groups(*, repo_path: Path | str = ".") -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    groups: dict[str, dict[str, Any]] = {}
+    for group_name, spec in RELEASE_VALIDATION_GROUPS.items():
+        groups[group_name] = _run_release_validation_group(group_name, spec, repo_path=root)
+    missing_required = [name for name, payload in groups.items() if bool(payload.get("required")) and not bool(payload.get("ok"))]
+    return {
+        "ok": not missing_required,
+        "action": "release_validation_groups",
+        "status": "passed" if not missing_required else "failed",
+        "required_group_count": len(RELEASE_VALIDATION_GROUPS),
+        "missing_required_groups": missing_required,
+        "groups": groups,
+    }
 
 
 def build_test_suite_namespace(
@@ -1029,6 +1195,9 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("artifact_roundtrip", artifact_roundtrip_smoke(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_dry_run_plan", _src_sync_dry_run_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_upload_preflight_plan", _src_sync_upload_preflight_plan(repo_path=root, profile_dir=profile_dir)))
+    release_validation = run_release_validation_groups(repo_path=root)
+    steps.append(_step("release_validation_groups", release_validation))
+    steps.append(_step("compileall", release_validation.get("groups", {}).get("compileall", {})))
     steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
 
     ok = all(bool(step.get("ok")) for step in steps)
@@ -1040,6 +1209,7 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
         "version": _read_version(root),
         "steps": steps,
         "artifacts": artifacts,
+        "release_validation_groups": release_validation,
         "safety": {
             "browser_required": False,
             "write_tools_blocked": True,
@@ -1117,6 +1287,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "agent": agent_summary,
         "failure_count": len(full_failures),
         "failed_steps": full_failures,
+        "release_validation_groups": agent_summary.get("release_validation_groups"),
         "rate_limit_strategy": browser_summary.get("rate_limit_strategy"),
         "rate_limit_telemetry": browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
         "rate_limit_summary": classify_rate_limit_summary(

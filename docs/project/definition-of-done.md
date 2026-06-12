@@ -11,24 +11,26 @@
 | DOD-005 | Migration ledger maps existing planning/status documents | done | `docs/project/migration.md` | v0.1.67 |
 | DOD-006 | Durable decisions are summarized | done | `docs/project/decisions.md` | v0.1.67 |
 | DOD-007 | Focused project-control-surface validation passes | done | `tests/test_project_control_surface.py` | v0.1.67 |
-| DOD-008 | Full tests pass when required | open | full test log not provided for this slice | - |
-| DOD-009 | ZIP artifact has clean repository-root structure | done | final v0.1.68 ZIP hygiene check | v0.1.68 |
-| DOD-010 | Accepted baseline is verified | done | user-provided `pb artifact current --json` and full-test report for v0.1.68 | v0.1.68 |
+| DOD-008 | Full tests pass when required | open | full test log required per release | - |
+| DOD-009 | ZIP artifact has clean repository-root structure | done | ZIP hygiene checks | v0.1.68+ |
+| DOD-010 | Accepted baseline is verified | done | `pb artifact current --all --json` evidence for v0.1.73.4 | v0.1.73.4 |
 | DOD-011 | New candidate is adopted/current | open | adoption evidence required after install/adopt | - |
 | DOD-012 | Project Sources add performance/transactional diagnostics are covered by focused tests | done | `tests/test_project_source_capabilities.py` targeted v0.1.68 tests | v0.1.68 |
 | DOD-013 | Browser-profile busy source/adoption sequencing is guarded by wait-idle and structured retry guidance | done | `tests/test_promptbranch_cli.py` and `tests/test_cli_parser.py` focused v0.1.69 tests | v0.1.69 |
-| DOD-014 | Multi-repo artifact current state is repo-scoped and adoption cannot overwrite another repo baseline | done | `tests/test_promptbranch_artifacts.py`, `tests/test_cli_state.py`, and `tests/test_promptbranch_cli.py` focused v0.1.70 tests plus v0.1.70 adoption evidence | v0.1.70 |
-| DOD-015 | Explicit missing repo artifact-current lookup fails closed without leaking another repo state | done | `tests/test_cli_state.py` and `tests/test_promptbranch_cli.py` focused v0.1.70.1 repair tests plus v0.1.70.1 adoption evidence | v0.1.70.1 |
-| DOD-016 | Project-scoped multi-repo registry resolution works from any joined repo without remembering a coordinator profile | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, artifact-current/repo focused tests, project control-surface test, compileall | v0.1.71 |
-| DOD-017 | Project join/list/doctor and artifact-current all use the same project-scoped registry unless `--profile-dir` is explicitly supplied | done | `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, focused artifact-current regression tests, project control-surface test, compileall | v0.1.71.1 |
-| DOD-018 | Repair ZIP includes required root `.gitignore` and passes root-file completeness guard | done | required root-file check and ZIP hygiene for v0.1.71.2 | v0.1.71.2 |
-| DOD-019 | Release-control Docker service health gate normalizes canonical `v` versions and bare package versions | done | `tests/test_promptbranch_shell_scripts.py` health-probe regression tests | v0.1.71.4 |
-| DOD-020 | `promptbranch_version.VERSION_TAG` is canonical and cannot double-prefix `v` | done | `tests/test_promptbranch_version.py` regression tests reject `vv0.1.71.5` and normalize prefixed inputs | v0.1.71.5 |
-| DOD-021 | Explicit project registry import ergonomics safely migrate legacy repo-local current records | done | `tests/test_promptbranch_project.py` import-current-registry dry-run/import/conflict tests and project/repo focused validation | v0.1.72 |
-| DOD-022 | Canonical artifact naming and adopt compatibility are release-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/promptbranch-artifact-naming.md`, and focused v0.1.73 validation | v0.1.73 |
-| DOD-023 | Canonical adoption diagnostics and external-repo current-state reporting are repair-gated | done | `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_artifacts.py`, `docs/repair-v0.1.73.1.md`, and focused v0.1.73.1 validation | v0.1.73.1 |
+| DOD-014 | Multi-repo artifact current state is repo-scoped and adoption cannot overwrite another repo baseline | done | artifact/current repo-focused tests and v0.1.70 adoption evidence | v0.1.70 |
+| DOD-015 | Explicit missing repo artifact-current lookup fails closed without leaking another repo state | done | missing-repo focused tests and v0.1.70.1 adoption evidence | v0.1.70.1 |
+| DOD-016 | Project-scoped multi-repo registry resolution works from any joined repo without remembering a coordinator profile | done | project/repo focused tests and control-surface validation | v0.1.71 |
+| DOD-017 | Project join/list/doctor and artifact-current all use the same project-scoped registry unless `--profile-dir` is explicitly supplied | done | project/repo/artifact-current focused tests | v0.1.71.1 |
+| DOD-018 | Repair ZIP includes required root `.gitignore` and passes root-file completeness guard | done | required root-file check and ZIP hygiene | v0.1.71.2 |
+| DOD-019 | Release-control Docker service health gate normalizes canonical `v` versions and bare package versions | done | shell-script health-probe regression tests | v0.1.71.4 |
+| DOD-020 | `promptbranch_version.VERSION_TAG` is canonical and cannot double-prefix `v` | done | `tests/test_promptbranch_version.py` | v0.1.71.5 |
+| DOD-021 | Explicit project registry import ergonomics safely migrate legacy repo-local current records | done | project import dry-run/import/conflict tests | v0.1.72 |
+| DOD-022 | Canonical artifact naming and adopt compatibility are release-gated | done | artifact/adopt focused tests and naming docs | v0.1.73 |
+| DOD-023 | Canonical adoption diagnostics and external-repo current-state reporting are repair-gated | done | focused artifact/adopt/current/hygiene tests | v0.1.73.1 |
 | DOD-024 | v0.1.73.1 validation/reporting regressions were repaired in candidate v0.1.73.2 | not_applicable | v0.1.73.2 focused tests passed but release-control failed with browser_profile_busy | v0.1.73.2 |
-| DOD-025 | All browser-touching source/project lifecycle operations are scheduler-mediated with same-profile serialization | done | `tests/test_promptbranch_automation_service.py`, `tests/test_promptbranch_service_client.py`, focused scheduler tests, and `docs/repair-v0.1.73.3.md` | v0.1.73.3 |
+| DOD-025 | All browser-touching source/project lifecycle operations are scheduler-mediated with same-profile serialization | done | focused scheduler tests and `docs/repair-v0.1.73.3.md` | v0.1.73.3 |
+| DOD-026 | Focused scheduler lifecycle-plan tests are isolated from ambient `.pb_profile` state | done | `tests/test_promptbranch_cli.py::test_release_lifecycle_plan_includes_scheduler_and_source_queue`; `docs/repair-v0.1.73.4.md` | v0.1.73.4 |
+| DOD-027 | Release-control/full-test validation declares and runs required focused regression groups | done | `docs/project/validation-matrix.md`, `promptbranch_test_suite.py`, `promptbranch_test_report.py`, focused validation tests | v0.1.74 |
 
 ## Status values
 
@@ -46,5 +48,3 @@ not_applicable
 ## Evidence rule
 
 A DoD item may be marked `done` only when evidence is listed. A candidate ZIP does not satisfy adoption-related DoD rows until adoption evidence confirms alignment.
-
-| DOD-026 | Focused scheduler lifecycle-plan tests are isolated from ambient `.pb_profile` state | done | `tests/test_promptbranch_cli.py::test_release_lifecycle_plan_includes_scheduler_and_source_queue`; `docs/repair-v0.1.73.4.md` | v0.1.73.4 |

@@ -23,3 +23,4 @@
 
 
 | ADR-026 | 2026-06-12 | Isolate scheduler lifecycle-plan tests from ambient profile state | Synthetic plan tests must not depend on the operator repo `.pb_profile` current baseline | v0.1.73.4 changes test setup only and preserves production reconciliation behavior |
+| ADR-PROJ-027 | 2026-06-12 | Make release-validation groups explicit in full-test/report evidence | v0.1.73.x repairs showed focused JSON-contract and scheduler tests could be run manually outside the normal release path | v0.1.74 adds a validation matrix, full-test release-validation group execution, report fields, and release-control summary enforcement |
