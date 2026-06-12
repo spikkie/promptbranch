@@ -8010,6 +8010,7 @@ hooks:
         repo_path=str(repo),
         plan=True,
         json=True,
+        profile_dir=str(tmp_path / "profile"),
     )
 
     exit_code = asyncio.run(cmd_release_install(None, args))
@@ -8817,6 +8818,7 @@ hooks:
         repo_path=str(repo),
         plan=True,
         json=True,
+        profile_dir=str(tmp_path / "profile"),
     )
 
     exit_code = asyncio.run(cmd_release_lifecycle(None, args))
@@ -8874,6 +8876,7 @@ hooks:
         message=None,
         keep_open=False,
         json=True,
+        profile_dir=str(tmp_path / "profile"),
     )
 
     exit_code = asyncio.run(cmd_release_lifecycle(None, args))

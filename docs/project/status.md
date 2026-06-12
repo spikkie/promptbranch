@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
 accepted checksum: a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858
-next normal target: chatgpt_claudecode_workflow-2_v0.1.74.zip; current repair candidate: chatgpt_claudecode_workflow-2_v0.1.74.1.zip
+next normal target: chatgpt_claudecode_workflow-2_v0.1.74.zip; current repair candidate: chatgpt_claudecode_workflow-2_v0.1.74.2.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
@@ -14,18 +14,18 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ```text
 MVP status: active, not complete
 DoD status: DOD-001..DOD-028 done where evidence is listed; DOD-011 remains release-specific/open until each candidate is adopted
-active plan slice: v0.1.74.1 repair — release-validation pytest runner isolation
+active plan slice: v0.1.74.2 repair — release-lifecycle plan test profile isolation
 last completed slice: v0.1.73.4 repair accepted/current
-next planned slice: build/install/test v0.1.74.1, then adopt only after release-control and pb artifact current evidence are green
+next planned slice: build/install/test v0.1.74.2, then adopt only after release-control and pb artifact current evidence are green
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.74.1.zip candidate once packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.74.2.zip candidate once packaged
 latest installed ZIP: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
-release status: v0.1.74 failed release-control; v0.1.74.1 repair candidate in progress; not accepted/current
+release status: v0.1.74 failed release-control; v0.1.74.1 failed release-control; v0.1.74.2 repair candidate in progress; not accepted/current
 ```
 
 ## Current risks
@@ -38,7 +38,7 @@ release status: v0.1.74 failed release-control; v0.1.74.1 repair candidate in pr
 
 ## Current blockers
 
-- v0.1.74.1 requires full release-control install/test evidence before it can become accepted/current.
+- v0.1.74.2 requires full release-control install/test evidence before it can become accepted/current.
 
 ## Current unknowns
 
@@ -48,11 +48,11 @@ release status: v0.1.74 failed release-control; v0.1.74.1 repair candidate in pr
 ## Next safe action
 
 ```text
-Package chatgpt_claudecode_workflow-2_v0.1.74.1.zip as a repair of v0.1.74, run focused validation and release-control, then adopt only after pb artifact current --json confirms alignment.
+Package chatgpt_claudecode_workflow-2_v0.1.74.2.zip as a repair of v0.1.74.1, run focused validation and release-control, then adopt only after pb artifact current --json confirms alignment.
 ```
 
 ## Last updated
 
 ```text
-v0.1.74.1 repair candidate
+v0.1.74.2 repair candidate
 ```
