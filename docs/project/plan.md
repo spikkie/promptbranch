@@ -207,3 +207,18 @@ Risk: low; test isolation only.
 Next step: run release-control for v0.1.74.2 and adopt only after green evidence.
 ```
 
+
+
+## Slice definition — v0.1.74.3 repair
+
+Release: v0.1.74.3  
+Baseline: accepted/current v0.1.73.4 with v0.1.74/v0.1.74.1/v0.1.74.2 intended changes carried forward  
+Type: repair
+
+Goal: align the full integration source-mutation wait budget with the universal browser-operation scheduler wait budget.
+
+In scope: replace the hard-coded 120s source-mutation wait in `promptbranch_full_integration_test.py` with the scheduler/profile-lock configuration surface and add focused regression coverage.
+
+Out of scope: browser automation behavior changes, Project Source semantics, artifact adoption semantics, multi-repo behavior, Docker/deployment behavior, v0.1.75 scope.
+
+Next step: run release-control for v0.1.74.3 and adopt only after green evidence.

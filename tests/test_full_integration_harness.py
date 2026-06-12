@@ -662,3 +662,8 @@ def test_docker_service_adapter_does_not_retry_stale_source_lock(monkeypatch, tm
                 overwrite_existing=True,
             )
         )
+
+def test_source_mutation_profile_wait_defaults_to_scheduler_budget() -> None:
+    import promptbranch_full_integration_test as full
+
+    assert full.SOURCE_MUTATION_PROFILE_WAIT_SECONDS == 600.0
