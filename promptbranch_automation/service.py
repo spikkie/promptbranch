@@ -29,6 +29,7 @@ from .automation import ChatGPTAutomation
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS = 600.0
 
 
 
@@ -256,7 +257,7 @@ class _SharedProfileAsyncLock:
             "scheduler_model": "single_owner_profile_wait_queue",
             "queue_enabled": True,
             "queue_mode": "bounded_wait_for_single_service_profile",
-            "default_queue_wait_timeout_seconds": 600.0,
+            "default_queue_wait_timeout_seconds": DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS,
         }
 
     async def __aenter__(self) -> "_SharedProfileAsyncLock":
@@ -302,6 +303,10 @@ class _SharedProfileAsyncLock:
                 waited_seconds=round(waited, 3),
                 retry_after_seconds=max(1.0, wait_timeout),
                 profile_dir=self.profile_dir,
+                queue_wait_seconds=round(waited, 3),
+                queue_timeout_seconds=wait_timeout,
+                scheduler_path="shared_profile_async_lock",
+                bypass_detected=False,
             )
         try:
             Path(self.profile_dir).mkdir(parents=True, exist_ok=True)
@@ -327,6 +332,10 @@ class _SharedProfileAsyncLock:
                     waited_seconds=round(waited, 3),
                     retry_after_seconds=max(1.0, wait_timeout),
                     profile_dir=self.profile_dir,
+                    queue_wait_seconds=round(waited, 3),
+                    queue_timeout_seconds=wait_timeout,
+                    scheduler_path="shared_profile_async_lock",
+                    bypass_detected=False,
                 ) from exc
             self._acquired_at = time.time()
             self._operation_id = uuid.uuid4().hex
@@ -446,7 +455,7 @@ class ChatGPTAutomationSettings:
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
     clear_singleton_locks: bool = False
-    profile_lock_wait_seconds: float = 30.0
+    profile_lock_wait_seconds: float = DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS
     profile_stale_lock_seconds: float = 300.0
     slow_mo_ms: int = 0
     debug: bool = False
@@ -1065,9 +1074,10 @@ class ChatGPTAutomationService:
         self,
         *,
         keep_open: bool = False,
+        profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
         logger.info("Removing ChatGPT project")
-        async with self._lock.operation("remove_project"):
+        async with self._lock.operation("remove_project", wait_timeout_seconds=profile_lock_wait_seconds):
             result = await self._with_retries(
                 "remove_project",
                 lambda: self._build_bot().remove_project(
@@ -1217,8 +1227,9 @@ class ChatGPTAutomationService:
         source_name: str,
         exact: bool = False,
         keep_open: bool = False,
+        profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
-        async with self._lock.operation("remove_project_source"):
+        async with self._lock.operation("remove_project_source", wait_timeout_seconds=profile_lock_wait_seconds):
             logger.info("Removing ChatGPT project source")
             result = await self._build_bot().remove_project_source(
                 source_name=source_name,

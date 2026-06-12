@@ -356,10 +356,13 @@ class ChatGPTServiceClient:
         *,
         keep_open: bool = False,
         project_url: Optional[str] = None,
+        profile_lock_wait_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"keep_open": keep_open}
         if project_url:
             payload["project_url"] = project_url
+        if profile_lock_wait_seconds is not None:
+            payload["profile_lock_wait_seconds"] = float(profile_lock_wait_seconds)
         return self._json(self._client.post("/v1/projects/remove", json=payload))
 
     def add_project_source(
@@ -410,6 +413,7 @@ class ChatGPTServiceClient:
         exact: bool = False,
         keep_open: bool = False,
         project_url: Optional[str] = None,
+        profile_lock_wait_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "source_name": source_name,
@@ -418,4 +422,6 @@ class ChatGPTServiceClient:
         }
         if project_url:
             payload["project_url"] = project_url
+        if profile_lock_wait_seconds is not None:
+            payload["profile_lock_wait_seconds"] = float(profile_lock_wait_seconds)
         return self._json(self._client.post("/v1/project-sources/remove", json=payload))
