@@ -9167,33 +9167,60 @@ def _artifact_current_payload(
             "registry_file": str(registry.path),
         }
 
-    if all_repos:
+    identity = None
+    try:
+        identity = load_repo_identity(Path.cwd())
+    except ValueError:
+        identity = None
+    project_scoped_registry = bool(
+        identity is not None
+        and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve()
+    )
+
+    def all_payload(repo_filter: str | None = None) -> dict[str, Any]:
+        selected_repo_ids = [repo_filter] if repo_filter else available_repo_ids()
         repos: dict[str, Any] = {}
-        for current_repo_id in available_repo_ids():
+        for current_repo_id in selected_repo_ids:
             if not current_repo_id:
                 continue
             repos[current_repo_id] = single_payload(current_repo_id)
-        identity = None
-        try:
-            identity = load_repo_identity(Path.cwd())
-        except ValueError:
-            identity = None
         scope = {"kind": "project" if identity is not None else "all_repos"}
-        if identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
+        if identity is not None and project_scoped_registry:
             scope.update({
                 "project_id": identity.project_id,
                 "project_home_url": identity.project_home_url,
                 "repo_id": identity.repo_id,
                 "registry_source": "project_registry",
             })
-        return {
-            "ok": True,
+        if repo_filter:
+            scope["repo_filter"] = repo_filter
+        missing = [repo_id for repo_id, repo_payload in repos.items() if isinstance(repo_payload, dict) and not repo_payload.get("ok")]
+        ok = not bool(repo_filter and missing)
+        payload = {
+            "ok": ok,
             "action": "artifact_current_all",
             "scope": scope,
             "repo_count": len(repos),
             "repos": repos,
+            "missing_repo_count": len(missing),
+            "missing_repos": missing,
             "registry_file": str(registry.path),
         }
+        if repo_filter and missing:
+            payload["status"] = "repo_current_not_found"
+            payload["available_repos"] = available_repo_ids()
+            # Compatibility fields for callers that previously consumed the
+            # single-repo missing payload. The canonical state now lives under
+            # repos[repo_id], but missing lookups still fail closed at top level.
+            payload["state"] = None
+            payload["registry_current"] = None
+        return payload
+
+    if project_scoped_registry:
+        return all_payload(normalized_repo_id or None)
+
+    if all_repos:
+        return all_payload(normalized_repo_id or None)
 
     if not normalized_repo_id and registry.is_current_ambiguous():
         available = registry.repo_ids()
@@ -17014,7 +17041,17 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 print(f"registry_file={payload.get('registry_file')}")
         return 0 if payload.get("ok") else 2
     if args.project_command == "status":
-        payload = {"action": "project_status", **_current_project_identity_payload(args)}
+        identity_payload = _current_project_identity_payload(args)
+        payload = {"action": "project_status", **identity_payload}
+        if identity_payload.get("ok"):
+            repo_payload = _repo_list_payload(args)
+            payload.update({
+                "management_model": "repo_loop",
+                "repo_count": repo_payload.get("repo_count", 0),
+                "repos": repo_payload.get("repos") or [],
+                "registry_file": repo_payload.get("registry_file") or payload.get("registry_file"),
+                "registry_source": repo_payload.get("registry_source") or payload.get("registry_source"),
+            })
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
@@ -17023,6 +17060,10 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 print(f"project_id={payload.get('project_id')}")
             if payload.get("repo_id"):
                 print(f"repo_id={payload.get('repo_id')}")
+            if payload.get("repo_count") is not None:
+                print(f"repo_count={payload.get('repo_count')}")
+            for repo in payload.get("repos") or []:
+                print(f"{repo.get('repo_id')}.current_artifact={repo.get('current_artifact') or 'none'}")
         return 0 if payload.get("ok") else 2
     if args.project_command == "import-current-registry":
         identity_payload = _current_project_identity_payload(args)
@@ -17156,10 +17197,7 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     repo_id = normalize_repo_id(getattr(args, "repo", None))
     all_repos = bool(getattr(args, "all", False))
-    if repo_id and all_repos:
-        payload = {"ok": False, "action": "artifact_current", "status": "repo_scope_conflict", "error": "--repo and --all are mutually exclusive"}
-    else:
-        payload = _artifact_current_payload(backend, registry, repo_id=repo_id, all_repos=all_repos, state_store=_state_store_from_args(args))
+    payload = _artifact_current_payload(backend, registry, repo_id=repo_id, all_repos=all_repos, state_store=_state_store_from_args(args))
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -17171,8 +17209,10 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
             print(f"repo_count={payload.get('repo_count')}")
             for current_repo_id, repo_payload in sorted((payload.get("repos") or {}).items()):
                 state = repo_payload.get("state") if isinstance(repo_payload, dict) else {}
-                print(f"{current_repo_id}.artifact_ref={state.get('artifact_ref') or 'none'}")
-            return 0
+                status = repo_payload.get("status") if isinstance(repo_payload, dict) else None
+                print(f"{current_repo_id}.status={status or ('ok' if repo_payload.get('ok') else 'error')}")
+                print(f"{current_repo_id}.artifact_ref={(state.get('artifact_ref') if isinstance(state, dict) else None) or 'none'}")
+            return 0 if payload.get("ok", True) else 2
         if payload.get("status") == "repo_current_not_found":
             scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
             print("status=repo_current_not_found")
@@ -22085,8 +22125,8 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_subparsers = artifact.add_subparsers(dest="artifact_command", required=True)
 
     artifact_current = artifact_subparsers.add_parser("current", help="Show the current artifact/source state.")
-    artifact_current.add_argument("--repo", help="Repo id whose current artifact/source state should be shown.")
-    artifact_current.add_argument("--all", action="store_true", help="Show current artifact/source state for all repo scopes.")
+    artifact_current.add_argument("--repo", help="Optional repo id filter. Project commands still use the same repo-loop payload shape.")
+    artifact_current.add_argument("--all", action="store_true", help="Compatibility no-op for joined projects: project current-state already loops over all configured repos.")
     artifact_current.add_argument("--json", action="store_true")
 
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")

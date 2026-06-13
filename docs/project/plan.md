@@ -3,16 +3,16 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.73.4.zip
-accepted checksum: a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858
-next normal target: chatgpt_claudecode_workflow-2_v0.1.74.zip
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.74.3.zip
+accepted checksum: operator-pinned baseline; checksum evidence not present in this package build context
+next normal target: chatgpt_claudecode_workflow-2_v0.1.75.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow. v0.1.73.4 is accepted/current. v0.1.74 is a normal release-validation coverage slice that turns the focused regression suites from the v0.1.73.x repair line into explicit release-validation groups inside `pb test full` and release-control reporting.
+Keep release slices narrow and KISS-first. v0.1.74.3 is the operator-pinned baseline. v0.1.75 rebases the KISS project/repo management command model onto that baseline: one repo inventory loop, one command/state shape, whether the project has one repo or many repos.
 ```
 
 ## Release / slice plan
@@ -32,6 +32,7 @@ Keep release slices narrow. v0.1.73.4 is accepted/current. v0.1.74 is a normal r
 | v0.1.71.4 | Repair service health version normalization | Normalize release-control service health comparison between bare and canonical `v` versions | release-control health wait gate, focused shell-script tests, version metadata, repair/status docs | project-registry behavior, Docker build behavior beyond avoiding false mismatch, adoption semantics | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | rejected: full-test `package_import_smoke` saw `VERSION_TAG=vv0.1.71.4` |
 | v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | accepted_current |
 | v0.1.72 | Project registry adoption/import ergonomics | Safely import existing repo-local current artifact records into the project-scoped registry through an explicit dry-run-capable command | `pb project import-current-registry`, registry import helpers, focused import/conflict tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, deployment behavior | focused project/repo import tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | candidate |
+| v0.1.75 | KISS project/repo management command model | Use one repo-loop command/state model for one repo or many repos | `pb artifact current`, `pb project status`, project/repo inventory payloads, focused tests, status docs | release-set orchestration, dependency solving, automatic cross-repo adoption, browser behavior | focused project/repo tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | candidate |
 
 ## Slice definition — v0.1.71 normal release
 
@@ -222,3 +223,21 @@ In scope: replace the hard-coded 120s source-mutation wait in `promptbranch_full
 Out of scope: browser automation behavior changes, Project Source semantics, artifact adoption semantics, multi-repo behavior, Docker/deployment behavior, v0.1.75 scope.
 
 Next step: run release-control for v0.1.74.3 and adopt only after green evidence.
+
+
+## Slice definition — v0.1.75 normal release
+
+```text
+Release: v0.1.75
+Baseline: chatgpt_claudecode_workflow-2_v0.1.74.3.zip accepted/current by operator baseline instruction.
+Type: normal candidate
+Slice: KISS project/repo management command model
+Goal: make every project use the same repo-loop command and state shape, regardless of whether it has one repo or ten.
+In scope: `pb artifact current --json`, `pb artifact current --all --json`, `pb artifact current --repo <repo> --json`, `pb project status --json`, project/repo inventory payloads, focused tests, release/status docs, version metadata.
+Out of scope: release-set orchestration, dependency solving, automatic cross-repo adoption, Project Source upload changes, browser automation behavior, Docker/deployment behavior.
+Expected files: `promptbranch_cli.py`, `tests/test_promptbranch_repos.py`, `tests/test_project_control_surface.py`, `tests/test_promptbranch_version.py`, `docs/project/*`, `docs/release-v0.1.75.md`, version files.
+Expected validation: project/repo focused pytest, artifact-current regression tests, project control-surface pytest, Python compileall, ZIP hygiene, clean extraction focused validation.
+DoD movement: add DOD-031 for KISS repo-loop management; mark done after focused validation passes.
+Risk: joined-project `pb artifact current --json` returns the repo-loop payload shape; local scripts consuming old single-repo JSON may need updates.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
