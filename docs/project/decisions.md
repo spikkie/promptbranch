@@ -29,3 +29,5 @@
 | ADR-PROJ-030 | 2026-06-12 | Full integration source mutation waits must use the scheduler wait budget | `v0.1.74.2` release-control showed `project_source_remove_text` timed out at 120s while `add_project_source` still held the shared profile under scheduler control | v0.1.74.3 aligns the full integration source-mutation wait with the universal browser-operation scheduler default and allows environment override |
 
 | ADR-PROJ-031 | 2026-06-13 | Use one repo-loop management model for one repo or many repos | KISS: project management commands should not have different operator semantics for one repo versus multiple repos | v0.1.75 makes joined-project `pb artifact current --json` use the same repo-loop payload as `--all`, with `--repo` as a filter |
+
+| ADR-PROJ-032 | 2026-06-13 | Operator/release consumers must read artifact-current through the repo-loop model | v0.1.75 changed the producer shape, but release-control/post-release checks still contained old top-level `state` assumptions | v0.1.76 updates release consumers and keeps legacy top-level parsing only as compatibility fallback |

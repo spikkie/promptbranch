@@ -241,3 +241,21 @@ DoD movement: add DOD-031 for KISS repo-loop management; mark done after focused
 Risk: joined-project `pb artifact current --json` returns the repo-loop payload shape; local scripts consuming old single-repo JSON may need updates.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+
+## Slice definition — v0.1.76 normal release
+
+```text
+Release: v0.1.76
+Baseline: chatgpt_claudecode_workflow-2_v0.1.75.zip accepted/current
+Type: normal candidate
+Slice: KISS repo-loop consumer cleanup for operator scripts and release-state checks
+Goal: remove remaining old single-repo artifact-current payload assumptions from operator/release consumers.
+In scope: release-control semantic checks, post-release validation semantic checks, lifecycle-status/human-summary artifact-current extraction, focused tests, docs/project updates, version metadata.
+Out of scope: release-set orchestration, dependency solving, automatic cross-repo adoption, Project Source upload behavior, browser automation behavior, Docker/deployment behavior.
+Expected files: promptbranch_cli.py, chatgpt_claudecode_workflow_release_control.sh, scripts/post-release-validation.sh, tests/test_promptbranch_shell_scripts.py, tests/test_post_release_validation.py, docs/project/*, docs/release-v0.1.76.md, version files.
+Expected validation: focused artifact-current tests, release-control/post-release semantic guard tests, project/repo/control/version tests, bash syntax checks, compileall, ZIP hygiene, clean extraction validation.
+DoD movement: add DOD-032 for repo-loop consumers.
+Risk: scripts outside this repo may still consume legacy top-level artifact-current JSON.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```

@@ -401,26 +401,61 @@ except Exception as exc:  # noqa: BLE001 - shell diagnostic path
     print(json.dumps(result, indent=2, sort_keys=True))
     raise SystemExit(1)
 
+def artifact_current_entries(payload):
+    repos = payload.get("repos")
+    if isinstance(repos, dict):
+        for repo_id in sorted(repos):
+            repo_payload = repos.get(repo_id)
+            if isinstance(repo_payload, dict):
+                yield repo_id, repo_payload
+        return
+    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
+        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+        yield scope.get("repo_id") or "legacy", payload
+
 field_paths = {
     "runtime.version": ("runtime", "version"),
     "state.artifact_version": ("state", "artifact_version"),
     "state.source_version": ("state", "source_version"),
     "registry_current.version": ("registry_current", "version"),
 }
-for label, path in field_paths.items():
-    current = payload
-    for segment in path:
-        if not isinstance(current, dict) or segment not in current:
-            current = None
-            break
-        current = current[segment]
-    result["checked_fields"][label] = current
-    if current is None:
-        result["missing_fields"].append(label)
-    elif current != expected_version:
-        result["mismatches"].append({"field": label, "actual": current, "expected": expected_version})
+result["checked_repos"] = {}
+matching_repos = []
+for repo_id, repo_payload in artifact_current_entries(payload):
+    repo_checked = {}
+    repo_missing = []
+    repo_mismatches = []
+    for label, path in field_paths.items():
+        current = repo_payload
+        for segment in path:
+            if not isinstance(current, dict) or segment not in current:
+                current = None
+                break
+            current = current[segment]
+        repo_checked[label] = current
+        if current is None:
+            repo_missing.append(label)
+        elif current != expected_version:
+            repo_mismatches.append({"field": label, "actual": current, "expected": expected_version})
+    result["checked_repos"][str(repo_id)] = {
+        "checked_fields": repo_checked,
+        "missing_fields": repo_missing,
+        "mismatches": repo_mismatches,
+        "matches_expected_version": not repo_missing and not repo_mismatches,
+    }
+    if not repo_missing and not repo_mismatches:
+        matching_repos.append(str(repo_id))
 
-result["ok"] = not result["missing_fields"] and not result["mismatches"]
+result["matching_repos"] = matching_repos
+if not result["checked_repos"]:
+    result["missing_fields"].append("repos")
+elif not matching_repos:
+    result["mismatches"].append({"field": "repos[*]", "actual": result["checked_repos"], "expected": expected_version})
+else:
+    first = result["checked_repos"][matching_repos[0]]["checked_fields"]
+    result["checked_fields"].update(first)
+
+result["ok"] = bool(matching_repos)
 print(json.dumps(result, indent=2, sort_keys=True))
 raise SystemExit(0 if result["ok"] else 1)
 PYSEMANTIC
@@ -736,25 +771,61 @@ except Exception as exc:  # noqa: BLE001 - shell diagnostic path
     result["error"] = f"artifact_current_json_unreadable: {exc}"
     print(json.dumps(result, indent=2, sort_keys=True))
     raise SystemExit(1)
+def artifact_current_entries(payload):
+    repos = payload.get("repos")
+    if isinstance(repos, dict):
+        for repo_id in sorted(repos):
+            repo_payload = repos.get(repo_id)
+            if isinstance(repo_payload, dict):
+                yield repo_id, repo_payload
+        return
+    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
+        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+        yield scope.get("repo_id") or "legacy", payload
+
 field_paths = {
     "runtime.version": ("runtime", "version"),
     "state.artifact_version": ("state", "artifact_version"),
     "state.source_version": ("state", "source_version"),
     "registry_current.version": ("registry_current", "version"),
 }
-for label, path in field_paths.items():
-    current = payload
-    for segment in path:
-        if not isinstance(current, dict) or segment not in current:
-            current = None
-            break
-        current = current[segment]
-    result["checked_fields"][label] = current
-    if current is None:
-        result["missing_fields"].append(label)
-    elif current != expected_version:
-        result["mismatches"].append({"field": label, "actual": current, "expected": expected_version})
-result["ok"] = not result["missing_fields"] and not result["mismatches"]
+result["checked_repos"] = {}
+matching_repos = []
+for repo_id, repo_payload in artifact_current_entries(payload):
+    repo_checked = {}
+    repo_missing = []
+    repo_mismatches = []
+    for label, path in field_paths.items():
+        current = repo_payload
+        for segment in path:
+            if not isinstance(current, dict) or segment not in current:
+                current = None
+                break
+            current = current[segment]
+        repo_checked[label] = current
+        if current is None:
+            repo_missing.append(label)
+        elif current != expected_version:
+            repo_mismatches.append({"field": label, "actual": current, "expected": expected_version})
+    result["checked_repos"][str(repo_id)] = {
+        "checked_fields": repo_checked,
+        "missing_fields": repo_missing,
+        "mismatches": repo_mismatches,
+        "matches_expected_version": not repo_missing and not repo_mismatches,
+    }
+    if not repo_missing and not repo_mismatches:
+        matching_repos.append(str(repo_id))
+
+result["matching_repos"] = matching_repos
+if not result["checked_repos"]:
+    result["missing_fields"].append("repos")
+elif not matching_repos:
+    result["mismatches"].append({"field": "repos[*]", "actual": result["checked_repos"], "expected": expected_version})
+else:
+    first = result["checked_repos"][matching_repos[0]]["checked_fields"]
+    result["checked_fields"].update(first)
+
+result["ok"] = bool(matching_repos)
 print(json.dumps(result, indent=2, sort_keys=True))
 raise SystemExit(0 if result["ok"] else 1)
 PYSEMANTIC2
@@ -896,6 +967,39 @@ def _check(name: str, expected, actual, *, required: bool = False, severity_when
         item["reason"] = "matched"
     return item
 
+
+def _artifact_current_repo_entries(artifact_current):
+    if not isinstance(artifact_current, dict):
+        return []
+    repos = artifact_current.get("repos")
+    if isinstance(repos, dict):
+        return [(str(repo_id), repo_payload) for repo_id, repo_payload in sorted(repos.items()) if isinstance(repo_payload, dict)]
+    if any(isinstance(artifact_current.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
+        scope = artifact_current.get("scope") if isinstance(artifact_current.get("scope"), dict) else {}
+        return [(str(scope.get("repo_id") or "legacy"), artifact_current)]
+    return []
+
+
+def _artifact_current_version(artifact_current, *path):
+    entries = _artifact_current_repo_entries(artifact_current)
+    expected_n = _norm(expected_version)
+    values = []
+    for repo_id, repo_payload in entries:
+        current = repo_payload
+        for segment in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(segment)
+        normalized = _norm(current)
+        values.append((repo_id, normalized))
+        if expected_n is not None and normalized == expected_n:
+            return normalized
+    for _repo_id, normalized in values:
+        if normalized is not None:
+            return normalized
+    return None
+
 payload = _read_json(snapshot_path)
 checks = []
 blockers = []
@@ -956,12 +1060,13 @@ else:
     # baseline, a stale lifecycle-status snapshot is a blocking release-state defect.
     require_adopted_snapshot = adopt_performed and adopt_semantic_performed and rc_adopt_semantic == 0
     if require_adopted_snapshot:
-        checks.append(_check("artifact_current.state.artifact_version", expected_version, _get(payload, "artifact_current", "state", "artifact_version"), required=False))
-        checks.append(_check("artifact_current.state.source_version", expected_version, _get(payload, "artifact_current", "state", "source_version"), required=False))
-        checks.append(_check("artifact_current.registry_current.version", expected_version, _get(payload, "artifact_current", "registry_current", "version"), required=False))
-        checks.append(_check("artifact_current.baseline_roles.adopted_artifact_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"), required=False))
-        checks.append(_check("artifact_current.baseline_roles.adopted_source_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"), required=False))
-        checks.append(_check("artifact_current.baseline_roles.registry_current_version", expected_version, _get(payload, "artifact_current", "baseline_roles", "registry_current_version"), required=False))
+        artifact_current = payload.get("artifact_current") if isinstance(payload.get("artifact_current"), dict) else {}
+        checks.append(_check("artifact_current.repos[*].state.artifact_version", expected_version, _artifact_current_version(artifact_current, "state", "artifact_version"), required=False))
+        checks.append(_check("artifact_current.repos[*].state.source_version", expected_version, _artifact_current_version(artifact_current, "state", "source_version"), required=False))
+        checks.append(_check("artifact_current.repos[*].registry_current.version", expected_version, _artifact_current_version(artifact_current, "registry_current", "version"), required=False))
+        checks.append(_check("artifact_current.repos[*].baseline_roles.adopted_artifact_version", expected_version, _artifact_current_version(artifact_current, "baseline_roles", "adopted_artifact_version"), required=False))
+        checks.append(_check("artifact_current.repos[*].baseline_roles.adopted_source_version", expected_version, _artifact_current_version(artifact_current, "baseline_roles", "adopted_source_version"), required=False))
+        checks.append(_check("artifact_current.repos[*].baseline_roles.registry_current_version", expected_version, _artifact_current_version(artifact_current, "baseline_roles", "registry_current_version"), required=False))
         phase = payload.get("lifecycle_phase")
         if phase not in {"adopted_current", "lifecycle_ready"}:
             blockers.append({
@@ -1082,6 +1187,26 @@ def _first_present(*items, default=None):
     return default
 
 
+def _artifact_current_entries(artifact_current):
+    if not isinstance(artifact_current, dict):
+        return []
+    repos = artifact_current.get("repos")
+    if isinstance(repos, dict):
+        return [(str(repo_id), repo_payload) for repo_id, repo_payload in sorted(repos.items()) if isinstance(repo_payload, dict)]
+    if any(isinstance(artifact_current.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
+        scope = artifact_current.get("scope") if isinstance(artifact_current.get("scope"), dict) else {}
+        return [(str(scope.get("repo_id") or "legacy"), artifact_current)]
+    return []
+
+
+def _artifact_current_first_present(artifact_current, *paths, default=None):
+    candidates = []
+    for _repo_id, repo_payload in _artifact_current_entries(artifact_current):
+        for path in paths:
+            candidates.append(_get(repo_payload, *path))
+    return _first_present(*candidates, default=default)
+
+
 payload = _read_json(snapshot_path)
 fields = []
 blockers = []
@@ -1098,14 +1223,16 @@ else:
     raw_expectations = {
         "runtime_version": _get(payload, "runtime", "runtime_code_version"),
         "version_file": _get(payload, "version_file", "normalized_version"),
-        "artifact_current": _first_present(
-            _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"),
-            _get(payload, "artifact_current", "state", "artifact_version"),
-            _get(payload, "artifact_current", "registry_current", "version"),
+        "artifact_current": _artifact_current_first_present(
+            payload.get("artifact_current"),
+            ("baseline_roles", "adopted_artifact_version"),
+            ("state", "artifact_version"),
+            ("registry_current", "version"),
         ),
-        "source_current": _first_present(
-            _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"),
-            _get(payload, "artifact_current", "state", "source_version"),
+        "source_current": _artifact_current_first_present(
+            payload.get("artifact_current"),
+            ("baseline_roles", "adopted_source_version"),
+            ("state", "source_version"),
         ),
         "candidate_count": _get(payload, "candidate_inventory_summary", "candidate_count"),
     }
@@ -1117,14 +1244,20 @@ else:
         "runtime_version": _first_present(_get(payload, "runtime", "runtime_code_version"), payload.get("runtime_version")),
         "version_file": _first_present(_get(payload, "version_file", "normalized_version"), payload.get("version_file_version")),
         "artifact_current": _first_present(
-            _get(payload, "artifact_current", "baseline_roles", "adopted_artifact_version"),
-            _get(payload, "artifact_current", "state", "artifact_version"),
-            _get(payload, "artifact_current", "registry_current", "version"),
+            _artifact_current_first_present(
+                payload.get("artifact_current"),
+                ("baseline_roles", "adopted_artifact_version"),
+                ("state", "artifact_version"),
+                ("registry_current", "version"),
+            ),
             payload.get("artifact_current_version"),
         ),
         "source_current": _first_present(
-            _get(payload, "artifact_current", "baseline_roles", "adopted_source_version"),
-            _get(payload, "artifact_current", "state", "source_version"),
+            _artifact_current_first_present(
+                payload.get("artifact_current"),
+                ("baseline_roles", "adopted_source_version"),
+                ("state", "source_version"),
+            ),
             payload.get("source_current_version"),
         ),
         "candidate_count": _first_present(
