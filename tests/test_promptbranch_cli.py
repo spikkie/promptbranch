@@ -10506,7 +10506,7 @@ def test_phase3_artifact_release_current_and_verify(monkeypatch, capsys, tmp_pat
     current_payload = json.loads(capsys.readouterr().out)
     assert current_code == 0
     assert current_payload["registry_current"]["path"] == artifact_path
-    assert current_payload["runtime"]["version"].startswith("v0.0.")
+    assert current_payload["runtime"]["version"] == _test_runtime_version()
     assert current_payload["baseline_roles"]["adopted_artifact_ref"] is None
     assert current_payload["baseline_roles"]["adopted_source_ref"] is None
     assert current_payload["baseline_roles"]["registry_current_ref"] == Path(artifact_path).name

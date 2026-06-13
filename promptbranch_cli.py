@@ -2941,21 +2941,44 @@ def _report_artifact_current_matches_candidate(
     version: str,
     require_runtime_code_match: bool = True,
 ) -> tuple[bool, dict[str, bool]]:
-    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
-    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
-    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
-    checks = {
-        "state_artifact_ref_matches_candidate": state.get("artifact_ref") == filename,
-        "state_source_ref_matches_candidate": state.get("source_ref") == filename,
-        "state_artifact_version_matches_candidate": state.get("artifact_version") == version,
-        "state_source_version_matches_candidate": state.get("source_version") == version,
-        "registry_current_matches_candidate": registry_current.get("filename") == filename and registry_current.get("version") == version,
-        "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact") is True,
-        "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact") is True,
-        "code_version_matches_state_source": consistency.get("code_version_matches_state_source") is True,
+    """Check candidate acceptance against normalized repo-loop current state."""
+
+    entries = _artifact_current_repo_entries(current_payload)
+    best_checks: dict[str, bool] = {
+        "state_artifact_ref_matches_candidate": False,
+        "state_source_ref_matches_candidate": False,
+        "state_artifact_version_matches_candidate": False,
+        "state_source_version_matches_candidate": False,
+        "registry_current_matches_candidate": False,
+        "registry_current_matches_state_artifact": False,
+        "state_source_matches_state_artifact": False,
+        "code_version_matches_state_source": False,
+        "repo_loop_entry_present": bool(entries),
     }
-    required = {key: value for key, value in checks.items() if require_runtime_code_match or key != "code_version_matches_state_source"}
-    return all(required.values()), checks
+    expected_filename = Path(str(filename)).name
+    for repo_id, entry in entries:
+        state = entry.get("state") if isinstance(entry.get("state"), dict) else {}
+        registry_current = entry.get("registry_current") if isinstance(entry.get("registry_current"), dict) else {}
+        consistency = entry.get("consistency") if isinstance(entry.get("consistency"), dict) else {}
+        checks = {
+            "state_artifact_ref_matches_candidate": Path(str(state.get("artifact_ref") or "")).name == expected_filename,
+            "state_source_ref_matches_candidate": Path(str(state.get("source_ref") or "")).name == expected_filename,
+            "state_artifact_version_matches_candidate": state.get("artifact_version") == version,
+            "state_source_version_matches_candidate": state.get("source_version") == version,
+            "registry_current_matches_candidate": Path(str(registry_current.get("filename") or "")).name == expected_filename and registry_current.get("version") == version,
+            "registry_current_matches_state_artifact": consistency.get("registry_current_matches_state_artifact") is True,
+            "state_source_matches_state_artifact": consistency.get("state_source_matches_state_artifact") is True,
+            "code_version_matches_state_source": consistency.get("code_version_matches_state_source") is True,
+            "repo_loop_entry_present": True,
+        }
+        required = {key: value for key, value in checks.items() if require_runtime_code_match or key != "code_version_matches_state_source"}
+        if sum(bool(value) for value in checks.values()) > sum(bool(value) for value in best_checks.values()):
+            best_checks = checks
+            best_checks["matched_repo_id"] = bool(repo_id)
+        if all(required.values()):
+            checks["matched_repo_id"] = bool(repo_id)
+            return True, checks
+    return False, best_checks
 
 
 def _release_control_command_for_candidate(
@@ -5128,14 +5151,15 @@ def _protocol_request_from_current_baseline(
 ) -> dict[str, Any]:
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
-    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
-    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    selected_repo_id, selected_current = _artifact_current_select_entry(current_payload)
+    state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
+    registry_current = selected_current.get("registry_current") if isinstance(selected_current.get("registry_current"), dict) else {}
     snapshot = backend.state_snapshot()
     current_artifact = state.get("artifact_ref") or registry_current.get("filename")
     current_version = state.get("artifact_version") or registry_current.get("version")
     current_source = state.get("source_ref") or current_artifact
     source_version = state.get("source_version") or current_version
-    repo_name = _repo_name_from_artifact_name(str(current_artifact or registry_current.get("filename") or ""))
+    repo_name = selected_repo_id or _repo_name_from_artifact_name(str(current_artifact or registry_current.get("filename") or ""))
     baseline_artifact_override = str(getattr(args, "baseline_artifact", None) or "").strip()
     baseline_version_override = _normalize_version_token(getattr(args, "baseline_version", None))
     baseline_override_applied = False
@@ -9049,6 +9073,77 @@ def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list
     payload["matching_expected_count"] = len(matched)
     payload["matching_expected"] = matched[:5]
     return matched, payload
+
+
+def _artifact_current_repo_entries(
+    current_payload: dict[str, Any],
+    *,
+    repo_id: str | None = None,
+    allow_legacy_single_payload: bool = True,
+) -> list[tuple[str | None, dict[str, Any]]]:
+    """Return artifact-current repo entries using the KISS repo-loop model.
+
+    The normal state contract is ``repos -> repo_id -> artifact_current`` for
+    both one-repo and many-repo projects. Legacy top-level payload parsing is
+    kept only for older logs or non-joined compatibility paths.
+    """
+
+    if not isinstance(current_payload, dict):
+        return []
+    normalized_repo_id = normalize_repo_id(repo_id)
+    repos = current_payload.get("repos")
+    entries: list[tuple[str | None, dict[str, Any]]] = []
+    if isinstance(repos, dict):
+        for key in sorted(repos):
+            repo_payload = repos.get(key)
+            if not isinstance(repo_payload, dict):
+                continue
+            entry_repo_id = normalize_repo_id(key) or key
+            if normalized_repo_id and entry_repo_id != normalized_repo_id:
+                continue
+            entries.append((entry_repo_id, repo_payload))
+        return entries
+
+    if allow_legacy_single_payload:
+        has_legacy_shape = any(isinstance(current_payload.get(key), dict) for key in ("state", "registry_current", "baseline_roles", "runtime"))
+        if has_legacy_shape:
+            scope = current_payload.get("scope") if isinstance(current_payload.get("scope"), dict) else {}
+            entry_repo_id = normalize_repo_id(scope.get("repo_id") or repo_id)
+            if not normalized_repo_id or entry_repo_id == normalized_repo_id:
+                return [(entry_repo_id, current_payload)]
+    return []
+
+
+def _artifact_current_select_entry(
+    current_payload: dict[str, Any],
+    *,
+    repo_id: str | None = None,
+    filename: str | None = None,
+    version: str | None = None,
+    allow_legacy_single_payload: bool = True,
+) -> tuple[str | None, dict[str, Any]]:
+    entries = _artifact_current_repo_entries(current_payload, repo_id=repo_id, allow_legacy_single_payload=allow_legacy_single_payload)
+    expected_filename = Path(str(filename)).name if filename else None
+    expected_version = _candidate_version_normalized(version) if version else None
+
+    def score(entry: tuple[str | None, dict[str, Any]]) -> int:
+        _, payload = entry
+        state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+        registry_current = payload.get("registry_current") if isinstance(payload.get("registry_current"), dict) else {}
+        baseline_roles = payload.get("baseline_roles") if isinstance(payload.get("baseline_roles"), dict) else {}
+        refs = {str(value) for value in [state.get("artifact_ref"), state.get("source_ref"), registry_current.get("filename"), baseline_roles.get("adopted_artifact_ref"), baseline_roles.get("adopted_source_ref"), baseline_roles.get("registry_current_ref")] if value}
+        versions = {_candidate_version_normalized(value) for value in [state.get("artifact_version"), state.get("source_version"), registry_current.get("version"), baseline_roles.get("adopted_artifact_version"), baseline_roles.get("adopted_source_version"), baseline_roles.get("registry_current_version")] if value}
+        value = 0
+        if expected_filename and expected_filename in {Path(item).name for item in refs}:
+            value += 2
+        if expected_version and expected_version in versions:
+            value += 2
+        return value
+
+    if not entries:
+        return None, {}
+    ranked = sorted(entries, key=score, reverse=True)
+    return ranked[0]
 
 
 def _artifact_current_payload(
@@ -13314,11 +13409,12 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
     artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
-    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
-    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
-    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
-    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
-    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+    _selected_repo_id, selected_current = _artifact_current_select_entry(current_payload, version=expected_version)
+    baseline_roles = selected_current.get("baseline_roles") if isinstance(selected_current.get("baseline_roles"), dict) else {}
+    consistency = selected_current.get("consistency") if isinstance(selected_current.get("consistency"), dict) else {}
+    state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
+    registry_current = selected_current.get("registry_current") if isinstance(selected_current.get("registry_current"), dict) else {}
+    runtime = selected_current.get("runtime") if isinstance(selected_current.get("runtime"), dict) else {}
 
     runtime_version = _candidate_version_normalized(runtime.get("version"))
     adopted_artifact_version = _candidate_version_normalized(baseline_roles.get("adopted_artifact_version") or state.get("artifact_version"))

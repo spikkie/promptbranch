@@ -240,7 +240,7 @@ def test_release_control_test_transport_both_runs_direct_and_localhost(tmp_path:
     assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
 
 def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version: str = "v9.9.9") -> None:
-    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    artifact = f"repo_{version}.zip"
     (fake_bin / "promptbranch").write_text(
         "#!/usr/bin/env bash\n"
         "echo promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n",
@@ -277,7 +277,7 @@ def test_release_control_adopt_current_verifies_and_adopts_without_running_tests
     repo = tmp_path / "repo"
     repo.mkdir()
     version = "v9.9.9"
-    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    artifact = f"repo_{version}.zip"
     (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
     (repo / artifact).write_bytes(b"fake zip; pb artifact verify is mocked")
     fake_bin = tmp_path / "bin"
@@ -1414,3 +1414,21 @@ def test_gitignore_allows_intentional_release_harness_and_metadata() -> None:
     assert '# ollama_mcp_verification_harness_v2/  # intentionally tracked release verification harness' in gitignore
     assert '!promptbranch.egg-info/' in gitignore
     assert '!promptbranch.egg-info/**' in gitignore
+
+
+def test_release_control_current_semantic_check_uses_repo_loop_entries() -> None:
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "def artifact_current_entries(payload):" in text
+    assert 'repos = payload.get("repos")' in text
+    assert 'for repo_id in sorted(repos):' in text
+    assert "no artifact current repo entry matched expected version/artifact" in text
+
+
+def test_post_release_validation_current_semantic_check_uses_repo_loop_entries() -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "post-release-validation.sh"
+    text = script.read_text(encoding="utf-8")
+    assert text.count("def artifact_current_entries") >= 2
+    assert 'result["checked_repos"]' in text
+    assert 'result["matching_repos"]' in text
+    assert '"field": "repos[*]"' in text

@@ -1350,28 +1350,41 @@ if idx < 0:
 payload = json.loads(raw[idx:])
 if payload.get("ok") is not True:
     raise SystemExit("artifact current did not return ok:true")
-runtime = payload.get("runtime") or {}
-state = payload.get("state") or {}
-registry = payload.get("registry_current") or {}
-for key, value in {
-    "runtime.version": runtime.get("version"),
-    "state.artifact_version": state.get("artifact_version"),
-    "state.source_version": state.get("source_version"),
-    "registry_current.version": registry.get("version"),
-}.items():
-    if value != expected_version:
-        raise SystemExit(f"{key} mismatch: expected {expected_version}, got {value!r}")
-for key, value in {
-    "state.artifact_ref": state.get("artifact_ref"),
-    "state.source_ref": state.get("source_ref"),
-    "registry_current.filename": registry.get("filename"),
-}.items():
-    if value != expected_artifact:
-        raise SystemExit(f"{key} mismatch: expected {expected_artifact}, got {value!r}")
-consistency = payload.get("consistency") or {}
-for key in ("registry_current_matches_state_artifact", "state_source_matches_state_artifact", "code_version_matches_state_source"):
-    if consistency.get(key) is not True:
-        raise SystemExit(f"consistency.{key} is not true")
+def artifact_current_entries(payload):
+    repos = payload.get("repos")
+    if isinstance(repos, dict):
+        for repo_id in sorted(repos):
+            repo_payload = repos.get(repo_id)
+            if isinstance(repo_payload, dict):
+                yield repo_id, repo_payload
+        return
+    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
+        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+        yield scope.get("repo_id"), payload
+
+expected_artifact_name = Path(expected_artifact).name
+failures = []
+for repo_id, repo_payload in artifact_current_entries(payload):
+    runtime = repo_payload.get("runtime") or {}
+    state = repo_payload.get("state") or {}
+    registry = repo_payload.get("registry_current") or {}
+    consistency = repo_payload.get("consistency") or {}
+    values = {
+        "runtime.version": runtime.get("version"),
+        "state.artifact_version": state.get("artifact_version"),
+        "state.source_version": state.get("source_version"),
+        "registry_current.version": registry.get("version"),
+    }
+    refs = {
+        "state.artifact_ref": Path(str(state.get("artifact_ref") or "")).name,
+        "state.source_ref": Path(str(state.get("source_ref") or "")).name,
+        "registry_current.filename": Path(str(registry.get("filename") or "")).name,
+    }
+    consistency_ok = all(consistency.get(key) is True for key in ("registry_current_matches_state_artifact", "state_source_matches_state_artifact", "code_version_matches_state_source"))
+    if all(value == expected_version for value in values.values()) and all(value == expected_artifact_name for value in refs.values()) and consistency_ok:
+        raise SystemExit(0)
+    failures.append({"repo_id": repo_id, "values": values, "refs": refs, "consistency": consistency})
+raise SystemExit(f"no artifact current repo entry matched expected version/artifact: expected_version={expected_version}, expected_artifact={expected_artifact_name}, checked={failures!r}")
 INNERPY
 }
 

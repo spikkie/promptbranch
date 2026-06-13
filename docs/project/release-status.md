@@ -47,3 +47,5 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.74.3 | repair | Full integration source-mutation wait alignment | accepted_current | operator-pinned baseline for v0.1.75 rebase; full adoption JSON not present in this package build context | DOD-030 done; baseline advanced by operator instruction | pending |
 
 | v0.1.75 | normal | KISS project/repo management command model | candidate | focused project/repo and artifact-current tests passed before packaging; release-control/adoption pending | DOD-031 done after focused validation; DOD-011 pending adoption | pending |
+
+| v0.1.76 | normal | KISS repo-loop consumer cleanup for operator scripts and release-state checks | candidate | focused artifact-current tests, release-control/post-release semantic guard tests, project/repo/control/version tests, compileall, ZIP hygiene | DOD-032 done after focused validation | pending adoption evidence |

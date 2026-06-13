@@ -39,8 +39,7 @@ def _write_fake_promptbranch(
         "        fh.write(json.dumps(args) + '\\n')\n"
         "def current_version():\n"
         "    return state_file.read_text().strip() if state_file.exists() else initial\n"
-        "def current_payload():\n"
-        "    version = current_version()\n"
+        "def repo_current_payload(version):\n"
         "    return {\n"
         "        'ok': True,\n"
         "        'action': 'artifact_current',\n"
@@ -57,6 +56,22 @@ def _write_fake_promptbranch(
         "            'adopted_source_version': version,\n"
         "            'registry_current_version': version,\n"
         "        },\n"
+        "        'consistency': {\n"
+        "            'registry_current_matches_state_artifact': True,\n"
+        "            'state_source_matches_state_artifact': True,\n"
+        "            'code_version_matches_state_source': True,\n"
+        "        },\n"
+        "    }\n"
+        "def current_payload():\n"
+        "    version = current_version()\n"
+        "    repo_id = 'chatgpt_claudecode_workflow'\n"
+        "    return {\n"
+        "        'ok': True,\n"
+        "        'action': 'artifact_current_all',\n"
+        "        'repo_count': 1,\n"
+        "        'repos': {repo_id: repo_current_payload(version)},\n"
+        "        'missing_repo_count': 0,\n"
+        "        'missing_repos': [],\n"
         "    }\n"
         "args = sys.argv[1:]\n"
         "record(args)\n"
@@ -251,11 +266,8 @@ def test_post_release_validation_treats_unadopted_baseline_as_diagnostic_by_defa
 
     semantic = _semantic(repo, "v0.0.225.2")
     assert semantic["ok"] is False
-    assert {item["field"] for item in semantic["mismatches"]} == {
-        "state.artifact_version",
-        "state.source_version",
-        "registry_current.version",
-    }
+    assert {item["field"] for item in semantic["mismatches"]} == {"repos[*]"}
+    assert "chatgpt_claudecode_workflow" in semantic["checked_repos"]
 
 
 def test_post_release_validation_can_require_already_adopted_baseline(tmp_path: Path) -> None:
