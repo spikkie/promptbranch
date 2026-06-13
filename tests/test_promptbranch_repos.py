@@ -181,3 +181,71 @@ def test_artifact_current_all_uses_configured_repos_when_project_registry_empty(
     assert payload["repo_count"] == 2
     assert payload["repos"]["my_awx"]["status"] == "repo_current_not_found"
     assert payload["repos"]["platform-gitops"]["status"] == "repo_current_not_found"
+
+
+def test_joined_project_artifact_current_defaults_to_repo_loop_for_one_repo(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "chatgpt_claudecode_workflow-2", "member")
+    project_dir = project_registry_dir("kubernetes")
+    _add_current(project_dir, "chatgpt_claudecode_workflow-2", "v0.1.75")
+    monkeypatch.chdir(repo)
+
+    payload = _artifact_current_payload(
+        None,
+        ArtifactRegistry(project_dir),
+        state_store=ConversationStateStore(str(project_dir)),
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"] == "artifact_current_all"
+    assert payload["scope"]["kind"] == "project"
+    assert payload["repo_count"] == 1
+    assert list(payload["repos"]) == ["chatgpt_claudecode_workflow-2"]
+    current = payload["repos"]["chatgpt_claudecode_workflow-2"]
+    assert current["state"]["artifact_ref"] == "chatgpt_claudecode_workflow-2_v0.1.75.zip"
+
+
+def test_joined_project_artifact_current_repo_filter_keeps_repo_loop_shape(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    _join_repo(tmp_path, "platform-gitops", "deployment_dependency")
+    project_dir = project_registry_dir("kubernetes")
+    _add_current(project_dir, "my_awx", "0.0.200")
+    _add_current(project_dir, "platform-gitops", "0.0.3")
+    monkeypatch.chdir(repo)
+
+    payload = _artifact_current_payload(
+        None,
+        ArtifactRegistry(project_dir),
+        repo_id="platform-gitops",
+        state_store=ConversationStateStore(str(project_dir)),
+    )
+
+    assert payload["ok"] is True
+    assert payload["action"] == "artifact_current_all"
+    assert payload["scope"]["repo_filter"] == "platform-gitops"
+    assert payload["repo_count"] == 1
+    assert list(payload["repos"]) == ["platform-gitops"]
+    assert payload["repos"]["platform-gitops"]["state"]["artifact_ref"] == "platform-gitops_0.0.3.zip"
+
+
+def test_project_status_uses_same_repo_loop_management_payload(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    _join_repo(tmp_path, "platform-gitops", "deployment_dependency")
+    project_dir = project_registry_dir("kubernetes")
+    _add_current(project_dir, "my_awx", "0.0.200")
+    _add_current(project_dir, "platform-gitops", "0.0.3")
+    monkeypatch.chdir(repo)
+
+    from promptbranch_cli import _current_project_identity_payload, _repo_list_payload
+
+    identity_payload = _current_project_identity_payload(argparse.Namespace(profile_dir=None))
+    repo_payload = _repo_list_payload(argparse.Namespace(profile_dir=None))
+
+    assert identity_payload["ok"] is True
+    assert repo_payload["repo_count"] == 2
+    assert {item["repo_id"] for item in repo_payload["repos"]} == {"my_awx", "platform-gitops"}
