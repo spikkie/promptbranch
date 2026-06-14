@@ -52,3 +52,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.77 | normal | Repo-loop compatibility hardening and operator migration guardrails | repair_required | focused repo-loop/legacy fallback tests passed; full release-control failed in live browser temporary-project flow | DOD-033 done after focused validation; DOD-034 required | pending/rejected |
 | v0.1.77.1 | repair | Temporary project create/remove lifecycle hardening | candidate | focused cleanup verification tests, create-submit disabled regression test, project control-surface tests, version tests, compileall, ZIP hygiene | DOD-034 done; no slice or line advanced | pending adoption evidence |
+
+| v0.1.77.1 | repair | Temporary project create/remove lifecycle hardening | repair_required | release-control failed: cleanup verified project still present after sidebar-not-found; release-validation browser_scheduler_source_lifecycle timed out | DOD-034 done; DOD-035 required | pending/rejected |
+| v0.1.77.2 | repair | Temporary project cleanup retry and release-validation isolation | candidate | focused cleanup retry tests, release-validation subprocess env tests, project control-surface tests, version tests, compileall, ZIP hygiene | DOD-035 done; no slice or line advanced | pending adoption evidence |

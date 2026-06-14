@@ -613,6 +613,36 @@ def test_run_release_validation_group_resolves_python_override(monkeypatch, tmp_
     assert result["ok"] is True
     assert captured["command"] == ["/opt/project-python", "-m", "pytest"]
 
+
+def test_run_release_validation_group_disables_ambient_pytest_plugins(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["env"] = kwargs.get("env")
+
+        class Completed:
+            returncode = 0
+            stdout = "ok"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.delenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", raising=False)
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite._run_release_validation_group(
+        "demo",
+        {
+            "required": True,
+            "description": "demo",
+            "command": [suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER, "-m", "pytest"],
+        },
+        repo_path=tmp_path,
+    )
+
+    assert result["ok"] is True
+    assert captured["env"]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
 def test_agent_profile_reports_release_validation_groups(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
     (tmp_path / ".promptbranch" / "skills" / "repo-inspection").mkdir(parents=True)
