@@ -277,3 +277,21 @@ DoD movement: add DOD-033 for artifact-current compatibility surface hardening.
 Risk: scripts outside this repo may still consume legacy top-level artifact-current JSON.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+
+## Slice definition — v0.1.77.1 repair release
+
+```text
+Release: v0.1.77.1
+Baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip plus v0.1.77 intended slice content
+Type: repair
+Slice: Temporary project create/remove lifecycle hardening
+Goal: Repair v0.1.77 validation defects without advancing the repo-loop compatibility slice.
+In scope: create-project disabled-submit refill/recheck, cleanup absence verification after sidebar-not-found, focused regression tests, repair note, project control-surface updates.
+Out of scope: new repo-loop behavior, registry/adoption changes, Project Source upload behavior, release-set orchestration, browser service API expansion beyond diagnostics/robustness.
+Expected files: promptbranch_browser_auth/client.py, chatgpt_browser_auth/client.py, promptbranch_full_integration_test.py, focused tests, docs/repair-v0.1.77.1.md, docs/project/*, version files.
+Expected validation: focused browser lifecycle tests, project control-surface tests, version tests, bash syntax, compileall, ZIP hygiene, clean extraction validation, then full release-control by operator.
+DoD movement: DOD-034 done after focused validation; no normal slice advanced.
+Risk: ChatGPT UI behavior remains live/external and can still produce non-deterministic latency, but cleanup must no longer hide leaked projects.
+Next step: package v0.1.77.1 and run release-control.
+```

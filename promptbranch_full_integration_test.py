@@ -817,6 +817,62 @@ def _project_already_missing_cleanup_details(
     return details
 
 
+async def _verify_project_absent_for_cleanup(
+    project_service: Any,
+    *,
+    project_name: str | None,
+    keep_open: bool,
+) -> dict[str, Any]:
+    """Verify cleanup postcondition before treating a not-found removal as success.
+
+    A remove-project sidebar lookup failure is not by itself proof that the
+    temporary project was deleted. The sidebar may be stale, collapsed, or not
+    hydrated. Only classify cleanup as successful when an explicit resolve by
+    project name confirms there are zero matches.
+    """
+    if not project_name:
+        return {
+            "ok": False,
+            "status": "project_absence_unverified",
+            "reason": "project_name_missing",
+        }
+    resolver = getattr(project_service, "resolve_project", None)
+    if resolver is None:
+        return {
+            "ok": False,
+            "status": "project_absence_unverified",
+            "reason": "resolve_project_unavailable",
+            "project_name": project_name,
+        }
+    try:
+        result = await resolver(name=project_name, keep_open=keep_open)
+    except Exception as exc:  # noqa: BLE001 - convert cleanup diagnostics to structured data
+        return {
+            "ok": False,
+            "status": "project_absence_unverified",
+            "reason": "resolve_project_failed",
+            "project_name": project_name,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "resolve_payload": _exception_payload(exc),
+        }
+    if isinstance(result, dict) and result.get("match_count") == 0:
+        error = str(result.get("error") or "")
+        return {
+            "ok": True,
+            "status": "project_absence_verified",
+            "project_name": project_name,
+            "resolve_result": result,
+            "project_not_found": error in {"", "project_not_found"},
+        }
+    return {
+        "ok": False,
+        "status": "project_still_present_or_ambiguous",
+        "project_name": project_name,
+        "resolve_result": result,
+    }
+
+
 def _retry_after_seconds_from_busy_payload(payload: Any, *, default_seconds: float = 10.0, max_seconds: float = 30.0) -> float:
     if isinstance(payload, dict):
         for key in ("retry_after_seconds", "waited_seconds"):
@@ -836,6 +892,7 @@ async def _remove_project_cleanup_with_retry(
     keep_open: bool,
     step_delay_seconds: float,
     max_attempts: int = 3,
+    project_name: str | None = None,
 ) -> dict[str, Any]:
     """Remove the temporary project, retrying transient shared-profile contention.
 
@@ -855,21 +912,49 @@ async def _remove_project_cleanup_with_retry(
         except Exception as exc:  # noqa: BLE001 - cleanup must become structured report data
             payload = _exception_payload(exc)
             if _is_project_already_missing_cleanup_exception(exc):
-                details = _project_already_missing_cleanup_details(
-                    exc=exc,
-                    payload=payload,
-                    attempt=attempt,
-                    max_attempts=attempts,
+                absence = await _verify_project_absent_for_cleanup(
+                    project_service,
+                    project_name=project_name,
+                    keep_open=keep_open,
                 )
+                if absence.get("ok") is True:
+                    details = _project_already_missing_cleanup_details(
+                        exc=exc,
+                        payload=payload,
+                        attempt=attempt,
+                        max_attempts=attempts,
+                    )
+                    details["status"] = "project_remove_cleanup_absence_verified"
+                    details["cleanup_idempotent"] = True
+                    details["absence_verification"] = absence
+                    cleanup_steps.append(
+                        StepResult(
+                            name="project_remove_cleanup",
+                            ok=True,
+                            duration_seconds=round(time.perf_counter() - started, 3),
+                            details=details,
+                        )
+                    )
+                    return details
+                details = {
+                    "ok": False,
+                    "status": "project_remove_cleanup_missing_unverified",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "attempt": attempt,
+                    "max_attempts": attempts,
+                    "missing_payload": payload,
+                    "absence_verification": absence,
+                }
                 cleanup_steps.append(
                     StepResult(
                         name="project_remove_cleanup",
-                        ok=True,
+                        ok=False,
                         duration_seconds=round(time.perf_counter() - started, 3),
                         details=details,
                     )
                 )
-                return details
+                raise IntegrationAssertionError(f"project_remove cleanup could not verify project absence: {details}") from exc
             retryable = _is_browser_profile_busy_exception(exc)
             if retryable and attempt < attempts:
                 delay = _retry_after_seconds_from_busy_payload(payload)
@@ -914,21 +999,48 @@ async def _remove_project_cleanup_with_retry(
             raise IntegrationAssertionError(f"project_remove cleanup failed: {details}") from exc
 
         if _is_project_already_missing_cleanup_payload(result):
-            details = _project_already_missing_cleanup_details(
-                exc=None,
-                payload=result,
-                attempt=attempt,
-                max_attempts=attempts,
+            absence = await _verify_project_absent_for_cleanup(
+                project_service,
+                project_name=project_name,
+                keep_open=keep_open,
             )
+            if absence.get("ok") is True:
+                details = _project_already_missing_cleanup_details(
+                    exc=None,
+                    payload=result,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                )
+                details["status"] = "project_remove_cleanup_absence_verified"
+                details["cleanup_idempotent"] = True
+                details["absence_verification"] = absence
+                cleanup_steps.append(
+                    StepResult(
+                        name="project_remove_cleanup",
+                        ok=True,
+                        duration_seconds=round(time.perf_counter() - started, 3),
+                        details=details,
+                    )
+                )
+                return details
+            details = result if isinstance(result, dict) else {"result": result}
+            details = {
+                **details,
+                "ok": False,
+                "status": "project_remove_cleanup_missing_unverified",
+                "attempt": attempt,
+                "max_attempts": attempts,
+                "absence_verification": absence,
+            }
             cleanup_steps.append(
                 StepResult(
                     name="project_remove_cleanup",
-                    ok=True,
+                    ok=False,
                     duration_seconds=round(time.perf_counter() - started, 3),
                     details=details,
                 )
             )
-            return details
+            raise IntegrationAssertionError(f"project_remove cleanup could not verify project absence: {details}")
         retryable_result = _is_browser_profile_busy_payload(result)
         result_ok = bool(isinstance(result, dict) and result.get("ok") is True)
         if result_ok:
@@ -1939,6 +2051,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     keep_open=args.keep_open,
                     step_delay_seconds=args.step_delay_seconds,
                     max_attempts=3,
+                    project_name=project_name,
                 )
             except Exception as exc:
                 if not cleanup_steps or bool(cleanup_steps[-1].ok):

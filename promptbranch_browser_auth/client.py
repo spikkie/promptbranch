@@ -4176,8 +4176,34 @@ class ChatGPTBrowserClient:
         if submit_button is None:
             raise ResponseTimeoutError("Create project submit button did not become visible")
 
+        if not await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
+            await self._log_project_create_disabled_state(page, name_input, submit_button, label="project-create-submit-pre-refill")
+            await self._fill_locator_text(name_input, name)
+            try:
+                await name_input.press("Tab", timeout=1_000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
+            submit_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_CREATE_SUBMIT_SELECTORS,
+                label="project-create-submit-after-refill",
+                total_timeout_ms=5_000,
+            )
+            if submit_button is None:
+                raise ResponseTimeoutError("Create project submit button disappeared after filling project name")
+        if not await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
+            await self._log_project_create_disabled_state(page, name_input, submit_button, label="project-create-submit-still-disabled")
+            raise ResponseTimeoutError("Create project submit button stayed disabled after filling project name")
+
         before_url = await self._safe_page_url(page)
-        await submit_button.click(timeout=5_000)
+        await self._click_locator_with_fallback(
+            submit_button,
+            label="project-create-submit",
+            timeout_ms=5_000,
+            allow_force=False,
+            allow_evaluate=False,
+        )
         await page.wait_for_timeout(750)
 
         project_url = await self._wait_for_created_project_url(page, project_name=name, previous_url=before_url)
@@ -14678,6 +14704,37 @@ class ChatGPTBrowserClient:
         except Exception:
             pass
         await locator.type(text, delay=10)
+
+    async def _log_project_create_disabled_state(self, page: Any, name_input: Any, submit_button: Any, *, label: str) -> None:
+        try:
+            input_value = await name_input.evaluate("(el) => el.value ?? el.textContent ?? ''")
+        except Exception as exc:
+            input_value = f"<unavailable: {exc}>"
+        try:
+            button_state = await submit_button.evaluate(
+                """
+                (el) => ({
+                    disabled: Boolean(el.disabled),
+                    ariaDisabled: el.getAttribute('aria-disabled'),
+                    visuallyDisabled: el.getAttribute('data-visually-disabled'),
+                    text: (el.innerText || el.textContent || '').trim(),
+                })
+                """
+            )
+        except Exception as exc:
+            button_state = {"error": str(exc)}
+        try:
+            visible_preview = await self._visible_text_preview(page, limit=500)
+        except Exception as exc:
+            visible_preview = f"<unavailable: {exc}>"
+        self._log(
+            "project-create",
+            "create-project submit remained disabled",
+            label=label,
+            input_value=input_value,
+            button_state=button_state,
+            visible_preview=visible_preview,
+        )
 
     async def _locator_is_enabled(self, locator: Any) -> bool:
         try:

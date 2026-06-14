@@ -80,3 +80,10 @@ in_progress
 | `payload.registry_current` | `payload.repos[repo_id].registry_current` | migrated | Top-level parsing remains compatibility fallback only. |
 | `payload.baseline_roles` | `payload.repos[repo_id].baseline_roles` | migrated | Operator/release helpers use normalized section selection. |
 | `payload.runtime` | `payload.repos[repo_id].runtime` | migrated | Parallel ask baseline safety now reads repo-loop runtime data. |
+
+
+## Repair migration note — v0.1.77.1
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/release-v0.1.77.md` | failed candidate release evidence | `docs/repair-v0.1.77.1.md`, `docs/project/release-status.md` | updated | v0.1.77 failed live browser temporary-project lifecycle validation; v0.1.77.1 repairs without advancing the slice. |
