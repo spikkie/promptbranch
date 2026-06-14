@@ -295,3 +295,18 @@ DoD movement: DOD-034 done after focused validation; no normal slice advanced.
 Risk: ChatGPT UI behavior remains live/external and can still produce non-deterministic latency, but cleanup must no longer hide leaked projects.
 Next step: package v0.1.77.1 and run release-control.
 ```
+
+
+## Repair definition — v0.1.77.2
+
+```text
+Release: v0.1.77.2
+Base release: v0.1.77.1
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.77.1 failed release-control because cleanup stopped after the first sidebar-not-found event even though exact-name resolve still found the temporary project, and a required release-validation group timed out without useful diagnostics.
+In scope: retry/retarget temporary project cleanup when absence is not verified, verify success when project name is known, isolate release-validation pytest subprocesses from ambient plugins, focused tests, repair/status docs, version metadata.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, Docker/deployment behavior, new normal slice work.
+Expected validation: focused cleanup tests, release-validation group tests, project control-surface test, version tests, compileall, ZIP hygiene, clean extraction validation.
+Next step: run release-control for v0.1.77.2 and adopt only after pb artifact current --all --json confirms alignment.
+```

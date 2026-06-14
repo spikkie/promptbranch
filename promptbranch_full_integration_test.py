@@ -894,13 +894,113 @@ async def _remove_project_cleanup_with_retry(
     max_attempts: int = 3,
     project_name: str | None = None,
 ) -> dict[str, Any]:
-    """Remove the temporary project, retrying transient shared-profile contention.
+    """Remove the temporary project and prove the cleanup postcondition.
 
-    The Docker service can reject cleanup with browser_profile_busy when a prior
-    source operation still owns the shared browser profile. Cleanup is the last
-    live operation in the suite, so retrying is safe and avoids leaking
-    temporary projects on transient lock handoff delays.
+    Project cleanup must fail closed: a sidebar lookup failure is not proof that
+    the temporary project disappeared. When the sidebar cannot find the configured
+    URL but a name-based resolve still finds the project, retry removal instead
+    of silently leaking an integration-test project.
     """
+
+    def _resolved_project_url(absence: dict[str, Any]) -> str | None:
+        result = absence.get("resolve_result") if isinstance(absence, dict) else None
+        if not isinstance(result, dict):
+            return None
+        direct = str(result.get("project_url") or "").strip()
+        if direct:
+            return direct
+        matches = result.get("matches")
+        if isinstance(matches, list) and len(matches) == 1 and isinstance(matches[0], dict):
+            url = str(matches[0].get("url") or matches[0].get("project_url") or "").strip()
+            return url or None
+        return None
+
+    def _retarget_project_url(absence: dict[str, Any]) -> dict[str, Any]:
+        url = _resolved_project_url(absence)
+        if not url:
+            return {"retargeted": False, "reason": "resolved_project_url_missing"}
+        previous = str(getattr(project_service, "project_url", "") or "").strip()
+        if previous == url:
+            return {"retargeted": False, "reason": "already_using_resolved_project_url", "project_url": url}
+        try:
+            setattr(project_service, "project_url", url)
+        except Exception as exc:  # noqa: BLE001 - cleanup diagnostics only
+            return {
+                "retargeted": False,
+                "reason": "project_url_attribute_not_mutable",
+                "project_url": url,
+                "previous_project_url": previous,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        return {
+            "retargeted": True,
+            "project_url": url,
+            "previous_project_url": previous,
+        }
+
+    async def _retry_after_unverified_absence(
+        *,
+        details: dict[str, Any],
+        absence: dict[str, Any],
+        attempt: int,
+    ) -> bool:
+        if attempt >= attempts:
+            return False
+        retarget = _retarget_project_url(absence)
+        delay = _retry_after_seconds_from_busy_payload(
+            absence.get("resolve_payload") if isinstance(absence, dict) else None,
+            default_seconds=max(1.0, step_delay_seconds or 1.0),
+            max_seconds=30.0,
+        )
+        details["status"] = "project_remove_cleanup_missing_unverified_retry_wait"
+        details["next_attempt"] = attempt + 1
+        details["delay_seconds"] = delay
+        details["retryable"] = True
+        details["retarget"] = retarget
+        cleanup_steps.append(
+            StepResult(
+                name="project_remove_cleanup_retry_wait",
+                ok=True,
+                duration_seconds=0.0,
+                details=details,
+            )
+        )
+        await asyncio.sleep(delay)
+        return True
+
+    async def _verify_success_result_absence(result: dict[str, Any], *, attempt: int) -> dict[str, Any] | None:
+        if not project_name:
+            return None
+        absence = await _verify_project_absent_for_cleanup(
+            project_service,
+            project_name=project_name,
+            keep_open=keep_open,
+        )
+        if absence.get("ok") is True:
+            result["absence_verification"] = absence
+            result["postcondition"] = "temporary_project_absent"
+            return None
+        details = {
+            **result,
+            "ok": False,
+            "status": "project_remove_cleanup_success_unverified",
+            "attempt": attempt,
+            "max_attempts": attempts,
+            "absence_verification": absence,
+        }
+        if await _retry_after_unverified_absence(details=details, absence=absence, attempt=attempt):
+            return {"retry": True}
+        cleanup_steps.append(
+            StepResult(
+                name="project_remove_cleanup",
+                ok=False,
+                duration_seconds=0.0,
+                details=details,
+            )
+        )
+        raise IntegrationAssertionError(f"project_remove cleanup could not verify project absence after success: {details}")
+
     attempts = max(1, int(max_attempts or 1))
     attempt = 1
     while True:
@@ -946,6 +1046,9 @@ async def _remove_project_cleanup_with_retry(
                     "missing_payload": payload,
                     "absence_verification": absence,
                 }
+                if await _retry_after_unverified_absence(details=details, absence=absence, attempt=attempt):
+                    attempt += 1
+                    continue
                 cleanup_steps.append(
                     StepResult(
                         name="project_remove_cleanup",
@@ -1032,6 +1135,9 @@ async def _remove_project_cleanup_with_retry(
                 "max_attempts": attempts,
                 "absence_verification": absence,
             }
+            if await _retry_after_unverified_absence(details=details, absence=absence, attempt=attempt):
+                attempt += 1
+                continue
             cleanup_steps.append(
                 StepResult(
                     name="project_remove_cleanup",
@@ -1046,6 +1152,10 @@ async def _remove_project_cleanup_with_retry(
         if result_ok:
             if isinstance(result, dict):
                 result = {**result, "attempt": attempt, "retry_count": attempt - 1}
+            maybe_retry = await _verify_success_result_absence(result, attempt=attempt)
+            if maybe_retry and maybe_retry.get("retry") is True:
+                attempt += 1
+                continue
             cleanup_steps.append(
                 StepResult(
                     name="project_remove_cleanup",

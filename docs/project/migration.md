@@ -87,3 +87,10 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/release-v0.1.77.md` | failed candidate release evidence | `docs/repair-v0.1.77.1.md`, `docs/project/release-status.md` | updated | v0.1.77 failed live browser temporary-project lifecycle validation; v0.1.77.1 repairs without advancing the slice. |
+
+
+## Repair migration note — v0.1.77.2
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/repair-v0.1.77.1.md` | failed repair evidence | `docs/repair-v0.1.77.2.md`, `docs/project/release-status.md` | updated | v0.1.77.1 fixed fail-closed cleanup classification but still failed release-control when the project remained resolvable and a release-validation group timed out. v0.1.77.2 retries/retargets cleanup and isolates release-validation pytest subprocesses. |

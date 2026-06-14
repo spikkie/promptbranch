@@ -171,6 +171,11 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
         }
     started_at = utc_now()
     try:
+        env = os.environ.copy()
+        # Release validation groups are deterministic repo-local checks. Disable
+        # ambient pytest plugin autoload so locally installed plugins cannot hang
+        # or change release-gate behavior after live browser tests have run.
+        env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
         completed = subprocess.run(
             command,
             cwd=str(repo_path),
@@ -179,6 +184,7 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
             stderr=subprocess.PIPE,
             timeout=timeout_seconds,
             check=False,
+            env=env,
         )
         ok = completed.returncode == 0
         return {

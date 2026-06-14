@@ -754,3 +754,106 @@ def test_source_mutation_profile_wait_defaults_to_scheduler_budget() -> None:
     import promptbranch_full_integration_test as full
 
     assert full.SOURCE_MUTATION_PROFILE_WAIT_SECONDS == 600.0
+
+
+def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_finds_project(monkeypatch) -> None:
+    import asyncio
+    import httpx
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.project_url = "https://chatgpt.com/g/g-p-base/project"
+
+        async def remove_project(self, *, keep_open: bool = False):
+            self.calls += 1
+            if self.calls == 1:
+                request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
+                response = httpx.Response(504, request=request)
+                raise httpx.HTTPStatusError(
+                    "504 error for POST http://localhost:8000/v1/projects/remove: "
+                    "Could not find the configured project in the sidebar",
+                    request=request,
+                    response=response,
+                )
+            return {"ok": True, "status": "removed"}
+
+        async def resolve_project(self, *, name: str, keep_open: bool = False):
+            if self.calls == 1:
+                return {
+                    "ok": True,
+                    "match_count": 1,
+                    "matches": [
+                        {
+                            "name": name,
+                            "url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
+                        }
+                    ],
+                    "project_url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
+                }
+            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
+    service = FakeService()
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            service,
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=2,
+            project_name="itest-leak",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "removed"
+    assert result["absence_verification"]["ok"] is True
+    assert service.calls == 2
+    assert service.project_url == "https://chatgpt.com/g/g-p-base-itest-leak/project"
+    assert cleanup_steps[0].name == "project_remove_cleanup_retry_wait"
+    assert cleanup_steps[0].details["status"] == "project_remove_cleanup_missing_unverified_retry_wait"
+    assert cleanup_steps[0].details["retarget"]["retargeted"] is True
+    assert sleeps == [1.0]
+
+
+def test_project_remove_cleanup_verifies_successful_remove_when_project_name_known(monkeypatch) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            return {"ok": True, "status": "removed"}
+
+        async def resolve_project(self, *, name: str, keep_open: bool = False):
+            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            FakeService(),
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=1,
+            project_name="itest-removed",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "removed"
+    assert result["absence_verification"]["ok"] is True
+    assert result["postcondition"] == "temporary_project_absent"
