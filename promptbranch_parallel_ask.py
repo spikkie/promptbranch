@@ -64,6 +64,31 @@ def parallel_ask_is_release_like(
     )
 
 
+
+
+def _artifact_current_sections(artifact_current: dict[str, Any] | None) -> dict[str, Any]:
+    """Return selected artifact-current sections using repo-loop payloads first.
+
+    This module is intentionally standalone to avoid importing the CLI. Legacy
+    top-level payloads remain a compatibility fallback for older callers/tests.
+    """
+
+    payload = artifact_current if isinstance(artifact_current, dict) else {}
+    repos = payload.get("repos") if isinstance(payload.get("repos"), dict) else {}
+    selected = None
+    if repos:
+        for key in sorted(repos):
+            repo_payload = repos.get(key)
+            if isinstance(repo_payload, dict):
+                selected = repo_payload
+                break
+    if selected is None:
+        selected = payload
+    runtime = selected.get("runtime") if isinstance(selected.get("runtime"), dict) else {}
+    consistency = selected.get("consistency") if isinstance(selected.get("consistency"), dict) else {}
+    return {"runtime": runtime, "consistency": consistency}
+
+
 def parallel_ask_baseline_safety(
     *,
     request: dict[str, Any],
@@ -73,9 +98,9 @@ def parallel_ask_baseline_safety(
     """Classify whether a protocol ask plan may safely carry artifact baseline data."""
 
     artifact = request.get("artifact") if isinstance(request.get("artifact"), dict) else {}
-    current_payload = artifact_current if isinstance(artifact_current, dict) else {}
-    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
-    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    sections = _artifact_current_sections(artifact_current)
+    runtime = sections["runtime"]
+    consistency = sections["consistency"]
     runtime_version = runtime.get("version")
     protocol_baseline_version = artifact.get("current_version")
     baseline_override = bool(artifact.get("baseline_override"))

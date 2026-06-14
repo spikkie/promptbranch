@@ -259,3 +259,21 @@ DoD movement: add DOD-032 for repo-loop consumers.
 Risk: scripts outside this repo may still consume legacy top-level artifact-current JSON.
 Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
 ```
+
+
+## Slice definition — v0.1.77 normal release
+
+```text
+Release: v0.1.77
+Baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip accepted/current
+Type: normal candidate
+Slice: Repo-loop compatibility hardening and operator migration guardrails
+Goal: make remaining artifact-current compatibility behavior explicit and keep normal operator/release paths on repo-loop sections.
+In scope: docs/project accepted-current update for v0.1.76, normalized artifact-current section helper hardening, release/dev/lifecycle helper consumers, parallel ask baseline safety, repo-loop/legacy fallback tests, migration note, version metadata.
+Out of scope: registry storage changes, adoption semantics changes, Project Source upload behavior, dependency solving between repos, automatic multi-repo adoption, release-set orchestration, browser automation, Docker/deployment behavior.
+Expected files: promptbranch_cli.py, promptbranch_parallel_ask.py, tests/test_promptbranch_cli.py, tests/test_promptbranch_parallel_ask.py, docs/project/*, docs/release-v0.1.77.md, version files.
+Expected validation: focused artifact-current/repo-loop compatibility tests, parallel ask baseline-safety tests, project control-surface tests, version tests, compileall, ZIP hygiene, clean extraction validation.
+DoD movement: add DOD-033 for artifact-current compatibility surface hardening.
+Risk: scripts outside this repo may still consume legacy top-level artifact-current JSON.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
