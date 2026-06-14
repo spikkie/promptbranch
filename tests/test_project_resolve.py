@@ -245,6 +245,78 @@ def test_remove_project_retries_sidebar_lookup_and_uses_project_id_identity(tmp_
 
 
 
+def test_remove_project_opens_more_projects_when_sidebar_project_not_visible(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.project_url = 'https://chatgpt.com/g/g-p-69de540eadf88191b04ad8fd42ec8835/project'
+    page = FakePage()
+
+    calls: list[str] = []
+    delete_action = FakeClickable()
+    confirm_action = FakeClickable()
+    options_button = FakeClickable()
+    containers = iter([None, None, None, object()])
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_ensure_sidebar_open(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_expand_projects_section(*_args, **_kwargs) -> bool:
+        calls.append('expand')
+        return True
+
+    async def fake_prime_project_sidebar(*_args, **_kwargs) -> None:
+        calls.append('prime')
+        return None
+
+    async def fake_open_more_projects_menu(*_args, **_kwargs) -> bool:
+        calls.append('more')
+        return True
+
+    async def fake_find_project_sidebar_container(*_args, **_kwargs):
+        return next(containers)
+
+    async def fake_find_project_options_button(_container):
+        return options_button
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        if label == 'project-remove-action':
+            return delete_action
+        if label == 'project-remove-confirm':
+            return confirm_action
+        raise AssertionError(f'unexpected locator label: {label}')
+
+    async def fake_wait_for_project_absence(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return 'https://chatgpt.com/'
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._ensure_sidebar_open = fake_ensure_sidebar_open  # type: ignore[method-assign]
+    client._expand_projects_section = fake_expand_projects_section  # type: ignore[method-assign]
+    client._prime_project_sidebar = fake_prime_project_sidebar  # type: ignore[method-assign]
+    client._open_more_projects_menu = fake_open_more_projects_menu  # type: ignore[method-assign]
+    client._find_project_sidebar_container = fake_find_project_sidebar_container  # type: ignore[method-assign]
+    client._find_project_options_button = fake_find_project_options_button  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._wait_for_project_absence = fake_wait_for_project_absence  # type: ignore[method-assign]
+    client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(_run_remove_project_retry_harness(client, page))
+
+    assert calls == ['expand', 'prime', 'expand', 'more']
+    assert options_button.click_count == 1
+    assert delete_action.click_count == 1
+    assert confirm_action.click_count == 1
+    assert result['ok'] is True
+
+
 def test_is_logged_in_treats_project_page_without_composer_as_authenticated(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     page = FakePage()

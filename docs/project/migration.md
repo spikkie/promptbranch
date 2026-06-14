@@ -94,3 +94,10 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/repair-v0.1.77.1.md` | failed repair evidence | `docs/repair-v0.1.77.2.md`, `docs/project/release-status.md` | updated | v0.1.77.1 fixed fail-closed cleanup classification but still failed release-control when the project remained resolvable and a release-validation group timed out. v0.1.77.2 retries/retargets cleanup and isolates release-validation pytest subprocesses. |
+
+
+## Repair migration note — v0.1.77.3
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/repair-v0.1.77.2.md` | failed repair evidence | `docs/repair-v0.1.77.3.md`, `docs/project/release-status.md` | updated | v0.1.77.2 fixed retry/retarget semantics but full release-control still failed when the exact-name project remained resolvable and normal sidebar removal could not find it. v0.1.77.3 adds a More-projects removal fallback. |
