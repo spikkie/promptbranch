@@ -5338,3 +5338,89 @@ def test_classify_auth_challenge_detects_two_factor(tmp_path: Path) -> None:
     assert payload["status"] == "auth_challenge_required"
     assert payload["challenge_type"] == "two_factor_verification"
     assert payload["manual_action_required"] is True
+
+
+def test_create_project_refills_name_when_submit_stays_disabled(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.waits: list[int] = []
+
+        async def wait_for_timeout(self, ms):
+            self.waits.append(ms)
+
+    class DummyLocator:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.clicks: list[dict] = []
+            self.presses: list[str] = []
+
+        async def click(self, **kwargs):
+            self.clicks.append(kwargs)
+
+        async def press(self, key: str, **kwargs):
+            self.presses.append(key)
+
+        async def scroll_into_view_if_needed(self, **kwargs):
+            return None
+
+    page = DummyPage()
+    new_button = DummyLocator("new")
+    name_input = DummyLocator("name")
+    submit_first = DummyLocator("submit-first")
+    submit_second = DummyLocator("submit-second")
+    visible_results = iter([new_button, name_input, submit_first, submit_second])
+    enabled_results = iter([False, True])
+    filled: list[str] = []
+    clicked: list[dict] = []
+
+    async def fake_wait_for_visible_locator(page_arg, selectors, *, label, **kwargs):
+        return next(visible_results)
+
+    async def fake_fill(locator, text):
+        filled.append(text)
+
+    async def fake_wait_enabled(locator, *, timeout_ms=5000):
+        return next(enabled_results)
+
+    async def fake_log_disabled(page_arg, name_arg, submit_arg, *, label):
+        clicked.append({"disabled_log": label, "submit": submit_arg.name})
+
+    async def fake_safe_url(page_arg):
+        return "https://chatgpt.com/"
+
+    async def fake_click(locator, **kwargs):
+        clicked.append({"locator": locator.name, **kwargs})
+
+    async def fake_created_url(page_arg, *, project_name, previous_url):
+        return "https://chatgpt.com/g/g-p-created/project"
+
+    client._wait_for_visible_locator = fake_wait_for_visible_locator
+    client._fill_locator_text = fake_fill
+    client._wait_for_enabled_locator = fake_wait_enabled
+    client._log_project_create_disabled_state = fake_log_disabled
+    client._safe_page_url = fake_safe_url
+    client._click_locator_with_fallback = fake_click
+    client._wait_for_created_project_url = fake_created_url
+
+    import asyncio
+
+    result = asyncio.run(
+        client._create_project_from_sidebar(
+            page,
+            name="itest-disabled-submit",
+            icon=None,
+            color=None,
+            memory_mode="default",
+        )
+    )
+
+    assert result["ok"] is True
+    assert filled == ["itest-disabled-submit", "itest-disabled-submit"]
+    assert name_input.presses == ["Tab"]
+    assert clicked[0]["disabled_log"] == "project-create-submit-pre-refill"
+    submit_click = clicked[-1]
+    assert submit_click["locator"] == "submit-second"
+    assert submit_click["allow_force"] is False
+    assert submit_click["allow_evaluate"] is False

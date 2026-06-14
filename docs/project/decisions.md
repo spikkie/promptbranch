@@ -33,3 +33,5 @@
 | ADR-PROJ-032 | 2026-06-13 | Operator/release consumers must read artifact-current through the repo-loop model | v0.1.75 changed the producer shape, but release-control/post-release checks still contained old top-level `state` assumptions | v0.1.76 updates release consumers and keeps legacy top-level parsing only as compatibility fallback |
 
 | ADR-PROJ-033 | 2026-06-14 | Confine artifact-current legacy top-level parsing to explicit compatibility paths | v0.1.75/v0.1.76 completed producer and core release consumers, but helper paths still needed a clear migration boundary | v0.1.77 adds normalized section selection, focused repo-loop/legacy fallback tests, and operator migration guidance |
+
+| ADR-PROJ-034 | 2026-06-14 | Treat remove-project sidebar-not-found as success only after explicit absence verification | Old cleanup behavior could hide leaked temporary test projects by classifying sidebar-not-found as idempotent success | v0.1.77.1 makes cleanup fail unless `resolve_project` confirms zero matches and adds project-create disabled-submit hardening |

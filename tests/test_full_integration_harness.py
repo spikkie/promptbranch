@@ -467,7 +467,48 @@ def test_project_remove_cleanup_retries_browser_profile_busy(monkeypatch) -> Non
     assert cleanup_steps[-1].details["retry_count"] == 1
 
 
-def test_project_remove_cleanup_treats_already_missing_project_as_success(monkeypatch) -> None:
+def test_project_remove_cleanup_requires_absence_verification_for_sidebar_not_found(monkeypatch) -> None:
+    import asyncio
+    import httpx
+    import pytest
+    from promptbranch_full_integration_test import IntegrationAssertionError, _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
+            response = httpx.Response(504, request=request)
+            raise httpx.HTTPStatusError(
+                "504 error for POST http://localhost:8000/v1/projects/remove: "
+                "Could not find the configured project in the sidebar",
+                request=request,
+                response=response,
+            )
+
+    cleanup_steps = []
+    with pytest.raises(IntegrationAssertionError):
+        asyncio.run(
+            _remove_project_cleanup_with_retry(
+                cleanup_steps,
+                FakeService(),
+                keep_open=False,
+                step_delay_seconds=0.0,
+                max_attempts=1,
+                project_name="itest-leak",
+            )
+        )
+
+    assert cleanup_steps[-1].name == "project_remove_cleanup"
+    assert cleanup_steps[-1].ok is False
+    assert cleanup_steps[-1].details["status"] == "project_remove_cleanup_missing_unverified"
+    assert cleanup_steps[-1].details["absence_verification"]["reason"] == "resolve_project_unavailable"
+
+
+def test_project_remove_cleanup_accepts_sidebar_not_found_only_after_absence_verified(monkeypatch) -> None:
     import asyncio
     import httpx
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
@@ -488,6 +529,9 @@ def test_project_remove_cleanup_treats_already_missing_project_as_success(monkey
                 response=response,
             )
 
+        async def resolve_project(self, *, name: str, keep_open: bool = False):
+            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
     cleanup_steps = []
     result = asyncio.run(
         _remove_project_cleanup_with_retry(
@@ -496,18 +540,18 @@ def test_project_remove_cleanup_treats_already_missing_project_as_success(monkey
             keep_open=False,
             step_delay_seconds=0.0,
             max_attempts=1,
+            project_name="itest-absent",
         )
     )
 
     assert result["ok"] is True
-    assert result["status"] == "project_remove_cleanup_already_missing"
-    assert result["cleanup_idempotent"] is True
-    assert result["postcondition"] == "temporary_project_absent"
-    assert cleanup_steps[-1].name == "project_remove_cleanup"
+    assert result["status"] == "project_remove_cleanup_absence_verified"
+    assert result["absence_verification"]["ok"] is True
+    assert result["absence_verification"]["resolve_result"]["match_count"] == 0
     assert cleanup_steps[-1].ok is True
 
 
-def test_project_remove_cleanup_treats_not_found_payload_as_success(monkeypatch) -> None:
+def test_project_remove_cleanup_payload_not_found_requires_absence_verification(monkeypatch) -> None:
     import asyncio
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
 
@@ -524,6 +568,9 @@ def test_project_remove_cleanup_treats_not_found_payload_as_success(monkeypatch)
                 "diagnostic": "Could not find the configured project in the sidebar",
             }
 
+        async def resolve_project(self, *, name: str, keep_open: bool = False):
+            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
     cleanup_steps = []
     result = asyncio.run(
         _remove_project_cleanup_with_retry(
@@ -532,13 +579,53 @@ def test_project_remove_cleanup_treats_not_found_payload_as_success(monkeypatch)
             keep_open=False,
             step_delay_seconds=0.0,
             max_attempts=1,
+            project_name="itest-absent",
         )
     )
 
     assert result["ok"] is True
-    assert result["status"] == "project_remove_cleanup_already_missing"
+    assert result["status"] == "project_remove_cleanup_absence_verified"
+    assert result["absence_verification"]["resolve_result"]["match_count"] == 0
     assert result["missing_payload"]["status"] == "project_not_found"
-    assert cleanup_steps[-1].ok is True
+
+
+def test_project_remove_cleanup_fails_when_absence_check_finds_project(monkeypatch) -> None:
+    import asyncio
+    import pytest
+    from promptbranch_full_integration_test import IntegrationAssertionError, _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        async def remove_project(self, *, keep_open: bool = False):
+            return {
+                "ok": False,
+                "status": "project_not_found",
+                "diagnostic": "Could not find the configured project in the sidebar",
+            }
+
+        async def resolve_project(self, *, name: str, keep_open: bool = False):
+            return {"ok": True, "match_count": 1, "project_url": "https://chatgpt.com/g/g-p-leak/project"}
+
+    cleanup_steps = []
+    with pytest.raises(IntegrationAssertionError):
+        asyncio.run(
+            _remove_project_cleanup_with_retry(
+                cleanup_steps,
+                FakeService(),
+                keep_open=False,
+                step_delay_seconds=0.0,
+                max_attempts=1,
+                project_name="itest-leak",
+            )
+        )
+
+    assert cleanup_steps[-1].ok is False
+    assert cleanup_steps[-1].details["status"] == "project_remove_cleanup_missing_unverified"
+    assert cleanup_steps[-1].details["absence_verification"]["status"] == "project_still_present_or_ambiguous"
 
 
 def test_project_remove_cleanup_reports_final_browser_profile_busy(monkeypatch) -> None:
