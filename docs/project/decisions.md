@@ -31,3 +31,5 @@
 | ADR-PROJ-031 | 2026-06-13 | Use one repo-loop management model for one repo or many repos | KISS: project management commands should not have different operator semantics for one repo versus multiple repos | v0.1.75 makes joined-project `pb artifact current --json` use the same repo-loop payload as `--all`, with `--repo` as a filter |
 
 | ADR-PROJ-032 | 2026-06-13 | Operator/release consumers must read artifact-current through the repo-loop model | v0.1.75 changed the producer shape, but release-control/post-release checks still contained old top-level `state` assumptions | v0.1.76 updates release consumers and keeps legacy top-level parsing only as compatibility fallback |
+
+| ADR-PROJ-033 | 2026-06-14 | Confine artifact-current legacy top-level parsing to explicit compatibility paths | v0.1.75/v0.1.76 completed producer and core release consumers, but helper paths still needed a clear migration boundary | v0.1.77 adds normalized section selection, focused repo-loop/legacy fallback tests, and operator migration guidance |

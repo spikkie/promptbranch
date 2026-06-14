@@ -132,3 +132,25 @@ def test_parallel_ask_baseline_safety_allows_explicit_override() -> None:
 
     assert safety["ok"] is True
     assert safety["status"] == "explicit_baseline_override"
+
+
+def test_parallel_ask_baseline_safety_reads_repo_loop_artifact_current() -> None:
+    request = {"artifact": {"current_baseline": "demo_v0.1.76.zip", "current_version": "v0.1.76"}}
+    artifact_current = {
+        "repos": {
+            "demo": {
+                "runtime": {"version": "v0.1.76"},
+                "consistency": {
+                    "code_version_matches_state_source": True,
+                    "state_source_matches_state_artifact": True,
+                },
+            }
+        }
+    }
+
+    safety = parallel_ask_baseline_safety(request=request, artifact_current=artifact_current, release_like=True)
+
+    assert safety["ok"] is True
+    assert safety["runtime_version"] == "v0.1.76"
+    assert safety["versions_match"] is True
+    assert safety["code_version_matches_state_source"] is True

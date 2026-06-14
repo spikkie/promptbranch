@@ -9146,6 +9146,49 @@ def _artifact_current_select_entry(
     return ranked[0]
 
 
+def _artifact_current_selected_sections(
+    current_payload: dict[str, Any],
+    *,
+    repo_id: str | None = None,
+    filename: str | None = None,
+    version: str | None = None,
+    allow_legacy_single_payload: bool = True,
+) -> dict[str, Any]:
+    """Return the selected artifact-current repo entry and common sections.
+
+    Normal operator/release code should consume artifact-current state through
+    this helper so one-repo and many-repo project payloads follow the same
+    repo-loop contract. Legacy top-level payloads are accepted only when the
+    caller explicitly leaves compatibility enabled.
+    """
+
+    selected_repo_id, selected_current = _artifact_current_select_entry(
+        current_payload,
+        repo_id=repo_id,
+        filename=filename,
+        version=version,
+        allow_legacy_single_payload=allow_legacy_single_payload,
+    )
+    if not isinstance(selected_current, dict):
+        selected_current = {}
+    state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
+    registry_current = selected_current.get("registry_current") if isinstance(selected_current.get("registry_current"), dict) else {}
+    baseline_roles = selected_current.get("baseline_roles") if isinstance(selected_current.get("baseline_roles"), dict) else {}
+    runtime = selected_current.get("runtime") if isinstance(selected_current.get("runtime"), dict) else {}
+    consistency = selected_current.get("consistency") if isinstance(selected_current.get("consistency"), dict) else {}
+    return {
+        "repo_id": selected_repo_id,
+        "payload": selected_current,
+        "state": state,
+        "registry_current": registry_current,
+        "baseline_roles": baseline_roles,
+        "runtime": runtime,
+        "consistency": consistency,
+        "repo_loop_entry_present": bool(selected_current),
+        "legacy_single_payload_used": bool(selected_current is current_payload and "repos" not in current_payload),
+    }
+
+
 def _artifact_current_payload(
     backend: Any,
     registry: ArtifactRegistry,
@@ -9366,8 +9409,9 @@ def _artifact_mvp_operator_classification(
 ) -> dict[str, Any]:
     """Derive an operator-facing lifecycle classification from raw cockpit data."""
 
-    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
-    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
+    current_sections = _artifact_current_selected_sections(current_payload)
+    baseline_roles = current_sections["baseline_roles"]
+    consistency = current_sections["consistency"]
     completion_status = str(completion.get("status") or "unknown")
     recommended = next_payload.get("recommended_next_command") if isinstance(next_payload.get("recommended_next_command"), dict) else {}
     recommended_kind = str(recommended.get("kind") or "")
@@ -9763,7 +9807,8 @@ def _release_doctor_artifact_consistency(
     target_version = expected.get("target_version_normalized")
     version_file_value = version_file.get("normalized_version")
     artifact_version = artifact.get("normalized_version")
-    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    artifact_current_sections = _artifact_current_selected_sections(artifact_current)
+    baseline_roles = artifact_current_sections["baseline_roles"]
     adopted_source = baseline_roles.get("adopted_source_version")
     adopted_artifact = baseline_roles.get("adopted_artifact_version")
     registry_current = baseline_roles.get("registry_current_version")
@@ -9908,7 +9953,8 @@ def _release_doctor_candidate_artifact_report(
         expected_filename = f"{prefix}{version_token}{suffix}"
     filename_matches_config = bool(expected_filename and filename == expected_filename)
 
-    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    artifact_current_sections = _artifact_current_selected_sections(artifact_current)
+    baseline_roles = artifact_current_sections["baseline_roles"]
     current_baseline_version = _candidate_version_normalized(
         baseline_roles.get("registry_current_version")
         or baseline_roles.get("adopted_source_version")
@@ -10019,7 +10065,8 @@ def _release_doctor_lifecycle_phase(
 ) -> dict[str, Any]:
     runtime_version = expected.get("runtime_version_normalized")
     artifact_version = artifact.get("normalized_version") if artifact.get("attempted") else None
-    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    artifact_current_sections = _artifact_current_selected_sections(artifact_current)
+    baseline_roles = artifact_current_sections["baseline_roles"]
     adopted_source = baseline_roles.get("adopted_source_version")
     adopted_artifact = baseline_roles.get("adopted_artifact_version")
     registry_current = baseline_roles.get("registry_current_version")
@@ -11993,14 +12040,15 @@ def _release_current_reconciliation_payload(
     artifact = artifact_payload or _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo)
     requested_version = _candidate_version_normalized(getattr(args, "version", None))
     target_version = _candidate_version_normalized(getattr(args, "target_version", None))
-    runtime_version = _candidate_version_normalized((current_payload.get("runtime") or {}).get("version"))
+    current_sections = _artifact_current_selected_sections(current_payload)
+    runtime_version = _candidate_version_normalized(current_sections["runtime"].get("version"))
     artifact_version = _candidate_version_normalized(artifact.get("version") or artifact.get("version_file") or artifact.get("filename_version"))
     artifact_filename = str(artifact.get("filename") or Path(str(getattr(args, "artifact", "") or "")).name or "")
     artifact_path = str(artifact.get("path") or getattr(args, "artifact", "") or "")
-    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
-    consistency = current_payload.get("consistency") if isinstance(current_payload.get("consistency"), dict) else {}
-    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
-    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
+    baseline_roles = current_sections["baseline_roles"]
+    consistency = current_sections["consistency"]
+    state = current_sections["state"]
+    registry_current = current_sections["registry_current"]
 
     adopted_source_version = _candidate_version_normalized(baseline_roles.get("adopted_source_version"))
     adopted_artifact_version = _candidate_version_normalized(baseline_roles.get("adopted_artifact_version"))
@@ -12276,8 +12324,9 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
     artifact_cfg = config.get("artifact") if isinstance(config.get("artifact"), dict) else {}
     artifact_prefix = str(artifact_cfg.get("prefix") or f"{repo_root.name}_")
     artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
-    runtime_version = _candidate_version_normalized((current_payload.get("runtime") or {}).get("version"))
-    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    current_sections = _artifact_current_selected_sections(current_payload)
+    runtime_version = _candidate_version_normalized(current_sections["runtime"].get("version"))
+    baseline_roles = current_sections["baseline_roles"]
     accepted_version = _candidate_version_normalized(baseline_roles.get("adopted_source_version") or baseline_roles.get("registry_current_version"))
     accepted_ref = baseline_roles.get("adopted_source_ref") or baseline_roles.get("registry_current_ref")
     local_candidates = _release_dev_status_candidate_entries(
@@ -12395,7 +12444,7 @@ def _release_dev_status_payload(backend: Any, args: argparse.Namespace) -> dict[
         },
         "runtime": {
             "version": runtime_version,
-            "package_version": (current_payload.get("runtime") or {}).get("package_version"),
+            "package_version": current_sections["runtime"].get("package_version"),
             "relation_to_accepted": runtime_relation_to_accepted,
         },
         "development_head": dev_head,
@@ -13409,12 +13458,12 @@ def _release_baseline_status_payload(backend: Any, args: argparse.Namespace) -> 
     artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
-    _selected_repo_id, selected_current = _artifact_current_select_entry(current_payload, version=expected_version)
-    baseline_roles = selected_current.get("baseline_roles") if isinstance(selected_current.get("baseline_roles"), dict) else {}
-    consistency = selected_current.get("consistency") if isinstance(selected_current.get("consistency"), dict) else {}
-    state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
-    registry_current = selected_current.get("registry_current") if isinstance(selected_current.get("registry_current"), dict) else {}
-    runtime = selected_current.get("runtime") if isinstance(selected_current.get("runtime"), dict) else {}
+    current_sections = _artifact_current_selected_sections(current_payload, version=expected_version)
+    baseline_roles = current_sections["baseline_roles"]
+    consistency = current_sections["consistency"]
+    state = current_sections["state"]
+    registry_current = current_sections["registry_current"]
+    runtime = current_sections["runtime"]
 
     runtime_version = _candidate_version_normalized(runtime.get("version"))
     adopted_artifact_version = _candidate_version_normalized(baseline_roles.get("adopted_artifact_version") or state.get("artifact_version"))
@@ -15896,11 +15945,17 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     any_mutation = any(bool(payload.get("mutating_actions_executed")) for payload in phase_payloads.values() if isinstance(payload, dict))
     final_ok = stop_reason is None and len(phase_results) == len(phases)
     final_status = "release_lifecycle_completed" if final_ok else "release_lifecycle_failed"
+    adopted_current_sections = _artifact_current_selected_sections(
+        adopt_payload.get("artifact_current") if isinstance(adopt_payload, dict) else {},
+        filename=artifact_filename,
+        version=requested_version or artifact_version,
+    )
+    adopted_current_state = adopted_current_sections["state"]
     final_summary = {
         "candidate": artifact_filename or None,
         "candidate_version": requested_version or artifact_version,
-        "promptbranch_current": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_ref") if isinstance(adopt_payload, dict) else None),
-        "promptbranch_version": (((adopt_payload.get("artifact_current") or {}).get("state") or {}).get("artifact_version") if isinstance(adopt_payload, dict) else None),
+        "promptbranch_current": adopted_current_state.get("artifact_ref"),
+        "promptbranch_version": adopted_current_state.get("artifact_version"),
         "policy_file": str(policy_path),
         "policy_synced": bool(policy_payload.get("policy_sync_performed")),
         "project_source_verified": bool((install_payload.get("source_upload_verification") or {}).get("ok")) if isinstance(install_payload, dict) else False,
@@ -15955,7 +16010,8 @@ def _release_doctor_consistency(
     version_file_value = version_file.get("normalized_version")
     installed_value = installed_distribution.get("normalized_version")
     service_value = service_health.get("normalized_version") if service_health.get("attempted") else None
-    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    artifact_current_sections = _artifact_current_selected_sections(artifact_current)
+    baseline_roles = artifact_current_sections["baseline_roles"]
     adopted_source = baseline_roles.get("adopted_source_version")
     adopted_artifact = baseline_roles.get("adopted_artifact_version")
     registry_current = baseline_roles.get("registry_current_version")
@@ -16403,13 +16459,14 @@ def _release_evidence_status_payload(backend: Any, args: argparse.Namespace) -> 
     requested_version = _candidate_version_normalized(getattr(args, "version", None) or CLI_VERSION)
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
-    baseline_roles = current_payload.get("baseline_roles") if isinstance(current_payload.get("baseline_roles"), dict) else {}
+    current_sections = _artifact_current_selected_sections(current_payload)
+    baseline_roles = current_sections["baseline_roles"]
     accepted_version = _candidate_version_normalized(
         baseline_roles.get("adopted_source_version")
         or baseline_roles.get("adopted_artifact_version")
         or baseline_roles.get("registry_current_version")
     )
-    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+    runtime = current_sections["runtime"]
     runtime_version = _candidate_version_normalized(runtime.get("version"))
     evidence_version = requested_version or accepted_version or runtime_version
     evidence = _release_full_test_evidence_summary(
@@ -16534,7 +16591,8 @@ def _release_lifecycle_status_text(payload: dict[str, Any]) -> str:
     action = payload.get("next_safe_action") if isinstance(payload.get("next_safe_action"), dict) else {}
     latest = payload.get("latest_post_release_validation") if isinstance(payload.get("latest_post_release_validation"), dict) else {}
     artifact_current = payload.get("artifact_current") if isinstance(payload.get("artifact_current"), dict) else {}
-    baseline_roles = artifact_current.get("baseline_roles") if isinstance(artifact_current.get("baseline_roles"), dict) else {}
+    artifact_current_sections = _artifact_current_selected_sections(artifact_current)
+    baseline_roles = artifact_current_sections["baseline_roles"]
     candidate = payload.get("candidate_inventory_summary") if isinstance(payload.get("candidate_inventory_summary"), dict) else {}
     service = payload.get("service_health") if isinstance(payload.get("service_health"), dict) else {}
     sources = payload.get("project_sources") if isinstance(payload.get("project_sources"), dict) else {}
@@ -17315,13 +17373,14 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
             print(f"repo_id={scope.get('repo_id') or 'none'}")
             print(f"available_repos={','.join(payload.get('available_repos') or [])}")
             return 2
-        state = payload["state"]
-        print(f"repo_id={state.get('repo_id') or 'none'}")
+        sections = _artifact_current_selected_sections(payload, repo_id=repo_id)
+        state = sections["state"]
+        current = sections["registry_current"]
+        roles = sections["baseline_roles"]
+        print(f"repo_id={sections.get('repo_id') or state.get('repo_id') or 'none'}")
         print(f"artifact_ref={state.get('artifact_ref') or 'none'}")
         print(f"artifact_version={state.get('artifact_version') or 'none'}")
-        current = payload.get("registry_current") or {}
         print(f"registry_current={current.get('filename') or 'none'}")
-        roles = payload.get("baseline_roles") or {}
         print(f"runtime_code_version={roles.get('runtime_code_version') or 'none'}")
         print(f"code_matches_adopted_source={roles.get('code_matches_adopted_source')}")
     return 0 if payload.get("ok", True) else 2
@@ -18417,9 +18476,15 @@ def _current_adopted_candidate_fallback(
     if not isinstance(current_payload, dict):
         return None
 
-    state = current_payload.get("state") if isinstance(current_payload.get("state"), dict) else {}
-    registry_current = current_payload.get("registry_current") if isinstance(current_payload.get("registry_current"), dict) else {}
-    runtime = current_payload.get("runtime") if isinstance(current_payload.get("runtime"), dict) else {}
+    current_sections = _artifact_current_selected_sections(
+        current_payload,
+        filename=requested_artifact,
+        version=requested_version,
+        allow_legacy_single_payload=True,
+    )
+    state = current_sections["state"]
+    registry_current = current_sections["registry_current"]
+    runtime = current_sections["runtime"]
 
     state_artifact_version = _candidate_version_normalized(state.get("artifact_version"))
     state_source_version = _candidate_version_normalized(state.get("source_version"))

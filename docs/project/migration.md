@@ -70,3 +70,13 @@ in_progress
 | MIG-008 | Obsolete documents marked historical or referenced | done | this file |
 | MIG-009 | Focused validator added | done | `tests/test_project_control_surface.py` |
 | MIG-010 | Candidate adopted/current | open | requires post-adoption `pb artifact current --json` |
+
+
+## artifact-current repo-loop compatibility migration
+
+| Old consumer path | New consumer path | Status | Notes |
+|---|---|---:|---|
+| `payload.state` | `payload.repos[repo_id].state` | migrated | Normal joined-project artifact-current consumers must use repo-loop sections. |
+| `payload.registry_current` | `payload.repos[repo_id].registry_current` | migrated | Top-level parsing remains compatibility fallback only. |
+| `payload.baseline_roles` | `payload.repos[repo_id].baseline_roles` | migrated | Operator/release helpers use normalized section selection. |
+| `payload.runtime` | `payload.repos[repo_id].runtime` | migrated | Parallel ask baseline safety now reads repo-loop runtime data. |

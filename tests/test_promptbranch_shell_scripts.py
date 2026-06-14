@@ -1084,7 +1084,7 @@ def test_release_control_accepts_numeric_repair_version_for_adopt_current(tmp_pa
     repo = tmp_path / "repo"
     repo.mkdir()
     version = "v9.9.9.1"
-    artifact = f"chatgpt_claudecode_workflow_{version}.zip"
+    artifact = f"repo_{version}.zip"
     (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
     (repo / artifact).write_bytes(b"fake zip; pb artifact verify is mocked")
     fake_bin = tmp_path / "bin"
