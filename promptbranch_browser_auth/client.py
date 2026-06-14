@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -12,7 +13,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
@@ -4264,16 +4265,36 @@ class ChatGPTBrowserClient:
 
         if delete_action is None:
             container = None
-            for attempt in range(3):
-                if attempt == 1:
-                    await self._expand_projects_section(page)
-                elif attempt == 2:
+            sidebar_attempts: list[tuple[str, Callable[[], Any]]] = [
+                ("initial", lambda: None),
+                ("expand", lambda: self._expand_projects_section(page)),
+                ("prime_expand", lambda: self._prime_project_sidebar(page)),
+                ("more_projects", lambda: self._open_more_projects_menu(page)),
+                ("more_projects_prime", lambda: self._prime_project_sidebar(page)),
+            ]
+            for attempt, (label, prepare) in enumerate(sidebar_attempts):
+                if label == "prime_expand":
                     await self._prime_project_sidebar(page)
                     await self._expand_projects_section(page)
+                elif label == "more_projects_prime":
+                    await self._prime_project_sidebar(page)
+                    await self._open_more_projects_menu(page)
+                else:
+                    prepared = prepare()
+                    if inspect.isawaitable(prepared):
+                        await prepared
 
                 container = await self._find_project_sidebar_container(page, project_url=project_home_url)
                 if container is not None:
                     break
+                self._log(
+                    "project-remove",
+                    "configured project not visible in sidebar attempt",
+                    attempt=attempt + 1,
+                    strategy=label,
+                    project_id=project_id,
+                    project_url=project_home_url,
+                )
                 await page.wait_for_timeout(350)
 
             if container is None:

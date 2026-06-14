@@ -3,16 +3,17 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.74.3.zip
-accepted checksum: operator-pinned baseline; checksum evidence not present in this package build context
-next normal target: chatgpt_claudecode_workflow-2_v0.1.75.zip
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
+accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
+active repair target: chatgpt_claudecode_workflow-2_v0.1.77.3.zip
+next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.74.3 is the operator-pinned baseline. v0.1.75 rebases the KISS project/repo management command model onto that baseline: one repo inventory loop, one command/state shape, whether the project has one repo or many repos.
+Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.3 is a repair candidate that preserves that slice while fixing temporary project cleanup discovered during release-control validation.
 ```
 
 ## Release / slice plan
@@ -309,4 +310,21 @@ In scope: retry/retarget temporary project cleanup when absence is not verified,
 Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, Docker/deployment behavior, new normal slice work.
 Expected validation: focused cleanup tests, release-validation group tests, project control-surface test, version tests, compileall, ZIP hygiene, clean extraction validation.
 Next step: run release-control for v0.1.77.2 and adopt only after pb artifact current --all --json confirms alignment.
+```
+
+
+## Repair definition — v0.1.77.3
+
+```text
+Release: v0.1.77.3
+Baseline: accepted/current v0.1.76 plus intended v0.1.77/v0.1.77.1/v0.1.77.2 repair line content
+Type: repair
+Slice: hidden temporary project removal hardening
+Goal: When cleanup can resolve the exact temporary project by name but cannot find it in the normal sidebar, open the More-projects surface before failing.
+In scope: project removal fallback, focused tests, repair docs/status.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, normal feature work.
+Expected validation: focused project removal tests, focused cleanup tests, control-surface/version tests, compileall, ZIP hygiene, full release-control before adoption.
+DoD movement: DOD-036 added/done after focused validation.
+Risk: live ChatGPT rate-limit pressure may still require rerun or manual cleanup for already leaked projects.
+Next step: run release-control for v0.1.77.3 and adopt only after pb artifact current --all --json confirms alignment.
 ```
