@@ -772,9 +772,12 @@ def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_fin
         def __init__(self) -> None:
             self.calls = 0
             self.project_url = "https://chatgpt.com/g/g-p-base/project"
+            self.remove_project_urls: list[str | None] = []
+            self.resolve_project_urls: list[str | None] = []
 
-        async def remove_project(self, *, keep_open: bool = False):
+        async def remove_project(self, *, keep_open: bool = False, project_url: str | None = None):
             self.calls += 1
+            self.remove_project_urls.append(project_url)
             if self.calls == 1:
                 request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
                 response = httpx.Response(504, request=request)
@@ -786,7 +789,8 @@ def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_fin
                 )
             return {"ok": True, "status": "removed"}
 
-        async def resolve_project(self, *, name: str, keep_open: bool = False):
+        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None):
+            self.resolve_project_urls.append(project_url)
             if self.calls == 1:
                 return {
                     "ok": True,
@@ -819,6 +823,14 @@ def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_fin
     assert result["absence_verification"]["ok"] is True
     assert service.calls == 2
     assert service.project_url == "https://chatgpt.com/g/g-p-base-itest-leak/project"
+    assert service.remove_project_urls == [
+        "https://chatgpt.com/g/g-p-base/project",
+        "https://chatgpt.com/g/g-p-base-itest-leak/project",
+    ]
+    assert service.resolve_project_urls == [
+        "https://chatgpt.com/g/g-p-base/project",
+        "https://chatgpt.com/g/g-p-base-itest-leak/project",
+    ]
     assert cleanup_steps[0].name == "project_remove_cleanup_retry_wait"
     assert cleanup_steps[0].details["status"] == "project_remove_cleanup_missing_unverified_retry_wait"
     assert cleanup_steps[0].details["retarget"]["retargeted"] is True
