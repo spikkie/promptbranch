@@ -482,9 +482,13 @@ class ChatGPTAutomation:
         self,
         *,
         keep_open: bool = False,
+        project_name: Optional[str] = None,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
         return await self.client.remove_project(
             keep_open=keep_open,
+            project_name=project_name,
+            project_url=project_url,
         )
 
     async def add_project_source(

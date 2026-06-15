@@ -117,6 +117,30 @@ def test_remove_project_posts_profile_lock_wait_when_supplied():
 
     assert payload["removed"] is True
 
+
+
+def test_remove_project_posts_project_url_and_name_when_supplied():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/projects/remove"
+        payload = json.loads(request.read().decode("utf-8"))
+        assert payload == {
+            "keep_open": False,
+            "project_url": "https://chatgpt.com/g/g-p-demo/project",
+            "project_name": "itest-demo",
+            "profile_lock_wait_seconds": 120.0,
+        }
+        return httpx.Response(200, json={"ok": True, "removed": True})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.remove_project(
+            project_url="https://chatgpt.com/g/g-p-demo/project",
+            project_name="itest-demo",
+            profile_lock_wait_seconds=120.0,
+        )
+
+    assert payload["removed"] is True
+
 def test_resolve_project_posts_expected_json() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/projects/resolve"

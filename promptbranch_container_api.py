@@ -133,6 +133,7 @@ class ProjectEnsureRequest(BaseModel):
 class ProjectRemoveRequest(BaseModel):
     keep_open: bool = False
     project_url: Optional[str] = None
+    project_name: Optional[str] = None
     profile_lock_wait_seconds: Optional[float] = None
 
 
@@ -684,7 +685,11 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
 @protected.post("/projects/remove", dependencies=[Depends(require_service_token)])
 async def remove_project(payload: ProjectRemoveRequest) -> dict:
     try:
-        return await _service_for(payload.project_url).remove_project(keep_open=payload.keep_open, profile_lock_wait_seconds=payload.profile_lock_wait_seconds)
+        return await _service_for(payload.project_url).remove_project(
+            keep_open=payload.keep_open,
+            project_name=payload.project_name,
+            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
+        )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 

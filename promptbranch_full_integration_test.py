@@ -480,15 +480,25 @@ class DockerServiceAdapter:
         *,
         keep_open: bool = False,
         project_url: str | None = None,
+        project_name: str | None = None,
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url)
+        try:
+            return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url, project_name)
+        except TypeError:
+            return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url)
 
-    def _remove_project_sync(self, keep_open: bool, project_url: str | None = None) -> dict[str, Any]:
+    def _remove_project_sync(
+        self,
+        keep_open: bool,
+        project_url: str | None = None,
+        project_name: str | None = None,
+    ) -> dict[str, Any]:
         effective_project_url = project_url or self.project_url
         with self._client() as client:
             return client.remove_project(
                 keep_open=keep_open,
                 project_url=effective_project_url,
+                project_name=project_name,
                 profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
             )
 
@@ -982,7 +992,15 @@ async def _remove_project_cleanup_with_retry(
         remover = getattr(project_service, "remove_project")
         if active_project_url:
             try:
-                return await remover(keep_open=keep_open, project_url=active_project_url)
+                return await remover(keep_open=keep_open, project_url=active_project_url, project_name=project_name)
+            except TypeError:
+                try:
+                    return await remover(keep_open=keep_open, project_url=active_project_url)
+                except TypeError:
+                    return await remover(keep_open=keep_open)
+        if project_name:
+            try:
+                return await remover(keep_open=keep_open, project_name=project_name)
             except TypeError:
                 return await remover(keep_open=keep_open)
         return await remover(keep_open=keep_open)
