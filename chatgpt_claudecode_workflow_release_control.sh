@@ -828,8 +828,7 @@ ownership_normalization_targets() {
   local candidate
   for candidate in "${repo_root}/.pb_profile" "${repo_root}/debug_artifacts"; do
     if [[ -e "${candidate}" ]]; then
-      printf '%s
-' "${candidate}"
+      printf '%s\n' "${candidate}"
     fi
   done
 }
@@ -1495,16 +1494,37 @@ promptbranch_service_image_tag() {
   release_version_plain_from_version_file
 }
 
-compose_env_prefix() {
+promptbranch_service_image_ref() {
   local image_tag
   image_tag="$(promptbranch_service_image_tag)"
-  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q'     "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}"
+  local default_image="promptbranch-service:${image_tag}"
+  if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" == "1" && -n "${PROMPTBRANCH_SERVICE_IMAGE:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE}"
+    return 0
+  fi
+  printf '%s\n' "${default_image}"
+}
+
+compose_env_prefix() {
+  local image_tag
+  local image_ref
+  image_tag="$(promptbranch_service_image_tag)"
+  image_ref="$(promptbranch_service_image_ref)"
+  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q' \
+    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}"
 }
 
 run_docker_compose() {
   local image_tag
+  local image_ref
   image_tag="$(promptbranch_service_image_tag)"
-  COMPOSE_PROJECT_NAME="${compose_project_name}"   PROMPTBRANCH_SERVICE_PORT="${service_port}"   CHATGPT_SERVICE_BASE_URL="${service_base_url}"   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}"   docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
+  image_ref="$(promptbranch_service_image_ref)"
+  COMPOSE_PROJECT_NAME="${compose_project_name}" \
+  PROMPTBRANCH_SERVICE_PORT="${service_port}" \
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
+  PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
+  PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
+  docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
 }
 
 service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"
@@ -1628,6 +1648,7 @@ deploy_promptbranch_service_detached() {
     echo "compose_project_name: ${compose_project_name}"
     echo "service_port: ${service_port}"
     echo "service_base_url: ${service_base_url}"
+    echo "service_image: $(promptbranch_service_image_ref)"
     echo "expected_version: ${ver#v}"
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
     run_docker_compose down --remove-orphans
@@ -1831,8 +1852,7 @@ summary_value() {
   local active="$1"
   local value="$2"
   if [[ "${active}" -eq 1 ]]; then
-    printf '%s
-' "${value}"
+    printf '%s\n' "${value}"
   else
     printf 'skipped
 '
