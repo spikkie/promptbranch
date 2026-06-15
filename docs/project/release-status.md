@@ -72,3 +72,5 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.77.9 | repair | Source-save stale-inflight proof and cleanup project-name forwarding | repair_required | full release-control failed before browser tests: Docker service version verification kept reporting stale `0.1.77.8` after normal and no-cache rebuild | DOD-042 done; DOD-043 required | pending/rejected |
 | v0.1.77.10 | repair | Version-pinned Docker service image selection | candidate | focused shell-script tests, project control/version tests, compileall, bash syntax, ZIP hygiene; full release-control pending | DOD-043 done | pending |
+| v0.1.77.11 | repair | Name-only non-anchor project cleanup fallback | candidate | focused project resolve/remove tests, project control/version tests, compileall, bash syntax, ZIP hygiene; full release-control pending | DOD-044 done | pending |
+

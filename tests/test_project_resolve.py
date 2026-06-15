@@ -1864,3 +1864,42 @@ def test_project_page_details_selectors_include_generic_more_menu_fallbacks() ->
     assert 'project options' in joined
     assert 'more options' in joined
     assert 'aria-label="more"' in joined
+
+
+def test_find_project_sidebar_container_includes_name_only_non_anchor_candidates(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class _Element:
+        pass
+
+    expected = _Element()
+
+    class _Handle:
+        def as_element(self):
+            return expected
+
+    class _Page:
+        def __init__(self) -> None:
+            self.script = ""
+            self.args = None
+
+        async def evaluate_handle(self, script: str, args=None):
+            self.script = script
+            self.args = args
+            return _Handle()
+
+    page = _Page()
+    result = asyncio.run(
+        client._find_project_sidebar_container(
+            page,
+            project_url="https://chatgpt.com/g/g-p-demo-itest-leak/project",
+            project_name="itest-leak",
+        )
+    )
+
+    assert result is expected
+    assert page.args["projectId"] == "g-p-demo"
+    assert page.args["projectName"] == "itest-leak"
+    assert "aside [role=\"button\"]" in page.script
+    assert "[role=\"menuitem\"]" in page.script
+    assert "[data-sidebar-item=\"true\"]" in page.script

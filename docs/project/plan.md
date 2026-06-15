@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
 accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
-active repair target: chatgpt_claudecode_workflow-2_v0.1.77.8.zip
+active repair target: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
 next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
@@ -444,4 +444,21 @@ Expected validation: focused shell-script tests, project control/version tests, 
 DoD movement: DOD-043 done after focused validation.
 Risk: A deliberately custom image override now requires PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE=1 during release-control.
 Next step: run release-control for v0.1.77.10 and adopt only after pb artifact current --all --json confirms alignment.
+```
+
+
+## Repair definition — v0.1.77.11
+
+```text
+Release: v0.1.77.11
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: name-only non-anchor project cleanup fallback
+Goal: remove temporary projects when ChatGPT renders the project row as a button/menu item instead of an anchor row.
+In scope: promptbranch_browser_auth/client.py, tests/test_project_resolve.py, docs/repair-v0.1.77.11.md, docs/project/*, version surfaces.
+Out of scope: normal slice advancement, release-line advancement, repo-loop changes, registry/adoption changes, Docker service image changes.
+Expected validation: focused project resolve/remove tests, project control/version tests, compileall, bash syntax, ZIP hygiene, then full release-control by operator.
+DoD movement: DOD-044 done after focused validation.
+Risk: live ChatGPT UI may still hide delete controls under rate-limit/sidebar state; cleanup must remain fail-closed.
+Next step: run release-control for v0.1.77.11 and adopt only after pb artifact current --all --json confirms alignment.
 ```

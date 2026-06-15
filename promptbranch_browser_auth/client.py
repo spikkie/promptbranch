@@ -16407,23 +16407,26 @@ class ChatGPTBrowserClient:
                 };
                 const hasVisibleLayout = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
                 const normalize = value => (value || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
-                const anchors = Array.from(
-                    document.querySelectorAll(
-                        'a[data-sidebar-item="true"][href*="/project"], aside a[href*="/project"], nav a[href*="/project"], a[href*="/project"]'
-                    )
-                );
-                for (const anchor of anchors) {
-                    const hrefProjectId = extractProjectId(anchor.getAttribute('href') || '');
-                    const nameHaystack = normalize([
-                        anchor.textContent,
-                        anchor.getAttribute('aria-label'),
-                        anchor.getAttribute('title'),
-                        anchor.getAttribute('data-testid'),
-                    ].filter(Boolean).join(' '));
-                    const idMatches = !!projectId && !!hrefProjectId && hrefProjectId === projectId;
-                    const nameMatches = !!projectName && nameHaystack.includes(projectName);
-                    if (!idMatches && !nameMatches) continue;
-                    let current = anchor.closest('li') || anchor;
+                const candidateSelector = [
+                    'a[data-sidebar-item="true"][href*="/project"]',
+                    'aside a[href*="/project"]',
+                    'nav a[href*="/project"]',
+                    'a[href*="/project"]',
+                    '[data-sidebar-item="true"]',
+                    'aside [role="button"]',
+                    'aside button',
+                    'aside [role="link"]',
+                    'nav [role="button"]',
+                    'nav button',
+                    'nav [role="link"]',
+                    '[role="menuitem"]',
+                    '[role="option"]',
+                    '[data-testid*="project" i]',
+                ].join(',');
+                const candidates = Array.from(document.querySelectorAll(candidateSelector)).filter(hasVisibleLayout);
+                const seen = new Set();
+                const findOptionsBearingContainer = start => {
+                    let current = start.closest('li,[role="listitem"],[data-sidebar-item="true"],[role="menuitem"],[role="option"]') || start;
                     while (current && current !== document.body) {
                         const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(hasVisibleLayout);
                         for (const button of buttons) {
@@ -16436,7 +16439,22 @@ class ChatGPTBrowserClient:
                         }
                         current = current.parentElement;
                     }
-                    return anchor.closest('li') || anchor;
+                    return start.closest('li,[role="listitem"],[data-sidebar-item="true"],[role="menuitem"],[role="option"]') || start;
+                };
+                for (const candidate of candidates) {
+                    if (seen.has(candidate)) continue;
+                    seen.add(candidate);
+                    const hrefProjectId = extractProjectId(candidate.getAttribute('href') || '');
+                    const nameHaystack = normalize([
+                        candidate.textContent,
+                        candidate.getAttribute('aria-label'),
+                        candidate.getAttribute('title'),
+                        candidate.getAttribute('data-testid'),
+                    ].filter(Boolean).join(' '));
+                    const idMatches = !!projectId && !!hrefProjectId && hrefProjectId === projectId;
+                    const nameMatches = !!projectName && nameHaystack.includes(projectName);
+                    if (!idMatches && !nameMatches) continue;
+                    return findOptionsBearingContainer(candidate);
                 }
                 return null;
             }
