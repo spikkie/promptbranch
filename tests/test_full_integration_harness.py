@@ -869,3 +869,82 @@ def test_project_remove_cleanup_verifies_successful_remove_when_project_name_kno
     assert result["status"] == "removed"
     assert result["absence_verification"]["ok"] is True
     assert result["postcondition"] == "temporary_project_absent"
+
+
+def test_docker_service_adapter_cleanup_retry_uses_explicit_project_url(monkeypatch) -> None:
+    import asyncio
+    import httpx
+    from promptbranch_full_integration_test import DockerServiceAdapter, _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=30.0,
+        project_url="https://chatgpt.com/g/g-p-base/project",
+    )
+    calls = {"remove": 0}
+    remove_urls: list[str | None] = []
+    resolve_urls: list[str | None] = []
+
+    def fake_remove(keep_open: bool, project_url: str | None = None):
+        calls["remove"] += 1
+        remove_urls.append(project_url)
+        if calls["remove"] == 1:
+            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
+            response = httpx.Response(504, request=request)
+            raise httpx.HTTPStatusError(
+                "504 error for POST http://localhost:8000/v1/projects/remove: "
+                "Could not find the configured project in the sidebar",
+                request=request,
+                response=response,
+            )
+        return {"ok": True, "status": "removed"}
+
+    def fake_resolve(name: str, keep_open: bool, project_url: str | None = None):
+        resolve_urls.append(project_url)
+        if calls["remove"] == 1:
+            return {
+                "ok": True,
+                "match_count": 1,
+                "project_url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
+                "matches": [
+                    {
+                        "name": name,
+                        "url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
+                    }
+                ],
+            }
+        return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
+    monkeypatch.setattr(adapter, "_remove_project_sync", fake_remove)
+    monkeypatch.setattr(adapter, "_resolve_project_sync", fake_resolve)
+
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            adapter,
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=2,
+            project_name="itest-leak",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "removed"
+    assert remove_urls == [
+        "https://chatgpt.com/g/g-p-base/project",
+        "https://chatgpt.com/g/g-p-base-itest-leak/project",
+    ]
+    assert resolve_urls == [
+        "https://chatgpt.com/g/g-p-base/project",
+        "https://chatgpt.com/g/g-p-base-itest-leak/project",
+    ]
+    assert cleanup_steps[0].details["retarget"]["retargeted"] is True
+

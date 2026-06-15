@@ -413,12 +413,19 @@ class DockerServiceAdapter:
         with self._client() as client:
             return client.login_check(keep_open=keep_open)
 
-    async def resolve_project(self, *, name: str, keep_open: bool = False) -> dict[str, Any]:
-        return await asyncio.to_thread(self._resolve_project_sync, name, keep_open)
+    async def resolve_project(
+        self,
+        *,
+        name: str,
+        keep_open: bool = False,
+        project_url: str | None = None,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(self._resolve_project_sync, name, keep_open, project_url)
 
-    def _resolve_project_sync(self, name: str, keep_open: bool) -> dict[str, Any]:
+    def _resolve_project_sync(self, name: str, keep_open: bool, project_url: str | None = None) -> dict[str, Any]:
+        effective_project_url = project_url or self.project_url
         with self._client() as client:
-            return client.resolve_project(name=name, keep_open=keep_open, project_url=self.project_url)
+            return client.resolve_project(name=name, keep_open=keep_open, project_url=effective_project_url)
 
     async def debug_project_list(
         self,
@@ -468,12 +475,22 @@ class DockerServiceAdapter:
                 project_url=self.project_url,
             )
 
-    async def remove_project(self, *, keep_open: bool = False) -> dict[str, Any]:
-        return await asyncio.to_thread(self._remove_project_sync, keep_open)
+    async def remove_project(
+        self,
+        *,
+        keep_open: bool = False,
+        project_url: str | None = None,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url)
 
-    def _remove_project_sync(self, keep_open: bool) -> dict[str, Any]:
+    def _remove_project_sync(self, keep_open: bool, project_url: str | None = None) -> dict[str, Any]:
+        effective_project_url = project_url or self.project_url
         with self._client() as client:
-            return client.remove_project(keep_open=keep_open, project_url=self.project_url, profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS)
+            return client.remove_project(
+                keep_open=keep_open,
+                project_url=effective_project_url,
+                profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
+            )
 
     async def discover_project_source_capabilities(self, *, keep_open: bool = False) -> dict[str, Any]:
         return await asyncio.to_thread(self._discover_project_source_capabilities_sync, keep_open)
