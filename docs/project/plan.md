@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
 accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
-active repair target: chatgpt_claudecode_workflow-2_v0.1.77.7.zip
+active repair target: chatgpt_claudecode_workflow-2_v0.1.77.8.zip
 next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
@@ -13,7 +13,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.7 is a repair candidate that preserves that slice while passing the resolved exact project URL explicitly during cleanup retry after v0.1.77.6 release-control still failed at `project_remove_cleanup`.
+Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.8 is a repair candidate that preserves that slice while making the Docker-service adapter accept and forward explicit per-call project URLs after v0.1.77.7 release-control still failed at `project_remove_cleanup`.
 ```
 
 ## Release / slice plan
@@ -393,4 +393,22 @@ Expected validation: focused cleanup retarget tests, project control-surface tes
 DoD movement: DOD-040 done after focused validation.
 Risk: ChatGPT UI may still refuse deletion if no delete action is exposed, but cleanup must remain fail-closed.
 Next step: run release-control for v0.1.77.7 and adopt only after pb artifact current --all --json confirms alignment.
+```
+
+
+## Repair definition — v0.1.77.8
+
+```text
+Release: v0.1.77.8
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: Docker-service cleanup retarget accepts explicit project URL
+Goal: ensure retargeted temporary project cleanup sends the exact resolved project URL through Docker-service remove/resolve calls.
+In scope: DockerServiceAdapter remove_project/resolve_project optional project_url support, focused cleanup adapter regression test, repair/status docs, version metadata.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, Docker/deployment behavior, normal release scope.
+Expected files: promptbranch_full_integration_test.py, tests/test_full_integration_harness.py, docs/repair-v0.1.77.8.md, docs/project/*, version surfaces.
+Expected validation: focused DockerServiceAdapter cleanup test, project control-surface tests, version tests, compileall, bash syntax, ZIP hygiene, clean extraction validation, then full release-control by operator.
+DoD movement: DOD-041 done after focused validation.
+Risk: ChatGPT UI may still refuse deletion even when called with the exact resolved project URL, but cleanup remains fail-closed.
+Next step: run release-control for v0.1.77.8 and adopt only after pb artifact current --all --json confirms alignment.
 ```

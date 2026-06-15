@@ -64,4 +64,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.77.5 | repair | Required root `.gitignore` packaging repair | repair_required | release-control failed: cleanup still could not remove exact-name-resolvable temporary project; scheduler validation group timed out at 600 seconds | DOD-038 done; DOD-039 required | pending/rejected |
 | v0.1.77.6 | repair | Project-page delete-menu fallback and bounded validation timeout | repair_required | full release-control failed at `project_remove_cleanup`; release-validation groups passed | DOD-039 done | pending |
-| v0.1.77.7 | repair | Explicit resolved-project-url cleanup retry | candidate | focused tests, compileall, ZIP hygiene; full release-control pending | DOD-040 done | pending |
+| v0.1.77.7 | repair | Explicit resolved-project-url cleanup retry | repair_required | full release-control failed: Docker-service adapter did not accept explicit per-call project URL, so retargeted cleanup still could not remove exact-name-resolvable project | DOD-040 done; DOD-041 required | pending/rejected |
+
+| v0.1.77.8 | repair | Docker-service cleanup retarget accepts explicit project URL | candidate | focused DockerServiceAdapter cleanup tests, project control/version tests, compileall, bash syntax, ZIP hygiene; full release-control pending | DOD-041 done | pending |
