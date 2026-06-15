@@ -4240,11 +4240,16 @@ class ChatGPTBrowserClient:
         delete_action = None
 
         if self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
+            await self._wait_for_rate_limit_modal_to_clear(
+                page,
+                label="project-remove-page-details-preflight",
+                timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 20_000),
+            )
             page_details_button = await self._find_visible_locator(
                 page,
                 PROJECT_PAGE_DETAILS_MENU_SELECTORS,
                 label="project-page-details-menu",
-                timeout_ms=1_500,
+                timeout_ms=8_000,
             )
             if page_details_button is not None:
                 try:
@@ -4296,6 +4301,14 @@ class ChatGPTBrowserClient:
                     project_url=project_home_url,
                 )
                 await page.wait_for_timeout(350)
+
+            if container is None:
+                await self._wait_for_rate_limit_modal_to_clear(
+                    page,
+                    label="project-remove-sidebar-final-rate-limit-check",
+                    timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 20_000),
+                )
+                container = await self._find_project_sidebar_container(page, project_url=project_home_url)
 
             if container is None:
                 raise ResponseTimeoutError("Could not find the configured project in the sidebar")

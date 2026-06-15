@@ -39,3 +39,7 @@
 | ADR-PROJ-035 | 2026-06-14 | Retry cleanup when sidebar-not-found is not absence-verified and isolate release-validation subprocesses from ambient pytest plugins | v0.1.77.1 proved the project can still exist after a sidebar-not-found cleanup response, and one release-validation group timed out without diagnostic output | v0.1.77.2 retargets cleanup to the exact resolved project URL when available, retries before failing, verifies successful cleanup when a project name is known, and disables ambient pytest plugin autoload in release-validation groups |
 
 | ADR-PROJ-036 | 2026-06-14 | Search the More-projects surface before failing project cleanup when exact-name resolve proves the temporary project is still present | v0.1.77.2 proved fail-closed cleanup but still could not remove a resolvable test project from the normal sidebar path | v0.1.77.3 widens only the cleanup discovery path while preserving fail-closed cleanup semantics |
+
+| ADR-PROJ-037 | 2026-06-15 | Make temporary-project cleanup rate-limit-aware before failing | v0.1.77.3 failed after ChatGPT 429/modal pressure left an exact-name project resolvable but not removable through the normal path | Cleanup retry delay now reads nested rate-limit telemetry and uses extended attempts; no normal slice advanced |
+
+| ADR-PROJ-038 | 2026-06-15 | Treat missing required root `.gitignore` in v0.1.77.4 as a repair-only packaging defect | Release-control import validation blocks install before tests when required root files are absent | v0.1.77.5 restores `.gitignore`; no normal slice advances |

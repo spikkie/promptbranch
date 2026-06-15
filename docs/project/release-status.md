@@ -57,3 +57,9 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.77.2 | repair | Temporary project cleanup retry and release-validation isolation | repair_required | release-control failed: exact-name project still present but normal sidebar removal could not find configured project | DOD-035 done; DOD-036 required | pending/rejected |
 
 | v0.1.77.3 | repair | Hidden temporary project removal hardening | candidate | focused project removal tests, cleanup retry tests, project control-surface tests, version tests, compileall, ZIP hygiene | DOD-036 done; no slice or line advanced | pending adoption evidence |
+
+| v0.1.77.3 | repair | Hidden temporary project removal hardening | repair_required | release-control failed: exact-name project remained resolvable under ChatGPT 429/rate-limit pressure and cleanup could not remove it | DOD-036 done; DOD-037 required | pending/rejected |
+
+| v0.1.77.4 | repair | Rate-limit-aware temporary project cleanup retry hardening | candidate | focused cleanup/remove tests, project control-surface tests, version tests, compileall, ZIP hygiene | DOD-037 done; no slice or line advanced | pending adoption evidence |
+
+| v0.1.77.5 | repair | Required root `.gitignore` packaging repair | candidate | focused version/control tests, import-plan root-file validation, compileall, ZIP hygiene | DOD-038 done; no slice or line advanced | pending adoption evidence |
