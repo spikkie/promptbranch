@@ -412,3 +412,19 @@ DoD movement: DOD-041 done after focused validation.
 Risk: ChatGPT UI may still refuse deletion even when called with the exact resolved project URL, but cleanup remains fail-closed.
 Next step: run release-control for v0.1.77.8 and adopt only after pb artifact current --all --json confirms alignment.
 ```
+## Repair slice — v0.1.77.9
+
+```text
+Release: v0.1.77.9
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: source-save stale-inflight proof and cleanup project-name forwarding
+Goal: unblock v0.1.77 release-control by making text-source stale-inflight handling depend on post-refresh persistence proof and by forwarding project_name with exact project_url through cleanup removal.
+In scope: source-save quiet diagnostic handling, post-refresh persistence proof boundary, Docker/service/browser cleanup request forwarding, focused regression tests.
+Out of scope: normal release scope, repo-loop semantics, registry/adoption semantics, Project Source upload behavior beyond validation proof, release-set orchestration.
+Expected validation: focused source-save quiet tests, cleanup/remove tests, service-client request tests, project control-surface tests, version tests, compileall, ZIP hygiene.
+DoD movement: DOD-042 done.
+Risk: live ChatGPT UI may still expose no removable state for leaked projects; fail-closed cleanup remains required.
+Next step: run release-control for v0.1.77.9.
+```
+

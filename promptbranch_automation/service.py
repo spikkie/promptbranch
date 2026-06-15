@@ -1074,6 +1074,7 @@ class ChatGPTAutomationService:
         self,
         *,
         keep_open: bool = False,
+        project_name: Optional[str] = None,
         profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
         logger.info("Removing ChatGPT project")
@@ -1082,6 +1083,7 @@ class ChatGPTAutomationService:
                 "remove_project",
                 lambda: self._build_bot().remove_project(
                     keep_open=keep_open,
+                    project_name=project_name,
                 ),
             )
             self._recent_project_chats.clear()

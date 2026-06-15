@@ -681,6 +681,57 @@ def test_wait_for_project_source_save_request_quiet_rejects_committed_stale_infl
     assert "stale_inflight_after_commit=True" in message
     assert "quiet_reason=stale_inflight_after_commit_not_quiet" in message
 
+
+
+def test_wait_for_project_source_save_request_quiet_allows_stale_inflight_when_persistence_will_verify(browser_client: ChatGPTBrowserClient) -> None:
+    class _QuietPage:
+        def __init__(self) -> None:
+            self.wait_calls: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.wait_calls.append(timeout_ms)
+            await asyncio.sleep(0)
+
+    page = _QuietPage()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        now = loop.time()
+        watch = {
+            "installed": True,
+            "source_kind": "text",
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": True,
+            "commit_seen_at": now - 1.0,
+            "inflight": {1},
+            "last_activity": now - 1.0,
+        }
+
+        result = loop.run_until_complete(
+            browser_client._wait_for_project_source_save_request_quiet(
+                page,
+                watch,
+                source_kind="text",
+                timeout_ms=120,
+                observation_window_ms=40,
+                quiet_window_ms=20,
+                stale_inflight_after_commit_grace_ms=30,
+                poll_interval_ms=10,
+                allow_stale_inflight_after_commit=True,
+            )
+        )
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+    assert result["quiet_now"] is True
+    assert result["stale_inflight_after_commit"] is True
+    assert result["stale_inflight_soft_quiet"] is True
+    assert result["quiet_reason"] == "stale_inflight_after_commit_soft_quiet_requires_persistence_verification"
+
 def test_wait_for_project_source_save_request_quiet_falls_back_to_observation_window(browser_client: ChatGPTBrowserClient) -> None:
     class _QuietPage:
         def __init__(self) -> None:

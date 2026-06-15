@@ -1356,17 +1356,23 @@ class ChatGPTBrowserClient:
         self,
         *,
         keep_open: bool = False,
+        project_name: Optional[str] = None,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
+        effective_project_url = project_url or self.config.project_url
         self._log(
             "project-remove",
             "starting remove_project",
-            project_url=self.config.project_url,
+            project_url=effective_project_url,
+            project_name=project_name,
             keep_open=keep_open,
         )
         return await self._run_with_context(
             operation_name="project_remove",
             operation=self._remove_project_operation,
             keep_open=keep_open,
+            project_name=project_name,
+            project_url=project_url,
         )
 
     async def add_project_source(
@@ -4241,9 +4247,11 @@ class ChatGPTBrowserClient:
         context: Any,
         page: Any,
         keep_open: bool = False,
+        project_name: Optional[str] = None,
+        project_url: Optional[str] = None,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
-        project_home_url = self._project_home_url()
+        project_home_url = self._normalize_project_url(project_url) if project_url else self._project_home_url()
         project_id = self._extract_project_id_from_url(project_home_url)
         await self._goto(page, project_home_url, label="project-remove-home")
         await self._ensure_sidebar_open(page)
@@ -4301,7 +4309,7 @@ class ChatGPTBrowserClient:
                     if inspect.isawaitable(prepared):
                         await prepared
 
-                container = await self._find_project_sidebar_container(page, project_url=project_home_url)
+                container = await self._find_project_sidebar_container(page, project_url=project_home_url, project_name=project_name)
                 if container is not None:
                     break
                 self._log(
@@ -4311,6 +4319,7 @@ class ChatGPTBrowserClient:
                     strategy=label,
                     project_id=project_id,
                     project_url=project_home_url,
+                    project_name=project_name,
                 )
                 await page.wait_for_timeout(350)
 
@@ -4320,7 +4329,7 @@ class ChatGPTBrowserClient:
                     label="project-remove-sidebar-final-rate-limit-check",
                     timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 20_000),
                 )
-                container = await self._find_project_sidebar_container(page, project_url=project_home_url)
+                container = await self._find_project_sidebar_container(page, project_url=project_home_url, project_name=project_name)
 
             if container is None:
                 raise ResponseTimeoutError("Could not find the configured project in the sidebar")
@@ -4762,6 +4771,7 @@ class ChatGPTBrowserClient:
                     }
 
         save_request_watch = None
+        save_request_quiet_result: Optional[dict[str, Any]] = None
         if normalized_kind in {"text", "file"} and not duplicate_detected:
             save_request_watch = self._install_project_source_save_request_watch(
                 context,
@@ -4820,10 +4830,11 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     expected_source_name=canonical_display_name if normalized_kind == "file" else display_name,
                 )
-                await self._wait_for_project_source_save_request_quiet(
+                save_request_quiet_result = await self._wait_for_project_source_save_request_quiet(
                     page,
                     save_request_watch,
                     source_kind=normalized_kind,
+                    allow_stale_inflight_after_commit=True,
                 )
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
@@ -4921,6 +4932,7 @@ class ChatGPTBrowserClient:
                 "persistence_error": str(exc),
                 "persistence_false_negative_possible": persistence_false_negative_possible,
                 "save_request_summary": save_summary,
+                "save_request_quiet": save_request_quiet_result,
                 "already_exists": duplicate_detected or overwritten_existing,
                 "added": False,
                 "overwritten": overwritten_existing,
@@ -4965,6 +4977,7 @@ class ChatGPTBrowserClient:
             "post_refresh_verified": True,
             "post_refresh_attempt": post_refresh_attempt,
             "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+            "save_request_quiet": save_request_quiet_result,
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
@@ -15198,6 +15211,7 @@ class ChatGPTBrowserClient:
         quiet_window_ms: int = 2_000,
         stale_inflight_after_commit_grace_ms: int = 3_000,
         poll_interval_ms: int = 150,
+        allow_stale_inflight_after_commit: bool = False,
     ) -> dict[str, Any]:
         if watch is None:
             await page.wait_for_timeout(observation_window_ms)
@@ -15253,15 +15267,19 @@ class ChatGPTBrowserClient:
                 )
                 or (not saw_relevant and observation_window_elapsed)
             )
-            # A commit request that is still inflight is not a safe persistence
-            # boundary.  Live v0.1.50.2 source-add verification overclaimed
-            # success after seeing one finished request while another relevant
-            # upload/commit request was still inflight.  Keep the stale-inflight
-            # flag as diagnostic evidence, but do not treat it as quiet.
-            quiet_now = normal_quiet
+            # A commit request that is still inflight is not, by itself, a safe
+            # persistence boundary.  In normal callers, stale inflight remains a
+            # hard timeout diagnostic.  Source-add callers that immediately run a
+            # post-refresh persistence proof may opt into a soft boundary: the
+            # quiet wait stops only so the stronger persistence verifier can prove
+            # the source card survived refresh.
+            stale_inflight_soft_quiet = bool(allow_stale_inflight_after_commit and stale_inflight_after_commit)
+            quiet_now = normal_quiet or stale_inflight_soft_quiet
             quiet_reason = None
             if normal_quiet:
                 quiet_reason = "no_inflight_quiet" if saw_relevant else "observation_window_no_relevant_requests"
+            elif stale_inflight_soft_quiet:
+                quiet_reason = "stale_inflight_after_commit_soft_quiet_requires_persistence_verification"
             elif stale_inflight_after_commit:
                 quiet_reason = "stale_inflight_after_commit_not_quiet"
             last_state = {
@@ -15280,6 +15298,8 @@ class ChatGPTBrowserClient:
                 "stale_inflight_after_commit_grace_ms": stale_inflight_after_commit_grace_ms,
                 "quiet_now": quiet_now,
                 "quiet_reason": quiet_reason,
+                "allow_stale_inflight_after_commit": allow_stale_inflight_after_commit,
+                "stale_inflight_soft_quiet": stale_inflight_soft_quiet,
             }
             self._log(
                 "project-source-add",
@@ -16364,14 +16384,18 @@ class ChatGPTBrowserClient:
                 candidates.append(button)
         return candidates
 
-    async def _find_project_sidebar_container(self, page: Any, *, project_url: Optional[str] = None) -> Optional[Any]:
+    def _normalize_project_name(self, value: Optional[str]) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip().lower()
+
+    async def _find_project_sidebar_container(self, page: Any, *, project_url: Optional[str] = None, project_name: Optional[str] = None) -> Optional[Any]:
         target_url = project_url or self._project_home_url()
         project_id = self._extract_project_id_from_url(target_url)
-        if not project_id:
+        normalized_project_name = self._normalize_project_name(project_name) if project_name else ""
+        if not project_id and not normalized_project_name:
             return None
         handle = await page.evaluate_handle(
             r"""
-            ({ projectId, ariaHints }) => {
+            ({ projectId, projectName, ariaHints }) => {
                 const extractProjectId = value => {
                     try {
                         const url = new URL(value, window.location.origin);
@@ -16382,6 +16406,7 @@ class ChatGPTBrowserClient:
                     }
                 };
                 const hasVisibleLayout = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                const normalize = value => (value || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
                 const anchors = Array.from(
                     document.querySelectorAll(
                         'a[data-sidebar-item="true"][href*="/project"], aside a[href*="/project"], nav a[href*="/project"], a[href*="/project"]'
@@ -16389,7 +16414,15 @@ class ChatGPTBrowserClient:
                 );
                 for (const anchor of anchors) {
                     const hrefProjectId = extractProjectId(anchor.getAttribute('href') || '');
-                    if (!hrefProjectId || hrefProjectId !== projectId) continue;
+                    const nameHaystack = normalize([
+                        anchor.textContent,
+                        anchor.getAttribute('aria-label'),
+                        anchor.getAttribute('title'),
+                        anchor.getAttribute('data-testid'),
+                    ].filter(Boolean).join(' '));
+                    const idMatches = !!projectId && !!hrefProjectId && hrefProjectId === projectId;
+                    const nameMatches = !!projectName && nameHaystack.includes(projectName);
+                    if (!idMatches && !nameMatches) continue;
                     let current = anchor.closest('li') || anchor;
                     while (current && current !== document.body) {
                         const buttons = Array.from(current.querySelectorAll('button,[role="button"]')).filter(hasVisibleLayout);
@@ -16408,7 +16441,7 @@ class ChatGPTBrowserClient:
                 return null;
             }
             """,
-            {"projectId": project_id, "ariaHints": list(PROJECT_OPTIONS_ARIA_HINTS)},
+            {"projectId": project_id, "projectName": normalized_project_name, "ariaHints": list(PROJECT_OPTIONS_ARIA_HINTS)},
         )
         try:
             return handle.as_element()

@@ -67,3 +67,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.77.7 | repair | Explicit resolved-project-url cleanup retry | repair_required | full release-control failed: Docker-service adapter did not accept explicit per-call project URL, so retargeted cleanup still could not remove exact-name-resolvable project | DOD-040 done; DOD-041 required | pending/rejected |
 
 | v0.1.77.8 | repair | Docker-service cleanup retarget accepts explicit project URL | candidate | focused DockerServiceAdapter cleanup tests, project control/version tests, compileall, bash syntax, ZIP hygiene; full release-control pending | DOD-041 done | pending |
+| v0.1.77.8 | repair | Docker-service cleanup retarget per-call project URL support | repair_required | full release-control failed: text source-add stale inflight after commit and cleanup still could not remove exact-name-resolvable project | DOD-041 done; DOD-042 required | pending/rejected |
+| v0.1.77.9 | repair | Source-save stale-inflight proof and cleanup project-name forwarding | candidate | focused source-save quiet, cleanup/remove, service-client, project-control, version, compileall, ZIP hygiene checks | DOD-042 done; no normal slice advanced | pending adoption evidence |
+
