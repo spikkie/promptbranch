@@ -22,7 +22,7 @@ next planned slice: install/test v0.1.77.9, then adopt only after release-contro
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.77.9.zip candidate once packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.77.10.zip candidate once packaged
 latest installed ZIP: v0.1.77.7 installed/tested_failed
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.76.zip
 release status: v0.1.77 repair line in progress; v0.1.77.9 candidate once packaged; not accepted/current
@@ -59,3 +59,9 @@ v0.1.77.9 repair candidate
 v0.1.77.8 full release-control failed before adoption because text Project Source add treated stale inflight after commit as a hard timeout before post-refresh persistence verification, and cleanup still lacked a project-name fallback through the removal request stack. v0.1.77.9 repairs only those validation defects and remains candidate until full release-control and adoption evidence pass.
 ```
 
+
+## Repair status — v0.1.77.10
+
+```text
+v0.1.77.9 release-control failed before full browser tests because Docker service recreation kept reporting stale service version `0.1.77.8` while `v0.1.77.9` was expected. v0.1.77.10 pins the Compose service image to the release-derived image reference unless `PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE=1` is explicitly set. v0.1.77.10 remains candidate until full release-control and adoption evidence pass.
+```

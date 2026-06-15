@@ -781,7 +781,25 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
     assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
     assert 'up --build --force-recreate "$@"' in run_script
     assert 'PROMPTBRANCH_SERVICE_IMAGE_TAG' in script
+    assert 'promptbranch_service_image_ref' in script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE="${image_ref}"' in script
+    assert 'PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE' in script
     assert 'release_version_plain_from_version_file' in script
+
+
+def test_release_control_pins_compose_service_image_to_release_version() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    run_script = (root / "run_chatgpt_service.sh").read_text(encoding="utf-8")
+    dev_script = (root / "run_chatgpt_service_dev.sh").read_text(encoding="utf-8")
+
+    assert 'promptbranch_service_image_ref()' in script
+    assert 'local default_image="promptbranch-service:${image_tag}"' in script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE="${image_ref}"' in script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE=%q' in script
+    assert 'PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE' in script
+    assert 'export PROMPTBRANCH_SERVICE_IMAGE="promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG}"' in run_script
+    assert 'export PROMPTBRANCH_SERVICE_IMAGE="promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG}"' in dev_script
 
 
 

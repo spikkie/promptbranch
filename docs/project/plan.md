@@ -428,3 +428,20 @@ Risk: live ChatGPT UI may still expose no removable state for leaked projects; f
 Next step: run release-control for v0.1.77.9.
 ```
 
+
+## Repair definition — v0.1.77.10
+
+```text
+Release: v0.1.77.10
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: version-pinned Docker service image selection
+Goal: Prevent release-control from validating against a stale Docker service image after install.
+In scope: release-control Docker Compose image pinning, service start image pinning, focused shell-script tests, repair docs.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload semantics, browser cleanup semantics, Docker deployment architecture changes.
+Expected files: chatgpt_claudecode_workflow_release_control.sh, run_chatgpt_service.sh, run_chatgpt_service_dev.sh, tests/test_promptbranch_shell_scripts.py, docs/repair-v0.1.77.10.md, docs/project/*, version surfaces.
+Expected validation: focused shell-script tests, project control/version tests, compileall, bash syntax, ZIP hygiene, release import-plan.
+DoD movement: DOD-043 done after focused validation.
+Risk: A deliberately custom image override now requires PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE=1 during release-control.
+Next step: run release-control for v0.1.77.10 and adopt only after pb artifact current --all --json confirms alignment.
+```

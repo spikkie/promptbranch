@@ -16,6 +16,10 @@ release_version_plain_from_version_file() {
 
 export PROMPTBRANCH_SERVICE_IMAGE_TAG="${PROMPTBRANCH_SERVICE_IMAGE_TAG:-$(release_version_plain_from_version_file VERSION)}"
 
+if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" != "1" ]]; then
+  export PROMPTBRANCH_SERVICE_IMAGE="promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG}"
+fi
+
 export CHATGPT_PASSWORD_SECRET_FILE="${CHATGPT_PASSWORD_SECRET_FILE:-${HOME}/.config/chatgpt/password.txt}"
 export COMPOSE_PROJECT_NAME="chatgpt_claudecode_workflow"
 export PROMPTBRANCH_SERVICE_PORT="8000"
