@@ -101,3 +101,7 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/repair-v0.1.77.2.md` | failed repair evidence | `docs/repair-v0.1.77.3.md`, `docs/project/release-status.md` | updated | v0.1.77.2 fixed retry/retarget semantics but full release-control still failed when the exact-name project remained resolvable and normal sidebar removal could not find it. v0.1.77.3 adds a More-projects removal fallback. |
+
+| `docs/repair-v0.1.77.4.md` | repair_evidence | `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md` | migrated | Documents rate-limit-aware cleanup repair; no normal slice advanced. |
+
+| `docs/repair-v0.1.77.5.md` | repair_evidence | `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md` | migrated | Documents required root `.gitignore` packaging repair; no normal slice advanced. |

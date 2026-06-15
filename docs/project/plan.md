@@ -328,3 +328,35 @@ DoD movement: DOD-036 added/done after focused validation.
 Risk: live ChatGPT rate-limit pressure may still require rerun or manual cleanup for already leaked projects.
 Next step: run release-control for v0.1.77.3 and adopt only after pb artifact current --all --json confirms alignment.
 ```
+
+
+## Repair definition — v0.1.77.4
+
+```text
+Release: v0.1.77.4
+Baseline: accepted/current v0.1.76 plus intended v0.1.77/v0.1.77.1/v0.1.77.2/v0.1.77.3 repair-line content
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.77.3 failed release-control because exact-name cleanup still found the temporary project while ChatGPT rate-limit telemetry showed backend 429/modal pressure.
+In scope: rate-limit-aware cleanup retry delay, extended cleanup attempts, longer direct project details-menu wait, final rate-limit modal clearance before sidebar-not-found failure, focused tests, repair/status docs, version metadata.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, Docker/deployment behavior, new normal slice work.
+Expected validation: focused cleanup/remove tests, project control-surface test, version tests, compileall, ZIP hygiene, clean extraction validation.
+Next step: run release-control for v0.1.77.5 and adopt only after pb artifact current --all --json confirms alignment.
+```
+
+
+## Repair definition — v0.1.77.5
+
+```text
+Release: v0.1.77.5
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: Required root `.gitignore` packaging repair
+Goal: Restore required root `.gitignore` in the ZIP so release-control import validation can proceed.
+In scope: `.gitignore`, version surfaces, repair docs/status updates, focused validation.
+Out of scope: normal release scope, repo-loop semantics, registry/adoption semantics, Project Source upload behavior.
+Expected validation: import-plan root-file check, focused version/control tests, compileall, bash syntax, ZIP hygiene.
+DoD movement: DOD-038 done.
+Risk: low; packaging surface only.
+Next step: run release-control for v0.1.77.5 and adopt only after pb artifact current --all --json confirms alignment.
+```

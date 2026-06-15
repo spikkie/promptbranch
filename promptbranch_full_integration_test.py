@@ -873,6 +873,34 @@ async def _verify_project_absent_for_cleanup(
     }
 
 
+def _rate_limit_telemetry_from_payload(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    telemetry = payload.get("rate_limit_telemetry")
+    if isinstance(telemetry, dict):
+        return telemetry
+    result = payload.get("resolve_result")
+    if isinstance(result, dict):
+        telemetry = result.get("rate_limit_telemetry")
+        if isinstance(telemetry, dict):
+            return telemetry
+    return {}
+
+
+def _payload_has_rate_limit_telemetry(payload: Any) -> bool:
+    telemetry = _rate_limit_telemetry_from_payload(payload)
+    if not telemetry:
+        return False
+    if bool(telemetry.get("rate_limit_modal_detected")):
+        return True
+    if bool(telemetry.get("conversation_history_429_seen")):
+        return True
+    if bool(telemetry.get("backend_api_guardrail_seen")):
+        return True
+    events = telemetry.get("service_rate_limit_events")
+    return isinstance(events, list) and bool(events)
+
+
 def _retry_after_seconds_from_busy_payload(payload: Any, *, default_seconds: float = 10.0, max_seconds: float = 30.0) -> float:
     if isinstance(payload, dict):
         for key in ("retry_after_seconds", "waited_seconds"):
@@ -882,6 +910,31 @@ def _retry_after_seconds_from_busy_payload(payload: Any, *, default_seconds: flo
                 continue
             if value > 0:
                 return min(max_seconds, value)
+        telemetry = _rate_limit_telemetry_from_payload(payload)
+        if telemetry:
+            waits: list[float] = []
+            for key in ("cooldown_remaining_seconds", "cooldown_wait_seconds_total"):
+                try:
+                    value = float(telemetry.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    waits.append(value)
+            events = telemetry.get("service_rate_limit_events")
+            if isinstance(events, list):
+                for event in events:
+                    if not isinstance(event, dict):
+                        continue
+                    try:
+                        value = float(event.get("wait_seconds"))
+                    except (TypeError, ValueError):
+                        continue
+                    if value > 0:
+                        waits.append(value)
+            if waits:
+                return min(max_seconds, max(waits))
+            if _payload_has_rate_limit_telemetry(payload):
+                return min(max_seconds, max(default_seconds, 60.0))
     return min(max_seconds, default_seconds)
 
 
@@ -949,9 +1002,9 @@ async def _remove_project_cleanup_with_retry(
             return False
         retarget = _retarget_project_url(absence)
         delay = _retry_after_seconds_from_busy_payload(
-            absence.get("resolve_payload") if isinstance(absence, dict) else None,
+            absence if isinstance(absence, dict) else None,
             default_seconds=max(1.0, step_delay_seconds or 1.0),
-            max_seconds=30.0,
+            max_seconds=180.0 if _payload_has_rate_limit_telemetry(absence) else 30.0,
         )
         details["status"] = "project_remove_cleanup_missing_unverified_retry_wait"
         details["next_attempt"] = attempt + 1
@@ -2160,7 +2213,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     project_service,
                     keep_open=args.keep_open,
                     step_delay_seconds=args.step_delay_seconds,
-                    max_attempts=3,
+                    max_attempts=5,
                     project_name=project_name,
                 )
             except Exception as exc:
