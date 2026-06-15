@@ -63,4 +63,5 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.77.4 | repair | Rate-limit-aware temporary project cleanup retry hardening | candidate | focused cleanup/remove tests, project control-surface tests, version tests, compileall, ZIP hygiene | DOD-037 done; no slice or line advanced | pending adoption evidence |
 
 | v0.1.77.5 | repair | Required root `.gitignore` packaging repair | repair_required | release-control failed: cleanup still could not remove exact-name-resolvable temporary project; scheduler validation group timed out at 600 seconds | DOD-038 done; DOD-039 required | pending/rejected |
-| v0.1.77.6 | repair | Project-page delete-menu fallback and bounded validation timeout | candidate | focused tests, compileall, ZIP hygiene; full release-control pending | DOD-039 done | pending |
+| v0.1.77.6 | repair | Project-page delete-menu fallback and bounded validation timeout | repair_required | full release-control failed at `project_remove_cleanup`; release-validation groups passed | DOD-039 done | pending |
+| v0.1.77.7 | repair | Explicit resolved-project-url cleanup retry | candidate | focused tests, compileall, ZIP hygiene; full release-control pending | DOD-040 done | pending |

@@ -822,6 +822,7 @@ async def _verify_project_absent_for_cleanup(
     *,
     project_name: str | None,
     keep_open: bool,
+    project_url: str | None = None,
 ) -> dict[str, Any]:
     """Verify cleanup postcondition before treating a not-found removal as success.
 
@@ -845,7 +846,10 @@ async def _verify_project_absent_for_cleanup(
             "project_name": project_name,
         }
     try:
-        result = await resolver(name=project_name, keep_open=keep_open)
+        try:
+            result = await resolver(name=project_name, keep_open=keep_open, project_url=project_url)
+        except TypeError:
+            result = await resolver(name=project_name, keep_open=keep_open)
     except Exception as exc:  # noqa: BLE001 - convert cleanup diagnostics to structured data
         return {
             "ok": False,
@@ -955,6 +959,17 @@ async def _remove_project_cleanup_with_retry(
     of silently leaking an integration-test project.
     """
 
+    active_project_url = str(getattr(project_service, "project_url", "") or "").strip() or None
+
+    async def _remove_project_call() -> dict[str, Any]:
+        remover = getattr(project_service, "remove_project")
+        if active_project_url:
+            try:
+                return await remover(keep_open=keep_open, project_url=active_project_url)
+            except TypeError:
+                return await remover(keep_open=keep_open)
+        return await remover(keep_open=keep_open)
+
     def _resolved_project_url(absence: dict[str, Any]) -> str | None:
         result = absence.get("resolve_result") if isinstance(absence, dict) else None
         if not isinstance(result, dict):
@@ -969,27 +984,25 @@ async def _remove_project_cleanup_with_retry(
         return None
 
     def _retarget_project_url(absence: dict[str, Any]) -> dict[str, Any]:
+        nonlocal active_project_url
         url = _resolved_project_url(absence)
         if not url:
             return {"retargeted": False, "reason": "resolved_project_url_missing"}
-        previous = str(getattr(project_service, "project_url", "") or "").strip()
+        previous = active_project_url or str(getattr(project_service, "project_url", "") or "").strip()
         if previous == url:
             return {"retargeted": False, "reason": "already_using_resolved_project_url", "project_url": url}
+        active_project_url = url
         try:
             setattr(project_service, "project_url", url)
-        except Exception as exc:  # noqa: BLE001 - cleanup diagnostics only
-            return {
-                "retargeted": False,
-                "reason": "project_url_attribute_not_mutable",
-                "project_url": url,
-                "previous_project_url": previous,
-                "error_type": type(exc).__name__,
-                "error": str(exc),
-            }
+            attribute_updated = True
+        except Exception:
+            attribute_updated = False
         return {
             "retargeted": True,
             "project_url": url,
             "previous_project_url": previous,
+            "active_project_url": active_project_url,
+            "project_url_attribute_updated": attribute_updated,
         }
 
     async def _retry_after_unverified_absence(
@@ -1029,6 +1042,7 @@ async def _remove_project_cleanup_with_retry(
             project_service,
             project_name=project_name,
             keep_open=keep_open,
+            project_url=active_project_url,
         )
         if absence.get("ok") is True:
             result["absence_verification"] = absence
@@ -1061,7 +1075,7 @@ async def _remove_project_cleanup_with_retry(
             await asyncio.sleep(step_delay_seconds)
         started = time.perf_counter()
         try:
-            result = await project_service.remove_project(keep_open=keep_open)
+            result = await _remove_project_call()
         except Exception as exc:  # noqa: BLE001 - cleanup must become structured report data
             payload = _exception_payload(exc)
             if _is_project_already_missing_cleanup_exception(exc):
@@ -1069,6 +1083,7 @@ async def _remove_project_cleanup_with_retry(
                     project_service,
                     project_name=project_name,
                     keep_open=keep_open,
+                    project_url=active_project_url,
                 )
                 if absence.get("ok") is True:
                     details = _project_already_missing_cleanup_details(
@@ -1159,6 +1174,7 @@ async def _remove_project_cleanup_with_retry(
                 project_service,
                 project_name=project_name,
                 keep_open=keep_open,
+                project_url=active_project_url,
             )
             if absence.get("ok") is True:
                 details = _project_already_missing_cleanup_details(

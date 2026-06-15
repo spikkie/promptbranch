@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
 accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
-active repair target: chatgpt_claudecode_workflow-2_v0.1.77.6.zip
+active repair target: chatgpt_claudecode_workflow-2_v0.1.77.7.zip
 next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
@@ -13,7 +13,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.6 is a repair candidate that preserves that slice while fixing project-page delete-menu discovery and bounding scheduler validation timeout after release-control failures.
+Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.7 is a repair candidate that preserves that slice while passing the resolved exact project URL explicitly during cleanup retry after v0.1.77.6 release-control still failed at `project_remove_cleanup`.
 ```
 
 ## Release / slice plan
@@ -376,3 +376,21 @@ DoD movement: DOD-039 done after focused validation.
 Next step: run release-control for v0.1.77.6 and adopt only after pb artifact current --all --json confirms alignment.
 ```
 
+
+
+## Repair definition — v0.1.77.7
+
+```text
+Release: v0.1.77.7
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: explicit resolved-project-url cleanup retry
+Goal: ensure temporary project cleanup retries remove/resolve requests against the exact resolved project URL instead of only mutating a client attribute.
+In scope: promptbranch_full_integration_test.py cleanup retry plumbing, focused cleanup regression test, repair/status docs, version metadata.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, release-set orchestration, Docker/deployment behavior, normal release scope.
+Expected files: promptbranch_full_integration_test.py, tests/test_full_integration_harness.py, docs/repair-v0.1.77.7.md, docs/project/*, version surfaces.
+Expected validation: focused cleanup retarget tests, project control-surface tests, version tests, compileall, bash syntax, ZIP hygiene, clean extraction validation, then full release-control by operator.
+DoD movement: DOD-040 done after focused validation.
+Risk: ChatGPT UI may still refuse deletion if no delete action is exposed, but cleanup must remain fail-closed.
+Next step: run release-control for v0.1.77.7 and adopt only after pb artifact current --all --json confirms alignment.
+```
