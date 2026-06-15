@@ -31,6 +31,7 @@ in_progress
 | `docs/release-v0.1.66.md` | release_evidence | `docs/project/release-status.md`, `docs/project/status.md` | summarized | Accepted v0.1.66 release evidence. |
 | `docs/release-v*.md` | release_evidence | `docs/project/release-status.md` | partial_summary | Historical release notes remain in place. |
 | `docs/repair-v*.md` | release_evidence | `docs/project/release-status.md` | referenced | Historical repair notes remain in place. |
+| `docs/repair-v0.1.77.6.md` | release_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for project-page delete-menu fallback and bounded scheduler validation timeout. |
 | `docs/promptbranch_ask_reply_protocol_design_and_mvp_plan.md` | historical_reference | `docs/project/migration.md` | referenced | Protocol design history. |
 | `docs/promptbranch_mvp_current_state_and_plan_2026-05-24.md` | historical_reference | `docs/project/migration.md` | referenced | Earlier current-state doc; superseded by accepted v0.1.66 evidence. |
 | `Promptbranch-as-Claude-Code-Shell-Operating-Model.updated-2026-05-03.txt` | historical_reference | `docs/project/migration.md` | referenced | Operating model history. |

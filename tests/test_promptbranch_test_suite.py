@@ -667,3 +667,12 @@ def test_agent_profile_reports_release_validation_groups(monkeypatch, tmp_path: 
     assert groups["missing_required_groups"] == []
     assert set(suite.RELEASE_VALIDATION_GROUPS).issubset(groups["groups"])
     assert any(step["name"] == "release_validation_groups" for step in result["steps"])
+
+
+def test_browser_scheduler_release_validation_group_uses_short_timeout() -> None:
+    import promptbranch_test_suite as suite
+
+    manifest = suite.release_validation_group_manifest()
+    group = manifest["browser_scheduler_source_lifecycle"]
+
+    assert group["timeout_seconds"] == 120.0

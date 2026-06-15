@@ -110,6 +110,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
     "browser_scheduler_source_lifecycle": {
         "required": True,
         "description": "Scheduler/source lifecycle and same-profile queue regression coverage.",
+        "timeout_seconds": 120.0,
         "command": _release_validation_command(
             "-m",
             "pytest",
@@ -146,6 +147,7 @@ def release_validation_group_manifest() -> dict[str, dict[str, Any]]:
         group: {
             "required": bool(spec.get("required")),
             "description": spec.get("description"),
+            "timeout_seconds": float(spec.get("timeout_seconds", 600.0)),
             "command": _resolve_release_validation_command(spec.get("command", [])),
         }
         for group, spec in RELEASE_VALIDATION_GROUPS.items()
@@ -159,6 +161,10 @@ def _tail_text(text: str, *, max_chars: int = 4000) -> str:
 
 
 def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo_path: Path, timeout_seconds: float = 600.0) -> dict[str, Any]:
+    try:
+        timeout_seconds = float(spec.get("timeout_seconds", timeout_seconds))
+    except (TypeError, ValueError):
+        timeout_seconds = 600.0
     command = _resolve_release_validation_command(spec.get("command") or [])
     if not command:
         return {

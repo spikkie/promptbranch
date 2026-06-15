@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
 accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
-active repair target: chatgpt_claudecode_workflow-2_v0.1.77.3.zip
+active repair target: chatgpt_claudecode_workflow-2_v0.1.77.6.zip
 next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
 release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
 ```
@@ -13,7 +13,7 @@ release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane ha
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.3 is a repair candidate that preserves that slice while fixing temporary project cleanup discovered during release-control validation.
+Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.6 is a repair candidate that preserves that slice while fixing project-page delete-menu discovery and bounding scheduler validation timeout after release-control failures.
 ```
 
 ## Release / slice plan
@@ -360,3 +360,19 @@ DoD movement: DOD-038 done.
 Risk: low; packaging surface only.
 Next step: run release-control for v0.1.77.5 and adopt only after pb artifact current --all --json confirms alignment.
 ```
+
+## Repair definition — v0.1.77.6
+
+```text
+Release: v0.1.77.6
+Baseline: accepted/current v0.1.76 plus intended v0.1.77 repair-line content
+Type: repair
+Slice: Project-page delete-menu fallback and bounded scheduler validation timeout
+Reason: v0.1.77.5 failed release-control because the temporary project stayed exact-name resolvable while sidebar removal could not find it, and the scheduler validation group timed out at 600 seconds after browser failure.
+Scope: widen project-page delete-menu selectors; cap browser_scheduler_source_lifecycle release-validation timeout at 120 seconds.
+Out of scope: repo-loop semantics, registry/adoption semantics, Project Source upload behavior, Docker/deployment behavior, normal v0.1.78 scope.
+Expected validation: focused project removal selector tests, release-validation timeout test, project control-surface/version tests, compileall, ZIP hygiene, full release-control.
+DoD movement: DOD-039 done after focused validation.
+Next step: run release-control for v0.1.77.6 and adopt only after pb artifact current --all --json confirms alignment.
+```
+

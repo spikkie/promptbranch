@@ -43,3 +43,5 @@
 | ADR-PROJ-037 | 2026-06-15 | Make temporary-project cleanup rate-limit-aware before failing | v0.1.77.3 failed after ChatGPT 429/modal pressure left an exact-name project resolvable but not removable through the normal path | Cleanup retry delay now reads nested rate-limit telemetry and uses extended attempts; no normal slice advanced |
 
 | ADR-PROJ-038 | 2026-06-15 | Treat missing required root `.gitignore` in v0.1.77.4 as a repair-only packaging defect | Release-control import validation blocks install before tests when required root files are absent | v0.1.77.5 restores `.gitignore`; no normal slice advances |
+
+| ADR-PROJ-039 | 2026-06-15 | Add project-page generic delete-menu fallback and bound scheduler validation timeout | v0.1.77.5 still failed cleanup because the temporary project was exact-name resolvable but the sidebar removal path could not find it; the scheduler validation timeout also cost 600 seconds after browser failure | v0.1.77.6 widens project-page delete-menu selectors and caps `browser_scheduler_source_lifecycle` validation timeout at 120 seconds without changing release/adoption semantics |

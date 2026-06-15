@@ -1853,3 +1853,14 @@ def test_backend_api_url_redaction_keeps_path_and_redacts_query(tmp_path: Path) 
     assert redacted["query_keys"] == ["limit", "offset", "token"]
     assert "secret" not in redacted["redacted_url"]
     assert "token=<redacted>" in redacted["redacted_url"]
+
+
+def test_project_page_details_selectors_include_generic_more_menu_fallbacks() -> None:
+    from promptbranch_browser_auth.client import PROJECT_PAGE_DETAILS_MENU_SELECTORS
+
+    joined = "\n".join(PROJECT_PAGE_DETAILS_MENU_SELECTORS).lower()
+
+    assert 'project details' in joined
+    assert 'project options' in joined
+    assert 'more options' in joined
+    assert 'aria-label="more"' in joined
