@@ -427,6 +427,18 @@ PROJECT_CONFIRM_REMOVE_SELECTORS = [
 PROJECT_PAGE_DETAILS_MENU_SELECTORS = [
     'button[aria-label="Show project details"]',
     'button[aria-label*="project details" i]',
+    'button[aria-label*="project options" i]',
+    'button[aria-label*="project menu" i]',
+    'button[aria-label*="more project" i]',
+    'button[aria-label*="more options" i]',
+    'button[aria-label="More"]',
+    'button[aria-label*="More" i]',
+    'button[title*="project details" i]',
+    'button[title*="project options" i]',
+    'button[title*="more options" i]',
+    '[role="button"][aria-label*="project details" i]',
+    '[role="button"][aria-label*="project options" i]',
+    '[role="button"][aria-label*="more options" i]',
 ]
 PROJECT_OPTIONS_ARIA_HINTS = (
     'project options',
