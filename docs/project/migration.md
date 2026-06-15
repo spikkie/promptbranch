@@ -116,3 +116,5 @@ in_progress
 | `docs/repair-v0.1.77.8.md` | failed repair evidence | `docs/repair-v0.1.77.9.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.77.8 still failed source-add stale-inflight and cleanup project removal. v0.1.77.9 repairs validation defects only and does not advance normal scope. |
 
 | `docs/repair-v0.1.77.10.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for Docker service image pinning after stale service version in v0.1.77.9. |
+| `docs/repair-v0.1.77.11.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for non-anchor project cleanup fallback after v0.1.77.10 cleanup failure. |
+
