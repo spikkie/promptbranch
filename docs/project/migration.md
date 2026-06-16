@@ -132,3 +132,10 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/release-v0.1.78.md` | failed candidate release evidence | `docs/repair-v0.1.78.1.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78 AG-001 installed but failed full release-control in `project_source_add_file`; v0.1.78.1 repairs Project Source mutation transaction hardening/reporting only and does not advance normal scope. |
+
+
+## Repair migration note — v0.1.78.2
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `promptbranch-service_0.1.78.1.log` | live failure evidence | `docs/repair-v0.1.78.2.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Live log proved the service can run real project deletion. v0.1.78.2 freezes public project deletion until a secure delete protocol exists. |

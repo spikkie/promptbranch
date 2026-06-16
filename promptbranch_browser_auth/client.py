@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
+from promptbranch_project_delete_safety import project_delete_disabled_result
 from .exceptions import (
     AuthenticationError,
     AuthChallengeRequiredError,
@@ -1360,20 +1361,13 @@ class ChatGPTBrowserClient:
         project_url: Optional[str] = None,
     ) -> dict[str, Any]:
         effective_project_url = project_url or self.config.project_url
-        self._log(
-            "project-remove",
-            "starting remove_project",
+        result = project_delete_disabled_result(
             project_url=effective_project_url,
             project_name=project_name,
-            keep_open=keep_open,
+            blocked_at_layer="browser_client",
         )
-        return await self._run_with_context(
-            operation_name="project_remove",
-            operation=self._remove_project_operation,
-            keep_open=keep_open,
-            project_name=project_name,
-            project_url=project_url,
-        )
+        self._log("project-remove", "project deletion blocked by safety freeze", **result)
+        return result
 
     async def add_project_source(
         self,

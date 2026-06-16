@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_service_client import ChatGPTServiceClient
+from promptbranch_project_delete_safety import is_project_delete_disabled_payload
 from promptbranch_mcp import handle_mcp_jsonrpc_message, mcp_host_config, mcp_host_smoke, mcp_tool_manifest, serve_mcp_stdio
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
@@ -1204,6 +1205,26 @@ async def _remove_project_cleanup_with_retry(
                 )
             )
             raise IntegrationAssertionError(f"project_remove cleanup failed: {details}") from exc
+
+        if is_project_delete_disabled_payload(result):
+            details = dict(result)
+            details.update({
+                "ok": True,
+                "status": "project_remove_cleanup_skipped_delete_frozen",
+                "postcondition": "temporary_project_retained_delete_frozen",
+                "cleanup_policy": "no_project_delete_until_secure_protocol",
+                "attempt": attempt,
+                "max_attempts": attempts,
+            })
+            cleanup_steps.append(
+                StepResult(
+                    name="project_remove_cleanup",
+                    ok=True,
+                    duration_seconds=round(time.perf_counter() - started, 3),
+                    details=details,
+                )
+            )
+            return details
 
         if _is_project_already_missing_cleanup_payload(result):
             absence = await _verify_project_absent_for_cleanup(

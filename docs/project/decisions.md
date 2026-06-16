@@ -58,3 +58,5 @@
 | ADR-PROJ-046 | 2026-06-16 | Put Artifact Guardian AG-001 before the k8s-game foundation slice | Future k8s-game foundation releases should benefit from a structural artifact guard first | v0.1.78 is AG-001; k8s-game foundation moves to v0.1.79 |
 
 | ADR-PROJ-047 | 2026-06-16 | Project Source mutation must expose explicit transaction states and fail-step reporting | v0.1.78 release-control failed with file source `persistence_not_verified`, commit evidence, stale inflight, and weak failure summary visibility | v0.1.78.1 classifies commit-seen/not-visible states as release-blocking ambiguous transactions, extends file-source post-commit readback, and records returned `{ok:false}` steps as failed immediately |
+
+| ADR-PROJ-048 | 2026-06-16 | Freeze public ChatGPT Project deletion until secure protocol exists | v0.1.78.1 live-log evidence showed Promptbranch can execute real ChatGPT project deletion; even test-project deletion is too dangerous on the real profile | v0.1.78.2 returns canonical `project_delete_disabled` payloads before service/browser execution and treats cleanup as intentionally retained instead of deleting projects |

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from promptbranch_project_delete_safety import project_delete_disabled_result
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     AuthChallengeRequiredError,
@@ -1077,17 +1078,12 @@ class ChatGPTAutomationService:
         project_name: Optional[str] = None,
         profile_lock_wait_seconds: float | None = None,
     ) -> dict[str, Any]:
-        logger.info("Removing ChatGPT project")
-        async with self._lock.operation("remove_project", wait_timeout_seconds=profile_lock_wait_seconds):
-            result = await self._with_retries(
-                "remove_project",
-                lambda: self._build_bot().remove_project(
-                    keep_open=keep_open,
-                    project_name=project_name,
-                ),
-            )
-            self._recent_project_chats.clear()
-            return result
+        logger.warning("Project deletion requested but blocked by delete safety freeze")
+        return project_delete_disabled_result(
+            project_url=self.settings.project_url,
+            project_name=project_name,
+            blocked_at_layer="automation_service",
+        )
 
     async def add_project_source(
         self,
