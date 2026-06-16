@@ -558,3 +558,20 @@ DoD movement: DOD-048 added/done; DOD-047 preserved.
 Risk: version grammar should stay numeric-only and fail closed for labels or ambiguous strings.
 Next step: run release-control on v0.1.78.2.2 and adopt only with pb artifact current alignment evidence.
 ```
+
+## Slice definition — v0.1.78.2.3 repair release
+
+```text
+Release: v0.1.78.2.3
+Baseline: v0.1.78.2.2 candidate ZIP
+Type: repair
+Slice: Retained quarantine project for delete-frozen release tests
+Goal: Stop release-control full tests from creating a new unique ChatGPT Project on every run while project deletion is frozen.
+In scope: release-control pb test full invocation, retained quarantine project default, focused shell-script regression tests, repair/status docs.
+Out of scope: secure delete protocol, actual ChatGPT Project deletion, deleting existing leaked itest projects, Project Source removal behavior changes, AG-001 guard behavior changes, adoption/current changes, k8s-game foundation.
+Expected validation: focused shell-script tests proving pb test full uses --project-name itest-promptbranch-retained-delete-frozen --keep-project, project control/version tests, compileall, bash syntax, ZIP hygiene, release-control before adoption.
+DoD movement: DOD-049 added/done; DOD-047 and DOD-048 preserved.
+Risk: the retained quarantine project can accumulate test chats/sources over time; source add/remove checks must continue to use unique source names and remove sources after each run.
+Next step: run release-control on v0.1.78.2.3 and adopt only with pb artifact current alignment evidence.
+```
+
