@@ -507,3 +507,20 @@ DoD movement: DOD-046.
 Risk: live ChatGPT file-source indexing may still be delayed beyond the extended readback window; final state remains fail-closed.
 Next step: run release-control on v0.1.78.1 and adopt only with pb artifact current alignment evidence.
 ```
+
+
+## Slice definition — v0.1.78.2 repair release
+
+```text
+Release: v0.1.78.2
+Baseline: v0.1.78.1 candidate ZIP
+Type: repair
+Slice: Project deletion safety freeze
+Goal: Freeze ChatGPT Project deletion after live-log evidence showed Promptbranch can execute real project delete flows.
+In scope: canonical project_delete_disabled payload, /v1/projects/remove pre-service block, public automation/browser remove_project blocks, full-integration cleanup skip for delete-frozen payloads, focused delete-safety tests, repair/status docs.
+Out of scope: future secure delete protocol design, any actual ChatGPT Project deletion, Project Source removal behavior changes, AG-001 guard behavior changes, adoption/current changes, k8s-game foundation.
+Expected validation: tests/test_project_delete_safety.py, project control/version tests, compileall, bash syntax, ZIP hygiene, release-control before adoption.
+DoD movement: DOD-047.
+Risk: temporary integration-test projects can be retained intentionally until a safe cleanup protocol exists. This is safer than accidental deletion of real projects.
+Next step: run release-control on v0.1.78.2 and adopt only with pb artifact current alignment evidence.
+```

@@ -774,7 +774,7 @@ def test_source_remove_waits_behind_source_list_with_same_profile(monkeypatch, t
     assert events == ["list-start", "list-end", "remove-start"]
 
 
-def test_project_remove_waits_behind_source_add_with_same_profile(monkeypatch, tmp_path):
+def test_project_remove_is_frozen_before_profile_scheduler(monkeypatch, tmp_path):
     events: list[str] = []
     profile_dir = tmp_path / ".pb_profile"
 
@@ -821,8 +821,10 @@ def test_project_remove_waits_behind_source_add_with_same_profile(monkeypatch, t
     add_result, remove_result = asyncio.run(run_sequence())
 
     assert add_result["ok"] is True
-    assert remove_result["ok"] is True
-    assert events == ["add-start", "add-end", "project-remove-start"]
+    assert remove_result["ok"] is False
+    assert remove_result["status"] == "project_delete_disabled"
+    assert remove_result["destructive_action_executed"] is False
+    assert events == ["add-start", "add-end"]
 
 
 def test_browser_profile_busy_payload_marks_scheduler_path(monkeypatch, tmp_path):

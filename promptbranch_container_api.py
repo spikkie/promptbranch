@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from promptbranch_automation import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_test_suite import run_test_suite_async
 from promptbranch_version import PACKAGE_VERSION as SERVICE_VERSION
+from promptbranch_project_delete_safety import project_delete_disabled_result
 from promptbranch_browser_auth.client import get_latest_ask_progress
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
@@ -684,14 +685,14 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
 
 @protected.post("/projects/remove", dependencies=[Depends(require_service_token)])
 async def remove_project(payload: ProjectRemoveRequest) -> dict:
-    try:
-        return await _service_for(payload.project_url).remove_project(
-            keep_open=payload.keep_open,
-            project_name=payload.project_name,
-            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
-        )
-    except Exception as exc:  # pragma: no cover - exercised by live runs
-        _raise_http_error(exc)
+    # v0.1.78.2 safety repair: project deletion is frozen at the HTTP
+    # boundary.  The service must not open a browser context or click any
+    # ChatGPT deletion affordance from this endpoint.
+    return project_delete_disabled_result(
+        project_url=payload.project_url,
+        project_name=payload.project_name,
+        blocked_at_layer="container_api",
+    )
 
 
 @protected.post("/project-sources", dependencies=[Depends(require_service_token)])

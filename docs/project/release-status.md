@@ -81,3 +81,5 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.78 | normal | AG-001 — Deterministic Artifact Guardian Guard | repair_required | full release-control failed in `project_source_add_file`: file source persistence not verified after commit/stale-inflight evidence | DOD-045 done; DOD-046 required | pending/rejected |
 | v0.1.78.1 | repair | Project Source mutation transaction hardening | candidate | focused repair tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-046 done; no normal slice advanced | pending |
+
+| v0.1.78.2 | repair | Project deletion safety freeze | candidate | focused delete-safety tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-047 done; no normal slice advanced | pending |

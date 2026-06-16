@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from promptbranch_browser_auth import ChatGPTBrowserClient, ChatGPTBrowserConfig
+from promptbranch_project_delete_safety import project_delete_disabled_result
 
 
 _JSON_PROMPT_DEFAULT_RULES = """
@@ -485,10 +486,10 @@ class ChatGPTAutomation:
         project_name: Optional[str] = None,
         project_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        return await self.client.remove_project(
-            keep_open=keep_open,
+        return project_delete_disabled_result(
+            project_url=project_url or self.project_url,
             project_name=project_name,
-            project_url=project_url,
+            blocked_at_layer="automation_wrapper",
         )
 
     async def add_project_source(
