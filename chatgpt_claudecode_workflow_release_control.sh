@@ -39,6 +39,8 @@ runtime_mode="single_default"
 compose_project_name="${PROMPTBRANCH_DEFAULT_COMPOSE_PROJECT_NAME:-${project_name}}"
 service_port="${PROMPTBRANCH_DEFAULT_SERVICE_PORT:-8000}"
 service_base_url="http://localhost:${service_port}"
+test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
+localhost_base_url="${PROMPTBRANCH_LOCALHOST_BASE_URL:-http://127.0.0.1:${service_port}}"
 export COMPOSE_PROJECT_NAME="${compose_project_name}"
 export PROMPTBRANCH_SERVICE_PORT="${service_port}"
 export CHATGPT_SERVICE_BASE_URL="${service_base_url}"
@@ -91,7 +93,7 @@ Usage:
 
 Options:
   -v, --version VERSION       Highest-precedence release version override.
-                              Accepts v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or <artifact-prefix>_v0.0.239.zip.
+                              Accepts v-prefixed or bare dotted numeric versions with at least three numeric segments, for example v0.0.239, v0.0.239.1, v0.1.78.2.1, or <artifact-prefix>_v0.1.78.2.1.zip.
       --downloads-dir DIR     Directory containing the downloaded candidate ZIP. Default: ~/Downloads.
       --install-from-zip ZIP   Install this candidate ZIP into the working tree before commit/package.
       --skip-zip-import       Do not install a candidate ZIP; operate on the current working tree.
@@ -114,6 +116,8 @@ Options:
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
+      --test-transport MODE   Test transport: direct, localhost, or both. Default: direct.
+      --localhost-base-url URL Base URL for localhost test transport. Default: http://localhost:${service_port}.
       --run-tests             Run pb test full/report. Disabled by default.
                               The test block is wrapped in startlog/stoplog when available,
                               or an internal tee-based session log fallback otherwise.
@@ -178,7 +182,7 @@ normalize_version() {
   raw="${raw#${artifact_project_name}}"
   raw="${raw#_}"
   raw="${raw#-}"
-  if [[ "${raw}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  if [[ "${raw}" =~ ^v?[0-9]+(\.[0-9]+){2,}$ ]]; then
     raw="${raw#v}"
     printf 'v%s\n' "${raw}"
     return 0
@@ -187,7 +191,7 @@ normalize_version() {
   # chatgpt_claudecode_workflow-2_v0.1.0.zip by extracting only the trailing
   # version token. This keeps input ZIP handling flexible while release output
   # uses the selected artifact identity.
-  if [[ "${raw}" =~ (^|[_-])(v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
+  if [[ "${raw}" =~ (^|[_-])(v?[0-9]+(\.[0-9]+){2,})$ ]]; then
     raw="${BASH_REMATCH[2]}"
     raw="${raw#v}"
     printf 'v%s\n' "${raw}"
@@ -201,7 +205,7 @@ artifact_prefix_from_zip_name() {
   local raw="$1"
   raw="${raw##*/}"
   raw="${raw%.zip}"
-  if [[ "${raw}" =~ ^(.+)[_-]v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  if [[ "${raw}" =~ ^(.+)[_-]v?[0-9]+(\.[0-9]+){2,}$ ]]; then
     printf '%s\n' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -479,6 +483,18 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
+    --test-transport)
+      [[ $# -ge 2 ]] || fail "--test-transport requires direct, localhost, or both"
+      test_transport="$2"
+      shift 2
+      ;;
+    --test-transport=*) test_transport="${1#*=}"; shift ;;
+    --localhost-base-url)
+      [[ $# -ge 2 ]] || fail "--localhost-base-url requires a URL"
+      localhost_base_url="$2"
+      shift 2
+      ;;
+    --localhost-base-url=*) localhost_base_url="${1#*=}"; shift ;;
     --run-tests) skip_tests=0; shift ;;
     --tests-only|--run-tests-only)
       tests_only=1
@@ -531,6 +547,10 @@ case "${service_mode}" in
   detached|foreground) ;;
   *) fail "--service-mode must be detached or foreground; got ${service_mode}" ;;
 esac
+case "${test_transport}" in
+  direct|localhost|both) ;;
+  *) fail "--test-transport must be direct, localhost, or both; got ${test_transport}" ;;
+esac
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
 [[ "${release_log_keep}" =~ ^[0-9]+$ ]] || fail "--release-log-keep must be an integer number of version directories"
@@ -560,7 +580,7 @@ if [[ -z "${version_arg}" ]]; then
   fi
 fi
 
-ver="$(normalize_version "${version_arg}")" || fail "version must look like v0.0.239, v0.0.239.1, 0.0.239, 0.0.239.1, or <artifact-prefix>_v0.0.239.zip; got '${version_arg}'"
+ver="$(normalize_version "${version_arg}")" || fail "version must be a v-prefixed or bare dotted numeric version with at least three numeric segments, or an artifact ZIP ending in such a version; got '${version_arg}'"
 ver_plain="${ver#v}"
 if [[ ${install_from_zip} -eq 1 ]]; then
   [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"
@@ -580,9 +600,35 @@ work_dir="${work_parent}/${artifact_project_name}_${ver}"
 release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"
 release_log_dir="${release_log_root}/${ver}"
 mkdir -p "${release_log_dir}"
-full_log="${release_log_dir}/pb_test.full.${ver}.log"
-report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
-structured_summary_json="${release_log_dir}/post_release_validation.${ver}.summary.json"
+case "${test_transport}" in
+  direct)
+    full_log="${release_log_dir}/pb_test.full.${ver}.log"
+    report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
+    structured_summary_json="${release_log_dir}/post_release_validation.${ver}.summary.json"
+    direct_full_log="${full_log}"
+    direct_report_json="${report_json}"
+    localhost_full_log=""
+    localhost_report_json=""
+    ;;
+  localhost)
+    full_log="${release_log_dir}/pb_test.full.localhost.${ver}.log"
+    report_json="${release_log_dir}/pb_test.full.localhost.${ver}.report.json"
+    structured_summary_json="${release_log_dir}/post_release_validation.localhost.${ver}.summary.json"
+    direct_full_log=""
+    direct_report_json=""
+    localhost_full_log="${full_log}"
+    localhost_report_json="${report_json}"
+    ;;
+  both)
+    full_log="${release_log_dir}/pb_test.full.direct.${ver}.log"
+    report_json="${release_log_dir}/pb_test.full.direct.${ver}.report.json"
+    structured_summary_json="${release_log_dir}/post_release_validation.direct.${ver}.summary.json"
+    direct_full_log="${full_log}"
+    direct_report_json="${report_json}"
+    localhost_full_log="${release_log_dir}/pb_test.full.localhost.${ver}.log"
+    localhost_report_json="${release_log_dir}/pb_test.full.localhost.${ver}.report.json"
+    ;;
+esac
 if [[ -n "${PROMPTBRANCH_TEST_SESSION_LOG:-}" ]]; then
   case "${PROMPTBRANCH_TEST_SESSION_LOG}" in
     /*) test_session_log="${PROMPTBRANCH_TEST_SESSION_LOG}" ;;
@@ -876,6 +922,7 @@ printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
+printf 'test_transport: %s\n' "${test_transport}"
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
@@ -1716,41 +1763,63 @@ if [[ ${skip_service} -eq 0 ]]; then
 fi
 
 # Run full suite and parsed report. Always try to create a report, even if the suite fails.
-if [[ ${skip_tests} -eq 0 ]]; then
-  start_test_session_log
-  test_rc=0
-  report_rc=0
-  set +e
+# Default direct transport invariant: CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json
+run_full_test_transport() {
+  local label="$1"
+  local base_url="$2"
+  local selected_full_log="$3"
+  local selected_report_json="$4"
+  local selected_summary_json="$5"
+  local test_rc=0
+  local report_rc=0
 
-  echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${full_log}"
-  CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${full_log}"
+  echo "== pb test transport: ${label} =="
+  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
     workflow_rc=${test_rc}
   fi
 
-  echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} pb test report ${full_log} --json"
-  CHATGPT_SERVICE_BASE_URL="${service_base_url}" pb test report "${full_log}" --json | tee "${report_json}"
+  echo "+ pb test report ${selected_full_log} --json"
+  CHATGPT_SERVICE_BASE_URL="" pb test report "${selected_full_log}" --json | tee "${selected_report_json}"
   report_rc=${PIPESTATUS[0]}
   if [[ ${report_rc} -ne 0 ]]; then
     echo "WARN: pb test report exited with ${report_rc}." >&2
     workflow_rc=${report_rc}
   fi
 
-  write_structured_full_test_summary "${structured_summary_json}" "${report_json}" "${full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
-
-  set -e
+  write_structured_full_test_summary "${selected_summary_json}" "${selected_report_json}" "${selected_full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
 
   if [[ ${adopt_if_green} -eq 1 ]]; then
     if [[ ${test_rc} -ne 0 || ${report_rc} -ne 0 ]]; then
       echo "WARN: skipping adopt because test/report command failed." >&2
     else
-      report_is_green "${report_json}"
+      report_is_green "${selected_report_json}"
       adopt_current_artifact
     fi
   fi
+}
 
+if [[ ${skip_tests} -eq 0 ]]; then
+  start_test_session_log
+  set +e
+
+  case "${test_transport}" in
+    direct)
+      run_full_test_transport "direct" "${service_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
+      ;;
+    localhost)
+      run_full_test_transport "localhost" "${localhost_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
+      ;;
+    both)
+      run_full_test_transport "direct" "${service_base_url}" "${direct_full_log}" "${direct_report_json}" "${structured_summary_json}"
+      run_full_test_transport "localhost" "${localhost_base_url}" "${localhost_full_log}" "${localhost_report_json}" "${release_log_dir}/post_release_validation.localhost.${ver}.summary.json"
+      ;;
+  esac
+
+  set -e
   stop_test_session_log
 fi
 
@@ -1892,6 +1961,10 @@ runtime_mode:   ${runtime_mode}
 compose_name:   ${compose_project_name}
 service_port:   ${service_port}
 service_base:   ${service_base_url}
+test_transport: ${test_transport}
+localhost_base: ${localhost_base_url}
+direct_log: $(summary_value "${tests_summary_active}" "${direct_full_log}")
+localhost_log: $(summary_value "${tests_summary_active}" "${localhost_full_log}")
 service_health: $(summary_value "${service_summary_active}" "${service_health_json}")
 compose_ps:     $(summary_value "${service_summary_active}" "${service_compose_ps_json}")
 service_pid:   $(summary_value "${service_summary_active}" "${service_pid_file}")

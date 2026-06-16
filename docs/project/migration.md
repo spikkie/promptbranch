@@ -139,3 +139,13 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `promptbranch-service_0.1.78.1.log` | live failure evidence | `docs/repair-v0.1.78.2.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Live log proved the service can run real project deletion. v0.1.78.2 freezes public project deletion until a secure delete protocol exists. |
+
+
+## Repair migration note — v0.1.78.2.1
+
+`v0.1.78.2` introduced `promptbranch_project_delete_safety.py` but omitted it from setuptools `py-modules`. `v0.1.78.2.1` fixes packaging only; deletion remains frozen.
+
+
+## Repair migration note — v0.1.78.2.2
+
+`v0.1.78.2.1` failed release-control before normal validation because the candidate release-control script rejected `v0.1.78.2.1` as an invalid version. `v0.1.78.2.2` updates release-control, post-release-validation, and artifact-candidate schema version grammar to accept dotted numeric repair versions with at least three segments. Project deletion remains frozen.
