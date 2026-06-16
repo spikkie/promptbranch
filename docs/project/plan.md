@@ -490,3 +490,20 @@ Slice: Rebaselined JSON orchestration / k8s-game MVP foundation
 Goal: add documentation, schemas, examples, state-machine definitions, and Draw.io roadmap documents for the k8s-game MVP foundation after AG-001 protects release ZIP handoff.
 Out of scope for v0.1.79 until started: game runtime, Dockerfile, Kubernetes manifests, deployment, write-capable orchestration.
 ```
+
+
+## Slice definition — v0.1.78.1 repair release
+
+```text
+Release: v0.1.78.1
+Baseline: v0.1.78 candidate ZIP
+Type: repair
+Slice: Project Source mutation transaction hardening
+Goal: Repair the v0.1.78 release-control failure where file Project Source add saw commit evidence but refreshed persistence was not verified.
+In scope: explicit source mutation transaction classification, extended post-commit file-source readback, failed-step reporting for returned `{ok:false}` step results, focused regression tests, repair note/status updates.
+Out of scope: AG-001 guard behavior changes, build integration, heal, agent orchestration, lifecycle integration, assistant-side handoff, adoption/current changes, k8s-game foundation.
+Expected validation: focused Project Source transaction tests, integration harness step-result tests, project control/version tests, compileall, bash syntax, ZIP hygiene, release-control from ZIP.
+DoD movement: DOD-046.
+Risk: live ChatGPT file-source indexing may still be delayed beyond the extended readback window; final state remains fail-closed.
+Next step: run release-control on v0.1.78.1 and adopt only with pb artifact current alignment evidence.
+```

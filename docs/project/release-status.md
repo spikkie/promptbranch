@@ -78,3 +78,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.77.11 | repair | Name-only non-anchor project cleanup fallback | accepted_current | full release-control passed; adoption/current evidence confirmed runtime/state/source/registry consistency | DOD-044 done; v0.1.77 repair line closed | 825e3b3a5e2d36214ddcdeb6f97ece8601a82f35322a34c96a6e3e2bab78af44 |
 | v0.1.78 | normal | AG-001 — Deterministic Artifact Guardian Guard | candidate | focused Artifact Guardian tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-045 done after focused validation; DOD-011 pending adoption | pending |
 | v0.1.79 | normal | Rebaselined JSON orchestration / k8s-game MVP foundation | planned | not run | no DoD movement yet | pending |
+
+| v0.1.78 | normal | AG-001 — Deterministic Artifact Guardian Guard | repair_required | full release-control failed in `project_source_add_file`: file source persistence not verified after commit/stale-inflight evidence | DOD-045 done; DOD-046 required | pending/rejected |
+| v0.1.78.1 | repair | Project Source mutation transaction hardening | candidate | focused repair tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-046 done; no normal slice advanced | pending |

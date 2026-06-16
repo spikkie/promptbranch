@@ -948,3 +948,20 @@ def test_docker_service_adapter_cleanup_retry_uses_explicit_project_url(monkeypa
     ]
     assert cleanup_steps[0].details["retarget"]["retargeted"] is True
 
+
+
+def test_run_step_marks_returned_false_result_as_failed() -> None:
+    import asyncio
+    import promptbranch_full_integration_test as integration
+
+    async def returns_false_result():
+        return {"ok": False, "status": "persistence_not_verified"}
+
+    steps = []
+    result = asyncio.run(integration._run_step(steps, "project_source_add_file", returns_false_result()))
+
+    assert result["ok"] is False
+    assert len(steps) == 1
+    assert steps[0].name == "project_source_add_file"
+    assert steps[0].ok is False
+    assert steps[0].details["status"] == "persistence_not_verified"

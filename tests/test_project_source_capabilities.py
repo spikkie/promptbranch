@@ -2010,3 +2010,50 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
     assert result["capacity_pruned"] is True
     assert result["removed_existing"] is True
     assert result["capacity_prune_result"]["source_name"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
+
+
+def test_file_source_commit_stale_inflight_extends_persistence_readback(browser_client: ChatGPTBrowserClient) -> None:
+    watch = {
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+
+    policy = browser_client._project_source_persistence_wait_policy(
+        save_watch=watch,
+        timeout_ms=15_000,
+        max_refresh_attempts=3,
+        retry_backoff_ms=(2_000, 4_000),
+        pre_refresh_timeout_ms=10_000,
+    )
+
+    assert policy["reason"] == "file_commit_seen_stale_inflight_extended_readback"
+    assert policy["timeout_ms"] >= 25_000
+    assert policy["max_refresh_attempts"] >= 6
+    assert policy["retry_backoff_ms"][-1] >= 16_000
+
+
+def test_project_source_mutation_transaction_classifies_commit_not_visible(browser_client: ChatGPTBrowserClient) -> None:
+    transaction = browser_client._project_source_mutation_transaction_status(
+        save_summary={
+            "source_kind": "file",
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": True,
+            "inflight": 1,
+        },
+        persistence_verified=False,
+    )
+
+    assert transaction["transaction_status"] == "commit_seen_with_stale_inflight_not_verified_present"
+    assert transaction["ambiguous"] is True
+    assert transaction["release_blocking"] is True
+    assert transaction["save_saw_commit"] is True
+    assert transaction["save_inflight"] == 1

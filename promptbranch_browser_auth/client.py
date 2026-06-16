@@ -4910,10 +4910,11 @@ class ChatGPTBrowserClient:
         except ResponseTimeoutError as exc:
             current_sources = await self._snapshot_project_source_cards(page)
             save_summary = self._project_source_save_watch_summary(save_request_watch)
-            persistence_false_negative_possible = bool(
-                save_summary.get("saw_commit")
-                or int(save_summary.get("finished") or 0) > 0
-            ) and int(save_summary.get("failed") or 0) == 0
+            transaction = self._project_source_mutation_transaction_status(
+                save_summary=save_summary,
+                persistence_verified=False,
+            )
+            persistence_false_negative_possible = bool(transaction.get("ambiguous"))
             status = (
                 "overwrite_persistence_not_verified"
                 if overwritten_existing and removed_existing_via_ui
@@ -4931,6 +4932,9 @@ class ChatGPTBrowserClient:
                 "persistence_verified": False,
                 "persistence_error": str(exc),
                 "persistence_false_negative_possible": persistence_false_negative_possible,
+                "transaction_status": transaction.get("transaction_status"),
+                "source_mutation_transaction": transaction,
+                "release_blocking": transaction.get("release_blocking"),
                 "save_request_summary": save_summary,
                 "save_request_quiet": save_request_quiet_result,
                 "already_exists": duplicate_detected or overwritten_existing,
@@ -4958,6 +4962,11 @@ class ChatGPTBrowserClient:
             self._log("project-source-add", "project source persistence not verified after add", **result)
             return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
+        success_save_summary = self._project_source_save_watch_summary(save_request_watch)
+        success_transaction = self._project_source_mutation_transaction_status(
+            save_summary=success_save_summary,
+            persistence_verified=True,
+        )
         verification_mode = (persisted_source or {}).get("_promptbranch_verification_mode") if isinstance(persisted_source, dict) else None
         ui_card_seen_before_refresh = bool(
             (persisted_source or {}).get("_promptbranch_ui_card_seen_before_refresh")
@@ -4976,7 +4985,10 @@ class ChatGPTBrowserClient:
             "ui_card_seen": ui_card_seen_before_refresh,
             "post_refresh_verified": True,
             "post_refresh_attempt": post_refresh_attempt,
-            "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+            "transaction_status": success_transaction.get("transaction_status"),
+            "source_mutation_transaction": success_transaction,
+            "release_blocking": success_transaction.get("release_blocking"),
+            "save_request_summary": success_save_summary,
             "save_request_quiet": save_request_quiet_result,
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
@@ -15340,6 +15352,24 @@ class ChatGPTBrowserClient:
             raise ResponseTimeoutError("Project source persistence check requires at least one source match candidate")
         sources_url = self._project_sources_url(project_url)
         last_error: ResponseTimeoutError | None = None
+        wait_policy = self._project_source_persistence_wait_policy(
+            save_watch=save_watch,
+            timeout_ms=timeout_ms,
+            max_refresh_attempts=max_refresh_attempts,
+            retry_backoff_ms=retry_backoff_ms,
+            pre_refresh_timeout_ms=pre_refresh_timeout_ms,
+        )
+        timeout_ms = int(wait_policy["timeout_ms"])
+        max_refresh_attempts = int(wait_policy["max_refresh_attempts"])
+        retry_backoff_ms = tuple(int(v) for v in wait_policy.get("retry_backoff_ms", []))
+        pre_refresh_timeout_ms = int(wait_policy["pre_refresh_timeout_ms"])
+        self._log(
+            "project-source-add",
+            "project source persistence wait policy selected",
+            project_url=project_url,
+            source_match_candidates=source_match_candidates,
+            wait_policy=wait_policy,
+        )
 
         # First re-read the current Sources surface without navigating.  This
         # is useful operator evidence, but it is not persistence proof: a live
@@ -15473,6 +15503,107 @@ class ChatGPTBrowserClient:
             "saw_relevant": bool(watch.get("saw_relevant")),
             "saw_commit": bool(watch.get("saw_commit")),
             "inflight": len(inflight),
+        }
+
+    def _project_source_mutation_transaction_status(
+        self,
+        *,
+        save_summary: Optional[dict[str, Any]],
+        persistence_verified: bool,
+    ) -> dict[str, Any]:
+        summary = save_summary if isinstance(save_summary, dict) else {}
+        started = int(summary.get("started") or 0)
+        finished = int(summary.get("finished") or 0)
+        failed = int(summary.get("failed") or 0)
+        inflight = int(summary.get("inflight") or 0)
+        saw_relevant = bool(summary.get("saw_relevant"))
+        saw_commit = bool(summary.get("saw_commit"))
+
+        if persistence_verified:
+            status = "verified_present"
+            ambiguous = False
+            release_blocking = False
+        elif failed > 0:
+            status = "save_request_failed_not_verified_present"
+            ambiguous = False
+            release_blocking = True
+        elif saw_commit and inflight > 0:
+            status = "commit_seen_with_stale_inflight_not_verified_present"
+            ambiguous = True
+            release_blocking = True
+        elif saw_commit:
+            status = "commit_seen_but_not_verified_present"
+            ambiguous = True
+            release_blocking = True
+        elif finished > 0:
+            status = "save_finished_but_not_verified_present"
+            ambiguous = True
+            release_blocking = True
+        elif saw_relevant or started > 0:
+            status = "save_request_seen_but_not_verified_present"
+            ambiguous = True
+            release_blocking = True
+        else:
+            status = "ui_trigger_not_observed_not_verified_present"
+            ambiguous = False
+            release_blocking = True
+
+        return {
+            "transaction_status": status,
+            "persistence_verified": bool(persistence_verified),
+            "ambiguous": bool(ambiguous),
+            "release_blocking": bool(release_blocking),
+            "save_started": started,
+            "save_finished": finished,
+            "save_failed": failed,
+            "save_inflight": inflight,
+            "save_saw_relevant": saw_relevant,
+            "save_saw_commit": saw_commit,
+        }
+
+    def _project_source_persistence_wait_policy(
+        self,
+        *,
+        save_watch: Optional[dict[str, Any]],
+        timeout_ms: int,
+        max_refresh_attempts: int,
+        retry_backoff_ms: tuple[int, ...],
+        pre_refresh_timeout_ms: int,
+    ) -> dict[str, Any]:
+        summary = self._project_source_save_watch_summary(save_watch)
+        source_kind = str(summary.get("source_kind") or "")
+        saw_commit = bool(summary.get("saw_commit"))
+        stale_inflight = bool(int(summary.get("inflight") or 0) > 0 and saw_commit and int(summary.get("failed") or 0) == 0)
+
+        effective_timeout_ms = int(timeout_ms)
+        effective_max_refresh_attempts = int(max_refresh_attempts)
+        effective_retry_backoff_ms = tuple(retry_backoff_ms)
+        effective_pre_refresh_timeout_ms = int(pre_refresh_timeout_ms)
+        policy_reason = "default"
+
+        if source_kind == "file" and saw_commit:
+            # File uploads often produce a commit request before the source card is
+            # indexed on the refreshed Sources surface.  v0.1.78 failed in this
+            # exact state: saw_commit=true, failed=0, stale inflight, and no
+            # refreshed file card.  Widen only the post-commit file-source
+            # readback window; keep the final result fail-closed unless refreshed
+            # persistence is actually proven.
+            effective_timeout_ms = max(effective_timeout_ms, 25_000)
+            effective_max_refresh_attempts = max(effective_max_refresh_attempts, 6 if stale_inflight else 5)
+            effective_retry_backoff_ms = tuple(max(0, int(v)) for v in (2_000, 4_000, 8_000, 12_000, 16_000))
+            effective_pre_refresh_timeout_ms = max(effective_pre_refresh_timeout_ms, 12_000)
+            policy_reason = "file_commit_seen_extended_readback"
+            if stale_inflight:
+                policy_reason = "file_commit_seen_stale_inflight_extended_readback"
+
+        return {
+            "source_kind": source_kind,
+            "reason": policy_reason,
+            "timeout_ms": effective_timeout_ms,
+            "max_refresh_attempts": effective_max_refresh_attempts,
+            "retry_backoff_ms": list(effective_retry_backoff_ms),
+            "pre_refresh_timeout_ms": effective_pre_refresh_timeout_ms,
+            "save_summary": summary,
         }
 
     async def _capture_project_source_persistence_diagnostics(

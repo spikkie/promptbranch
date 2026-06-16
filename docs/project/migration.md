@@ -125,3 +125,10 @@ in_progress
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `promptbranch_artifact_guardian_mvp.md` | planning_source | `docs/project/artifact-guardian-mvp.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/release-status.md`, `docs/project/decisions.md` | migrated | AG-001 is the next normal release slice from accepted/current v0.1.77.11. Build/heal/agent/lifecycle/assistant handoff integration and k8s-game foundation are deferred. |
+
+
+## Repair migration note — v0.1.78.1
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/release-v0.1.78.md` | failed candidate release evidence | `docs/repair-v0.1.78.1.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78 AG-001 installed but failed full release-control in `project_source_add_file`; v0.1.78.1 repairs Project Source mutation transaction hardening/reporting only and does not advance normal scope. |
