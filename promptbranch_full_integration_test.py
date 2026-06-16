@@ -692,10 +692,11 @@ async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seco
     started = time.perf_counter()
     try:
         result = await coro
+        result_ok = not (isinstance(result, dict) and result.get("ok") is False)
         steps.append(
             StepResult(
                 name=name,
-                ok=True,
+                ok=result_ok,
                 duration_seconds=round(time.perf_counter() - started, 3),
                 details=result,
             )

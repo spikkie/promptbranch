@@ -56,3 +56,5 @@
 
 | ADR-PROJ-045 | 2026-06-16 | Artifact Guardian policy source is `.artifact-guardian.yml` | Missing required root files such as `.gitignore` caused late lifecycle failures after operator download/install started | v0.1.78 adds `pb artifact guard` as deterministic policy-driven ZIP structure validation; guard passed remains candidate evidence only, not accepted/current |
 | ADR-PROJ-046 | 2026-06-16 | Put Artifact Guardian AG-001 before the k8s-game foundation slice | Future k8s-game foundation releases should benefit from a structural artifact guard first | v0.1.78 is AG-001; k8s-game foundation moves to v0.1.79 |
+
+| ADR-PROJ-047 | 2026-06-16 | Project Source mutation must expose explicit transaction states and fail-step reporting | v0.1.78 release-control failed with file source `persistence_not_verified`, commit evidence, stale inflight, and weak failure summary visibility | v0.1.78.1 classifies commit-seen/not-visible states as release-blocking ambiguous transactions, extends file-source post-commit readback, and records returned `{ok:false}` steps as failed immediately |
