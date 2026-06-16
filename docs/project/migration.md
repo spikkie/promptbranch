@@ -118,3 +118,10 @@ in_progress
 | `docs/repair-v0.1.77.10.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for Docker service image pinning after stale service version in v0.1.77.9. |
 | `docs/repair-v0.1.77.11.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for non-anchor project cleanup fallback after v0.1.77.10 cleanup failure. |
 
+
+
+## AG-001 migration note — v0.1.78
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `promptbranch_artifact_guardian_mvp.md` | planning_source | `docs/project/artifact-guardian-mvp.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/release-status.md`, `docs/project/decisions.md` | migrated | AG-001 is the next normal release slice from accepted/current v0.1.77.11. Build/heal/agent/lifecycle/assistant handoff integration and k8s-game foundation are deferred. |

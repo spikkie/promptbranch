@@ -32,6 +32,7 @@ import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
+from promptbranch_artifact_guardian import guard_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
     agent_ask,
@@ -19891,6 +19892,24 @@ async def cmd_artifact_verify(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+async def cmd_artifact_guard(backend: Any, args: argparse.Namespace) -> int:
+    result = guard_zip_artifact(
+        repo=getattr(args, "repo_path", "."),
+        zip_path=getattr(args, "zip_path"),
+        version=getattr(args, "version"),
+        policy_path=getattr(args, "policy", None),
+    )
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"ok={result.get('ok')}")
+        print(f"status={result.get('status')}")
+        print(f"release_ready={result.get('release_ready')}")
+        if result.get("failures"):
+            print(f"failures={result.get('failure_count')}")
+    return 0 if result.get("ok") else 1
+
+
 async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
     if args.artifact_command == "current":
         return await cmd_artifact_current(backend, args)
@@ -19916,6 +19935,8 @@ async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
         return await cmd_artifact_release(backend, args)
     if args.artifact_command == "verify":
         return await cmd_artifact_verify(backend, args)
+    if args.artifact_command == "guard":
+        return await cmd_artifact_guard(backend, args)
     if args.artifact_command == "intake":
         return await cmd_artifact_intake(backend, args)
     raise RuntimeError(f"Unknown artifact command: {args.artifact_command}")
@@ -22386,6 +22407,13 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_verify = artifact_subparsers.add_parser("verify", help="Verify ZIP layout and integrity.")
     artifact_verify.add_argument("path", nargs="?", help="ZIP path. Defaults to the latest registered artifact.")
     artifact_verify.add_argument("--json", action="store_true")
+
+    artifact_guard = artifact_subparsers.add_parser("guard", help="Validate a release ZIP against .artifact-guardian.yml before candidate handoff.")
+    artifact_guard.add_argument("--repo", dest="repo_path", default=".", help="Repository root containing the policy file. Defaults to current directory.")
+    artifact_guard.add_argument("--zip", dest="zip_path", required=True, help="Candidate ZIP path to validate.")
+    artifact_guard.add_argument("--version", required=True, help="Expected artifact version such as v0.1.78.")
+    artifact_guard.add_argument("--policy", default=None, help="Artifact Guardian policy path. Defaults to <repo>/.artifact-guardian.yml.")
+    artifact_guard.add_argument("--json", action="store_true")
 
 
     artifact_intake = artifact_subparsers.add_parser("intake", help="Inspect/classify artifact candidates from the latest validated Promptbranch ask/reply protocol run; optional explicit download, verification, and candidate migration.")

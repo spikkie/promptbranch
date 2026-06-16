@@ -1,0 +1,56 @@
+schema_version: 1
+
+project:
+  id: chatgpt_claudecode_workflow-2
+  artifact_pattern: "chatgpt_claudecode_workflow-2_{version}.zip"
+  version_file: "VERSION"
+
+zip:
+  forbid_wrapper_folder: true
+  forbid_nested_zip: true
+  preserve_executable_bits: true
+
+required_entries:
+  - ".gitignore"
+  - ".not_to_zip"
+  - "VERSION"
+  - "README.md"
+  - "pyproject.toml"
+  - "promptbranch_cli.py"
+  - "promptbranch_artifacts.py"
+  - "promptbranch_artifact_guardian.py"
+  - "chatgpt_claudecode_workflow_release_control.sh"
+  - "scripts/post-release-validation.sh"
+  - "docs/project/README.md"
+  - "docs/project/mvp.md"
+  - "docs/project/definition-of-done.md"
+  - "docs/project/plan.md"
+  - "docs/project/status.md"
+  - "docs/project/release-status.md"
+  - "docs/project/decisions.md"
+  - "docs/project/migration.md"
+
+forbidden_entries:
+  - ".git/"
+  - ".pb_profile/"
+  - "__pycache__/"
+  - "*.pyc"
+  - "*.pyo"
+  - ".pytest_cache/"
+  - ".mypy_cache/"
+  - ".ruff_cache/"
+  - ".venv/"
+  - "node_modules/"
+  - "dist/"
+  - "build/"
+  - "*.zip"
+  - "*.log"
+  - ".env"
+
+executable_entries:
+  - "chatgpt_claudecode_workflow_release_control.sh"
+  - "scripts/post-release-validation.sh"
+
+version_checks:
+  require_version_file_equals_cli_version: true
+  require_artifact_name_contains_version: true
