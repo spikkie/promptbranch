@@ -1450,3 +1450,58 @@ def test_post_release_validation_current_semantic_check_uses_repo_loop_entries()
     assert 'result["checked_repos"]' in text
     assert 'result["matching_repos"]' in text
     assert '"field": "repos[*]"' in text
+
+
+def test_release_control_accepts_multi_segment_repair_versions(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v0.1.78.2.1\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v0.1.78.2.1\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-multi-segment-version.log"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--version", "v0.1.78.2.1"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "version:        v0.1.78.2.1" in result.stdout
+    assert "version must be" not in result.stderr
+    log_dir = repo / ".pb_profile" / "release_logs" / "v0.1.78.2.1"
+    assert (log_dir / "pb_test.full.v0.1.78.2.1.log").is_file()
+    assert (log_dir / "pb_test.full.v0.1.78.2.1.report.json").is_file()
+    call_text = calls.read_text(encoding="utf-8")
+    assert "pb test full --json" in call_text
+    assert "promptbranch src add" not in call_text

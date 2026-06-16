@@ -103,7 +103,7 @@ normalize_version() {
   raw="${raw#${project_name}_}"
   raw="${raw#${project_name}}"
   raw="${raw#_}"
-  if [[ "${raw}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  if [[ "${raw}" =~ ^v?[0-9]+(\.[0-9]+){2,}$ ]]; then
     raw="${raw#v}"
     printf 'v%s\n' "${raw}"
     return 0

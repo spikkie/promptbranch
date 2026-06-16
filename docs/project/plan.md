@@ -524,3 +524,37 @@ DoD movement: DOD-047.
 Risk: temporary integration-test projects can be retained intentionally until a safe cleanup protocol exists. This is safer than accidental deletion of real projects.
 Next step: run release-control on v0.1.78.2 and adopt only with pb artifact current alignment evidence.
 ```
+
+
+## Slice definition — v0.1.78.2.1 repair release
+
+```text
+Release: v0.1.78.2.1
+Baseline: v0.1.78.2 candidate ZIP
+Type: repair
+Slice: package delete-safety helper module
+Goal: Fix v0.1.78.2 release-control import failure by installing promptbranch_project_delete_safety as a setuptools py-module.
+In scope: pyproject.toml py-modules, version surfaces, package/import-focused validation, repair/status docs.
+Out of scope: secure delete protocol, any actual ChatGPT Project deletion, Project Source removal behavior changes, AG-001 guard behavior changes, adoption/current changes, k8s-game foundation.
+Expected validation: package/import tests, tests/test_project_delete_safety.py, project control/version tests, compileall, bash syntax, ZIP hygiene, release-control before adoption.
+DoD movement: DOD-047 preserved; no new functional DoD.
+Risk: if future top-level helper modules are added, packaging metadata must be updated or replaced with package-local modules to avoid repeat import failures.
+Next step: run release-control on v0.1.78.2.1 and adopt only with pb artifact current alignment evidence.
+```
+
+
+## Slice definition — v0.1.78.2.2 repair release
+
+```text
+Release: v0.1.78.2.2
+Baseline: v0.1.78.2.1 candidate ZIP
+Type: repair
+Slice: Release-control multi-segment repair-version compatibility
+Goal: Fix v0.1.78.2.1 release-control rejection of nested repair versions such as v0.1.78.2.1.
+In scope: release-control normalize_version, artifact prefix extraction, post-release-validation normalize_version, artifact candidate schema version grammar, focused shell-script regression test, repair/status docs.
+Out of scope: secure delete protocol, any actual ChatGPT Project deletion, Project Source removal behavior changes, AG-001 guard behavior changes, adoption/current changes, k8s-game foundation.
+Expected validation: tests/test_promptbranch_shell_scripts.py::test_release_control_accepts_multi_segment_repair_versions, project control/version tests, protocol schema JSON tests, compileall, bash syntax, ZIP hygiene, release-control before adoption.
+DoD movement: DOD-048 added/done; DOD-047 preserved.
+Risk: version grammar should stay numeric-only and fail closed for labels or ambiguous strings.
+Next step: run release-control on v0.1.78.2.2 and adopt only with pb artifact current alignment evidence.
+```
