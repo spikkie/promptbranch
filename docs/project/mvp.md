@@ -29,6 +29,7 @@ The operator can continue from the accepted baseline, request a narrow release s
 - Workspace, task, source, and artifact state remain separate.
 - Backend-first reads and transactional write verification remain the reliability model.
 - Protocol-aware ask/reply, artifact intake, candidate verification, and guarded adoption remain the release safety model.
+- Artifact Guardian validates candidate ZIP structure before release handoff; guard-passed remains separate from accepted/current adoption.
 - JSON orchestration/grill events remain proposal-only until Promptbranch validates and records accepted events.
 - Native release lifecycle work advances through read-only diagnostics and controlled prechecks before mutating install/adopt behavior.
 - Project continuation is documented through `docs/project/`.

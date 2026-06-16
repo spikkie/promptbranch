@@ -462,3 +462,31 @@ DoD movement: DOD-044 done after focused validation.
 Risk: live ChatGPT UI may still hide delete controls under rate-limit/sidebar state; cleanup must remain fail-closed.
 Next step: run release-control for v0.1.77.11 and adopt only after pb artifact current --all --json confirms alignment.
 ```
+
+
+## Slice definition — v0.1.78 normal release
+
+```text
+Release: v0.1.78
+Baseline: chatgpt_claudecode_workflow-2_v0.1.77.11.zip accepted/current with operator adoption evidence.
+Type: normal candidate
+Slice: AG-001 — Deterministic Artifact Guardian Guard
+Goal: add deterministic .artifact-guardian.yml policy loading and pb artifact guard ZIP validation so structurally invalid release ZIPs fail before lifecycle install or operator/assistant handoff.
+In scope: .artifact-guardian.yml, policy loader, ZIP inspector, pb artifact guard, strict JSON output, required/forbidden/wrapper/nested/version/name/executable checks, missing .gitignore regression test, project docs/status updates.
+Out of scope: pb artifact build integration, healing, agent orchestration, lifecycle integration, assistant-side handoff enforcement, source adoption, accepted/current changes, deployment validation, runtime correctness validation, k8s-game docs/schemas/state machines/drawio roadmap.
+Expected validation: tests/test_artifact_guardian.py, project control/version tests, compileall, bash syntax, ZIP hygiene, clean extraction validation, release-control before adoption.
+DoD movement: add DOD-045 for deterministic Artifact Guardian guard.
+Risk: guard_passed must remain candidate-structure evidence only and must not imply accepted/current.
+Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
+```
+
+## Reserved slice definition — v0.1.79 normal release
+
+```text
+Release: v0.1.79
+Baseline: accepted/current v0.1.78 after adoption evidence.
+Type: normal candidate
+Slice: Rebaselined JSON orchestration / k8s-game MVP foundation
+Goal: add documentation, schemas, examples, state-machine definitions, and Draw.io roadmap documents for the k8s-game MVP foundation after AG-001 protects release ZIP handoff.
+Out of scope for v0.1.79 until started: game runtime, Dockerfile, Kubernetes manifests, deployment, write-capable orchestration.
+```

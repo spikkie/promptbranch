@@ -63,8 +63,8 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.76.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.76.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.77.11.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.77.11.zip" in text
 
 
 def test_validation_matrix_declares_required_release_groups() -> None:

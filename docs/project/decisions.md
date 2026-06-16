@@ -53,3 +53,6 @@
 | ADR-PROJ-043 | 2026-06-15 | Release-control must pin the Docker service image to the release-derived version by default | v0.1.77.9 failed because service version verification kept seeing stale `0.1.77.8` after rebuilds | v0.1.77.10 exports `PROMPTBRANCH_SERVICE_IMAGE=promptbranch-service:<release>` for release-control/service scripts unless explicit override is enabled |
 | ADR-PROJ-044 | 2026-06-15 | Project cleanup must search name-matched non-anchor project rows before failing | v0.1.77.10 proved the exact temporary project was still resolvable by name while anchor/sidebar lookup could not remove it | v0.1.77.11 widens cleanup lookup to non-anchor sidebar/menu rows and remains fail-closed |
 
+
+| ADR-PROJ-045 | 2026-06-16 | Artifact Guardian policy source is `.artifact-guardian.yml` | Missing required root files such as `.gitignore` caused late lifecycle failures after operator download/install started | v0.1.78 adds `pb artifact guard` as deterministic policy-driven ZIP structure validation; guard passed remains candidate evidence only, not accepted/current |
+| ADR-PROJ-046 | 2026-06-16 | Put Artifact Guardian AG-001 before the k8s-game foundation slice | Future k8s-game foundation releases should benefit from a structural artifact guard first | v0.1.78 is AG-001; k8s-game foundation moves to v0.1.79 |
