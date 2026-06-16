@@ -87,3 +87,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.78.2.1 | repair | Package delete-safety helper module | candidate | focused package/import tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-047 preserved; no normal slice advanced | pending |
 
 | v0.1.78.2.2 | repair | Release-control multi-segment repair-version compatibility | candidate | focused shell-script version-normalization tests, project control/version tests, protocol schema JSON test, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-048 done; DOD-047 preserved; no normal slice advanced | pending |
+
+| v0.1.78.2.3 | repair | Retained quarantine project for delete-frozen release tests | candidate | focused release-control shell tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-049 done; DOD-047/DOD-048 preserved; no normal slice advanced | pending |
+

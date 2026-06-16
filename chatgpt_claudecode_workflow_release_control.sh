@@ -41,6 +41,10 @@ service_port="${PROMPTBRANCH_DEFAULT_SERVICE_PORT:-8000}"
 service_base_url="http://localhost:${service_port}"
 test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
 localhost_base_url="${PROMPTBRANCH_LOCALHOST_BASE_URL:-http://127.0.0.1:${service_port}}"
+# ChatGPT Project deletion is frozen. Release-control live tests must therefore
+# reuse one retained quarantine project instead of creating a unique throwaway
+# project that cannot be safely deleted afterwards.
+release_test_project_name="${PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME:-itest-promptbranch-retained-delete-frozen}"
 export COMPOSE_PROJECT_NAME="${compose_project_name}"
 export PROMPTBRANCH_SERVICE_PORT="${service_port}"
 export CHATGPT_SERVICE_BASE_URL="${service_base_url}"
@@ -923,6 +927,8 @@ printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
+printf 'test_project:   %s\n' "${release_test_project_name}"
+printf 'test_cleanup:   retained_project_delete_frozen\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
@@ -1763,7 +1769,7 @@ if [[ ${skip_service} -eq 0 ]]; then
 fi
 
 # Run full suite and parsed report. Always try to create a report, even if the suite fails.
-# Default direct transport invariant: CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json
+# Default direct transport invariant: CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json
 run_full_test_transport() {
   local label="$1"
   local base_url="$2"
@@ -1774,8 +1780,10 @@ run_full_test_transport() {
   local report_rc=0
 
   echo "== pb test transport: ${label} =="
-  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --json 2>&1 | tee ${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --json 2>&1 | tee "${selected_full_log}"
+  echo "release_test_project_name: ${release_test_project_name}"
+  echo "cleanup_policy: retained_project_delete_frozen"
+  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee ${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
@@ -1962,6 +1970,8 @@ compose_name:   ${compose_project_name}
 service_port:   ${service_port}
 service_base:   ${service_base_url}
 test_transport: ${test_transport}
+test_project:   ${release_test_project_name}
+test_cleanup:   retained_project_delete_frozen
 localhost_base: ${localhost_base_url}
 direct_log: $(summary_value "${tests_summary_active}" "${direct_full_log}")
 localhost_log: $(summary_value "${tests_summary_active}" "${localhost_full_log}")

@@ -149,3 +149,8 @@ in_progress
 ## Repair migration note — v0.1.78.2.2
 
 `v0.1.78.2.1` failed release-control before normal validation because the candidate release-control script rejected `v0.1.78.2.1` as an invalid version. `v0.1.78.2.2` updates release-control, post-release-validation, and artifact-candidate schema version grammar to accept dotted numeric repair versions with at least three segments. Project deletion remains frozen.
+
+## Repair migration note — v0.1.78.2.3
+
+`v0.1.78.2.2` release-control completed successfully but the full browser test still created a unique temporary ChatGPT Project and retained it because project deletion is frozen. `v0.1.78.2.3` changes release-control to use one reusable retained quarantine project by default: `itest-promptbranch-retained-delete-frozen`. This prevents repeated creation of undeletable throwaway projects. Existing leaked `itest-promptbranch-*` projects are not deleted by the migration.
+
