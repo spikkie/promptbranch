@@ -115,3 +115,4 @@ chatgpt_claudecode_workflow_v0.0.146/
 # Promptbranch task transcript/debug exports
 *.task.show.json
 .pb_profile_local_debug/
+.pb_profile_local_debug_pools/

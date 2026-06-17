@@ -92,3 +92,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 
 | v0.1.78.2.4 | repair | Delete-frozen live-test profile alignment and one-command all-tests report | candidate | focused CLI/parser/live-test defaults, release-control all-tests shell validation, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-050 done; DOD-047/DOD-049 preserved; no normal slice advanced | pending |
+
+
+| v0.1.78.2.5 | repair | Run-all verdict accuracy and live-profile auth preflight | candidate | focused run-all/profile/parser tests, project control/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-051 done; DOD-047/DOD-049/DOD-050 preserved; no normal slice advanced | pending |

@@ -22693,6 +22693,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_ask_live.add_argument("--retries", type=int, help="Retry count passed to each ask step.")
     test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")
     test_ask_live.add_argument("--skip", action="append", default=[], help="Comma-separated ask-live step selectors to skip.")
+    _add_profile_pool_options(test_ask_live, default_pool=None)
     test_ask_live.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
 
     test_artifact_roundtrip = test_subparsers.add_parser("artifact-roundtrip", help="Run deterministic non-visual artifact reply/candidate/ZIP roundtrip smoke.")

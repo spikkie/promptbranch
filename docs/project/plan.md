@@ -598,3 +598,27 @@ Out of scope:
 - v0.1.79/k8s-game foundation work.
 
 Expected validation: focused CLI/parser/live-test tests, release-control all-tests shell test, project control/version tests, compileall, bash syntax, package import smoke, artifact guard, then release-control from ZIP before adoption.
+
+
+## Slice definition — v0.1.78.2.5 repair release
+
+Release: v0.1.78.2.5
+Type: repair
+Slice: Run-all verdict accuracy and live-profile auth preflight
+
+Scope:
+- Add live-profile preflight to release-control `--run-all-tests`.
+- Run `ask-live`, `visual-artifact-roundtrip`, and `release-live` through a refreshed `release-live` profile-pool slot seeded from `.pb_profile_local_debug`.
+- Include `full_direct` and `full_localhost` as first-class rows in the all-tests summary.
+- Parse the top-level Promptbranch JSON result for each step instead of nested JSON fragments.
+- Continue after failures and emit final GO/FIX verdict.
+- Ignore `.pb_profile_local_debug_pools/` in `.gitignore`.
+
+Out of scope:
+- Secure delete protocol.
+- ChatGPT Project deletion.
+- Project Source removal behavior changes.
+- Adoption/current mutation.
+- v0.1.79/k8s-game foundation work.
+
+Expected validation: focused shell-script/parser/CLI tests, project control/version/delete-safety tests, compileall, bash syntax, package import smoke, artifact guard, then release-control `--run-all-tests` from ZIP before adoption.

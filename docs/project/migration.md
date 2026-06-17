@@ -159,3 +159,8 @@ in_progress
 ## Repair migration note — v0.1.78.2.4
 
 `v0.1.78.2.4` changes live-test defaults away from temporary project creation/removal. The retained project `itest-promptbranch-retained-delete-frozen` is now the default for `ask-live`, `visual-artifact-roundtrip`, and `release-live`, and keep-project behavior is enforced while project deletion is frozen. Release-control adds `--run-all-tests` for one-command validation with continue-on-failure execution and a final GO/FIX summary. Existing leaked `itest-promptbranch-*` projects are not deleted by this migration.
+
+
+## v0.1.78.2.5 migration note
+
+Operators running the full validation stack should prefer `--run-all-tests`. The command now preflights `.pb_profile_local_debug`, runs live browser steps through a refreshed `release-live` profile-pool slot, and writes first-class rows for full direct, full localhost, live profile preflight, ask-live, visual-artifact-roundtrip, release-live, import-smoke, and artifact guard. `.pb_profile_local_debug_pools/` is ignored because it contains local cloned browser-profile state only.
