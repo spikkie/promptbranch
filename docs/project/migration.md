@@ -168,3 +168,8 @@ Operators running the full validation stack should prefer `--run-all-tests`. The
 ## v0.1.78.2.6 migration note
 
 No user data migration. Release operators should continue using normal cached Docker builds through release-control. `--no-cache` is now a bounded fallback when image or service provenance checks detect stale content. The new release logs include host context, image content, image inspect, container content, and health/version evidence.
+
+
+## v0.1.78.2.7 migration note
+
+No user data migration. Operators should rerun release-control with the v0.1.78.2.7 candidate. This repair only fixes Docker provenance probe JSON writer syntax; it does not alter project deletion, Project Source, or artifact adoption semantics.

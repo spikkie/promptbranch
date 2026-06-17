@@ -1676,8 +1676,7 @@ payload = {
     'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
 }
 payload.update(extra)
-Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + '
-', encoding='utf-8')
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 raise SystemExit(0 if ok else 1)
 INNERPY
 }
@@ -1736,8 +1735,7 @@ Path(out).write_text(json.dumps({
     'expected_version': expected,
     'image': image_ref,
     'stderr': stderr,
-}, indent=2, sort_keys=True) + '
-', encoding='utf-8')
+}, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 INNERPY
     return 1
   fi
@@ -1772,8 +1770,7 @@ Path(out).write_text(json.dumps({
     'expected_version': expected,
     'container': container,
     'stderr': stderr,
-}, indent=2, sort_keys=True) + '
-', encoding='utf-8')
+}, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 INNERPY
     return 1
   fi

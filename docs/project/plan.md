@@ -645,3 +645,22 @@ Out of scope:
 - Project Source removal changes.
 - Adoption/current mutation.
 - v0.1.79/k8s-game work.
+
+
+## Slice definition — v0.1.78.2.7 repair release
+
+Release: v0.1.78.2.7
+
+Goal: repair the embedded Python syntax defect in the Docker provenance probe JSON writer introduced by v0.1.78.2.6 while preserving the cache/provenance guard behavior.
+
+In scope:
+
+- Fix newline string literal handling in Docker image/container probe JSON writers.
+- Add a focused regression check.
+- Keep project deletion frozen and live-test retained project defaults intact.
+
+Out of scope:
+
+- Secure project delete protocol.
+- Project Source behavior changes.
+- Normal v0.1.79 work.
