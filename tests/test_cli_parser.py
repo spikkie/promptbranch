@@ -1191,6 +1191,17 @@ def test_parser_accepts_release_live_profile_pool_defaults() -> None:
     assert args.debug_browser is True
 
 
+
+def test_parser_accepts_ask_live_profile_pool_when_requested() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["test", "ask-live", "--json", "--run-id", "UNIT", "--profile-pool", "release-live"])
+    assert args.command == "test"
+    assert args.test_command == "ask-live"
+    assert args.profile_pool == "release-live"
+    assert args.profile_pool_size == 2
+    assert args.project_name_prefix == "itest-promptbranch-retained-delete-frozen"
+    assert args.debug_browser is True
+
 def test_parser_accepts_debug_rate_limit_command() -> None:
     parser = make_parser()
     args = parser.parse_args(["debug", "rate-limit", "--json", "--probe-backend", "--wait-ms", "25", "--keep-open"])

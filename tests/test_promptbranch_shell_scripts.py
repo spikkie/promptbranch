@@ -1528,6 +1528,7 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     (fake_bin / "pb").write_text(
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
@@ -1564,6 +1565,9 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert summary["ok"] is True
     assert summary["final_verdict"] == "GO"
     assert [step["name"] for step in summary["steps"]] == [
+        "full_direct",
+        "full_localhost",
+        "live_profile_preflight",
         "ask_live",
         "visual_artifact_roundtrip",
         "release_live",
@@ -1574,8 +1578,9 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert f"all_tests_summary: {summary_path}" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
     assert call_text.count("pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json") == 2
-    assert "pb test ask-live --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
-    assert "pb test visual-artifact-roundtrip --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
-    assert "pb test release-live --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb --profile-dir ./.pb_profile_local_debug login-check" in call_text
+    assert "pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
     assert "pb test import-smoke --json" in call_text
     assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text

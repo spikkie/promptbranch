@@ -657,6 +657,8 @@ service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"
 service_start_log="${release_log_dir}/promptbranch-service-start.${ver_plain}.log"
 service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid"
 all_tests_summary_json="${release_log_dir}/pb_test.all.${ver}.summary.json"
+live_profile_preflight_json="${release_log_dir}/pb_test.live_profile_preflight.${ver}.json"
+live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_preflight.${ver}.log"
 ask_live_log="${release_log_dir}/pb_test.ask_live.${ver}.log"
 visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundtrip.${ver}.log"
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
@@ -1817,6 +1819,9 @@ run_full_test_transport() {
   fi
 
   write_structured_full_test_summary "${selected_summary_json}" "${selected_report_json}" "${selected_full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
+  if [[ ${run_all_tests} -eq 1 ]]; then
+    record_all_test_step "full_${label}" "${selected_summary_json}" "${test_rc}"
+  fi
 
   if [[ ${adopt_if_green} -eq 1 ]]; then
     if [[ ${test_rc} -ne 0 || ${report_rc} -ne 0 ]]; then
@@ -1877,13 +1882,37 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
     if not path.is_file():
         return {}, f"missing: {path}"
     raw = path.read_text(encoding="utf-8", errors="replace")
-    idx = raw.find("{")
-    if idx < 0:
-        return {}, f"no JSON object found in {path}"
-    try:
-        return json.loads(raw[idx:]), None
-    except Exception as exc:
-        return {}, f"invalid JSON in {path}: {exc}"
+    stripped = raw.strip()
+    if stripped:
+        try:
+            value = json.loads(stripped)
+            if isinstance(value, dict):
+                return value, None
+        except Exception:
+            pass
+    decoder = json.JSONDecoder()
+    candidates: list[dict] = []
+    for idx, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(raw[idx:])
+        except Exception:
+            continue
+        if not isinstance(value, dict):
+            continue
+        if (
+            "action" in value
+            or "profile" in value
+            or "schema" in value
+            or "source_kind" in value
+            or "final_verdict" in value
+            or value.get("status") == "guard_passed"
+        ):
+            candidates.append(value)
+    if candidates:
+        return candidates[-1], None
+    return {}, f"no top-level Promptbranch JSON object found in {path}"
 
 steps = []
 for item in raw_steps:
@@ -1944,6 +1973,64 @@ if failed:
 INNERPY
 }
 
+write_all_test_json_step() {
+  local step_name="$1"
+  local step_log="$2"
+  local step_status="$3"
+  local step_ok="$4"
+  local step_rc="$5"
+  local raw_log="${6:-}"
+  python3 - "$step_name" "$step_log" "$step_status" "$step_ok" "$step_rc" "$raw_log" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+name, log_path, status, ok_text, rc_text, raw_log = sys.argv[1:7]
+ok = ok_text == "true"
+try:
+    rc = int(rc_text)
+except Exception:
+    rc = 99
+payload = {
+    "ok": ok,
+    "action": "release_control_all_tests_step",
+    "profile": name,
+    "status": status,
+    "exit_code": rc,
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+if raw_log:
+    payload["raw_log"] = raw_log
+Path(log_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
+  record_all_test_step "$step_name" "$step_log" "$step_rc"
+}
+
+run_all_live_profile_preflight() {
+  local rc=0
+  echo "== pb test-all step: live_profile_preflight =="
+  echo "+ pb --profile-dir ./.pb_profile_local_debug login-check 2>&1 | tee ${live_profile_preflight_raw_log}"
+  pb --profile-dir ./.pb_profile_local_debug login-check 2>&1 | tee "${live_profile_preflight_raw_log}"
+  rc=${PIPESTATUS[0]}
+  if [[ ${rc} -eq 0 ]]; then
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified" "true" "0" "${live_profile_preflight_raw_log}"
+  else
+    echo "WARN: live profile preflight failed with ${rc}; live browser steps will be skipped to avoid login/passkey traps." >&2
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    workflow_rc=${rc}
+  fi
+  return ${rc}
+}
+
+record_all_test_skipped_step() {
+  local step_name="$1"
+  local step_log="$2"
+  local reason="$3"
+  write_all_test_json_step "$step_name" "$step_log" "$reason" "false" "78" "${live_profile_preflight_raw_log}"
+  workflow_rc=78
+}
+
 run_all_live_validation_steps() {
   local guard_zip="${artifact_zip}"
   if [[ ! -f "${guard_zip}" && -n "${download_zip:-}" && -f "${download_zip}" ]]; then
@@ -1955,9 +2042,15 @@ run_all_live_validation_steps() {
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: retained_project_delete_frozen"
 
-  run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --project-name "${release_test_project_name}" --keep-project --json
-  run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --project-name "${release_test_project_name}" --keep-project --json
-  run_all_json_step "release_live" "${release_live_log}" pb test release-live --project-name "${release_test_project_name}" --keep-project --json
+  if run_all_live_profile_preflight; then
+    run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+  else
+    record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
+    record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
+    record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
+  fi
   run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
   run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
 
