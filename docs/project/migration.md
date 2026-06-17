@@ -164,3 +164,7 @@ in_progress
 ## v0.1.78.2.5 migration note
 
 Operators running the full validation stack should prefer `--run-all-tests`. The command now preflights `.pb_profile_local_debug`, runs live browser steps through a refreshed `release-live` profile-pool slot, and writes first-class rows for full direct, full localhost, live profile preflight, ask-live, visual-artifact-roundtrip, release-live, import-smoke, and artifact guard. `.pb_profile_local_debug_pools/` is ignored because it contains local cloned browser-profile state only.
+
+## v0.1.78.2.6 migration note
+
+No user data migration. Release operators should continue using normal cached Docker builds through release-control. `--no-cache` is now a bounded fallback when image or service provenance checks detect stale content. The new release logs include host context, image content, image inspect, container content, and health/version evidence.

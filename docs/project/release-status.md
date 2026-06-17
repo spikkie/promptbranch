@@ -95,3 +95,4 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 
 | v0.1.78.2.5 | repair | Run-all verdict accuracy and live-profile auth preflight | candidate | focused run-all/profile/parser tests, project control/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-051 done; DOD-047/DOD-049/DOD-050 preserved; no normal slice advanced | pending |
+| v0.1.78.2.6 | repair | Docker build cache/provenance guard | candidate | focused shell/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-052 done; DOD-047/DOD-050/DOD-051 preserved | pending |

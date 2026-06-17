@@ -5,6 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:-unknown}
+        PROMPTBRANCH_ARTIFACT_SHA256: ${PROMPTBRANCH_ARTIFACT_SHA256:-unknown}
     image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}
     pull_policy: build
     init: true
