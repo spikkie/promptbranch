@@ -1584,3 +1584,21 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert "pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
     assert "pb test import-smoke --json" in call_text
     assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text
+
+
+def test_docker_build_context_version_guard_declared():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+
+    assert "PROMPTBRANCH_VERSION" in compose
+    assert "PROMPTBRANCH_ARTIFACT_SHA256" in compose
+    assert "ARG PROMPTBRANCH_VERSION" in dockerfile
+    assert "LABEL promptbranch.version" in dockerfile
+    assert "Docker build context version mismatch" in dockerfile
+    assert "assert_host_build_context_versions" in script
+    assert "docker_image_version_probe" in script
+    assert "docker_container_version_probe" in script
+    assert "docker_image_content" in script
+    assert "docker_container_content" in script

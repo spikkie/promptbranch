@@ -622,3 +622,26 @@ Out of scope:
 - v0.1.79/k8s-game foundation work.
 
 Expected validation: focused shell-script/parser/CLI tests, project control/version/delete-safety tests, compileall, bash syntax, package import smoke, artifact guard, then release-control `--run-all-tests` from ZIP before adoption.
+
+## Slice definition — v0.1.78.2.6 repair release
+
+Release: v0.1.78.2.6
+
+Goal: prevent Docker tag/content mismatch without forcing every release build to use `--no-cache`.
+
+Scope:
+
+- Pass target version and artifact SHA as Docker build args.
+- Add Dockerfile build-context version assertion.
+- Add release-control host build-context version assertion.
+- Add release-control built-image content probe before compose up.
+- Add release-control running-container content probe before healthz acceptance.
+- Keep no-cache as one bounded fallback.
+- Preserve project deletion freeze and run-all behavior.
+
+Out of scope:
+
+- Secure project deletion protocol.
+- Project Source removal changes.
+- Adoption/current mutation.
+- v0.1.79/k8s-game work.

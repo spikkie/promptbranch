@@ -23,3 +23,5 @@ pb_test*.log
 task_*.show
 task_show_*
 *.task.show
+.pb_profile_local_debug
+.pb_profile_local_debug_pools

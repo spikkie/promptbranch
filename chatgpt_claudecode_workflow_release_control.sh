@@ -1578,25 +1578,51 @@ promptbranch_service_image_ref() {
   printf '%s\n' "${default_image}"
 }
 
+release_artifact_sha256() {
+  local path="${repo_root}/${artifact_zip}"
+  if [[ -f "${path}" ]]; then
+    python3 - "${path}" <<'INNERPY'
+from pathlib import Path
+import hashlib
+import sys
+path = Path(sys.argv[1])
+h = hashlib.sha256()
+with path.open('rb') as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+        h.update(chunk)
+print(h.hexdigest())
+INNERPY
+  else
+    printf 'unknown
+'
+  fi
+}
+
 compose_env_prefix() {
   local image_tag
   local image_ref
+  local artifact_sha
   image_tag="$(promptbranch_service_image_tag)"
   image_ref="$(promptbranch_service_image_ref)"
-  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q' \
-    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}"
+  artifact_sha="$(release_artifact_sha256)"
+  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q PROMPTBRANCH_VERSION=%q PROMPTBRANCH_ARTIFACT_SHA256=%q' \
+    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}" "${ver#v}" "${artifact_sha}"
 }
 
 run_docker_compose() {
   local image_tag
   local image_ref
+  local artifact_sha
   image_tag="$(promptbranch_service_image_tag)"
   image_ref="$(promptbranch_service_image_ref)"
+  artifact_sha="$(release_artifact_sha256)"
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
+  PROMPTBRANCH_VERSION="${ver#v}" \
+  PROMPTBRANCH_ARTIFACT_SHA256="${artifact_sha}" \
   docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
 }
 
@@ -1604,6 +1630,155 @@ service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"
 service_container_before_json="${release_log_dir}/docker_container_before.${ver}.json"
 service_container_after_json="${release_log_dir}/docker_container_after.${ver}.json"
 service_compose_ps_json="${release_log_dir}/docker_compose_ps.${ver}.json"
+docker_host_context_json="${release_log_dir}/docker_host_build_context.${ver}.json"
+docker_image_content_json="${release_log_dir}/docker_image_content.${ver}.json"
+docker_image_content_nocache_json="${release_log_dir}/docker_image_content.nocache.${ver}.json"
+docker_container_content_json="${release_log_dir}/docker_container_content.${ver}.json"
+docker_image_inspect_json="${release_log_dir}/docker_image_inspect.${ver}.json"
+
+write_version_probe_json() {
+  local output="$1"
+  local source_kind="$2"
+  local phase="$3"
+  local raw_path="$4"
+  local extra_json="${5:-{}}"
+  python3 - "$output" "$source_kind" "$phase" "${ver#v}" "$raw_path" "$extra_json" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+out, source_kind, phase, expected, raw_path, extra_raw = sys.argv[1:7]
+def norm(value: str) -> str:
+    return str(value or '').strip().removeprefix('v')
+raw = Path(raw_path).read_text(encoding='utf-8', errors='replace') if Path(raw_path).exists() else ''
+actuals = {}
+for line in raw.splitlines():
+    if '	' not in line:
+        continue
+    key, value = line.split('	', 1)
+    actuals[key.strip()] = norm(value)
+for key in ('VERSION', 'promptbranch_version.py', 'pyproject.toml'):
+    actuals.setdefault(key, '')
+ok = all(actuals[key] == norm(expected) for key in ('VERSION', 'promptbranch_version.py', 'pyproject.toml'))
+try:
+    extra = json.loads(extra_raw) if extra_raw else {}
+except Exception as exc:
+    extra = {'extra_parse_error': str(exc), 'extra_raw': extra_raw}
+payload = {
+    'ok': ok,
+    'status': 'verified' if ok else f'{source_kind}_version_mismatch',
+    'source_kind': source_kind,
+    'phase': phase,
+    'expected_version': norm(expected),
+    'actuals': actuals,
+    'raw_log': raw_path,
+    'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+}
+payload.update(extra)
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + '
+', encoding='utf-8')
+raise SystemExit(0 if ok else 1)
+INNERPY
+}
+
+assert_host_build_context_versions() {
+  local raw_path="${docker_host_context_json}.raw"
+  {
+    printf 'VERSION\t'
+    cat VERSION 2>/dev/null || true
+    printf 'promptbranch_version.py\t'
+    python3 - <<'INNERPY'
+import promptbranch_version
+print(promptbranch_version.PACKAGE_VERSION)
+INNERPY
+    printf 'pyproject.toml\t'
+    python3 - <<'INNERPY'
+from pathlib import Path
+import tomllib
+with Path('pyproject.toml').open('rb') as handle:
+    print(tomllib.load(handle)['project']['version'])
+INNERPY
+  } > "${raw_path}"
+  if write_version_probe_json "${docker_host_context_json}" "docker_host_build_context" "pre_build" "${raw_path}"; then
+    echo "Docker host build context version verified: ${ver#v}"
+    return 0
+  fi
+  echo "ERROR: docker_build_context_version_mismatch before Docker build" >&2
+  echo "ERROR: inspect docker_host_context_json=${docker_host_context_json}" >&2
+  cat "${docker_host_context_json}" >&2 || true
+  return 1
+}
+
+docker_image_version_probe() {
+  local output="$1"
+  local phase="$2"
+  local image_ref
+  local raw_path="${output}.raw"
+  local stderr_path="${output}.stderr"
+  image_ref="$(promptbranch_service_image_ref)"
+  if ! docker run --rm --entrypoint sh "${image_ref}" -lc 'set -eu
+printf "VERSION\t"; cat /app/VERSION
+printf "promptbranch_version.py\t"; python3 -c "import promptbranch_version; print(promptbranch_version.PACKAGE_VERSION)"
+printf "pyproject.toml\t"; python3 -c "import tomllib; print(tomllib.load(open("/app/pyproject.toml", "rb"))["project"]["version"])"
+' > "${raw_path}" 2>"${stderr_path}"; then
+    python3 - "$output" "$phase" "${ver#v}" "${image_ref}" "${stderr_path}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+out, phase, expected, image_ref, stderr_path = sys.argv[1:6]
+stderr = Path(stderr_path).read_text(encoding='utf-8', errors='replace') if Path(stderr_path).exists() else ''
+Path(out).write_text(json.dumps({
+    'ok': False,
+    'status': 'docker_image_content_probe_failed',
+    'source_kind': 'docker_image_content',
+    'phase': phase,
+    'expected_version': expected,
+    'image': image_ref,
+    'stderr': stderr,
+}, indent=2, sort_keys=True) + '
+', encoding='utf-8')
+INNERPY
+    return 1
+  fi
+  write_version_probe_json "${output}" "docker_image_content" "${phase}" "${raw_path}" "{\"image\":\"${image_ref}\"}"
+}
+
+docker_container_version_probe() {
+  local output="$1"
+  local container="$2"
+  local raw_path="${output}.raw"
+  local stderr_path="${output}.stderr"
+  if [[ -z "${container}" ]]; then
+    printf '{"ok":false,"status":"container_not_found","source_kind":"docker_container_content"}
+' > "${output}"
+    return 1
+  fi
+  if ! docker exec "${container}" sh -lc 'set -eu
+printf "VERSION\t"; cat /app/VERSION
+printf "promptbranch_version.py\t"; python3 -c "import promptbranch_version; print(promptbranch_version.PACKAGE_VERSION)"
+printf "pyproject.toml\t"; python3 -c "import tomllib; print(tomllib.load(open("/app/pyproject.toml", "rb"))["project"]["version"])"
+' > "${raw_path}" 2>"${stderr_path}"; then
+    python3 - "$output" "${ver#v}" "${container}" "${stderr_path}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+out, expected, container, stderr_path = sys.argv[1:5]
+stderr = Path(stderr_path).read_text(encoding='utf-8', errors='replace') if Path(stderr_path).exists() else ''
+Path(out).write_text(json.dumps({
+    'ok': False,
+    'status': 'docker_container_content_probe_failed',
+    'source_kind': 'docker_container_content',
+    'expected_version': expected,
+    'container': container,
+    'stderr': stderr,
+}, indent=2, sort_keys=True) + '
+', encoding='utf-8')
+INNERPY
+    return 1
+  fi
+  write_version_probe_json "${output}" "docker_container_content" "running_container" "${raw_path}" "{\"container\":\"${container}\"}"
+}
 
 compose_service_container_id() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -1711,6 +1886,7 @@ deploy_promptbranch_service_detached() {
   [[ -f "${compose_file}" ]] || fail "compose file not found: ${compose_file}"
 
   local before_container
+  local image_probe_failed=0
   before_container="$(compose_service_container_id)"
   write_container_inspect_json "${before_container}" "${service_container_before_json}"
 
@@ -1723,39 +1899,64 @@ deploy_promptbranch_service_detached() {
     echo "service_base_url: ${service_base_url}"
     echo "service_image: $(promptbranch_service_image_ref)"
     echo "expected_version: ${ver#v}"
+    echo "artifact_sha256: $(release_artifact_sha256)"
+    echo "+ assert_host_build_context_versions"
+    assert_host_build_context_versions
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
     run_docker_compose down --remove-orphans
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} build --pull"
     run_docker_compose build --pull
-    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    run_docker_compose up -d --force-recreate --remove-orphans
-    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    run_docker_compose ps
-    run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    echo "+ docker image content probe ${docker_image_content_json}"
+    if docker_image_version_probe "${docker_image_content_json}" "normal_build"; then
+      echo "+ docker image inspect $(promptbranch_service_image_ref)"
+      docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
+      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
+      run_docker_compose up -d --force-recreate --remove-orphans
+      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
+      run_docker_compose ps
+      run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    else
+      image_probe_failed=1
+      echo "WARN: Docker image content probe failed after normal build; skipping container start before no-cache fallback."
+    fi
   } >"${service_start_log}" 2>&1
 
-  container_id="$(compose_service_container_id)"
-  write_container_inspect_json "${container_id}" "${service_container_after_json}"
+  if [[ ${image_probe_failed} -eq 0 ]]; then
+    container_id="$(compose_service_container_id)"
+    write_container_inspect_json "${container_id}" "${service_container_after_json}"
 
-  if [[ -n "${before_container}" && -n "${container_id}" && "${before_container}" == "${container_id}" ]]; then
-    echo "ERROR: Docker container was not recreated; before and after container IDs are both ${container_id}" >&2
-    echo "ERROR: inspect service_start_log=${service_start_log}" >&2
-    return 1
-  fi
+    if [[ -n "${before_container}" && -n "${container_id}" && "${before_container}" == "${container_id}" ]]; then
+      echo "ERROR: Docker container was not recreated; before and after container IDs are both ${container_id}" >&2
+      echo "ERROR: inspect service_start_log=${service_start_log}" >&2
+      return 1
+    fi
 
-  if wait_for_promptbranch_service_version; then
-    return 0
+    if ! docker_container_version_probe "${docker_container_content_json}" "${container_id}"; then
+      echo "ERROR: Docker running container content version mismatch before health probe" >&2
+      echo "ERROR: inspect docker_container_content_json=${docker_container_content_json}" >&2
+      cat "${docker_container_content_json}" >&2 || true
+    fi
+
+    if wait_for_promptbranch_service_version; then
+      return 0
+    fi
   fi
 
   echo "WARN: Docker service reported a stale or unexpected version after normal rebuild; retrying with no-cache image rebuild." >&2
   echo "WARN: normal build may have reused a stale Docker layer or old local image tag." >&2
   {
     echo "== Docker service no-cache rebuild fallback =="
-    echo "reason: service version did not match expected ${ver#v} after normal recreate"
+    echo "reason: service or image content version did not match expected ${ver#v} after normal recreate"
+    echo "+ assert_host_build_context_versions"
+    assert_host_build_context_versions
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
     run_docker_compose down --remove-orphans
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} build --no-cache --pull"
     run_docker_compose build --no-cache --pull
+    echo "+ docker image content probe ${docker_image_content_nocache_json}"
+    docker_image_version_probe "${docker_image_content_nocache_json}" "no_cache_build"
+    echo "+ docker image inspect $(promptbranch_service_image_ref)"
+    docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
     run_docker_compose up -d --force-recreate --remove-orphans
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
@@ -1765,6 +1966,12 @@ deploy_promptbranch_service_detached() {
 
   container_id="$(compose_service_container_id)"
   write_container_inspect_json "${container_id}" "${service_container_after_json}"
+  docker_container_version_probe "${docker_container_content_json}" "${container_id}" || {
+    echo "ERROR: Docker running container content version mismatch after no-cache rebuild" >&2
+    echo "ERROR: inspect docker_container_content_json=${docker_container_content_json}" >&2
+    cat "${docker_container_content_json}" >&2 || true
+    return 1
+  }
   wait_for_promptbranch_service_version
 }
 

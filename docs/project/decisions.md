@@ -68,3 +68,7 @@
 
 
 | ADR-PROJ-052 | 2026-06-17 | Delete-frozen live tests use one retained quarantine project and full operator validation runs through one continue-on-failure release-control option | Project deletion is frozen, so live test defaults must not create disposable projects that require deletion; operators also need one command instead of many manual validation steps | `ask-live`, `visual-artifact-roundtrip`, and `release-live` default to `itest-promptbranch-retained-delete-frozen`; release-control `--run-all-tests` emits a final GO/FIX JSON report |
+
+## Decision — v0.1.78.2.6 Docker provenance over always-no-cache
+
+Promptbranch should not default every release build to `docker compose build --no-cache`. Instead, release-control must verify host build context, built image content, running container content, and `/healthz` version alignment. A no-cache rebuild is permitted as a single fallback when the normal cached build produces stale or unverifiable content.
