@@ -90,3 +90,5 @@ A DoD item may be marked `done` only when evidence is listed. A candidate ZIP do
 | DOD-051 | Release-control run-all verdict uses top-level step results, preflights live profile authentication, and reports full direct/localhost/live/import/guard rows | done | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_cli.py`, `.gitignore`, `tests/test_promptbranch_shell_scripts.py`, `tests/test_cli_parser.py`, `docs/repair-v0.1.78.2.5.md` | v0.1.78.2.5 |
 
 | DOD-052 | Release-control verifies Docker host build context, built image content, running container content, and service health version before tests | done | `Dockerfile`, `docker-compose.chatgpt-service.yml`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.6.md` | v0.1.78.2.6 |
+
+| DOD-053 | Docker provenance probe JSON writers are syntactically valid and write newline-terminated JSON evidence | done | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.7.md` | v0.1.78.2.7 |

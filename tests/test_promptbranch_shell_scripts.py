@@ -1602,3 +1602,16 @@ def test_docker_build_context_version_guard_declared():
     assert "docker_container_version_probe" in script
     assert "docker_image_content" in script
     assert "docker_container_content" in script
+
+
+
+def test_release_control_docker_probe_json_writers_have_valid_python_newline_literals():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    escaped_newline_literal = "'" + "\\n" + "'"
+    actual_newline_literal = "'" + "\n" + "'"
+    assert "json.dumps(payload, indent=2, sort_keys=True) + " + escaped_newline_literal in script
+    assert "sort_keys=True) + " + escaped_newline_literal + ", encoding='utf-8')" in script
+    assert "sort_keys=True) + " + actual_newline_literal + "\n" not in script
+    assert "sort_keys=True) + " + "'" + "\n\n" + "'" not in script

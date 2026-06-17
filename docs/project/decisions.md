@@ -72,3 +72,8 @@
 ## Decision — v0.1.78.2.6 Docker provenance over always-no-cache
 
 Promptbranch should not default every release build to `docker compose build --no-cache`. Instead, release-control must verify host build context, built image content, running container content, and `/healthz` version alignment. A no-cache rebuild is permitted as a single fallback when the normal cached build produces stale or unverifiable content.
+
+
+## Decision — v0.1.78.2.7 repair probe syntax, not provenance policy
+
+The Docker provenance policy from v0.1.78.2.6 remains correct. v0.1.78.2.7 changes only the broken embedded Python JSON-writer syntax that prevented provenance evidence from being emitted.
