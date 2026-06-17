@@ -2247,7 +2247,7 @@ def test_canonical_test_profile_shortcut_dispatches_to_runner(monkeypatch, capsy
 
 
 
-def test_ask_live_profile_runs_visible_operator_steps_in_temp_project(monkeypatch, capsys) -> None:
+def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_project(monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
     events: list[str] = []
     project_id = "g-p-6a1af3fe64a481919a2cc7de3cff0487"
@@ -2295,7 +2295,9 @@ def test_ask_live_profile_runs_visible_operator_steps_in_temp_project(monkeypatc
     assert payload["service_transport_used"] is False
     assert payload["uses_temporary_project"] is True
     assert payload["test_project_created"] is True
-    assert payload["test_project_removed"] is True
+    assert payload["uses_retained_delete_frozen_project"] is True
+    assert payload["cleanup_policy"] == "retained_project_delete_frozen"
+    assert payload["test_project_removed"] is False
     assert payload["test_project_url"] == test_project_url
     assert payload["selected_steps"] == ["plain", "prompt_file"]
     assert payload["step_count"] == 2
@@ -2305,7 +2307,7 @@ def test_ask_live_profile_runs_visible_operator_steps_in_temp_project(monkeypatc
     assert all(step["in_expected_project"] is True for step in payload["steps"])
     assert all(step["expected_project_id"] == project_id for step in payload["steps"])
     assert all(step["response_project_id"] == project_id for step in payload["steps"])
-    assert events == ["ensure:ask-live-temp-UNIT:project-only", "remove"]
+    assert events == ["ensure:itest-promptbranch-retained-delete-frozen:project-only"]
 
 
 
@@ -2461,8 +2463,10 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
     assert payload["expected_output_filename"] == "pb_visual_artifact_roundtrip_UNIT.zip"
     assert payload["uses_temporary_project"] is True
     assert payload["test_project_created"] is True
-    assert payload["test_project_removed"] is True
-    assert payload["test_project_kept"] is False
+    assert payload["uses_retained_delete_frozen_project"] is True
+    assert payload["cleanup_policy"] == "retained_project_delete_frozen"
+    assert payload["test_project_removed"] is False
+    assert payload["test_project_kept"] is True
     assert payload["in_expected_project"] is True
     assert payload["expected_project_id"] == "g-p-11111111111111111111111111111111"
     assert payload["response_project_id"] == "g-p-11111111111111111111111111111111"
@@ -2474,7 +2478,7 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
     assert ask_calls[0]["expect_json"] is False
     assert ask_calls[0]["conversation_url"] == fake_backend.project_url
     assert any("ensure_project_name" in call for call in calls)
-    assert any("remove_project_keep_open" in call for call in calls)
+    assert not any("remove_project_keep_open" in call for call in calls)
 
 
 
@@ -2523,9 +2527,9 @@ def test_visual_artifact_roundtrip_failure_payload_waits_for_temp_project_cleanu
     assert payload["status"] == "ask_failed"
     assert payload["error_type"] == "SimulatedAskFailure"
     assert payload["test_project_created"] is True
-    assert payload["test_project_removed"] is True
-    assert payload["test_project_cleanup"]["status"] == "removed"
-    assert any("remove_project_keep_open" in call for call in calls)
+    assert payload["test_project_removed"] is False
+    assert payload["test_project_cleanup"] is None
+    assert not any("remove_project_keep_open" in call for call in calls)
 
 def test_visual_artifact_roundtrip_explicit_conversation_url_skips_temp_project(monkeypatch, capsys, tmp_path) -> None:
     output_zip = tmp_path / "pb_visual_artifact_roundtrip_EXPLICIT.zip"

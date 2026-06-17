@@ -88,5 +88,7 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.78.2.2 | repair | Release-control multi-segment repair-version compatibility | candidate | focused shell-script version-normalization tests, project control/version tests, protocol schema JSON test, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-048 done; DOD-047 preserved; no normal slice advanced | pending |
 
-| v0.1.78.2.3 | repair | Retained quarantine project for delete-frozen release tests | candidate | focused release-control shell tests, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-049 done; DOD-047/DOD-048 preserved; no normal slice advanced | pending |
+| v0.1.78.2.3 | repair | Retained quarantine project for delete-frozen release tests | accepted_current | release-control, visual-artifact-roundtrip, ask-live, release-live, import-smoke, artifact guard, and adoption/current evidence passed | DOD-049 done; DOD-047/DOD-048 preserved; no normal slice advanced | 3ea972e2a2e8c0906e48902749457c5054da5e67c506503d95b4cddf7615f13d |
 
+
+| v0.1.78.2.4 | repair | Delete-frozen live-test profile alignment and one-command all-tests report | candidate | focused CLI/parser/live-test defaults, release-control all-tests shell validation, project control/version tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-050 done; DOD-047/DOD-049 preserved; no normal slice advanced | pending |
