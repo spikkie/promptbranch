@@ -77,6 +77,7 @@ import_plan=0
 tests_only=0
 adopt_current=0
 adopt_if_green=0
+run_all_tests=0
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -127,6 +128,10 @@ Options:
                               or an internal tee-based session log fallback otherwise.
                               Does not imply adoption. Use --tests-only --adopt-if-green for
                               guarded adoption of an already uploaded Project Source ZIP.
+      --run-all-tests         Run the full operator validation stack in one command and continue
+                              after individual failures. Implies --run-tests and --test-transport both.
+                              Runs pb test full via direct+localhost, ask-live, visual-artifact-roundtrip,
+                              release-live, import-smoke, and artifact guard, then writes a final GO/FIX JSON report.
       --tests-only            Run only the logged pb test full/report block for the selected
                               version. Implies --run-tests and skips ZIP import,
                               commit, packaging, source add, install, service, and docker logs.
@@ -500,6 +505,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --localhost-base-url=*) localhost_base_url="${1#*=}"; shift ;;
     --run-tests) skip_tests=0; shift ;;
+    --run-all-tests)
+      run_all_tests=1
+      skip_tests=0
+      test_transport="both"
+      shift
+      ;;
     --tests-only|--run-tests-only)
       tests_only=1
       skip_tests=0
@@ -645,6 +656,12 @@ test_session_logging_mode="none"
 service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"
 service_start_log="${release_log_dir}/promptbranch-service-start.${ver_plain}.log"
 service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid"
+all_tests_summary_json="${release_log_dir}/pb_test.all.${ver}.summary.json"
+ask_live_log="${release_log_dir}/pb_test.ask_live.${ver}.log"
+visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundtrip.${ver}.log"
+release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
+import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
+artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "Download ZIP not found. Expected ${downloads_dir}/${artifact_zip} or ${downloads_dir}/${ver}.zip; use --install-from-zip ZIP or --skip-zip-import."
@@ -927,6 +944,7 @@ printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
+printf 'run_all_tests:  %s\n' "${run_all_tests}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   retained_project_delete_frozen\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
@@ -1810,6 +1828,152 @@ run_full_test_transport() {
   fi
 }
 
+
+all_test_step_specs=()
+
+record_all_test_step() {
+  local name="$1"
+  local log_path="$2"
+  local rc="$3"
+  all_test_step_specs+=("${name}|${log_path}|${rc}")
+}
+
+run_all_json_step() {
+  local step_name="$1"
+  local step_log="$2"
+  shift 2
+  local step_rc=0
+  echo "== pb test-all step: ${step_name} =="
+  echo "+ $* 2>&1 | tee ${step_log}"
+  "$@" 2>&1 | tee "${step_log}"
+  step_rc=${PIPESTATUS[0]}
+  if [[ ${step_rc} -ne 0 ]]; then
+    echo "WARN: test-all step ${step_name} exited with ${step_rc}; continuing." >&2
+    workflow_rc=${step_rc}
+  fi
+  record_all_test_step "${step_name}" "${step_log}" "${step_rc}"
+}
+
+write_all_tests_summary() {
+  local output_path="$1"
+  shift
+  python3 - "$output_path" "$ver" "$artifact_zip" "$release_test_project_name" "$test_transport" "$service_health_json" "$@" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+
+out = Path(sys.argv[1])
+version = sys.argv[2]
+artifact = sys.argv[3]
+project_name = sys.argv[4]
+test_transport = sys.argv[5]
+service_health_json = sys.argv[6]
+raw_steps = sys.argv[7:]
+
+
+def read_json_object(path: Path) -> tuple[dict, str | None]:
+    if not path.is_file():
+        return {}, f"missing: {path}"
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    idx = raw.find("{")
+    if idx < 0:
+        return {}, f"no JSON object found in {path}"
+    try:
+        return json.loads(raw[idx:]), None
+    except Exception as exc:
+        return {}, f"invalid JSON in {path}: {exc}"
+
+steps = []
+for item in raw_steps:
+    name, log, rc_text = item.split("|", 2)
+    path = Path(log)
+    payload, error = read_json_object(path)
+    try:
+        rc = int(rc_text)
+    except Exception:
+        rc = 99
+    ok = rc == 0 and payload.get("ok") is True and error is None
+    status = payload.get("status") or ("passed" if ok else "failed")
+    if name == "artifact_guard":
+        ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
+        status = payload.get("status") or status
+    steps.append({
+        "name": name,
+        "ok": ok,
+        "status": status,
+        "exit_code": rc,
+        "log": str(path),
+        "json_error": error,
+        "action": payload.get("action"),
+        "profile": payload.get("profile"),
+        "failure_count": payload.get("failure_count"),
+        "download_status": payload.get("download_status"),
+        "verification_status": payload.get("verification_status"),
+    })
+
+ok = bool(steps) and all(step["ok"] for step in steps)
+failed = [step for step in steps if not step["ok"]]
+summary = {
+    "schema": "promptbranch.release_control.all_tests_summary",
+    "schema_version": "1.0",
+    "source_kind": "release_control_all_tests_summary",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": ok,
+    "status": "go" if ok else "fix_required",
+    "final_verdict": "GO" if ok else "FIX",
+    "version": version,
+    "artifact": artifact,
+    "test_project": project_name,
+    "cleanup_policy": "retained_project_delete_frozen",
+    "test_transport": test_transport,
+    "continue_on_failure": True,
+    "step_count": len(steps),
+    "failure_count": len(failed),
+    "service_health_json": service_health_json,
+    "steps": steps,
+    "failed_steps": failed,
+}
+out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print(f"all_tests_summary: {out}")
+print(f"all_tests_final_verdict: {summary['final_verdict']}")
+if failed:
+    print("all_tests_failed_steps: " + ", ".join(step["name"] for step in failed))
+INNERPY
+}
+
+run_all_live_validation_steps() {
+  local guard_zip="${artifact_zip}"
+  if [[ ! -f "${guard_zip}" && -n "${download_zip:-}" && -f "${download_zip}" ]]; then
+    guard_zip="${download_zip}"
+  fi
+
+  echo "== pb test all: live/artifact/import/guard steps =="
+  echo "continue_on_failure: true"
+  echo "release_test_project_name: ${release_test_project_name}"
+  echo "cleanup_policy: retained_project_delete_frozen"
+
+  run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --project-name "${release_test_project_name}" --keep-project --json
+  run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --project-name "${release_test_project_name}" --keep-project --json
+  run_all_json_step "release_live" "${release_live_log}" pb test release-live --project-name "${release_test_project_name}" --keep-project --json
+  run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+  run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
+
+  write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"
+  if ! python3 - "${all_tests_summary_json}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+raise SystemExit(0 if payload.get("ok") is True and payload.get("final_verdict") == "GO" else 1)
+INNERPY
+  then
+    workflow_rc=1
+  fi
+}
+
 if [[ ${skip_tests} -eq 0 ]]; then
   start_test_session_log
   set +e
@@ -1826,6 +1990,10 @@ if [[ ${skip_tests} -eq 0 ]]; then
       run_full_test_transport "localhost" "${localhost_base_url}" "${localhost_full_log}" "${localhost_report_json}" "${release_log_dir}/post_release_validation.localhost.${ver}.summary.json"
       ;;
   esac
+
+  if [[ ${run_all_tests} -eq 1 ]]; then
+    run_all_live_validation_steps
+  fi
 
   set -e
   stop_test_session_log
@@ -1970,6 +2138,8 @@ compose_name:   ${compose_project_name}
 service_port:   ${service_port}
 service_base:   ${service_base_url}
 test_transport: ${test_transport}
+run_all_tests:  ${run_all_tests}
+all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")
 test_project:   ${release_test_project_name}
 test_cleanup:   retained_project_delete_frozen
 localhost_base: ${localhost_base_url}

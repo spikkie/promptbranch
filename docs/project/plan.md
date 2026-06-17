@@ -575,3 +575,26 @@ Risk: the retained quarantine project can accumulate test chats/sources over tim
 Next step: run release-control on v0.1.78.2.3 and adopt only with pb artifact current alignment evidence.
 ```
 
+
+
+## Slice definition — v0.1.78.2.4 repair release
+
+Release: v0.1.78.2.4
+Type: repair
+Slice: Delete-frozen live-test profile alignment and one-command all-tests report
+
+Scope:
+- Make `pb test ask-live`, `pb test visual-artifact-roundtrip`, and `pb test release-live` use/reuse the retained delete-frozen project by default.
+- Force keep-project semantics for those live profiles while ChatGPT Project deletion remains frozen.
+- Remove stale operator/help wording that implies automatic temporary project deletion.
+- Add release-control `--run-all-tests` to run the full operator validation stack in one command.
+- Continue after individual test failures and write a final machine-readable GO/FIX report.
+
+Out of scope:
+- Secure delete protocol.
+- Any ChatGPT Project deletion attempt.
+- Project Source removal behavior changes.
+- Artifact adoption/current mutation.
+- v0.1.79/k8s-game foundation work.
+
+Expected validation: focused CLI/parser/live-test tests, release-control all-tests shell test, project control/version tests, compileall, bash syntax, package import smoke, artifact guard, then release-control from ZIP before adoption.

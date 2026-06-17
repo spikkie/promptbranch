@@ -1505,3 +1505,77 @@ def test_release_control_accepts_multi_segment_repair_versions(tmp_path: Path):
     call_text = calls.read_text(encoding="utf-8")
     assert "pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
     assert "promptbranch src add" not in call_text
+
+
+def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-run-all-tests.log"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.9"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.9"
+    summary_path = log_dir / "pb_test.all.v9.9.9.summary.json"
+    assert summary_path.is_file()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    assert [step["name"] for step in summary["steps"]] == [
+        "ask_live",
+        "visual_artifact_roundtrip",
+        "release_live",
+        "import_smoke",
+        "artifact_guard",
+    ]
+    assert "run_all_tests:  1" in result.stdout
+    assert f"all_tests_summary: {summary_path}" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert call_text.count("pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json") == 2
+    assert "pb test ask-live --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb test visual-artifact-roundtrip --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb test release-live --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert "pb test import-smoke --json" in call_text
+    assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text

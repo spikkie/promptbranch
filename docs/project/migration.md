@@ -154,3 +154,8 @@ in_progress
 
 `v0.1.78.2.2` release-control completed successfully but the full browser test still created a unique temporary ChatGPT Project and retained it because project deletion is frozen. `v0.1.78.2.3` changes release-control to use one reusable retained quarantine project by default: `itest-promptbranch-retained-delete-frozen`. This prevents repeated creation of undeletable throwaway projects. Existing leaked `itest-promptbranch-*` projects are not deleted by the migration.
 
+
+
+## Repair migration note — v0.1.78.2.4
+
+`v0.1.78.2.4` changes live-test defaults away from temporary project creation/removal. The retained project `itest-promptbranch-retained-delete-frozen` is now the default for `ask-live`, `visual-artifact-roundtrip`, and `release-live`, and keep-project behavior is enforced while project deletion is frozen. Release-control adds `--run-all-tests` for one-command validation with continue-on-failure execution and a final GO/FIX summary. Existing leaked `itest-promptbranch-*` projects are not deleted by this migration.

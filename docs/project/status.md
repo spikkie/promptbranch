@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
 accepted checksum: 825e3b3a5e2d36214ddcdeb6f97ece8601a82f35322a34c96a6e3e2bab78af44
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.78.2.3.zip
+active repair candidate: chatgpt_claudecode_workflow-2_v0.1.78.2.4.zip
 next normal target after accepted AG-001: chatgpt_claudecode_workflow-2_v0.1.79.zip
 ```
 
@@ -15,7 +15,7 @@ next normal target after accepted AG-001: chatgpt_claudecode_workflow-2_v0.1.79.
 MVP status: active
 DoD status: in_progress
 active plan slice: AG-001 — Deterministic Artifact Guardian Guard
-active repair: v0.1.78.2.3 — Retained quarantine project for delete-frozen release tests
+active repair: v0.1.78.2.4 — Delete-frozen live-test profile alignment and one-command all-tests report
 last completed slice: v0.1.77.11 repair line accepted/current
 next planned slice: v0.1.79 — rebaselined JSON orchestration / k8s-game MVP foundation
 ```
@@ -23,7 +23,7 @@ next planned slice: v0.1.79 — rebaselined JSON orchestration / k8s-game MVP fo
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.78.2.3.zip candidate once packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.78.2.4.zip candidate once packaged
 latest installed ZIP: chatgpt_claudecode_workflow-2_v0.1.78.zip failed release-control
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
 release status: v0.1.78.2 freezes ChatGPT Project deletion after v0.1.78.1 live-log delete evidence; not accepted/current
@@ -39,8 +39,8 @@ release status: v0.1.78.2 freezes ChatGPT Project deletion after v0.1.78.1 live-
 
 ## Current blockers
 
-- v0.1.78.2.3 must pass focused release-control quarantine-project tests and release-control from ZIP.
-- v0.1.78.2.3 must not be adopted/current without `pb artifact current --all --json` alignment evidence.
+- v0.1.78.2.4 must pass focused live-test default alignment, release-control all-tests shell validation, and release-control from ZIP.
+- v0.1.78.2.4 must not be adopted/current without `pb artifact current --all --json` alignment evidence.
 - Existing leaked `itest-promptbranch-*` projects from pre-fix runs remain manual cleanup until a secure delete protocol exists.
 
 ## Current unknowns
@@ -75,3 +75,8 @@ v0.1.78.2.3 repair candidate build
 ## v0.1.78.2.3 repair status
 
 `v0.1.78.2.2` release-control succeeded but retained a newly created unique `itest-promptbranch-<run-id>` project because ChatGPT Project deletion is frozen. `v0.1.78.2.3` changes release-control live tests to reuse one retained quarantine project named `itest-promptbranch-retained-delete-frozen` by default and passes `--keep-project`, preventing a new undeletable project from being created on every release-control run. Existing leaked `itest-promptbranch-*` projects are not deleted by this repair.
+
+
+## v0.1.78.2.4 repair status
+
+`v0.1.78.2.4` aligns delete-frozen live-test profiles with the retained quarantine project policy. `pb test ask-live`, `pb test visual-artifact-roundtrip`, and `pb test release-live` now default to using/reusing `itest-promptbranch-retained-delete-frozen` and force keep-project semantics because whole ChatGPT Project deletion is frozen. Release-control adds `--run-all-tests`, which runs the operator validation stack in one command, continues after individual failures, and writes `pb_test.all.<version>.summary.json` with final `GO` or `FIX` verdict.

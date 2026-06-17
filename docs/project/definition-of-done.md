@@ -84,3 +84,5 @@ A DoD item may be marked `done` only when evidence is listed. A candidate ZIP do
 
 | DOD-049 | Release-control live tests reuse a retained quarantine project while ChatGPT Project deletion is frozen | done | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.3.md` | v0.1.78.2.3 |
 
+
+| DOD-050 | Delete-frozen live-test profiles default to the retained quarantine project and release-control can run all operator tests with continue-on-failure final GO/FIX reporting | done | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_cli.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.4.md` | v0.1.78.2.4 |
