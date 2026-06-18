@@ -1623,3 +1623,79 @@ def test_release_control_docker_probe_pyproject_reader_is_shell_quoted_safely():
     assert 'tomllib.load(open(/app/pyproject.toml, rb))' not in script
     assert 'awk -F' not in script or 'print \\$2' not in script
     assert 'grep -E "^version = " /app/pyproject.toml | head -n 1 | cut -d "\\\"" -f 2' in script
+
+def test_release_control_run_all_has_rate_limit_retry_policy_declared():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES" in script
+    assert "PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS" in script
+    assert "run_all_log_has_rate_limit_evidence" in script
+    assert "run_all_rate_limit_cooldown_sleep" in script
+    assert "Too many requests" in script
+    assert "status=429" in script
+    assert "temporarily limited access" in script
+    assert "tee -a" in script
+    assert "retry after rate-limit cooldown" in script
+
+def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    ask_counter = tmp_path / "ask_counter"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.10\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then n=$(cat \"$PB_FAKE_ASK_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_ASK_COUNTER\"; if [[ $n -eq 1 ]]; then echo 'Too many requests status=429 cooldown_seconds=0'; exit 42; fi; echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PB_FAKE_ASK_COUNTER"] = str(ask_counter)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-run-all-rate-limit-retry.log"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.10"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.10"
+    summary = json.loads((log_dir / "pb_test.all.v9.9.10.summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    assert ask_counter.read_text(encoding="utf-8").strip() == "2"
+    assert "retry after rate-limit cooldown" in (log_dir / "pb_test.ask_live.v9.9.10.log").read_text(encoding="utf-8")
+    assert "rate-limit evidence detected for ask_live" in result.stdout

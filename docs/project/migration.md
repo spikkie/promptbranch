@@ -183,3 +183,7 @@ No operator migration is required. Continue from accepted/current v0.1.78.2.3 un
 ## v0.1.78.2.9 migration note
 
 No user data migration is required. Operators should rerun release-control with the v0.1.78.2.9 candidate. This repair only fixes the Docker image/container pyproject version probe so it works under `set -u`; it does not alter project deletion, Project Source, artifact adoption, or run-all semantics.
+
+## v0.1.78.2.10 migration note
+
+No user data migration is required. Operators may set `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES`, `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS`, or `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP=1` for controlled test environments. The default release-control path waits and retries once when a failed run-all step contains ChatGPT rate-limit evidence.

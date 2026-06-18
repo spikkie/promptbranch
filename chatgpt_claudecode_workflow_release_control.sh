@@ -78,6 +78,12 @@ tests_only=0
 adopt_current=0
 adopt_if_green=0
 run_all_tests=0
+# Release-control run-all should treat ChatGPT conversation-history 429s as
+# temporary backpressure: click/dismiss the modal in browser code, wait for the
+# persisted cooldown window, then retry the same step once before declaring FIX.
+run_all_rate_limit_retries="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES:-1}"
+run_all_rate_limit_cooldown_seconds="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS:-185}"
+run_all_rate_limit_skip_sleep="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP:-0}"
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -1992,6 +1998,48 @@ if [[ ${skip_service} -eq 0 ]]; then
   fi
 fi
 
+run_all_log_has_rate_limit_evidence() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  grep -Eiq 'Too many requests|temporarily limited access|protect your data|status=429|response.*429|conversation history rate limit|backend-api guardrail|rate[-_ ]limit|rate_limited|cooldown_seconds|cooldown_until' "${log_path}"
+}
+
+run_all_rate_limit_cooldown_sleep() {
+  local step_name="$1"
+  local log_path="$2"
+  local wait_seconds="${run_all_rate_limit_cooldown_seconds}"
+  if [[ -f "${log_path}" ]]; then
+    local parsed_wait
+    parsed_wait="$(python3 - "${log_path}" "${run_all_rate_limit_cooldown_seconds}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import re
+import sys
+path = Path(sys.argv[1])
+default = float(sys.argv[2])
+text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+values = []
+for pattern in (r"cooldown_seconds[=:]\s*([0-9]+(?:\.[0-9]+)?)", r'"cooldown_seconds"\s*:\s*([0-9]+(?:\.[0-9]+)?)'):
+    values.extend(float(m.group(1)) for m in re.finditer(pattern, text))
+wait = max(values) if values else default
+# Acknowledge ChatGPT's "a few minutes" modal by waiting the persisted cooldown
+# plus a small guard band, but cap extreme values so release-control remains bounded.
+wait = min(max(wait + 5.0, 0.0), 420.0)
+print(int(round(wait)))
+INNERPY
+)"
+    if [[ -n "${parsed_wait}" ]]; then
+      wait_seconds="${parsed_wait}"
+    fi
+  fi
+  echo "WARN: rate-limit evidence detected for ${step_name}; clicking/acknowledgement is handled by browser code, waiting ${wait_seconds}s before retry." >&2
+  if [[ "${run_all_rate_limit_skip_sleep}" == "1" || "${wait_seconds}" == "0" ]]; then
+    echo "WARN: skipping rate-limit sleep because PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP=${run_all_rate_limit_skip_sleep}." >&2
+    return 0
+  fi
+  sleep "${wait_seconds}"
+}
+
 # Run full suite and parsed report. Always try to create a report, even if the suite fails.
 # Default direct transport invariant: CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json
 run_full_test_transport() {
@@ -2006,9 +2054,17 @@ run_full_test_transport() {
   echo "== pb test transport: ${label} =="
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: retained_project_delete_frozen"
-  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee ${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee "${selected_full_log}"
+  : > "${selected_full_log}"
+  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee -a ${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
+  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
+    run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"
+    echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
+    echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee -a ${selected_full_log}"
+    CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee -a "${selected_full_log}"
+    test_rc=${PIPESTATUS[0]}
+  fi
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
     workflow_rc=${test_rc}
@@ -2052,10 +2108,20 @@ run_all_json_step() {
   local step_log="$2"
   shift 2
   local step_rc=0
+  local attempt=0
+  : > "${step_log}"
   echo "== pb test-all step: ${step_name} =="
-  echo "+ $* 2>&1 | tee ${step_log}"
-  "$@" 2>&1 | tee "${step_log}"
+  echo "+ $* 2>&1 | tee -a ${step_log}"
+  "$@" 2>&1 | tee -a "${step_log}"
   step_rc=${PIPESTATUS[0]}
+  while [[ ${step_rc} -ne 0 && ${attempt} -lt ${run_all_rate_limit_retries} ]] && run_all_log_has_rate_limit_evidence "${step_log}"; do
+    attempt=$((attempt + 1))
+    run_all_rate_limit_cooldown_sleep "${step_name}" "${step_log}"
+    echo "== pb test-all step retry after rate-limit cooldown: ${step_name} attempt=${attempt} ==" | tee -a "${step_log}"
+    echo "+ $* 2>&1 | tee -a ${step_log}"
+    "$@" 2>&1 | tee -a "${step_log}"
+    step_rc=${PIPESTATUS[0]}
+  done
   if [[ ${step_rc} -ne 0 ]]; then
     echo "WARN: test-all step ${step_name} exited with ${step_rc}; continuing." >&2
     workflow_rc=${step_rc}
