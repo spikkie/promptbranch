@@ -77,3 +77,8 @@ Promptbranch should not default every release build to `docker compose build --n
 ## Decision — v0.1.78.2.7 repair probe syntax, not provenance policy
 
 The Docker provenance policy from v0.1.78.2.6 remains correct. v0.1.78.2.7 changes only the broken embedded Python JSON-writer syntax that prevented provenance evidence from being emitted.
+
+
+## Decision — Docker provenance probes must avoid fragile nested shell/Python quoting
+
+For v0.1.78.2.8, Docker image/container pyproject version extraction uses a shell-safe reader instead of nested inline Python with quoted file paths. This keeps the Docker provenance guard useful while reducing release-control failure risk from quoting syntax errors.

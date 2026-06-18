@@ -98,3 +98,6 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.78.2.6 | repair | Docker build cache/provenance guard | candidate | focused shell/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-052 done; DOD-047/DOD-050/DOD-051 preserved | pending |
 
 | v0.1.78.2.7 | repair | Docker provenance probe syntax repair | candidate | focused shell/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-053 done; DOD-047/DOD-050/DOD-051/DOD-052 preserved | pending |
+
+
+| v0.1.78.2.8 | repair | Docker pyproject probe quoting repair | candidate | Fixes running-container pyproject probe quoting after v0.1.78.2.7 failed with `SyntaxError: invalid syntax`; focused regression validation passed before packaging. | pending |

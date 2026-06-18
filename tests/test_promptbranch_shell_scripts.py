@@ -1615,3 +1615,11 @@ def test_release_control_docker_probe_json_writers_have_valid_python_newline_lit
     assert "sort_keys=True) + " + escaped_newline_literal + ", encoding='utf-8')" in script
     assert "sort_keys=True) + " + actual_newline_literal + "\n" not in script
     assert "sort_keys=True) + " + "'" + "\n\n" + "'" not in script
+
+def test_release_control_docker_probe_pyproject_reader_is_shell_quoted_safely():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'open("/app/pyproject.toml", "rb")' not in script
+    assert 'tomllib.load(open(/app/pyproject.toml, rb))' not in script
+    assert 'awk -F\\" "/^version = / {print \\\\$2; exit}" /app/pyproject.toml' in script
