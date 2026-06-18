@@ -116,3 +116,9 @@ Acceptance criteria:
 - The pyproject version reader remains shell-safe inside `docker run ... sh -lc` and `docker exec ... sh -lc`.
 - A focused regression test rejects the old fragile awk-dollar probe form.
 - Existing Docker provenance and delete-frozen live-test behavior is preserved.
+
+## DOD-056 — Run-all rate-limit recovery policy
+
+Status: done for v0.1.78.2.10 candidate.
+
+Release-control `--run-all-tests` treats ChatGPT conversation-history 429 / "Too many requests" evidence as temporary backpressure. When a step exits non-zero with rate-limit evidence, release-control waits for the configured cooldown window and retries the same step once before declaring the all-tests verdict `FIX`. Browser-level modal acknowledgement remains in the Promptbranch client; the release path now makes that recovery first-class instead of immediately failing the candidate.

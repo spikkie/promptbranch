@@ -1,10 +1,20 @@
-Release: chatgpt_claudecode_workflow_v0.0.64.zip
+Patch report — v0.1.78.2.10
+
+Scope:
+- Repair release-control run-all handling for ChatGPT conversation-history 429 / "Too many requests" pressure.
+- Preserve Docker provenance checks and delete-frozen project policy.
 
 Changes:
-- Added `chatgpt use` to select current project/chat state from a project name or URL
-- Added `chatgpt completion <bash|zsh|fish>` shell-completion output
-- Added install/documentation guidance for CLI packaging and Python reuse
+- Added run-all rate-limit evidence detection for failed steps.
+- Added bounded cooldown wait and one retry for failed run-all steps with rate-limit evidence.
+- Appended retry output to the same step log so the final JSON extractor reads the latest Promptbranch result.
+- Added regression coverage for a failed ask-live step that emits rate-limit evidence and succeeds on retry.
 
 Validation:
-- py_compile for cli/state modules
-- targeted pytest for parser, state, and CLI command behavior
+- Focused pytest subset passed.
+- python compileall passed.
+- bash syntax checks passed.
+- ZIP integrity check passed.
+
+Status:
+- Candidate only; not accepted/current until operator release-control and adoption evidence proves it.
