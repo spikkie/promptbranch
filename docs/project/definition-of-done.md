@@ -104,3 +104,15 @@ Acceptance criteria:
 - A focused regression test must reject the broken `tomllib.load(open(/app/pyproject.toml, rb))` form.
 - Existing Docker provenance checks from DOD-052 and newline JSON writer fix from DOD-053 must remain present.
 - ChatGPT Project deletion remains frozen.
+
+
+## DOD-055 — Docker pyproject probes avoid shell positional parameters
+
+Status: done for v0.1.78.2.9 candidate.
+
+Acceptance criteria:
+
+- Docker image-content and running-container content probes do not use an awk `$2` expression that can be expanded by the shell under `set -u`.
+- The pyproject version reader remains shell-safe inside `docker run ... sh -lc` and `docker exec ... sh -lc`.
+- A focused regression test rejects the old fragile awk-dollar probe form.
+- Existing Docker provenance and delete-frozen live-test behavior is preserved.

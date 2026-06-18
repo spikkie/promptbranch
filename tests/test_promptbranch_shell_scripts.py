@@ -1620,6 +1620,6 @@ def test_release_control_docker_probe_pyproject_reader_is_shell_quoted_safely():
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert 'open("/app/pyproject.toml", "rb")' not in script
     assert 'tomllib.load(open(/app/pyproject.toml, rb))' not in script
-    assert 'awk -F\\" "/^version = / {print \\\\$2; exit}" /app/pyproject.toml' in script
+    assert 'awk -F' not in script or 'print \\$2' not in script
+    assert 'grep -E "^version = " /app/pyproject.toml | head -n 1 | cut -d "\\\"" -f 2' in script

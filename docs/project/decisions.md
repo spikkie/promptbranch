@@ -82,3 +82,8 @@ The Docker provenance policy from v0.1.78.2.6 remains correct. v0.1.78.2.7 chang
 ## Decision — Docker provenance probes must avoid fragile nested shell/Python quoting
 
 For v0.1.78.2.8, Docker image/container pyproject version extraction uses a shell-safe reader instead of nested inline Python with quoted file paths. This keeps the Docker provenance guard useful while reducing release-control failure risk from quoting syntax errors.
+
+
+## Decision — Docker provenance pyproject probes must avoid awk `$2` under `set -u`
+
+The v0.1.78.2.8 Docker container-content probe failed because an awk expression containing `$2` was evaluated by the shell under `set -u`, causing `parameter not set`. v0.1.78.2.9 replaces that reader with a `grep | head | cut` pipeline that avoids shell positional parameters while preserving the Docker provenance policy.

@@ -178,3 +178,8 @@ No user data migration. Operators should rerun release-control with the v0.1.78.
 ## v0.1.78.2.8 migration note
 
 No operator migration is required. Continue from accepted/current v0.1.78.2.3 unless explicitly testing the v0.1.78.2.8 candidate. Release-control should be rerun from the v0.1.78.2.8 ZIP to prove Docker host/image/container/health version alignment.
+
+
+## v0.1.78.2.9 migration note
+
+No user data migration is required. Operators should rerun release-control with the v0.1.78.2.9 candidate. This repair only fixes the Docker image/container pyproject version probe so it works under `set -u`; it does not alter project deletion, Project Source, artifact adoption, or run-all semantics.
