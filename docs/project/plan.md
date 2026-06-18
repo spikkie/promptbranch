@@ -666,3 +666,23 @@ Out of scope:
 - Normal v0.1.79 work.
 
 | v0.1.78.2.8 | repair | Docker pyproject probe quoting repair | candidate | focused Docker probe quoting/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-054 done; DOD-047/DOD-050/DOD-051/DOD-052/DOD-053 preserved | pending |
+
+
+## Slice definition — v0.1.78.2.9 repair release
+
+Release: v0.1.78.2.9
+
+Goal: repair the Docker image/container pyproject probe so it is safe under `set -u` and does not expand shell positional parameter `$2`.
+
+In scope:
+
+- Replace awk `$2` pyproject extraction in Docker image/content probes with a shell-safe `grep | head | cut` reader.
+- Add a focused regression check that rejects the old awk-dollar probe form.
+- Preserve Docker provenance checks, bounded no-cache fallback, retained live-test project behavior, and project deletion freeze.
+
+Out of scope:
+
+- Secure project delete protocol.
+- Project Source behavior changes.
+- Adoption/current mutation.
+- v0.1.79/k8s-game work.

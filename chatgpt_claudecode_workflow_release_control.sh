@@ -1719,7 +1719,7 @@ docker_image_version_probe() {
   if ! docker run --rm --entrypoint sh "${image_ref}" -lc 'set -eu
 printf "VERSION\t"; cat /app/VERSION
 printf "promptbranch_version.py\t"; python3 -c "import promptbranch_version; print(promptbranch_version.PACKAGE_VERSION)"
-printf "pyproject.toml\t"; awk -F\" "/^version = / {print \\$2; exit}" /app/pyproject.toml
+printf "pyproject.toml\t"; grep -E "^version = " /app/pyproject.toml | head -n 1 | cut -d "\"" -f 2
 ' > "${raw_path}" 2>"${stderr_path}"; then
     python3 - "$output" "$phase" "${ver#v}" "${image_ref}" "${stderr_path}" <<'INNERPY'
 from pathlib import Path
@@ -1755,7 +1755,7 @@ docker_container_version_probe() {
   if ! docker exec "${container}" sh -lc 'set -eu
 printf "VERSION\t"; cat /app/VERSION
 printf "promptbranch_version.py\t"; python3 -c "import promptbranch_version; print(promptbranch_version.PACKAGE_VERSION)"
-printf "pyproject.toml\t"; awk -F\" "/^version = / {print \\$2; exit}" /app/pyproject.toml
+printf "pyproject.toml\t"; grep -E "^version = " /app/pyproject.toml | head -n 1 | cut -d "\"" -f 2
 ' > "${raw_path}" 2>"${stderr_path}"; then
     python3 - "$output" "${ver#v}" "${container}" "${stderr_path}" <<'INNERPY'
 from pathlib import Path
