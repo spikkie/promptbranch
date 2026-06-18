@@ -92,3 +92,15 @@ A DoD item may be marked `done` only when evidence is listed. A candidate ZIP do
 | DOD-052 | Release-control verifies Docker host build context, built image content, running container content, and service health version before tests | done | `Dockerfile`, `docker-compose.chatgpt-service.yml`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.6.md` | v0.1.78.2.6 |
 
 | DOD-053 | Docker provenance probe JSON writers are syntactically valid and write newline-terminated JSON evidence | done | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.78.2.7.md` | v0.1.78.2.7 |
+
+
+## DOD-054 — Docker pyproject probe quoting repair
+
+Status: done for v0.1.78.2.8 candidate.
+
+Acceptance criteria:
+
+- Docker image and container content probes must not use a malformed inline Python command that loses quotes around `/app/pyproject.toml` or `rb`.
+- A focused regression test must reject the broken `tomllib.load(open(/app/pyproject.toml, rb))` form.
+- Existing Docker provenance checks from DOD-052 and newline JSON writer fix from DOD-053 must remain present.
+- ChatGPT Project deletion remains frozen.

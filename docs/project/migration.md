@@ -173,3 +173,8 @@ No user data migration. Release operators should continue using normal cached Do
 ## v0.1.78.2.7 migration note
 
 No user data migration. Operators should rerun release-control with the v0.1.78.2.7 candidate. This repair only fixes Docker provenance probe JSON writer syntax; it does not alter project deletion, Project Source, or artifact adoption semantics.
+
+
+## v0.1.78.2.8 migration note
+
+No operator migration is required. Continue from accepted/current v0.1.78.2.3 unless explicitly testing the v0.1.78.2.8 candidate. Release-control should be rerun from the v0.1.78.2.8 ZIP to prove Docker host/image/container/health version alignment.

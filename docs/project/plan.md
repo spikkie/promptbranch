@@ -664,3 +664,5 @@ Out of scope:
 - Secure project delete protocol.
 - Project Source behavior changes.
 - Normal v0.1.79 work.
+
+| v0.1.78.2.8 | repair | Docker pyproject probe quoting repair | candidate | focused Docker probe quoting/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-054 done; DOD-047/DOD-050/DOD-051/DOD-052/DOD-053 preserved | pending |
