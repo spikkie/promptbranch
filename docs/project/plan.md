@@ -694,3 +694,24 @@ Release: v0.1.78.2.10
 Goal: make ChatGPT conversation-history 429 / "Too many requests" backpressure recoverable in `--run-all-tests` by acknowledging the modal in browser code, waiting for cooldown, and retrying the failed release-control step once before declaring FIX.
 
 Non-goals: project deletion, secure delete, Project Source behavior changes, artifact adoption mutation, v0.1.79 work.
+
+## Slice definition — v0.1.78.2.11 repair release
+
+Release: v0.1.78.2.11
+
+Goal: repair `--run-all-tests` so release-control preserves the live seed profile across candidate install and only retries failed steps when strict ChatGPT rate-limit evidence is present.
+
+In scope:
+
+- Preserve `.pb_profile_local_debug/` during ZIP import.
+- Keep `.pb_profile_local_debug_pools/` disposable.
+- Validate and sanitize the seed profile before live browser steps.
+- Replace broad text matching with strict rate-limit evidence checks.
+- Preserve Docker provenance and project deletion freeze.
+
+Out of scope:
+
+- Secure project deletion protocol.
+- Project Source behavior changes.
+- Adoption/current mutation.
+- v0.1.79/k8s-game work.

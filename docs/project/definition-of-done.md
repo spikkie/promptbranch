@@ -122,3 +122,15 @@ Acceptance criteria:
 Status: done for v0.1.78.2.10 candidate.
 
 Release-control `--run-all-tests` treats ChatGPT conversation-history 429 / "Too many requests" evidence as temporary backpressure. When a step exits non-zero with rate-limit evidence, release-control waits for the configured cooldown window and retries the same step once before declaring the all-tests verdict `FIX`. Browser-level modal acknowledgement remains in the Promptbranch client; the release path now makes that recovery first-class instead of immediately failing the candidate.
+
+## DOD-057 — Run-all profile seed preservation and strict rate-limit detection
+
+Status: done for v0.1.78.2.11 candidate.
+
+Acceptance criteria:
+
+- Release-control ZIP import preserves `.pb_profile_local_debug/` but not `.pb_profile_local_debug_pools/`.
+- Live `--run-all-tests` preflight validates the actual seed profile directory before ask-live, visual-artifact-roundtrip, and release-live.
+- Live seed profile hygiene removes Chromium singleton/DevTools runtime files before pool cloning.
+- Rate-limit retry detection only triggers on strict ChatGPT 429 / "Too many requests" evidence, not generic "No rate-limit evidence" diagnostic text.
+- Docker provenance checks and project deletion freeze remain preserved.

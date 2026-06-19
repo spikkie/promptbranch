@@ -187,3 +187,7 @@ No user data migration is required. Operators should rerun release-control with 
 ## v0.1.78.2.10 migration note
 
 No user data migration is required. Operators may set `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES`, `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS`, or `PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP=1` for controlled test environments. The default release-control path waits and retries once when a failed run-all step contains ChatGPT rate-limit evidence.
+
+## v0.1.78.2.11 migration note
+
+Operators who use `--run-all-tests` should authenticate `.pb_profile_local_debug/` once as the live-test seed profile. Release-control now preserves that seed across ZIP import while continuing to treat `.pb_profile_local_debug_pools/` as disposable generated state. No Project Source, adoption/current, or project deletion migration is performed.

@@ -163,7 +163,7 @@ Version precedence:
 Automatic ZIP import:
   By default this script installs ${project_name}_VERSION.zip from --downloads-dir
   into the repository before commit/package. This is an overwrite import, not a
-  merge. It preserves .git/, .env, .generated/, .pb_profile/, profile/, and debug_artifacts/.
+  merge. It preserves .git/, .env, .generated/, .pb_profile/, .pb_profile_local_debug/, profile/, and debug_artifacts/.
   It requires candidate ZIP control files (.gitignore and .not_to_zip) and
   refuses to stage local secrets or generated artifacts.
 
@@ -670,6 +670,8 @@ visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundt
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
 import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
 artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
+live_profile_seed_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR:-./.pb_profile_local_debug}"
+live_profile_seed_display="${live_profile_seed_dir}"
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "Download ZIP not found. Expected ${downloads_dir}/${artifact_zip} or ${downloads_dir}/${ver}.zip; use --install-from-zip ZIP or --skip-zip-import."
@@ -705,7 +707,7 @@ release_import_plan_json() {
   local zip_path="$1"
   local expected_version="$2"
   local repo_path="$3"
-  local preserved_csv=".git,.env,.generated,.pb_profile,profile,debug_artifacts"
+  local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"
   python3 - "$zip_path" "$expected_version" "$repo_path" "$preserved_csv" <<'INNERPY'
 import json
 import sys
@@ -718,7 +720,7 @@ repo_path = Path(sys.argv[3]).expanduser().resolve()
 preserved_paths = sys.argv[4].split(",")
 script_name = "chatgpt_claudecode_workflow_release_control.sh"
 required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]
-protected_zip_roots = [".env", ".generated", ".pb_profile", "profile", "debug_artifacts"]
+protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", "profile", "debug_artifacts"]
 payload = {
     "ok": False,
     "action": "release_zip_import_plan",
@@ -822,7 +824,7 @@ from pathlib import Path
 
 zip_path = Path(sys.argv[1]).expanduser().resolve()
 repo_path = Path(sys.argv[2]).expanduser().resolve()
-protected_roots = {".git", ".env", ".generated", ".pb_profile", "profile", "debug_artifacts"}
+protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", "profile", "debug_artifacts"}
 missing = []
 checked = 0
 with zipfile.ZipFile(zip_path) as archive:
@@ -873,7 +875,7 @@ assert_release_staging_safe() {
   while IFS=$'\t' read -r status path rest; do
     [[ -n "${status}" && -n "${path}" ]] || continue
     case "${path}" in
-      .env|.env.*|.generated|.generated/*|.pb_profile|.pb_profile/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
+      .env|.env.*|.generated|.generated/*|.pb_profile|.pb_profile/*|.pb_profile_local_debug|.pb_profile_local_debug/*|.pb_profile_local_debug_pools|.pb_profile_local_debug_pools/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
         bad+=("${status}${IFS}${path}")
         ;;
     esac
@@ -901,7 +903,7 @@ owner_uid_for_user() {
 
 ownership_normalization_targets() {
   local candidate
-  for candidate in "${repo_root}/.pb_profile" "${repo_root}/debug_artifacts"; do
+  for candidate in "${repo_root}/.pb_profile" "${repo_root}/.pb_profile_local_debug" "${repo_root}/debug_artifacts"; do
     if [[ -e "${candidate}" ]]; then
       printf '%s\n' "${candidate}"
     fi
@@ -953,6 +955,7 @@ printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
 printf 'run_all_tests:  %s\n' "${run_all_tests}"
+printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   retained_project_delete_frozen\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
@@ -988,9 +991,9 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   echo
   echo "== Install ZIP into working tree =="
   normalize_generated_ownership "pre-import"
-  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
+  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name ".pb_profile_local_debug"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='.pb_profile_local_debug/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
@@ -2001,7 +2004,64 @@ fi
 run_all_log_has_rate_limit_evidence() {
   local log_path="$1"
   [[ -f "${log_path}" ]] || return 1
-  grep -Eiq 'Too many requests|temporarily limited access|protect your data|status=429|response.*429|conversation history rate limit|backend-api guardrail|rate[-_ ]limit|rate_limited|cooldown_seconds|cooldown_until' "${log_path}"
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import re
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+
+# Strict evidence only. Do not match generic diagnostic prose such as
+# "No ChatGPT rate-limit evidence observed" or variable names by themselves.
+strict_patterns = [
+    r"Too many requests",
+    r"temporarily limited access",
+    r"protect your data",
+    r"\bstatus\s*[=:]\s*429\b",
+    r'"status"\s*:\s*429\b',
+    r"HTTP\s+429\b",
+    r"backend-api/[^\s'\"]+.*\b429\b",
+    r"conversation history rate limit noted",
+    r"backend-api guardrail noted",
+    r'"rate_limit_modal_detected"\s*:\s*true',
+    r'"conversation_history_429_seen"\s*:\s*true',
+    r'"backend_api_guardrail_seen"\s*:\s*true',
+    r'"status"\s*:\s*"rate_limited_failed"',
+]
+if any(re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL) for pattern in strict_patterns):
+    raise SystemExit(0)
+
+# Structured fallback: if a Promptbranch JSON object contains service_rate_limit_events
+# with entries, treat it as retryable backpressure. Empty arrays are not evidence.
+decoder = json.JSONDecoder()
+for idx, char in enumerate(text):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(text[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    events = value.get("service_rate_limit_events")
+    if isinstance(events, list) and events:
+        raise SystemExit(0)
+    summary = value.get("rate_limit_summary")
+    if isinstance(summary, dict):
+        if summary.get("conversation_history_429_seen") is True:
+            raise SystemExit(0)
+        if summary.get("rate_limit_modal_detected") is True:
+            raise SystemExit(0)
+        if summary.get("backend_api_guardrail_seen") is True:
+            raise SystemExit(0)
+        nested_events = summary.get("service_rate_limit_events")
+        if isinstance(nested_events, list) and nested_events:
+            raise SystemExit(0)
+raise SystemExit(1)
+INNERPY
 }
 
 run_all_rate_limit_cooldown_sleep() {
@@ -2277,11 +2337,59 @@ INNERPY
   record_all_test_step "$step_name" "$step_log" "$step_rc"
 }
 
+
+run_all_sanitize_live_seed_profile() {
+  local seed_dir="$1"
+  [[ -d "${seed_dir}" ]] || return 0
+  find "${seed_dir}" \
+    \( -name 'SingletonLock' -o -name 'SingletonSocket' -o -name 'SingletonCookie' -o -name 'DevToolsActivePort' \) \
+    -delete 2>/dev/null || true
+}
+
+run_all_validate_live_seed_profile() {
+  local seed_dir="$1"
+  local seed_status_json="$2"
+  if [[ ! -d "${seed_dir}" ]]; then
+    python3 - "${seed_status_json}" "${seed_dir}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+out = Path(sys.argv[1])
+seed = sys.argv[2]
+payload = {
+    "ok": False,
+    "action": "release_control_live_profile_seed_preflight",
+    "status": "profile_seed_missing",
+    "seed_profile_dir": seed,
+    "recommendation": "Create and authenticate the seed profile after install, or preserve .pb_profile_local_debug across ZIP import.",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(payload, indent=2, sort_keys=True))
+INNERPY
+    return 78
+  fi
+  run_all_sanitize_live_seed_profile "${seed_dir}"
+  return 0
+}
+
 run_all_live_profile_preflight() {
   local rc=0
   echo "== pb test-all step: live_profile_preflight =="
-  echo "+ pb --profile-dir ./.pb_profile_local_debug login-check 2>&1 | tee ${live_profile_preflight_raw_log}"
-  pb --profile-dir ./.pb_profile_local_debug login-check 2>&1 | tee "${live_profile_preflight_raw_log}"
+  echo "live_profile_seed_dir: ${live_profile_seed_display}"
+  if run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"; then
+    :
+  else
+    rc=$?
+    echo "WARN: live profile seed missing or invalid; live browser steps will be skipped." >&2
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    workflow_rc=${rc}
+    return ${rc}
+  fi
+  echo "+ pb --profile-dir ${live_profile_seed_dir} login-check 2>&1 | tee ${live_profile_preflight_raw_log}"
+  pb --profile-dir "${live_profile_seed_dir}" login-check 2>&1 | tee "${live_profile_preflight_raw_log}"
   rc=${PIPESTATUS[0]}
   if [[ ${rc} -eq 0 ]]; then
     write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified" "true" "0" "${live_profile_preflight_raw_log}"
@@ -2313,9 +2421,9 @@ run_all_live_validation_steps() {
   echo "cleanup_policy: retained_project_delete_frozen"
 
   if run_all_live_profile_preflight; then
-    run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
-    run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
-    run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
   else
     record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
     record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
