@@ -91,3 +91,7 @@ The v0.1.78.2.8 Docker container-content probe failed because an awk expression 
 ## Decision — v0.1.78.2.11 live seed profiles are local state, pool slots are disposable
 
 Release-control must preserve `.pb_profile_local_debug/` across install because it is an operator-authenticated live-test seed. It must not preserve `.pb_profile_local_debug_pools/`, because pool slots are generated clones that should be refreshed for each run. Run-all rate-limit retry detection must rely on strict 429 / "Too many requests" evidence instead of broad rate-limit wording.
+
+## Decision — v0.1.78.2.12 text-source save trigger must be observed before persistence wait
+
+The text Project Source add path can fail with `ui_trigger_not_observed_not_verified_present` even when the current ChatGPT UI advertises `Text input` as supported. Release validation must not wait only for eventual persistence after a no-op primary click. The text-source helper now verifies that a save request was observed after the primary click and uses bounded fallback triggers before handing control to persistence verification.

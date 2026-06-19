@@ -715,3 +715,23 @@ Out of scope:
 - Project Source behavior changes.
 - Adoption/current mutation.
 - v0.1.79/k8s-game work.
+
+## Slice definition — v0.1.78.2.12 repair release
+
+Release: v0.1.78.2.12
+
+Goal: repair the text Project Source add path after `v0.1.78.2.11` showed `ui_trigger_not_observed_not_verified_present` for the supported Text input source kind.
+
+In scope:
+
+- Verify that the text-source primary save click starts an observed save request.
+- Apply bounded fallback triggers when no save request is observed.
+- Keep `.pb_profile_local_debug/` as the operator-authenticated live seed and `.pb_profile_local_debug_pools/` disposable.
+- Preserve Docker provenance, strict rate-limit detection, and project deletion freeze.
+
+Out of scope:
+
+- Secure project deletion protocol.
+- Project Source removal changes.
+- Adoption/current mutation.
+- v0.1.79/k8s-game work.
