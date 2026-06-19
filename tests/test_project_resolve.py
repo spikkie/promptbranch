@@ -1584,6 +1584,54 @@ def test_respect_rate_limit_cooldown_waits_for_persisted_deadline(tmp_path: Path
     assert slept == [10.0]
 
 
+def test_rate_limit_modal_clear_can_skip_history_cooldown_for_non_history_operation(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.conversation_history_rate_limit_cooldown_seconds = 120.0
+    monkeypatch.setattr(client_module.time, "time", lambda: 1_000.0)
+
+    class Page:
+        url = "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    modal_remaining = {"count": 1}
+    ack = object()
+
+    async def fake_find_visible_locator(_page, _selectors, *, label: str):
+        if label.endswith("-rate-limit-modal"):
+            if modal_remaining["count"] > 0:
+                modal_remaining["count"] -= 1
+                return object()
+            return None
+        if label.endswith("-rate-limit-ack"):
+            return ack
+        return None
+
+    async def fake_click_locator_with_fallback(*_args, **_kwargs) -> None:
+        return None
+
+    async def fail_if_history_cooldown_waits() -> None:
+        raise AssertionError("non-history Project Source verification must not wait on conversation-history cooldown")
+
+    client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    client._click_locator_with_fallback = fake_click_locator_with_fallback  # type: ignore[method-assign]
+    client._respect_rate_limit_cooldown = fail_if_history_cooldown_waits  # type: ignore[method-assign]
+
+    saw_modal = asyncio.run(
+        client._wait_for_rate_limit_modal_to_clear(
+            Page(),
+            label="project-source-add-persistence-refresh",
+            respect_history_rate_limit_cooldown=False,
+        )
+    )
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert saw_modal is True
+    assert telemetry["cooldown_wait_count"] == 0
+    assert any(event.get("kind") == "cooldown_wait_skipped" for event in telemetry["service_rate_limit_events"])
+
+
 class _FakeInteractiveStdin:
     def isatty(self) -> bool:
         return True

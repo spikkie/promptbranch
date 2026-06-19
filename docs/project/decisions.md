@@ -95,3 +95,6 @@ Release-control must preserve `.pb_profile_local_debug/` across install because 
 ## Decision — v0.1.78.2.12 text-source save trigger must be observed before persistence wait
 
 The text Project Source add path can fail with `ui_trigger_not_observed_not_verified_present` even when the current ChatGPT UI advertises `Text input` as supported. Release validation must not wait only for eventual persistence after a no-op primary click. The text-source helper now verifies that a save request was observed after the primary click and uses bounded fallback triggers before handing control to persistence verification.
+
+
+| ADR-PROJ-061 | 2026-06-19 | Project Source verification must not wait on conversation-history cooldown | Live service logs showed source upload/commit and final verification succeeded, but the CLI timed out while browser automation slept on a persisted conversation-history 429 cooldown | Project Source operations still acknowledge modals and record cooldown telemetry, but their persistence refresh path skips the persisted conversation-history cooldown; history operations continue to respect it |

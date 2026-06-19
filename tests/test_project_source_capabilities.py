@@ -68,6 +68,70 @@ def test_project_sources_url_sets_tab_query(browser_client: ChatGPTBrowserClient
 
 
 
+def test_project_source_persistence_refresh_skips_conversation_history_cooldown(browser_client: ChatGPTBrowserClient) -> None:
+    page = _PersistenceRetryPage()
+    calls: list[tuple[str, object]] = []
+    attempts = {"count": 0}
+
+    async def fake_goto(
+        target_page,
+        url: str,
+        *,
+        label: str,
+        respect_history_rate_limit_cooldown: bool = True,
+    ) -> None:
+        calls.append(("goto", target_page, url, label, respect_history_rate_limit_cooldown))
+
+    async def fake_wait_for_source_presence(target_page, **kwargs):
+        attempts["count"] += 1
+        calls.append(("wait", target_page, kwargs, attempts["count"]))
+        if attempts["count"] == 1:
+            raise ResponseTimeoutError("Timed out waiting for project source to appear: platform-gitops_0.0.4.zip")
+        return {"identity": "platform-gitops_0.0.4.zip Document"}
+
+    async def fake_empty_state_visible(_page) -> bool:
+        return False
+
+    async def fake_snapshot_project_source_cards(_page):
+        return []
+
+    async def fake_safe_page_url(_page) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_capture_diagnostics(*_args, **_kwargs) -> None:
+        return None
+
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state_visible  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot_project_source_cards  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._capture_project_source_persistence_diagnostics = fake_capture_diagnostics  # type: ignore[method-assign]
+
+    persisted = asyncio.run(
+        browser_client._verify_project_source_persistence(
+            page,
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            source_match_candidates=["platform-gitops_0.0.4.zip"],
+            retry_backoff_ms=(25,),
+        )
+    )
+
+    assert persisted == {
+        "identity": "platform-gitops_0.0.4.zip Document",
+        "_promptbranch_verification_mode": "post_refresh",
+        "_promptbranch_ui_card_seen_before_refresh": False,
+        "_promptbranch_post_refresh_attempt": 1,
+    }
+    assert (
+        "goto",
+        page,
+        "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        "project-source-add-persistence-refresh",
+        False,
+    ) in calls
+
+
 
 
 def test_file_persistence_candidates_reject_unanchored_generic_metadata_card(browser_client: ChatGPTBrowserClient) -> None:
@@ -239,8 +303,8 @@ def test_verify_project_source_persistence_requires_refresh_after_current_surfac
     page = object()
     calls: list[tuple[str, object]] = []
 
-    async def fake_goto(target_page, url: str, *, label: str) -> None:
-        calls.append(("goto", target_page, url, label))
+    async def fake_goto(target_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        calls.append(("goto", target_page, url, label, respect_history_rate_limit_cooldown))
 
     async def fake_wait_for_source_presence(target_page, **kwargs):
         calls.append(("wait", target_page, kwargs))
@@ -279,6 +343,7 @@ def test_verify_project_source_persistence_requires_refresh_after_current_surfac
             page,
             "https://chatgpt.com/g/g-p-123/project?tab=sources",
             "project-source-add-persistence-refresh",
+            False,
         ),
         (
             "wait",
@@ -307,8 +372,8 @@ def test_verify_project_source_persistence_refreshes_after_pre_refresh_timeout(b
     calls: list[tuple[str, object]] = []
     attempts = {"count": 0}
 
-    async def fake_goto(target_page, url: str, *, label: str) -> None:
-        calls.append(("goto", target_page, url, label))
+    async def fake_goto(target_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        calls.append(("goto", target_page, url, label, respect_history_rate_limit_cooldown))
 
     async def fake_wait_for_source_presence(target_page, **kwargs):
         attempts["count"] += 1
@@ -362,6 +427,7 @@ def test_verify_project_source_persistence_refreshes_after_pre_refresh_timeout(b
         page,
         "https://chatgpt.com/g/g-p-123/project?tab=sources",
         "project-source-add-persistence-refresh",
+        False,
     )
     assert calls[2][0] == "wait"
     assert calls[2][3] == 2

@@ -695,6 +695,7 @@ class ChatGPTBrowserClient:
         *,
         label: str,
         timeout_ms: int | None = None,
+        respect_history_rate_limit_cooldown: bool = True,
     ) -> bool:
         timeout_ms = self.config.rate_limit_modal_wait_timeout_ms if timeout_ms is None else timeout_ms
         poll_interval_ms = self.config.rate_limit_modal_poll_interval_ms
@@ -705,7 +706,21 @@ class ChatGPTBrowserClient:
             if modal is None:
                 if saw_modal:
                     self._log('rate-limit', 'rate limit modal cleared', label=label)
-                    await self._respect_rate_limit_cooldown()
+                    if respect_history_rate_limit_cooldown:
+                        await self._respect_rate_limit_cooldown()
+                    else:
+                        self._record_rate_limit_event(
+                            kind='cooldown_wait_skipped',
+                            trigger='non_history_operation',
+                            label=label,
+                            wait_seconds=self._conversation_history_cooldown_remaining(),
+                        )
+                        self._log(
+                            'rate-limit',
+                            'skipping persisted conversation history cooldown after modal clear for non-history operation',
+                            label=label,
+                            cooldown_remaining=round(self._conversation_history_cooldown_remaining(), 3),
+                        )
                 return saw_modal
             if not saw_modal:
                 saw_modal = True
@@ -915,6 +930,7 @@ class ChatGPTBrowserClient:
             operation_name="project_source_list",
             operation=self._list_project_sources_operation,
             keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
         )
 
     async def get_chat(
@@ -1056,6 +1072,7 @@ class ChatGPTBrowserClient:
             display_name=display_name,
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
+            respect_history_rate_limit_cooldown=False,
         )
 
     async def discover_project_source_capabilities(
@@ -1073,6 +1090,7 @@ class ChatGPTBrowserClient:
             operation_name="project_source_capabilities",
             operation=self._discover_project_source_capabilities_operation,
             keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
         )
 
     async def remove_project_source(
@@ -1096,6 +1114,7 @@ class ChatGPTBrowserClient:
             source_name=source_name,
             exact=exact,
             keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
         )
 
     @property
@@ -8936,7 +8955,12 @@ class ChatGPTBrowserClient:
                 max_refresh_attempts=max(max_refresh_attempts, 1),
                 save_watch_summary=self._project_source_save_watch_summary(save_watch),
             )
-            await self._goto(page, sources_url, label=label)
+            await self._goto(
+                page,
+                sources_url,
+                label=label,
+                respect_history_rate_limit_cooldown=False,
+            )
             try:
                 return await self._wait_for_source_presence(
                     page,
@@ -10857,7 +10881,14 @@ class ChatGPTBrowserClient:
             f"Timed out waiting for parseable JSON in the assistant response (last selector={selector}, text_length={text_length}, stable_polls={stable_polls}, send_ready={submit_state.get('send_ready')})"
         )
 
-    async def _goto(self, page: Any, url: str, *, label: str) -> None:
+    async def _goto(
+        self,
+        page: Any,
+        url: str,
+        *,
+        label: str,
+        respect_history_rate_limit_cooldown: bool = True,
+    ) -> None:
         current_url = await self._safe_page_url(page)
         current_norm = self._normalize_navigation_url(current_url)
         target_norm = self._normalize_navigation_url(url)
@@ -10870,12 +10901,21 @@ class ChatGPTBrowserClient:
                 current_url=current_url,
                 to_url=url,
             )
-            await self._wait_for_rate_limit_modal_to_clear(page, label=label, timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 5_000))
+            wait_kwargs: dict[str, Any] = {
+                "label": label,
+                "timeout_ms": min(self.config.rate_limit_modal_wait_timeout_ms, 5_000),
+            }
+            if not respect_history_rate_limit_cooldown:
+                wait_kwargs["respect_history_rate_limit_cooldown"] = False
+            await self._wait_for_rate_limit_modal_to_clear(page, **wait_kwargs)
             return
         self._log("nav", "navigating", label=label, from_url=current_url, to_url=url)
         await page.goto(url, wait_until="domcontentloaded")
         self._log("nav", "domcontentloaded reached", label=label, current_url=await self._safe_page_url(page), title=await self._safe_page_title(page))
-        await self._wait_for_rate_limit_modal_to_clear(page, label=label)
+        wait_kwargs = {"label": label}
+        if not respect_history_rate_limit_cooldown:
+            wait_kwargs["respect_history_rate_limit_cooldown"] = False
+        await self._wait_for_rate_limit_modal_to_clear(page, **wait_kwargs)
 
     async def _wait_for_challenge_resolution(self, page: Any, *, label: str) -> None:
         current_url = await self._safe_page_url(page)
