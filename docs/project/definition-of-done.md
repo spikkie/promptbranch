@@ -136,3 +136,5 @@ Acceptance criteria:
 - Live seed profile hygiene removes Chromium singleton/DevTools runtime files before pool cloning.
 - Rate-limit retry detection only triggers on strict ChatGPT 429 / "Too many requests" evidence, not generic "No rate-limit evidence" diagnostic text.
 - Docker provenance checks and project deletion freeze remain preserved.
+
+| DOD-059 | Default run-all release validation isolates text-source add/remove as source-kind compatibility unless strict matrix is requested | done | `chatgpt_claudecode_workflow_release_control.sh`, focused shell-script tests | v0.1.78.2.13 |

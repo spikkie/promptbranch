@@ -195,3 +195,8 @@ Operators who use `--run-all-tests` should authenticate `.pb_profile_local_debug
 ## v0.1.78.2.12 migration note
 
 No Project Source or adoption/current migration is performed. Operators should authenticate `.pb_profile_local_debug/` once before `--run-all-tests`. This repair changes only the text Project Source add trigger path so a no-op primary save click is followed by bounded fallback triggers before persistence verification.
+
+
+## v0.1.78.2.13 migration note
+
+Default `--run-all-tests` no longer treats text-source add/remove as release-blocking. Operators who need the full source-kind matrix must pass `--strict-source-kind-matrix`. For fast repair development of the known text-source path, use `--run-failing-tests`. No Project Source, adoption/current, or project deletion migration is performed.

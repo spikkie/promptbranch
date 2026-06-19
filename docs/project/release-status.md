@@ -107,3 +107,5 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.78.2.11 | repair | Run-all profile seed preservation and strict rate-limit detection | candidate | focused shell/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-057 done; DOD-052/DOD-056 preserved | pending |
 
 | v0.1.78.2.12 | repair | Text-source save trigger fallback and live-seed operator guard | candidate | focused Project Source fallback tests, project control/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-058 done; DOD-047/DOD-052/DOD-056/DOD-057 preserved; no normal slice advanced | pending |
+
+| v0.1.78.2.13 | repair | Text-source compatibility isolation and focused failing-test mode | candidate | focused shell-script tests, project control/version/delete-safety tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-059 done; DOD-047/DOD-052/DOD-056/DOD-057/DOD-058 preserved; no normal slice advanced | pending |
