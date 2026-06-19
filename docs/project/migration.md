@@ -191,3 +191,7 @@ No user data migration is required. Operators may set `PROMPTBRANCH_RUN_ALL_RATE
 ## v0.1.78.2.11 migration note
 
 Operators who use `--run-all-tests` should authenticate `.pb_profile_local_debug/` once as the live-test seed profile. Release-control now preserves that seed across ZIP import while continuing to treat `.pb_profile_local_debug_pools/` as disposable generated state. No Project Source, adoption/current, or project deletion migration is performed.
+
+## v0.1.78.2.12 migration note
+
+No Project Source or adoption/current migration is performed. Operators should authenticate `.pb_profile_local_debug/` once before `--run-all-tests`. This repair changes only the text Project Source add trigger path so a no-op primary save click is followed by bounded fallback triggers before persistence verification.

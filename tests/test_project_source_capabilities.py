@@ -2057,3 +2057,14 @@ def test_project_source_mutation_transaction_classifies_commit_not_visible(brows
     assert transaction["release_blocking"] is True
     assert transaction["save_saw_commit"] is True
     assert transaction["save_inflight"] == 1
+
+
+def test_text_source_add_uses_watch_gated_save_fallback() -> None:
+    source = Path("promptbranch_browser_auth/client.py").read_text()
+
+    assert "save_request_watch: Optional[dict[str, Any]] = None" in source
+    assert "_wait_for_project_source_save_trigger_observed" in source
+    assert "_trigger_project_source_text_save_fallback" in source
+    assert "Control+Enter" in source
+    assert "text source primary save click produced no observed save request" in source
+    assert "save_request_watch=save_request_watch" in source

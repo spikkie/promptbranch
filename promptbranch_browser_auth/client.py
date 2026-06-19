@@ -4788,6 +4788,7 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     value=value,
                     display_name=display_name,
+                    save_request_watch=save_request_watch,
                 )
                 source_match_candidates = self._build_source_match_candidates(
                     normalized_kind,
@@ -14944,6 +14945,7 @@ class ChatGPTBrowserClient:
         source_kind: str,
         value: str,
         display_name: Optional[str],
+        save_request_watch: Optional[dict[str, Any]] = None,
     ) -> None:
         await self._click_add_source_button(page)
         input_locator = await self._find_visible_locator(
@@ -15028,8 +15030,161 @@ class ChatGPTBrowserClient:
             raise ResponseTimeoutError(
                 f"Project source save/add button stayed disabled (source_kind={source_kind}, selected_option_kind={selected_option_kind})"
             )
-        await save_button.click(timeout=5_000)
+        await self._click_locator_with_fallback(
+            save_button,
+            label=f"project-source-{source_kind}-save-button",
+            timeout_ms=5_000,
+        )
         await page.wait_for_timeout(1_000)
+        if source_kind == "text" and save_request_watch is not None:
+            if not await self._wait_for_project_source_save_trigger_observed(
+                page,
+                save_request_watch,
+                wait_ms=1_500,
+            ):
+                self._log(
+                    "project-source",
+                    "text source primary save click produced no observed save request; trying fallback triggers",
+                    source_kind=source_kind,
+                    save_watch_summary=self._project_source_save_watch_summary(save_request_watch),
+                )
+                await self._trigger_project_source_text_save_fallback(
+                    page,
+                    input_locator=input_locator,
+                    save_request_watch=save_request_watch,
+                )
+
+    def _project_source_save_trigger_observed(self, save_request_watch: Optional[dict[str, Any]]) -> bool:
+        summary = self._project_source_save_watch_summary(save_request_watch)
+        return bool(
+            int(summary.get("started") or 0) > 0
+            or int(summary.get("finished") or 0) > 0
+            or int(summary.get("failed") or 0) > 0
+            or bool(summary.get("saw_relevant"))
+            or bool(summary.get("saw_commit"))
+        )
+
+    async def _wait_for_project_source_save_trigger_observed(
+        self,
+        page: Any,
+        save_request_watch: Optional[dict[str, Any]],
+        *,
+        wait_ms: int = 1_500,
+        poll_ms: int = 150,
+    ) -> bool:
+        deadline = asyncio.get_running_loop().time() + (max(wait_ms, 0) / 1000)
+        while asyncio.get_running_loop().time() < deadline:
+            if self._project_source_save_trigger_observed(save_request_watch):
+                return True
+            await page.wait_for_timeout(max(poll_ms, 10))
+        return self._project_source_save_trigger_observed(save_request_watch)
+
+    async def _trigger_project_source_text_save_fallback(
+        self,
+        page: Any,
+        *,
+        input_locator: Any,
+        save_request_watch: Optional[dict[str, Any]],
+    ) -> None:
+        async def wait_after(label: str) -> bool:
+            observed = await self._wait_for_project_source_save_trigger_observed(
+                page,
+                save_request_watch,
+                wait_ms=1_000,
+            )
+            self._log(
+                "project-source",
+                "text source fallback save trigger probe",
+                label=label,
+                observed=observed,
+                save_watch_summary=self._project_source_save_watch_summary(save_request_watch),
+            )
+            return observed
+
+        try:
+            if hasattr(input_locator, "press"):
+                await input_locator.press("Control+Enter", timeout=2_000)
+                if await wait_after("input-control-enter"):
+                    return
+        except Exception as exc:
+            self._log("project-source", "text source input Control+Enter fallback failed", error=repr(exc))
+
+        try:
+            if hasattr(page, "keyboard"):
+                await page.keyboard.press("Control+Enter")
+                if await wait_after("page-control-enter"):
+                    return
+        except Exception as exc:
+            self._log("project-source", "text source page Control+Enter fallback failed", error=repr(exc))
+
+        try:
+            result = await page.evaluate(
+                r'''
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const normalizeLower = value => normalize(value).toLowerCase();
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style) return false;
+                        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const isDisabled = el => {
+                        const ariaDisabled = normalizeLower(el.getAttribute('aria-disabled') || '');
+                        const dataDisabled = normalizeLower(el.getAttribute('data-disabled') || '');
+                        const className = normalizeLower(el.getAttribute('class') || '');
+                        return Boolean(el.disabled)
+                            || ariaDisabled === 'true'
+                            || dataDisabled === 'true'
+                            || className.includes('disabled')
+                            || className.includes('pointer-events-none');
+                    };
+                    const submitTexts = new Set([
+                        'add',
+                        'save',
+                        'done',
+                        'add text',
+                        'save text',
+                        'add source',
+                        'save source',
+                    ]);
+                    const nonSubmitTexts = new Set([
+                        'upload',
+                        'file',
+                        'files',
+                        'text input',
+                        'quick text',
+                        'notes',
+                        'google drive',
+                        'slack',
+                        'link',
+                        'website',
+                    ]);
+                    const roots = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [data-radix-popper-content-wrapper]'))
+                        .filter(isVisible);
+                    const rootList = roots.length ? roots : [document.body];
+                    const buttons = rootList.flatMap(root => Array.from(root.querySelectorAll('button,[role="button"]')));
+                    const candidates = buttons
+                        .filter(button => isVisible(button) && !isDisabled(button))
+                        .map(button => ({ button, text: normalizeLower(button.innerText || button.textContent || button.getAttribute('aria-label') || '') }))
+                        .filter(item => item.text && !nonSubmitTexts.has(item.text))
+                        .filter(item => submitTexts.has(item.text) || /^add( text| source)?$/.test(item.text) || /^save( text| source)?$/.test(item.text));
+                    if (!candidates.length) {
+                        return { clicked: false, reason: 'no-enabled-submit-candidate' };
+                    }
+                    const selected = candidates[candidates.length - 1];
+                    selected.button.scrollIntoView({ block: 'center', inline: 'center' });
+                    selected.button.click();
+                    return { clicked: true, text: selected.text, candidate_count: candidates.length };
+                }
+                '''
+            )
+            self._log("project-source", "text source DOM submit fallback attempted", result=result)
+            await wait_after("dom-submit-button")
+        except Exception as exc:
+            self._log("project-source", "text source DOM submit fallback failed", error=repr(exc))
 
     async def _add_project_file_source(self, page: Any, *, file_path: str) -> None:
         before_count = await page.locator('input[type="file"]').count()
