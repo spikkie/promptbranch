@@ -735,3 +735,25 @@ Out of scope:
 - Project Source removal changes.
 - Adoption/current mutation.
 - v0.1.79/k8s-game work.
+
+
+## Slice definition — v0.1.78.2.15 repair release
+
+Release: v0.1.78.2.15
+
+Goal: repair Project Source add timeout false-negatives where upload/commit succeeds but post-refresh verification waits on unrelated conversation-history 429 cooldown until the CLI times out.
+
+In scope:
+
+- Keep 429/modal telemetry and acknowledgement.
+- Skip persisted conversation-history cooldown for Project Source add/list/remove/capability operation startup.
+- Skip persisted conversation-history cooldown after modal clear during Project Source persistence refresh.
+- Preserve the cooldown for actual conversation-history operations.
+- Add focused regression tests.
+
+Out of scope:
+
+- Secure project deletion protocol.
+- Project Source overwrite/remove containment changes beyond preserving v0.1.78.2.14.
+- Artifact adoption/current mutation.
+- v0.1.79/k8s-game work.

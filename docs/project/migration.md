@@ -204,3 +204,8 @@ Default `--run-all-tests` no longer treats text-source add/remove as release-blo
 ## v0.1.78.2.14 migration note
 
 No user data migration is required. This repair constrains Project Source remove/overwrite DOM discovery to the Project Sources surface and removes broad body/main fallback lookup from the source-card/remove path. Operators should first rerun the focused source-overwrite path before running full release-control. No Project Source, adoption/current, or project deletion migration is performed.
+
+
+## v0.1.78.2.15 migration note
+
+No Project Source, adoption/current, or project deletion migration is performed. This repair only prevents Project Source add/list/remove/capability operations and Project Source persistence refreshes from waiting on persisted conversation-history cooldown after a 429 modal is acknowledged. The cooldown remains recorded for history-reading operations. Operators should rerun only the focused file `src add` path before running full release-control.

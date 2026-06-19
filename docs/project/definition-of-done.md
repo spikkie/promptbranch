@@ -149,3 +149,17 @@ Acceptance criteria:
 - Project Source container/action-button lookup does not fall back to broad `main`/`body` DOM queries.
 - Source remove/overwrite verification fails closed instead of treating sidebar, recents, project navigation, or conversation history rows as source cards.
 - Docker provenance, live seed profile handling, strict rate-limit detection, text-source compatibility isolation, and project deletion freeze remain preserved.
+
+
+| DOD-061 | Project Source add verification does not false-fail by waiting on conversation-history cooldown | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `tests/test_project_resolve.py`, `docs/repair-v0.1.78.2.15.md` | v0.1.78.2.15 |
+
+## DOD-061 — Project Source add timeout false-negative containment
+
+Status: done for v0.1.78.2.15 candidate.
+
+Acceptance criteria:
+
+- Project Source add/list/remove/capability operations skip the persisted conversation-history cooldown at context start.
+- Project Source persistence refresh navigation can clear rate-limit modals without sleeping on the persisted conversation-history cooldown.
+- Conversation-history cooldown telemetry and persisted cooldown state are still recorded for history-reading operations.
+- Docker provenance, live seed profile handling, strict rate-limit detection, text-source compatibility isolation, Project Source remove containment, and project deletion freeze remain preserved.
