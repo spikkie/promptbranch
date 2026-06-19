@@ -2165,3 +2165,148 @@ def test_project_source_remove_lookup_is_scoped_to_sources_surface(browser_clien
     assert "looksLikeSourcesSurface" in action_body
     assert "if (!roots.length) return null;" in action_body
     assert "Array.from(document.querySelectorAll('main, [role=\"main\"], body'))" not in action_body
+
+
+def test_add_project_source_operation_recovers_stale_inflight_post_commit_verification_timeout(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    calls: dict[str, object] = {"removed": False, "added": False, "recovered": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{"identity": "release.zip", "title": "release.zip", "text": "release.zip"}]
+
+    async def fake_remove(*_args, **kwargs):
+        calls["removed"] = True
+        assert kwargs["source_name"] == "release.zip"
+        return {"ok": True, "removed_via_ui": True, "source_match": "release.zip"}
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "inflight": 1,
+            "stale_inflight_after_commit": True,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("commit was observed but refreshed card was not found")
+
+    async def fake_recover(*_args, **_kwargs):
+        calls["recovered"] = True
+        return {
+            "identity": "release.zip",
+            "title": "release.zip",
+            "text": "release.zip",
+            "_promptbranch_verification_mode": "post_commit_refresh_recovered",
+            "_promptbranch_ui_card_seen_before_refresh": True,
+            "_promptbranch_post_refresh_attempt": 2,
+            "_promptbranch_post_commit_recovery": {
+                "status": "recovered",
+                "attempt": 2,
+                "attempts": 3,
+            },
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert calls == {"removed": True, "added": True, "recovered": True}
+    assert result["ok"] is True
+    assert result["overwritten"] is True
+    assert result["removed_existing"] is True
+    assert result["persistence_verified"] is True
+    assert result["verification_mode"] == "post_commit_refresh_recovered"
+    assert result["persistence_recovered_after_commit"] is True
+    assert result["post_commit_recovery"]["status"] == "recovered"
+
+
+def test_post_commit_recovery_is_limited_to_stale_inflight_file_commit(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    assert browser_client._project_source_post_commit_recovery_allowed(
+        source_kind="file",
+        transaction={
+            "transaction_status": "commit_seen_with_stale_inflight_not_verified_present",
+            "save_failed": 0,
+            "save_saw_commit": True,
+            "save_finished": 1,
+        },
+    ) is True
+    assert browser_client._project_source_post_commit_recovery_allowed(
+        source_kind="text",
+        transaction={
+            "transaction_status": "commit_seen_with_stale_inflight_not_verified_present",
+            "save_failed": 0,
+            "save_saw_commit": True,
+            "save_finished": 1,
+        },
+    ) is False
+    assert browser_client._project_source_post_commit_recovery_allowed(
+        source_kind="file",
+        transaction={
+            "transaction_status": "commit_seen_but_not_verified_present",
+            "save_failed": 0,
+            "save_saw_commit": True,
+            "save_finished": 1,
+        },
+    ) is False

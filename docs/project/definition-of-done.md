@@ -152,6 +152,7 @@ Acceptance criteria:
 
 
 | DOD-061 | Project Source add verification does not false-fail by waiting on conversation-history cooldown | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `tests/test_project_resolve.py`, `docs/repair-v0.1.78.2.15.md` | v0.1.78.2.15 |
+| DOD-062 | File-source overwrite recovers only the specific post-commit stale-inflight verification false-negative state with bounded refreshed proof | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.16.md` | v0.1.78.2.16 |
 
 ## DOD-061 — Project Source add timeout false-negative containment
 

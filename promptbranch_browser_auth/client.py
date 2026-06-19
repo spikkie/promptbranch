@@ -4913,6 +4913,7 @@ class ChatGPTBrowserClient:
             (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
             or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
         )
+        post_commit_recovery: Optional[dict[str, Any]] = None
         try:
             persisted_source = await self._verify_project_source_persistence(
                 page,
@@ -4928,53 +4929,81 @@ class ChatGPTBrowserClient:
                 save_summary=save_summary,
                 persistence_verified=False,
             )
-            persistence_false_negative_possible = bool(transaction.get("ambiguous"))
-            status = (
-                "overwrite_persistence_not_verified"
-                if overwritten_existing and removed_existing_via_ui
-                else "persistence_not_verified"
-            )
-            result = {
-                "ok": False,
-                "action": "add",
-                "status": status,
-                "project_url": project_home_url,
-                "source_kind": normalized_kind,
-                "source_match": actual_match,
-                "source_match_requested": requested_match,
-                "source_match_candidates": persistence_candidates,
-                "persistence_verified": False,
-                "persistence_error": str(exc),
-                "persistence_false_negative_possible": persistence_false_negative_possible,
-                "transaction_status": transaction.get("transaction_status"),
-                "source_mutation_transaction": transaction,
-                "release_blocking": transaction.get("release_blocking"),
-                "save_request_summary": save_summary,
-                "save_request_quiet": save_request_quiet_result,
-                "already_exists": duplicate_detected or overwritten_existing,
-                "added": False,
-                "overwritten": overwritten_existing,
-                "removed_existing": removed_existing_via_ui,
-                "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
-                "operator_review_required": True,
-                "recovery_guidance": [
-                    "Run `pb src list --json` to inspect the current Project Sources surface before retrying.",
-                    "If the requested source is visible, treat the failure as a persistence verification false negative and avoid removing it again.",
-                    "If the requested source is absent, re-run `pb src add` for the same file after the Project Sources surface is stable.",
-                ],
-                "current_source_count": len(current_sources),
-                "current_source_identities": [
-                    self._preferred_source_card_identity(source) or source.get("text")
-                    for source in current_sources[:10]
-                ],
-                "current_url": await self._safe_page_url(page),
-            }
-            if overwrite_remove_result is not None:
-                result["overwrite_remove_result"] = overwrite_remove_result
-            if capacity_prune_result is not None:
-                result["capacity_prune_result"] = capacity_prune_result
-            self._log("project-source-add", "project source persistence not verified after add", **result)
-            return result
+            recovered_source: Optional[dict[str, str]] = None
+            if self._project_source_post_commit_recovery_allowed(
+                source_kind=normalized_kind,
+                transaction=transaction,
+            ):
+                recovered_source = await self._recover_project_source_after_post_commit_timeout(
+                    page,
+                    project_url=project_home_url,
+                    source_match_candidates=persistence_candidates,
+                    before_sources=before_sources,
+                    save_watch=save_request_watch,
+                    original_error=str(exc),
+                )
+            if recovered_source is not None:
+                persisted_source = recovered_source
+                post_commit_recovery = (
+                    recovered_source.get("_promptbranch_post_commit_recovery")
+                    if isinstance(recovered_source, dict)
+                    else None
+                )
+            else:
+                persistence_false_negative_possible = bool(transaction.get("ambiguous"))
+                status = (
+                    "overwrite_persistence_not_verified"
+                    if overwritten_existing and removed_existing_via_ui
+                    else "persistence_not_verified"
+                )
+                result = {
+                    "ok": False,
+                    "action": "add",
+                    "status": status,
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match": actual_match,
+                    "source_match_requested": requested_match,
+                    "source_match_candidates": persistence_candidates,
+                    "persistence_verified": False,
+                    "persistence_error": str(exc),
+                    "persistence_false_negative_possible": persistence_false_negative_possible,
+                    "transaction_status": transaction.get("transaction_status"),
+                    "source_mutation_transaction": transaction,
+                    "release_blocking": transaction.get("release_blocking"),
+                    "save_request_summary": save_summary,
+                    "save_request_quiet": save_request_quiet_result,
+                    "already_exists": duplicate_detected or overwritten_existing,
+                    "added": False,
+                    "overwritten": overwritten_existing,
+                    "removed_existing": removed_existing_via_ui,
+                    "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+                    "post_commit_recovery": {
+                        "attempted": self._project_source_post_commit_recovery_allowed(
+                            source_kind=normalized_kind,
+                            transaction=transaction,
+                        ),
+                        "status": "not_recovered",
+                    },
+                    "operator_review_required": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` to inspect the current Project Sources surface before retrying.",
+                        "If the requested source is visible, treat the failure as a persistence verification false negative and avoid removing it again.",
+                        "If the requested source is absent, re-run `pb src add` for the same file after the Project Sources surface is stable.",
+                    ],
+                    "current_source_count": len(current_sources),
+                    "current_source_identities": [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in current_sources[:10]
+                    ],
+                    "current_url": await self._safe_page_url(page),
+                }
+                if overwrite_remove_result is not None:
+                    result["overwrite_remove_result"] = overwrite_remove_result
+                if capacity_prune_result is not None:
+                    result["capacity_prune_result"] = capacity_prune_result
+                self._log("project-source-add", "project source persistence not verified after add", **result)
+                return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         success_save_summary = self._project_source_save_watch_summary(save_request_watch)
         success_transaction = self._project_source_mutation_transaction_status(
@@ -5004,6 +5033,8 @@ class ChatGPTBrowserClient:
             "release_blocking": success_transaction.get("release_blocking"),
             "save_request_summary": success_save_summary,
             "save_request_quiet": save_request_quiet_result,
+            "post_commit_recovery": post_commit_recovery,
+            "persistence_recovered_after_commit": bool(post_commit_recovery),
             "already_exists": duplicate_detected or overwritten_existing,
             "added": not duplicate_detected,
             "overwritten": overwritten_existing,
@@ -15513,6 +15544,135 @@ class ChatGPTBrowserClient:
             f"stale_inflight_after_commit={last_state.get('stale_inflight_after_commit')}, "
             f"quiet_reason={last_state.get('quiet_reason')})"
         )
+
+    def _project_source_post_commit_recovery_allowed(
+        self,
+        *,
+        source_kind: str,
+        transaction: Optional[dict[str, Any]],
+    ) -> bool:
+        if source_kind != "file" or not isinstance(transaction, dict):
+            return False
+        status = str(transaction.get("transaction_status") or "")
+        if status != "commit_seen_with_stale_inflight_not_verified_present":
+            return False
+        if int(transaction.get("save_failed") or 0) > 0:
+            return False
+        return bool(
+            transaction.get("save_saw_commit")
+            or int(transaction.get("save_finished") or 0) > 0
+        )
+
+    async def _recover_project_source_after_post_commit_timeout(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        source_match_candidates: list[str],
+        before_sources: Optional[list[dict[str, str]]] = None,
+        save_watch: Optional[dict[str, Any]] = None,
+        original_error: str = "",
+        attempts: int = 3,
+        timeout_ms: int = 30_000,
+        backoff_ms: tuple[int, ...] = (3_000, 6_000, 10_000),
+    ) -> Optional[dict[str, str]]:
+        """Recover a file source after a commit was observed but refreshed proof lagged.
+
+        File-source uploads can produce a durable commit before the Project
+        Sources surface indexes the replacement card.  The normal verifier must
+        stay fail-closed, but when the mutation transaction already observed a
+        successful commit and no failed save request, run a bounded post-commit
+        refresh loop before returning a release-blocking false negative.
+        """
+
+        if not source_match_candidates:
+            return None
+        sources_url = self._project_sources_url(project_url)
+        last_error: Optional[str] = None
+        effective_attempts = max(int(attempts), 1)
+        effective_timeout_ms = max(int(timeout_ms), 5_000)
+        self._log(
+            "project-source-add",
+            "starting post-commit project source persistence recovery",
+            project_url=project_url,
+            sources_url=sources_url,
+            source_match_candidates=source_match_candidates,
+            attempts=effective_attempts,
+            timeout_ms=effective_timeout_ms,
+            original_error=original_error,
+            save_watch_summary=self._project_source_save_watch_summary(save_watch),
+        )
+        for attempt in range(effective_attempts):
+            if attempt > 0 and backoff_ms:
+                delay_ms = int(backoff_ms[min(attempt - 1, len(backoff_ms) - 1)])
+                if delay_ms > 0:
+                    await page.wait_for_timeout(delay_ms)
+            label = f"project-source-add-post-commit-recovery-refresh-{attempt + 1}"
+            try:
+                await self._goto(
+                    page,
+                    sources_url,
+                    label=label,
+                    respect_history_rate_limit_cooldown=False,
+                )
+                recovered = await self._wait_for_source_presence(
+                    page,
+                    source_match_candidates=source_match_candidates,
+                    before_sources=None,
+                    accept_single_new_card=False,
+                    timeout_ms=effective_timeout_ms,
+                )
+                if isinstance(recovered, dict):
+                    recovered = dict(recovered)
+                    recovered["_promptbranch_verification_mode"] = "post_commit_refresh_recovered"
+                    recovered["_promptbranch_ui_card_seen_before_refresh"] = True
+                    recovered["_promptbranch_post_refresh_attempt"] = attempt + 1
+                    recovered["_promptbranch_post_commit_recovery"] = {
+                        "status": "recovered",
+                        "attempt": attempt + 1,
+                        "attempts": effective_attempts,
+                        "timeout_ms": effective_timeout_ms,
+                        "original_error": original_error,
+                        "save_watch_summary": self._project_source_save_watch_summary(save_watch),
+                    }
+                    self._log(
+                        "project-source-add",
+                        "post-commit project source persistence recovery succeeded",
+                        attempt=attempt + 1,
+                        source_match_candidates=source_match_candidates,
+                        recovered_source=self._preferred_source_card_identity(recovered) or recovered.get("text"),
+                    )
+                    return recovered
+            except ResponseTimeoutError as exc:
+                last_error = str(exc)
+                await self._capture_project_source_persistence_diagnostics(
+                    page,
+                    reason="post_commit_recovery_timeout",
+                    project_url=project_url,
+                    source_match_candidates=source_match_candidates,
+                    before_sources=before_sources,
+                    save_watch=save_watch,
+                    error=last_error,
+                    attempt=attempt + 1,
+                )
+                self._log(
+                    "project-source-add",
+                    "post-commit project source persistence recovery attempt timed out",
+                    attempt=attempt + 1,
+                    attempts=effective_attempts,
+                    source_match_candidates=source_match_candidates,
+                    error=last_error,
+                    save_watch_summary=self._project_source_save_watch_summary(save_watch),
+                )
+        self._log(
+            "project-source-add",
+            "post-commit project source persistence recovery exhausted",
+            source_match_candidates=source_match_candidates,
+            attempts=effective_attempts,
+            last_error=last_error,
+            original_error=original_error,
+        )
+        return None
 
     async def _verify_project_source_persistence(
         self,
