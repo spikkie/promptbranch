@@ -7166,12 +7166,23 @@ class ChatGPTBrowserClient:
                     };
                     const rootCandidates = Array.from(
                         document.querySelectorAll(
-                            '[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
+                            '[data-project-home-sources-surface="true"], section[aria-label="Sources"], section[aria-label="Project sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
                         )
                     ).filter(isVisible);
-                    const roots = rootCandidates.length
-                        ? rootCandidates
-                        : Array.from(document.querySelectorAll('main, [role="main"], body')).filter(isVisible);
+                    const looksLikeSourcesSurface = root => {
+                        const label = normalizeLower(
+                            root.getAttribute('aria-label') ||
+                            root.getAttribute('data-testid') ||
+                            root.getAttribute('data-project-home-sources-surface') ||
+                            ''
+                        );
+                        if (label.includes('source')) return true;
+                        if (root.hasAttribute('data-project-home-sources-surface')) return true;
+                        const text = normalizeLower(root.innerText || root.textContent || '');
+                        return text.includes('add source') || text.includes('sources');
+                    };
+                    const roots = rootCandidates.filter(looksLikeSourcesSurface);
+                    if (!roots.length) return [];
                     const seen = new Set();
                     const results = [];
 
@@ -9678,7 +9689,25 @@ class ChatGPTBrowserClient:
                         cls.includes('source') || cls.includes('file')
                     );
                 };
-                const nodes = Array.from(document.querySelectorAll('main *, [role="main"] *, body *')).filter(el => {
+                const rootCandidates = Array.from(document.querySelectorAll(
+                    '[data-project-home-sources-surface="true"], section[aria-label="Sources"], section[aria-label="Project sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
+                )).filter(isVisible);
+                const normalizeLower = value => normalize(value).toLowerCase();
+                const looksLikeSourcesSurface = root => {
+                    const label = normalizeLower(
+                        root.getAttribute('aria-label') ||
+                        root.getAttribute('data-testid') ||
+                        root.getAttribute('data-project-home-sources-surface') ||
+                        ''
+                    );
+                    if (label.includes('source')) return true;
+                    if (root.hasAttribute('data-project-home-sources-surface')) return true;
+                    const text = normalizeLower(root.innerText || root.textContent || '');
+                    return text.includes('add source') || text.includes('sources');
+                };
+                const roots = rootCandidates.filter(looksLikeSourcesSurface);
+                if (!roots.length) return null;
+                const nodes = roots.flatMap(root => Array.from(root.querySelectorAll('*'))).filter(el => {
                     if (!isVisible(el)) return false;
                     const text = normalize(el.textContent || '');
                     return text && matchedText(text);
@@ -9745,12 +9774,23 @@ class ChatGPTBrowserClient:
                 const isVisible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
                 const rootCandidates = Array.from(
                     document.querySelectorAll(
-                        '[data-project-home-sources-surface="true"], section[aria-label="Sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
+                        '[data-project-home-sources-surface="true"], section[aria-label="Sources"], section[aria-label="Project sources"], [role="tabpanel"][data-state="active"], [role="tabpanel"]'
                     )
                 ).filter(isVisible);
-                const roots = rootCandidates.length
-                    ? rootCandidates
-                    : Array.from(document.querySelectorAll('main, [role="main"], body')).filter(isVisible);
+                const looksLikeSourcesSurface = root => {
+                    const label = normalizeLower(
+                        root.getAttribute('aria-label') ||
+                        root.getAttribute('data-testid') ||
+                        root.getAttribute('data-project-home-sources-surface') ||
+                        ''
+                    );
+                    if (label.includes('source')) return true;
+                    if (root.hasAttribute('data-project-home-sources-surface')) return true;
+                    const text = normalizeLower(root.innerText || root.textContent || '');
+                    return text.includes('add source') || text.includes('sources');
+                };
+                const roots = rootCandidates.filter(looksLikeSourcesSurface);
+                if (!roots.length) return null;
                 const normalizedNeedles = needles.map(normalizeLower).filter(Boolean);
                 const isEmptyStateText = text => normalizeLower(text).includes('give chatgpt more context');
                 const scoreValue = value => {

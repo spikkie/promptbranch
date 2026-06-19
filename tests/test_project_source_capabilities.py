@@ -2068,3 +2068,34 @@ def test_text_source_add_uses_watch_gated_save_fallback() -> None:
     assert "Control+Enter" in source
     assert "text source primary save click produced no observed save request" in source
     assert "save_request_watch=save_request_watch" in source
+
+
+def test_project_source_snapshot_is_scoped_to_sources_surface(browser_client: ChatGPTBrowserClient) -> None:
+    source = Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py"
+    text = source.read_text()
+    start = text.index("    async def _snapshot_project_source_cards")
+    end = text.index("    def _source_card_identity_candidates", start)
+    body = text[start:end]
+
+    assert "looksLikeSourcesSurface" in body
+    assert "if (!roots.length) return []" in body
+    assert "Array.from(document.querySelectorAll('main, [role=\"main\"], body'))" not in body
+
+
+def test_project_source_remove_lookup_is_scoped_to_sources_surface(browser_client: ChatGPTBrowserClient) -> None:
+    source = Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py"
+    text = source.read_text()
+    container_start = text.index("    async def _find_project_source_container")
+    container_end = text.index("    async def _find_project_source_action_button", container_start)
+    container_body = text[container_start:container_end]
+    action_start = text.index("    async def _find_project_source_action_button", container_end)
+    action_end = text.index("    async def _find_source_options_button", action_start)
+    action_body = text[action_start:action_end]
+
+    assert "looksLikeSourcesSurface" in container_body
+    assert "const roots = rootCandidates.filter(looksLikeSourcesSurface);" in container_body
+    assert "if (!roots.length) return null;" in container_body
+    assert "document.querySelectorAll('main *, [role=\"main\"] *, body *')" not in container_body
+    assert "looksLikeSourcesSurface" in action_body
+    assert "if (!roots.length) return null;" in action_body
+    assert "Array.from(document.querySelectorAll('main, [role=\"main\"], body'))" not in action_body

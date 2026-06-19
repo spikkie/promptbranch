@@ -200,3 +200,7 @@ No Project Source or adoption/current migration is performed. Operators should a
 ## v0.1.78.2.13 migration note
 
 Default `--run-all-tests` no longer treats text-source add/remove as release-blocking. Operators who need the full source-kind matrix must pass `--strict-source-kind-matrix`. For fast repair development of the known text-source path, use `--run-failing-tests`. No Project Source, adoption/current, or project deletion migration is performed.
+
+## v0.1.78.2.14 migration note
+
+No user data migration is required. This repair constrains Project Source remove/overwrite DOM discovery to the Project Sources surface and removes broad body/main fallback lookup from the source-card/remove path. Operators should first rerun the focused source-overwrite path before running full release-control. No Project Source, adoption/current, or project deletion migration is performed.
