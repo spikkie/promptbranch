@@ -104,3 +104,4 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 
 | v0.1.78.2.9 | repair | Docker pyproject probe awk-dollar quoting repair | candidate | focused Docker probe quoting/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-055 done; DOD-047/DOD-050/DOD-051/DOD-052/DOD-053/DOD-054 preserved | pending |
 | v0.1.78.2.10 | repair | Rate-limit modal recovery and cooldown-aware run-all policy | candidate | focused shell/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-056 done; DOD-052/DOD-055 preserved | pending |
+| v0.1.78.2.11 | repair | Run-all profile seed preservation and strict rate-limit detection | candidate | focused shell/version/delete-safety/project-control tests, compileall, bash syntax, ZIP hygiene before operator release-control | DOD-057 done; DOD-052/DOD-056 preserved | pending |

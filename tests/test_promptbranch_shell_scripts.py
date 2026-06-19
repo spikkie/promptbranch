@@ -1510,6 +1510,7 @@ def test_release_control_accepts_multi_segment_repair_versions(tmp_path: Path):
 def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
     (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -1638,9 +1639,33 @@ def test_release_control_run_all_has_rate_limit_retry_policy_declared():
     assert "tee -a" in script
     assert "retry after rate-limit cooldown" in script
 
+
+def test_release_control_import_plan_preserves_live_seed_but_not_pool():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"' in script
+    assert '! -name ".pb_profile_local_debug"' in script
+    assert "--exclude='.pb_profile_local_debug/'" in script
+    assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", "profile", "debug_artifacts"]' in script
+    assert ".pb_profile_local_debug_pools" not in 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"'
+
+
+def test_release_control_rate_limit_detection_is_strict_not_generic():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "No ChatGPT rate-limit evidence observed" in script
+    assert "Strict evidence only" in script
+    assert "rate[-_ ]limit|rate_limited|cooldown_seconds|cooldown_until" not in script
+    assert '"rate_limit_modal_detected"\\s*:\\s*true' in script
+    assert '"conversation_history_429_seen"\\s*:\\s*true' in script
+    assert '"backend_api_guardrail_seen"\\s*:\\s*true' in script
+
 def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
     (repo / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

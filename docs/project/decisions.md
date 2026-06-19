@@ -87,3 +87,7 @@ For v0.1.78.2.8, Docker image/container pyproject version extraction uses a shel
 ## Decision — Docker provenance pyproject probes must avoid awk `$2` under `set -u`
 
 The v0.1.78.2.8 Docker container-content probe failed because an awk expression containing `$2` was evaluated by the shell under `set -u`, causing `parameter not set`. v0.1.78.2.9 replaces that reader with a `grep | head | cut` pipeline that avoids shell positional parameters while preserving the Docker provenance policy.
+
+## Decision — v0.1.78.2.11 live seed profiles are local state, pool slots are disposable
+
+Release-control must preserve `.pb_profile_local_debug/` across install because it is an operator-authenticated live-test seed. It must not preserve `.pb_profile_local_debug_pools/`, because pool slots are generated clones that should be refreshed for each run. Run-all rate-limit retry detection must rely on strict 429 / "Too many requests" evidence instead of broad rate-limit wording.
