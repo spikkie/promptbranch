@@ -209,3 +209,5 @@ No user data migration is required. This repair constrains Project Source remove
 ## v0.1.78.2.15 migration note
 
 No Project Source, adoption/current, or project deletion migration is performed. This repair only prevents Project Source add/list/remove/capability operations and Project Source persistence refreshes from waiting on persisted conversation-history cooldown after a 429 modal is acknowledged. The cooldown remains recorded for history-reading operations. Operators should rerun only the focused file `src add` path before running full release-control.
+
+| `docs/repair-v0.1.78.2.16.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/status.md` | summarized | Repair evidence for file-source post-commit stale-inflight refreshed verification recovery; no normal slice advanced. |
