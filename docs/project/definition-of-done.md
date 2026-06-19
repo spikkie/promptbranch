@@ -138,3 +138,14 @@ Acceptance criteria:
 - Docker provenance checks and project deletion freeze remain preserved.
 
 | DOD-059 | Default run-all release validation isolates text-source add/remove as source-kind compatibility unless strict matrix is requested | done | `chatgpt_claudecode_workflow_release_control.sh`, focused shell-script tests | v0.1.78.2.13 |
+
+## DOD-060 — Project Source remove containment guard
+
+Status: done for v0.1.78.2.14 candidate.
+
+Acceptance criteria:
+
+- Project Source card snapshots are scoped to visible Project Sources surfaces.
+- Project Source container/action-button lookup does not fall back to broad `main`/`body` DOM queries.
+- Source remove/overwrite verification fails closed instead of treating sidebar, recents, project navigation, or conversation history rows as source cards.
+- Docker provenance, live seed profile handling, strict rate-limit detection, text-source compatibility isolation, and project deletion freeze remain preserved.
