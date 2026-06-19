@@ -84,6 +84,13 @@ run_all_tests=0
 run_all_rate_limit_retries="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES:-1}"
 run_all_rate_limit_cooldown_seconds="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS:-185}"
 run_all_rate_limit_skip_sleep="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP:-0}"
+# Text Project Source add is useful as a compatibility probe, but the release-critical
+# Project Source path is ZIP/file upload. Default run-all therefore excludes text
+# source add/remove unless the operator asks for the strict source-kind matrix.
+run_all_strict_source_kind_matrix="${PROMPTBRANCH_RUN_ALL_STRICT_SOURCE_KIND_MATRIX:-0}"
+# Developer accelerator: run only the currently isolated failing text-source
+# compatibility path through the selected full-test transports.
+run_failing_tests=0
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -138,6 +145,14 @@ Options:
                               after individual failures. Implies --run-tests and --test-transport both.
                               Runs pb test full via direct+localhost, ask-live, visual-artifact-roundtrip,
                               release-live, import-smoke, and artifact guard, then writes a final GO/FIX JSON report.
+                              By default, text-source add/remove is treated as a compatibility probe and is
+                              excluded from the release-blocking full browser path.
+      --strict-source-kind-matrix
+                              With --run-all-tests, include text-source add/remove in the release-blocking
+                              full browser source-kind matrix.
+      --run-failing-tests     Developer accelerator for this repair line. Runs only the currently isolated
+                              failing text-source compatibility path via direct+localhost full-test transports,
+                              then writes the same GO/FIX summary. Skips live ask/artifact/import/guard rows.
       --tests-only            Run only the logged pb test full/report block for the selected
                               version. Implies --run-tests and skips ZIP import,
                               commit, packaging, source add, install, service, and docker logs.
@@ -513,6 +528,18 @@ while [[ $# -gt 0 ]]; do
     --run-tests) skip_tests=0; shift ;;
     --run-all-tests)
       run_all_tests=1
+      skip_tests=0
+      test_transport="both"
+      shift
+      ;;
+    --strict-source-kind-matrix)
+      run_all_strict_source_kind_matrix=1
+      shift
+      ;;
+    --run-failing-tests)
+      run_failing_tests=1
+      run_all_tests=1
+      run_all_strict_source_kind_matrix=1
       skip_tests=0
       test_transport="both"
       shift
@@ -955,6 +982,8 @@ printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
 printf 'run_all_tests:  %s\n' "${run_all_tests}"
+printf 'run_failing_tests:  %s\n' "${run_failing_tests}"
+printf 'run_all_strict_source_kind_matrix: %s\n' "${run_all_strict_source_kind_matrix}"
 printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   retained_project_delete_frozen\n'
@@ -2100,8 +2129,33 @@ INNERPY
   sleep "${wait_seconds}"
 }
 
+build_run_all_full_test_args() {
+  local -n _out_args="$1"
+  _out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)
+  if [[ ${run_failing_tests} -eq 1 ]]; then
+    _out_args+=(--only project_ensure,source_add_text)
+  elif [[ ${run_all_tests} -eq 1 && "${run_all_strict_source_kind_matrix}" != "1" ]]; then
+    _out_args+=(--skip source_add_text,source_remove_text)
+  fi
+  _out_args+=(--json)
+}
+
+print_command_line() {
+  local first=1
+  local part
+  for part in "$@"; do
+    if [[ ${first} -eq 1 ]]; then
+      printf '%q' "${part}"
+      first=0
+    else
+      printf ' %q' "${part}"
+    fi
+  done
+}
+
 # Run full suite and parsed report. Always try to create a report, even if the suite fails.
-# Default direct transport invariant: CHATGPT_SERVICE_BASE_URL="${service_base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json
+# Default run-all invariant: text source add/remove is a source-kind compatibility probe
+# unless --strict-source-kind-matrix is supplied.
 run_full_test_transport() {
   local label="$1"
   local base_url="$2"
@@ -2110,19 +2164,33 @@ run_full_test_transport() {
   local selected_summary_json="$5"
   local test_rc=0
   local report_rc=0
+  local -a full_test_cmd=()
+  build_run_all_full_test_args full_test_cmd
 
   echo "== pb test transport: ${label} =="
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: retained_project_delete_frozen"
+  if [[ ${run_failing_tests} -eq 1 ]]; then
+    echo "focused_failing_tests: text_source_add_compatibility"
+  elif [[ ${run_all_tests} -eq 1 && "${run_all_strict_source_kind_matrix}" != "1" ]]; then
+    echo "source_kind_matrix: release_blocking_file_paths_only"
+    echo "text_source_compatibility: skipped_by_default_use_--strict-source-kind-matrix"
+  fi
   : > "${selected_full_log}"
-  echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee -a ${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee -a "${selected_full_log}"
+  printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
+  print_command_line "${full_test_cmd[@]}"
+  printf ' 2>&1 | tee -a %q
+' "${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
     run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"
     echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
-    echo "+ CHATGPT_SERVICE_BASE_URL=${base_url} timeout --foreground ${test_timeout_seconds} pb test full --project-name ${release_test_project_name} --keep-project --json 2>&1 | tee -a ${selected_full_log}"
-    CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" pb test full --project-name "${release_test_project_name}" --keep-project --json 2>&1 | tee -a "${selected_full_log}"
+    printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
+    print_command_line "${full_test_cmd[@]}"
+    printf ' 2>&1 | tee -a %q
+' "${selected_full_log}"
+    CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
     test_rc=${PIPESTATUS[0]}
   fi
   if [[ ${test_rc} -ne 0 ]]; then
@@ -2409,6 +2477,10 @@ record_all_test_skipped_step() {
   workflow_rc=78
 }
 
+run_all_finalize_summary() {
+  run_all_finalize_summary
+}
+
 run_all_live_validation_steps() {
   local guard_zip="${artifact_zip}"
   if [[ ! -f "${guard_zip}" && -n "${download_zip:-}" && -f "${download_zip}" ]]; then
@@ -2463,7 +2535,14 @@ if [[ ${skip_tests} -eq 0 ]]; then
   esac
 
   if [[ ${run_all_tests} -eq 1 ]]; then
-    run_all_live_validation_steps
+    if [[ ${run_failing_tests} -eq 1 ]]; then
+      echo "== pb test all: focused failing tests only =="
+      echo "focused_failing_tests: text_source_add_compatibility"
+      echo "skipped_steps: live_profile_preflight, ask_live, visual_artifact_roundtrip, release_live, import_smoke, artifact_guard"
+      run_all_finalize_summary
+    else
+      run_all_live_validation_steps
+    fi
   fi
 
   set -e
@@ -2610,6 +2689,8 @@ service_port:   ${service_port}
 service_base:   ${service_base_url}
 test_transport: ${test_transport}
 run_all_tests:  ${run_all_tests}
+run_failing_tests: ${run_failing_tests}
+run_all_strict_source_kind_matrix: ${run_all_strict_source_kind_matrix}
 all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")
 test_project:   ${release_test_project_name}
 test_cleanup:   retained_project_delete_frozen

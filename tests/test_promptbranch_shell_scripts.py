@@ -1578,7 +1578,8 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert "run_all_tests:  1" in result.stdout
     assert f"all_tests_summary: {summary_path}" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert call_text.count("pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json") == 2
+    assert call_text.count("pb test full") == 2
+    assert "--skip source_add_text,source_remove_text" in call_text
     assert "pb --profile-dir ./.pb_profile_local_debug login-check" in call_text
     assert "pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
     assert "pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
@@ -1649,6 +1650,28 @@ def test_release_control_import_plan_preserves_live_seed_but_not_pool():
     assert "--exclude='.pb_profile_local_debug/'" in script
     assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", "profile", "debug_artifacts"]' in script
     assert ".pb_profile_local_debug_pools" not in 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"'
+
+
+def test_release_control_run_all_defaults_text_source_to_compatibility_probe():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_strict_source_kind_matrix" in script
+    assert "PROMPTBRANCH_RUN_ALL_STRICT_SOURCE_KIND_MATRIX" in script
+    assert "--strict-source-kind-matrix" in script
+    assert "--skip source_add_text,source_remove_text" in script
+    assert "text_source_compatibility: skipped_by_default_use_--strict-source-kind-matrix" in script
+
+
+def test_release_control_run_failing_tests_is_focused_text_source_mode():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "--run-failing-tests" in script
+    assert "run_failing_tests=1" in script
+    assert "--only project_ensure,source_add_text" in script
+    assert "focused_failing_tests: text_source_add_compatibility" in script
+    assert "skipped_steps: live_profile_preflight, ask_live, visual_artifact_roundtrip, release_live, import_smoke, artifact_guard" in script
 
 
 def test_release_control_rate_limit_detection_is_strict_not_generic():
