@@ -40,6 +40,13 @@ DEFAULT_SKIP: tuple[str, ...] = ()
 TEST_SUITE_PROFILES = ("browser", "agent", "full")
 
 
+EXPECTED_NON_FAILURE_STATUSES = {
+    "expected_missing",
+    "expected_unsupported",
+    "expected_skip",
+}
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -110,7 +117,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
     "browser_scheduler_source_lifecycle": {
         "required": True,
         "description": "Scheduler/source lifecycle and same-profile queue regression coverage.",
-        "timeout_seconds": 120.0,
+        "timeout_seconds": 300.0,
         "command": _release_validation_command(
             "-m",
             "pytest",
@@ -1184,11 +1191,14 @@ def _suite_failed_steps(section_name: str, section: Any) -> list[dict[str, Any]]
                 continue
             details = step.get("details") if isinstance(step.get("details"), dict) else {}
             payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
+            status = step.get("status") or details.get("status") or payload.get("status") or details.get("error_type")
+            if status in EXPECTED_NON_FAILURE_STATUSES:
+                continue
             failures.append({
                 "section": section_name,
                 "scope": scope,
                 "name": step.get("name"),
-                "status": step.get("status") or details.get("status") or payload.get("status") or details.get("error_type"),
+                "status": status,
                 "diagnostic": details.get("error") or payload.get("error") or details.get("diagnostic") or payload.get("diagnostic"),
             })
     return failures

@@ -965,3 +965,66 @@ def test_run_step_marks_returned_false_result_as_failed() -> None:
     assert steps[0].name == "project_source_add_file"
     assert steps[0].ok is False
     assert steps[0].details["status"] == "persistence_not_verified"
+
+
+def test_resolve_step_selection_adds_cleanup_for_focused_create_flow() -> None:
+    selection = resolve_step_selection(
+        only_values=["project_ensure", "source_add_text"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert "project_remove_cleanup" in selection.enabled_steps
+
+
+def test_resolve_step_selection_keeps_existing_project_source_only_without_cleanup() -> None:
+    selection = resolve_step_selection(
+        only_values=["source_add_text"],
+        skip_values=[],
+        keep_project=False,
+    )
+    assert "project_remove_cleanup" not in selection.enabled_steps
+
+
+def test_project_remove_cleanup_passes_same_run_ephemeral_cleanup_proof(monkeypatch) -> None:
+    import asyncio
+    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
+
+    async def fake_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+
+    class FakeService:
+        project_url = "https://chatgpt.com/g/g-p-demo-itest-promptbranch-run/project"
+
+        def __init__(self) -> None:
+            self.kwargs = None
+
+        async def remove_project(self, **kwargs):
+            self.kwargs = kwargs
+            return {"ok": True, "status": "removed"}
+
+        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None):
+            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+
+    service = FakeService()
+    cleanup_steps = []
+    result = asyncio.run(
+        _remove_project_cleanup_with_retry(
+            cleanup_steps,
+            service,
+            keep_open=False,
+            step_delay_seconds=0.0,
+            max_attempts=1,
+            project_name="itest-promptbranch-run",
+            allow_ephemeral_test_cleanup=True,
+            created_project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-run/project",
+            created_project_name="itest-promptbranch-run",
+            created_project_id="g-p-demo-itest-promptbranch-run",
+        )
+    )
+
+    assert result["ok"] is True
+    assert service.kwargs["allow_ephemeral_test_cleanup"] is True
+    assert service.kwargs["created_project_name"] == "itest-promptbranch-run"
+    assert cleanup_steps[-1].ok is True

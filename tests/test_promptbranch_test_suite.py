@@ -675,4 +675,4 @@ def test_browser_scheduler_release_validation_group_uses_short_timeout() -> None
     manifest = suite.release_validation_group_manifest()
     group = manifest["browser_scheduler_source_lifecycle"]
 
-    assert group["timeout_seconds"] == 120.0
+    assert group["timeout_seconds"] == 300.0

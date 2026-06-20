@@ -6,6 +6,13 @@ from typing import Any, Iterable
 from datetime import datetime, timezone
 
 
+EXPECTED_NON_FAILURE_STATUSES = {
+    "expected_missing",
+    "expected_unsupported",
+    "expected_skip",
+}
+
+
 def _decode_json_objects(text: str) -> list[tuple[int, int, Any]]:
     decoder = json.JSONDecoder()
     objects: list[tuple[int, int, Any]] = []
@@ -82,9 +89,12 @@ def _failed_steps(section_name: str, section: dict[str, Any] | None) -> list[dic
                 continue
             payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
             details = step.get("details") if isinstance(step.get("details"), dict) else {}
+            status = step.get("status") or details.get("status") or payload.get("status") or details.get("error_type")
+            if status in EXPECTED_NON_FAILURE_STATUSES:
+                continue
             diagnostic = payload.get("diagnostic") or payload.get("error") or details.get("error") or details.get("diagnostic")
             classification = _classify_failure_text(" ".join(str(item or "") for item in (
-                step.get("status"),
+                status,
                 diagnostic,
                 payload.get("exception"),
                 payload.get("error"),

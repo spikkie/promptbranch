@@ -288,3 +288,15 @@ No user data, artifact-current, CV generator, prompt-file transport, release-con
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Focused `.20.6` `source_add_text` rerun after cooldown | live evidence/change request | `docs/repair-v0.1.78.2.20.7.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Persistence verified with `source_match=pasted.txt Document`; `.20.7` makes that naming behavior non-release-blocking while preserving diagnostics. |
+
+## v0.1.78.2.20.8 migration note
+
+No user data, artifact-current, CV generator, prompt-file transport, or broad project deletion migration is performed. This repair changes only integration-test lifecycle handling: fresh `itest-promptbranch-*` projects created by the current run may be cleaned up through a strict same-run identity proof, expected pre-create missing-project resolution is classified as informational/pass, and the scheduler/source lifecycle validation group receives a larger timeout.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Fresh `.20.7` `project_ensure + source_add_text` repro | live evidence/change request | `docs/repair-v0.1.78.2.20.8.1.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Source add passed on a fresh project, but cleanup was absent and expected pre-create missing-project resolution was counted as a failure. |
+
+## v0.1.78.2.20.8.1 migration note
+
+No runtime migration is required. This repair preserves the `.20.8` implementation and fixes only the release ZIP packaging surface by ensuring the required repo-root `.gitignore` control file is present in the archive.

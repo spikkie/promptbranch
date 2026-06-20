@@ -222,6 +222,11 @@ def resolve_step_selection(
 
     if keep_project:
         enabled.discard("project_remove_cleanup")
+    elif requested_only and "project_ensure_create_or_reuse" in enabled:
+        # Focused create flows should clean up fresh test projects unless the
+        # operator explicitly asks to keep them. Source-only runs against an
+        # existing --project-url are not owned by this run and are retained.
+        enabled.add("project_remove_cleanup")
 
     if enabled - {"project_remove_cleanup", *LOCAL_ONLY_STEPS}:
         enabled.add("login_check")
@@ -482,17 +487,41 @@ class DockerServiceAdapter:
         keep_open: bool = False,
         project_url: str | None = None,
         project_name: str | None = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: str | None = None,
+        created_project_name: str | None = None,
+        created_project_id: str | None = None,
     ) -> dict[str, Any]:
         try:
-            return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url, project_name)
+            return await asyncio.to_thread(
+                self._remove_project_sync,
+                keep_open,
+                project_url,
+                project_name,
+                allow_ephemeral_test_cleanup,
+                created_project_url,
+                created_project_name,
+                created_project_id,
+            )
         except TypeError:
-            return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url)
+            # Preserve compatibility with focused unit monkeypatches and older adapters.
+            try:
+                return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url, project_name)
+            except TypeError:
+                try:
+                    return await asyncio.to_thread(self._remove_project_sync, keep_open, project_url)
+                except TypeError:
+                    return await asyncio.to_thread(self._remove_project_sync, keep_open)
 
     def _remove_project_sync(
         self,
         keep_open: bool,
         project_url: str | None = None,
         project_name: str | None = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: str | None = None,
+        created_project_name: str | None = None,
+        created_project_id: str | None = None,
     ) -> dict[str, Any]:
         effective_project_url = project_url or self.project_url
         with self._client() as client:
@@ -501,6 +530,10 @@ class DockerServiceAdapter:
                 project_url=effective_project_url,
                 project_name=project_name,
                 profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
+                allow_ephemeral_test_cleanup=allow_ephemeral_test_cleanup,
+                created_project_url=created_project_url,
+                created_project_name=created_project_name,
+                created_project_id=created_project_id,
             )
 
     async def discover_project_source_capabilities(self, *, keep_open: bool = False) -> dict[str, Any]:
@@ -979,6 +1012,10 @@ async def _remove_project_cleanup_with_retry(
     step_delay_seconds: float,
     max_attempts: int = 3,
     project_name: str | None = None,
+    allow_ephemeral_test_cleanup: bool = False,
+    created_project_url: str | None = None,
+    created_project_name: str | None = None,
+    created_project_id: str | None = None,
 ) -> dict[str, Any]:
     """Remove the temporary project and prove the cleanup postcondition.
 
@@ -992,20 +1029,37 @@ async def _remove_project_cleanup_with_retry(
 
     async def _remove_project_call() -> dict[str, Any]:
         remover = getattr(project_service, "remove_project")
+        kwargs: dict[str, Any] = {"keep_open": keep_open}
         if active_project_url:
-            try:
-                return await remover(keep_open=keep_open, project_url=active_project_url, project_name=project_name)
-            except TypeError:
-                try:
-                    return await remover(keep_open=keep_open, project_url=active_project_url)
-                except TypeError:
-                    return await remover(keep_open=keep_open)
+            kwargs["project_url"] = active_project_url
         if project_name:
-            try:
-                return await remover(keep_open=keep_open, project_name=project_name)
-            except TypeError:
-                return await remover(keep_open=keep_open)
-        return await remover(keep_open=keep_open)
+            kwargs["project_name"] = project_name
+        if allow_ephemeral_test_cleanup:
+            kwargs.update({
+                "allow_ephemeral_test_cleanup": True,
+                "created_project_url": created_project_url,
+                "created_project_name": created_project_name,
+                "created_project_id": created_project_id,
+            })
+        try:
+            return await remover(**kwargs)
+        except TypeError:
+            # Preserve compatibility with focused unit fakes and older adapters.
+            minimal = {"keep_open": keep_open}
+            if active_project_url:
+                try:
+                    return await remover(**minimal, project_url=active_project_url, project_name=project_name)
+                except TypeError:
+                    try:
+                        return await remover(**minimal, project_url=active_project_url)
+                    except TypeError:
+                        return await remover(**minimal)
+            if project_name:
+                try:
+                    return await remover(**minimal, project_name=project_name)
+                except TypeError:
+                    return await remover(**minimal)
+            return await remover(**minimal)
 
     def _resolved_project_url(absence: dict[str, Any]) -> str | None:
         result = absence.get("resolve_result") if isinstance(absence, dict) else None
@@ -1820,6 +1874,10 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     base_service = build_service(args, project_url=args.project_url)
     project_url: Optional[str] = None
     project_id: Optional[str] = None
+    created_project_this_run = False
+    created_project_url: Optional[str] = None
+    created_project_id: Optional[str] = None
+    created_project_name: Optional[str] = None
 
     temp_dir = Path(tempfile.mkdtemp(prefix="chatgpt-itest-"))
     file_source_path = temp_dir / f"itest-file-{run_id}.txt"
@@ -1842,6 +1900,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "project_url": None,
         "project_id": None,
         "kept_project": not cleanup_enabled,
+        "cleanup_policy": "same_run_ephemeral_cleanup" if cleanup_enabled else "kept_or_not_selected",
         "strict_remove_ui": bool(args.strict_remove_ui),
         "requested_only": list(selection.requested_only),
         "requested_skip": list(selection.requested_skip),
@@ -1903,6 +1962,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             initial_resolve = _normalize_expected_missing_resolve_result(initial_resolve_raw)
             if steps and steps[-1].name == "project_resolve_before_create":
                 steps[-1].details = initial_resolve
+                steps[-1].ok = bool(isinstance(initial_resolve, dict) and initial_resolve.get("ok") is True)
             _require(initial_resolve_raw.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve_raw}")
             _require(
                 initial_resolve_raw.get("match_count") == 0 or bool(args.project_name),
@@ -1930,8 +1990,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             _require(bool(project_url), f"project_ensure did not return project_url: {ensure_created}")
             project_id = _extract_project_id(project_url)
             _require(bool(project_id), f"project_ensure returned a project_url without a project_id: {ensure_created}")
+            if ensure_created.get("created") is True:
+                created_project_this_run = True
+                created_project_url = project_url
+                created_project_id = project_id
+                created_project_name = project_name
             summary["project_url"] = project_url
             summary["project_id"] = project_id
+            summary["created_project_this_run"] = created_project_this_run
 
         if should_run("project_ensure_idempotent"):
             _require(bool(project_url), "project_ensure_idempotent requires a project_url from project_ensure_create_or_reuse or --project-url")
@@ -2291,32 +2357,55 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["steps"] = [asdict(step) for step in steps]
 
         if project_url and cleanup_enabled:
-            try:
-                project_service = build_service(args, project_url=project_url)
-                await _remove_project_cleanup_with_retry(
-                    cleanup_steps,
-                    project_service,
-                    keep_open=args.keep_open,
-                    step_delay_seconds=args.step_delay_seconds,
-                    max_attempts=5,
-                    project_name=project_name,
-                )
-            except Exception as exc:
-                if not cleanup_steps or bool(cleanup_steps[-1].ok):
-                    cleanup_steps.append(
-                        StepResult(
-                            name="project_remove_cleanup_assertion",
-                            ok=False,
-                            duration_seconds=0.0,
-                            details={
-                                "error_type": type(exc).__name__,
-                                "error": str(exc),
-                            },
-                        )
+            if not created_project_this_run:
+                cleanup_steps.append(
+                    StepResult(
+                        name="project_remove_cleanup",
+                        ok=True,
+                        duration_seconds=0.0,
+                        details={
+                            "ok": True,
+                            "status": "project_remove_cleanup_skipped_not_created_this_run",
+                            "postcondition": "project_retained_not_owned_by_this_run",
+                            "cleanup_policy": "same_run_ephemeral_cleanup_only",
+                            "project_url": project_url,
+                            "project_name": project_name,
+                            "created_project_this_run": False,
+                        },
                     )
-                if summary.get("ok"):
-                    summary["ok"] = False
-                    summary["cleanup_error"] = str(exc)
+                )
+            else:
+                try:
+                    project_service = build_service(args, project_url=project_url)
+                    await _remove_project_cleanup_with_retry(
+                        cleanup_steps,
+                        project_service,
+                        keep_open=args.keep_open,
+                        step_delay_seconds=args.step_delay_seconds,
+                        max_attempts=5,
+                        project_name=project_name,
+                        allow_ephemeral_test_cleanup=True,
+                        created_project_url=created_project_url,
+                        created_project_name=created_project_name,
+                        created_project_id=created_project_id,
+                    )
+                    summary["kept_project"] = False
+                except Exception as exc:
+                    if not cleanup_steps or bool(cleanup_steps[-1].ok):
+                        cleanup_steps.append(
+                            StepResult(
+                                name="project_remove_cleanup_assertion",
+                                ok=False,
+                                duration_seconds=0.0,
+                                details={
+                                    "error_type": type(exc).__name__,
+                                    "error": str(exc),
+                                },
+                            )
+                        )
+                    if summary.get("ok"):
+                        summary["ok"] = False
+                        summary["cleanup_error"] = str(exc)
 
         cleanup_failures = [step for step in cleanup_steps if not bool(step.ok)]
         if cleanup_failures:

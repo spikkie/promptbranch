@@ -15,7 +15,10 @@ from pydantic import BaseModel, Field
 from promptbranch_automation import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_test_suite import run_test_suite_async
 from promptbranch_version import PACKAGE_VERSION as SERVICE_VERSION
-from promptbranch_project_delete_safety import project_delete_disabled_result
+from promptbranch_project_delete_safety import (
+    project_delete_disabled_result,
+    validate_ephemeral_test_project_cleanup_request,
+)
 from promptbranch_browser_auth.client import get_latest_ask_progress
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
@@ -166,6 +169,10 @@ class ProjectRemoveRequest(BaseModel):
     project_url: Optional[str] = None
     project_name: Optional[str] = None
     profile_lock_wait_seconds: Optional[float] = None
+    allow_ephemeral_test_cleanup: bool = False
+    created_project_url: Optional[str] = None
+    created_project_name: Optional[str] = None
+    created_project_id: Optional[str] = None
 
 
 class ProjectSourceRemoveRequest(BaseModel):
@@ -748,14 +755,35 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
 
 @protected.post("/projects/remove", dependencies=[Depends(require_service_token)])
 async def remove_project(payload: ProjectRemoveRequest) -> dict:
-    # v0.1.78.2 safety repair: project deletion is frozen at the HTTP
-    # boundary.  The service must not open a browser context or click any
-    # ChatGPT deletion affordance from this endpoint.
-    return project_delete_disabled_result(
+    validation = validate_ephemeral_test_project_cleanup_request(
+        allow_ephemeral_test_cleanup=payload.allow_ephemeral_test_cleanup,
         project_url=payload.project_url,
         project_name=payload.project_name,
-        blocked_at_layer="container_api",
+        created_project_url=payload.created_project_url,
+        created_project_name=payload.created_project_name,
+        created_project_id=payload.created_project_id,
     )
+    if not validation.get("ok"):
+        # Project deletion remains frozen at the HTTP boundary unless the
+        # caller proves a same-run ephemeral integration-test project identity.
+        return project_delete_disabled_result(
+            project_url=payload.project_url,
+            project_name=payload.project_name,
+            blocked_at_layer="container_api",
+            validation=validation,
+        )
+    try:
+        return await _service_for(payload.project_url).remove_project(
+            keep_open=payload.keep_open,
+            project_name=payload.project_name,
+            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
+            allow_ephemeral_test_cleanup=True,
+            created_project_url=payload.created_project_url,
+            created_project_name=payload.created_project_name,
+            created_project_id=payload.created_project_id,
+        )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
 
 
 @protected.post("/project-sources", dependencies=[Depends(require_service_token)])

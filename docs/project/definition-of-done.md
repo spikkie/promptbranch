@@ -182,3 +182,5 @@ Acceptance criteria:
 | DOD-072 | Project Source large text-document conversion requires a dedicated/generated document name; legacy `pasted.txt` identities are cleanup noise only | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.6.md` | v0.1.78.2.20.6 |
 
 | DOD-073 | Project Source text-add release gate is split from large-paste document-conversion characterization | done | `promptbranch_full_integration_test.py`, `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.7.md` | v0.1.78.2.20.7 |
+
+| DOD-074 | Fresh Project Source integration runs classify pre-create missing projects as expected, remove only same-run ephemeral test projects, and use a sufficient scheduler/source lifecycle validation timeout | done | `promptbranch_full_integration_test.py`, `promptbranch_project_delete_safety.py`, `promptbranch_container_api.py`, `promptbranch_test_suite.py`, focused cleanup/classification tests, `docs/repair-v0.1.78.2.20.8.1.md` | v0.1.78.2.20.8 |
