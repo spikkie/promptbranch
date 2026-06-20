@@ -98,3 +98,5 @@ The text Project Source add path can fail with `ui_trigger_not_observed_not_veri
 
 
 | ADR-PROJ-061 | 2026-06-19 | Project Source verification must not wait on conversation-history cooldown | Live service logs showed source upload/commit and final verification succeeded, but the CLI timed out while browser automation slept on a persisted conversation-history 429 cooldown | Project Source operations still acknowledge modals and record cooldown telemetry, but their persistence refresh path skips the persisted conversation-history cooldown; history operations continue to respect it |
+
+| ADR-PROJ-062 | 2026-06-20 | `pb ask --prompt-file` must carry prompt-file origin as submit policy, not only merged prompt text | Prompt-file live calls are automation-critical and observed keyboard Enter dispatch can stop at prepare-token-only without backend commit | `v0.1.78.2.17` forwards `prefer_button_submit` through CLI/service/API/browser layers, prefers send-button click for prompt-file asks, and keeps prepare-token-only as a hard submit failure with diagnostics |

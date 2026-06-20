@@ -135,3 +135,7 @@ v0.1.78.2.3 repair candidate build
 ## v0.1.78.2.16 repair status
 
 `v0.1.78.2.15` reduced the remaining release blocker to localhost `project_source_overwrite_file` post-commit persistence verification: a file-source save commit was observed, but a stale inflight request prevented refreshed proof from completing before the release gate failed. `v0.1.78.2.16` adds a bounded recovery path for the specific `commit_seen_with_stale_inflight_not_verified_present` state. It reopens the Project Sources surface and accepts the mutation only if refreshed proof of the requested file source appears. Otherwise it still fails closed. Docker provenance, live seed preservation, rate-limit handling, text-source compatibility isolation, Project Source remove containment, and project deletion freeze are preserved.
+
+## v0.1.78.2.17 repair status
+
+`v0.1.78.2.16` still allowed `pb ask --prompt-file` to use the keyboard-primary submit policy because the CLI merged prompt-file text into the prompt before the browser layer and did not preserve prompt-file origin. `v0.1.78.2.17` carries `prefer_button_submit` through CLI, service-client, container API, automation service, and browser layers. Prompt-file asks now use send-button-first dispatch when the button is visible/enabled, while prepare-token-only states remain hard failures with flattened submit-causality diagnostics. CV generator code, source add/remove behavior, project deletion, artifact registry behavior, and normal slice state are unchanged.

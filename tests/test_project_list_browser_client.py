@@ -2620,7 +2620,7 @@ def test_submit_prompt_button_path_skips_slow_user_turn_dom_wait_after_running_c
 
     result = asyncio.run(client._submit_prompt(DummyPage(), prompt="hello"))
 
-    assert result["submit_method"] == "button"
+    assert result["submit_method"] == "button_click"
     assert result["submit_confirmed"] is True
     assert result["submit_confirmed_by"] == ["stop_button"]
     assert result["dom_user_turn_evidence"]["status"] == "user_turn_dom_evidence_skipped"
@@ -4100,6 +4100,138 @@ def test_submit_prompt_uses_keyboard_enter_as_primary_dispatch(tmp_path: Path) -
     assert result["submit_network_request_marker_found"] is True
     assert result["after_submit_snapshot_mode"] == "skipped_success_fast_path"
 
+
+
+def test_submit_prompt_prefer_button_overrides_keyboard_primary_when_prompt_file_policy_is_set(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyButton:
+        async def count(self):
+            return 1
+
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def is_enabled(self, timeout=None):
+            return True
+
+        async def get_attribute(self, name: str):
+            if name == "data-testid":
+                return "send-button"
+            if name == "aria-label":
+                return "Send prompt"
+            return None
+
+        async def click(self):
+            return None
+
+    class DummyLocator:
+        @property
+        def first(self):
+            return DummyButton()
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            return DummyLocator()
+
+        async def wait_for_timeout(self, ms: int):
+            raise AssertionError("prompt-file button-first path should click immediately")
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"visible": True, "enabled": True, "send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
+        return {
+            "status": "submit_confirmed",
+            "confirmed": True,
+            "confirmed_by": ["backend_task_message"],
+            "confirmation_mode": "backend_commit_after_prepare",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": True,
+            "causal_confirmation_reason": "backend_commit_after_prepare",
+            "network_submit_request_observed": True,
+            "network_submit_request_status": "submit_network_request_observed",
+            "submit_network_evidence": {
+                "prepare_request_observed": True,
+                "prepare_response_observed": True,
+                "message_request_observed": True,
+            },
+            "backend_task_message_evidence": {
+                "post_prepare_commit_found": True,
+            },
+        }
+
+    async def fail_post_submit_snapshot(*args, **kwargs):
+        raise AssertionError("successful path skips snapshot")
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = fake_confirmation
+    client._capture_post_submit_composer_state = fail_post_submit_snapshot
+    client._start_submit_network_observer = lambda page, prompt=None: {"observer": "network"}
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="Use prompt file", prefer_button=True))
+
+    assert page.keyboard.pressed == []
+    assert result["prefer_button_submit"] is True
+    assert result["submit_method"] == "button_click"
+    assert result["button_visible"] is True
+    assert result["button_enabled"] is True
+    assert result["submit_confirmed"] is True
+    assert result["submit_backend_commit_after_prepare_found"] is True
+
+
+def test_submit_failure_diagnostics_flatten_prepare_token_not_consumed(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    fields = client._submit_failure_diagnostic_fields({
+        "submit_method": "button_click",
+        "prefer_button_submit": True,
+        "probe_history": [{"visible": True, "enabled": True}],
+        "submit_prepare_request_observed": True,
+        "submit_prepare_response_observed": True,
+        "submit_message_request_observed": False,
+        "submit_backend_commit_after_prepare_found": False,
+        "post_submit_user_turn_visibility_status": "user_turn_echo_not_visible",
+        "submit_dom_delta_status": "dom_delta_user_turn_not_confirmed",
+        "submit_confirmed_by": [],
+    })
+
+    assert fields == {
+        "submit_method": "button_click",
+        "prefer_button_submit": True,
+        "submit_button_visible": True,
+        "submit_button_enabled": True,
+        "submit_prepare_request_observed": True,
+        "submit_prepare_response_observed": True,
+        "submit_message_request_observed": False,
+        "submit_backend_commit_confirmed": False,
+        "post_submit_user_turn_visibility_status": "user_turn_echo_not_visible",
+        "submit_dom_delta_status": "dom_delta_user_turn_not_confirmed",
+        "answer_text": "",
+        "answer_text_length": 0,
+    }
 
 
 def test_submit_prompt_retries_keyboard_enter_after_prepare_only_without_commit(tmp_path: Path) -> None:

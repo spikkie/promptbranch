@@ -852,6 +852,7 @@ class DirectBackend:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        prefer_button_submit: bool = False,
     ) -> Any:
         effective_project_url = conversation_url or (
             self._conversation_state.resolve(self._project_url)
@@ -869,6 +870,7 @@ class DirectBackend:
                 expect_json=expect_json,
                 keep_open=keep_open,
                 retries=retries,
+                prefer_button_submit=prefer_button_submit,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -1136,6 +1138,7 @@ class ServiceBackend:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        prefer_button_submit: bool = False,
     ) -> Any:
         effective_project_url = conversation_url or self._conversation_state.resolve(self._project_url)
         result = await self._call(
@@ -1149,6 +1152,7 @@ class ServiceBackend:
             retries=retries,
             project_url=effective_project_url,
             service_timeout_seconds=self._service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
         )
         _, conversation_url = _split_ask_response(result)
         self._conversation_state.remember(self._project_url, conversation_url)
@@ -6938,6 +6942,7 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
             expect_json=False,
             keep_open=args.keep_open,
             retries=args.retries,
+            prefer_button_submit=bool(getattr(args, "prompt_file", None)),
         )
     except Exception as exc:
         if parse_reply:
@@ -7062,6 +7067,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
             expect_json=False if protocol_parse else args.json,
             keep_open=args.keep_open,
             retries=args.retries,
+            prefer_button_submit=bool(getattr(args, "prompt_file", None)),
         )
     except Exception as exc:
         if protocol_parse and envelope is not None:
@@ -20255,6 +20261,7 @@ async def _run_ask_live_step(
     attachment_paths: list[str] | None = None,
     forbidden_sentinels: list[str] | None = None,
     expected_project_home_url: str | None = None,
+    prefer_button_submit: bool = False,
 ) -> dict[str, Any]:
     started = time.monotonic()
     response: Any
@@ -20266,6 +20273,7 @@ async def _run_ask_live_step(
             expect_json=False,
             keep_open=bool(getattr(args, "keep_open", False)),
             retries=getattr(args, "retries", None),
+            prefer_button_submit=prefer_button_submit,
         )
     except Exception as exc:
         return {
@@ -20317,6 +20325,8 @@ async def _run_ask_live_step(
         "expected_project_id": expected_project_id,
         "response_project_id": response_project_id,
         "in_expected_project": in_expected_project,
+        "prefer_button_submit": submit_evidence.get("prefer_button_submit") if isinstance(submit_evidence, dict) else None,
+        "submit_method": submit_evidence.get("submit_method") if isinstance(submit_evidence, dict) else None,
         "submit_confirmed": submit_evidence.get("submit_confirmed") if isinstance(submit_evidence, dict) else None,
         "submit_confirmation_mode": submit_evidence.get("submit_confirmation_mode") if isinstance(submit_evidence, dict) else None,
         "attachment_paths": [str(path) for path in attachment_paths or []],
@@ -20527,6 +20537,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     prompt=prompt,
                     expected_sentinel=sentinels["prompt_file"],
                     expected_project_home_url=test_project_url,
+                    prefer_button_submit=True,
                 ))
 
             if "file_attachment" in selected_steps:
@@ -20560,6 +20571,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     expected_sentinel=sentinels["prompt_file_with_attachment"],
                     attachment_paths=[str(attachment)],
                     expected_project_home_url=test_project_url,
+                    prefer_button_submit=True,
                 ))
     finally:
         if test_project_created and not bool(getattr(args, "keep_project", False)):

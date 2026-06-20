@@ -1747,3 +1747,17 @@ def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
     assert ask_counter.read_text(encoding="utf-8").strip() == "2"
     assert "retry after rate-limit cooldown" in (log_dir / "pb_test.ask_live.v9.9.10.log").read_text(encoding="utf-8")
     assert "rate-limit evidence detected for ask_live" in result.stdout
+
+
+def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "smoke-pb-ask-prompt-file.sh"
+    content = script.read_text(encoding="utf-8")
+
+    assert script.exists()
+    assert os.access(script, os.X_OK)
+    assert 'pb ask "Use the prompt file." --prompt-file "$tmp_prompt" --json' in content
+    assert "CV_LIVE_PROMPT_FILE_OK" in content
+    assert 'prefer_button_submit is not true' in content
+    assert 'submit_method not in {"button_click", "button_after_focus_retry", "send_button_click"}' in content
+    assert "prepare_token_set_not_consumed remained unresolved" in content

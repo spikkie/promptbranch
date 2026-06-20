@@ -62,6 +62,21 @@ def test_ask_result_returns_full_payload() -> None:
     assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/123"
 
 
+
+
+def test_ask_result_posts_prefer_button_submit_form_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/ask"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert "prefer_button_submit=true" in body
+        return httpx.Response(200, json={"ok": True, "answer": "ready"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.ask_result("hello", prefer_button_submit=True)
+
+    assert payload["answer"] == "ready"
+
 def test_remove_project_source_posts_expected_json():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/project-sources/remove"
