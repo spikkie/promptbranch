@@ -174,3 +174,5 @@ Acceptance criteria:
 
 | DOD-068 | Large prompt-file packages use automated attachment-mode transport by default while small prompt files remain inline | done | `promptbranch_cli.py`, `scripts/smoke-pb-ask-large-prompt-file.sh`, focused CLI transport tests, `docs/repair-v0.1.78.2.20.2.md` | v0.1.78.2.20.2 |
 | DOD-069 | Large prompt-file attachment mode exposes stable top-level attachment/upload/submit/response causality diagnostics without changing transport behavior | done | `promptbranch_cli.py`, `promptbranch_container_api.py`, `promptbranch_browser_auth/client.py`, `scripts/smoke-pb-ask-large-prompt-file.sh`, focused attachment-diagnostics tests, `docs/repair-v0.1.78.2.20.3.md` | v0.1.78.2.20.3 |
+
+| DOD-070 | Project Source text add treats large pasted text/document conversion as success only with current-run content proof, and prunes only safe retained-test sources at the observed source-capacity boundary | done | `promptbranch_browser_auth/client.py`, `promptbranch_full_integration_test.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.4.md` | v0.1.78.2.20.4 |

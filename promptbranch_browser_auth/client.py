@@ -4943,6 +4943,94 @@ class ChatGPTBrowserClient:
                         "current_url": await self._safe_page_url(page),
                     }
 
+        if normalized_kind == "text" and not duplicate_detected:
+            text_capacity_prune_candidate = self._select_project_source_text_test_capacity_prune_candidate(
+                value=value,
+                display_name=display_name,
+                source_cards=before_sources,
+                source_limit=5,
+            )
+            if text_capacity_prune_candidate is not None:
+                prune_source_name = str(text_capacity_prune_candidate.get("source_name") or text_capacity_prune_candidate.get("identity"))
+                self._log(
+                    "project-source-add",
+                    "text test source limit reached; pruning stale retained-test source before text add",
+                    project_url=project_home_url,
+                    current_source_count=len(before_sources),
+                    source_limit=text_capacity_prune_candidate.get("source_limit"),
+                    requested_source=display_name,
+                    prune_source_name=prune_source_name,
+                    prune_source_identity=text_capacity_prune_candidate.get("identity"),
+                )
+                try:
+                    capacity_prune_result = await self._remove_project_source_operation(
+                        context=context,
+                        page=page,
+                        source_name=prune_source_name,
+                        exact=False,
+                        keep_open=False,
+                    )
+                except ResponseTimeoutError as exc:
+                    current_sources = await self._snapshot_project_source_cards(page)
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "text_source_limit_prune_remove_failed",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": display_name,
+                        "source_match_candidates": self._build_source_match_candidates(
+                            normalized_kind,
+                            value=value,
+                            display_name=display_name,
+                            file_path=None,
+                        ),
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "capacity_pruned": False,
+                        "capacity_prune_source_name": prune_source_name,
+                        "capacity_prune_source_identity": text_capacity_prune_candidate.get("identity"),
+                        "capacity_prune_remove_error": str(exc),
+                        "operator_review_required": True,
+                        "current_source_count": len(current_sources),
+                        "source_limit": text_capacity_prune_candidate.get("source_limit"),
+                        "current_url": await self._safe_page_url(page),
+                    }
+                if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
+                    current_sources = await self._snapshot_project_source_cards(page)
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "text_source_limit_prune_not_verified",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": display_name,
+                        "source_match_candidates": self._build_source_match_candidates(
+                            normalized_kind,
+                            value=value,
+                            display_name=display_name,
+                            file_path=None,
+                        ),
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "capacity_pruned": False,
+                        "capacity_prune_source_name": prune_source_name,
+                        "capacity_prune_source_identity": text_capacity_prune_candidate.get("identity"),
+                        "capacity_prune_result": capacity_prune_result,
+                        "operator_review_required": True,
+                        "current_source_count": len(current_sources),
+                        "source_limit": text_capacity_prune_candidate.get("source_limit"),
+                        "current_url": await self._safe_page_url(page),
+                    }
+                await self._open_project_sources_tab(page)
+                before_sources = await self._snapshot_project_source_cards(page)
+
         save_request_watch = None
         save_request_quiet_result: Optional[dict[str, Any]] = None
         if normalized_kind in {"text", "file"} and not duplicate_detected:
@@ -5158,6 +5246,20 @@ class ChatGPTBrowserClient:
                     ],
                     "current_url": await self._safe_page_url(page),
                 }
+                if normalized_kind == "text":
+                    result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
+                    result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
+                    result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
+                    current_text_document_proofs = [
+                        self._text_source_card_content_proof(source, value=value, display_name=display_name)
+                        for source in current_sources
+                    ]
+                    result["current_text_document_content_proofs"] = current_text_document_proofs
+                    result["source_content_match_verified"] = any(
+                        bool(proof.get("content_match_verified"))
+                        for proof in current_text_document_proofs
+                        if isinstance(proof, dict)
+                    )
                 if overwrite_remove_result is not None:
                     result["overwrite_remove_result"] = overwrite_remove_result
                 if capacity_prune_result is not None:
@@ -5165,6 +5267,13 @@ class ChatGPTBrowserClient:
                 self._log("project-source-add", "project source persistence not verified after add", **result)
                 return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
+        text_document_conversion_proof = None
+        if normalized_kind == "text":
+            text_document_conversion_proof = self._text_source_card_content_proof(
+                persisted_source,
+                value=value,
+                display_name=display_name,
+            )
         success_save_summary = self._project_source_save_watch_summary(save_request_watch)
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
@@ -5202,6 +5311,22 @@ class ChatGPTBrowserClient:
             "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }
+        if normalized_kind == "text":
+            result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
+            result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
+            result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
+            result["source_saved_as_document"] = bool(
+                isinstance(persisted_source, dict)
+                and any(
+                    "document" in str(candidate).lower() or str(candidate).lower().endswith(".txt")
+                    for candidate in self._source_card_identity_candidates(persisted_source)
+                )
+            )
+            result["source_content_match_verified"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("content_match_verified")
+            )
+            result["text_source_content_proof"] = text_document_conversion_proof
         if overwrite_remove_result is not None:
             result["overwrite_remove_result"] = overwrite_remove_result
         if capacity_prune_result is not None:
@@ -13919,6 +14044,142 @@ class ChatGPTBrowserClient:
                 return parsed
         return None
 
+    def _text_source_document_conversion_threshold_bytes(self) -> int:
+        raw = os.environ.get("PROMPTBRANCH_TEXT_SOURCE_DOCUMENT_THRESHOLD_BYTES", "12000")
+        try:
+            return max(1, int(str(raw).strip()))
+        except Exception:
+            return 12000
+
+    def _text_source_document_conversion_expected(self, value: Optional[str]) -> bool:
+        if not value:
+            return False
+        try:
+            return len(str(value).encode("utf-8")) >= self._text_source_document_conversion_threshold_bytes()
+        except Exception:
+            return False
+
+    def _text_source_document_conversion_anchors(self, value: Optional[str], display_name: Optional[str] = None) -> list[str]:
+        anchors: list[str] = []
+
+        def add(candidate: Optional[str]) -> None:
+            normalized = self._normalize_source_match_text(candidate)
+            if normalized and normalized not in anchors:
+                anchors.append(normalized)
+
+        text = str(value or "")
+        first_line = ""
+        for line in text.splitlines():
+            line = self._normalize_source_match_text(line)
+            if line:
+                first_line = line
+                break
+        add(first_line)
+        add(display_name)
+        return anchors
+
+    def _text_source_document_conversion_candidates(
+        self,
+        value: Optional[str],
+        display_name: Optional[str] = None,
+    ) -> list[str]:
+        candidates: list[str] = []
+
+        def add(candidate: Optional[str]) -> None:
+            normalized = self._normalize_source_match_text(candidate)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+        for anchor in self._text_source_document_conversion_anchors(value, display_name):
+            add(anchor)
+            stem = re.sub(r"\.txt$", "", anchor, flags=re.IGNORECASE).strip()
+            add(f"{stem}.txt")
+            add(f"{stem}.txt Document")
+        return candidates
+
+    def _text_source_card_content_proof(
+        self,
+        card: Optional[dict[str, str]],
+        *,
+        value: Optional[str],
+        display_name: Optional[str] = None,
+    ) -> dict[str, Any]:
+        anchors = self._text_source_document_conversion_anchors(value, display_name)
+        card_candidates = self._source_card_identity_candidates(card)
+        normalized_card_text = " ".join(card_candidates).lower()
+        matched_anchor = None
+        for anchor in anchors:
+            normalized_anchor = self._normalize_source_match_text(anchor).lower()
+            if normalized_anchor and normalized_anchor in normalized_card_text:
+                matched_anchor = anchor
+                break
+        generic_document = any(
+            candidate.lower() in {"pasted.txt document", "pasted.txt", "document"}
+            for candidate in card_candidates
+        )
+        return {
+            "content_match_verified": bool(matched_anchor),
+            "matched_anchor": matched_anchor,
+            "anchors": anchors,
+            "card_candidates": card_candidates,
+            "generic_document_only": bool(generic_document and not matched_anchor),
+        }
+
+    def _is_text_source_test_candidate(self, value: Optional[str], display_name: Optional[str]) -> bool:
+        normalized_value = self._normalize_source_match_text(value).lower()
+        normalized_display = self._normalize_source_match_text(display_name).lower()
+        return (
+            normalized_display.startswith("itest-text-")
+            or "integration note for run " in normalized_value
+            or "promptbranch text-source document conversion proof" in normalized_value
+        )
+
+    def _select_project_source_text_test_capacity_prune_candidate(
+        self,
+        *,
+        value: Optional[str],
+        display_name: Optional[str],
+        source_cards: list[dict[str, str]],
+        source_limit: int = 5,
+    ) -> Optional[dict[str, Any]]:
+        if len(source_cards) < source_limit:
+            return None
+        if not self._is_text_source_test_candidate(value, display_name):
+            return None
+
+        candidates: list[dict[str, Any]] = []
+        for index, card in enumerate(source_cards):
+            identity = self._preferred_source_card_identity(card) or card.get("title") or card.get("text") or ""
+            normalized_identity = self._normalize_source_match_text(identity)
+            lowered = normalized_identity.lower()
+            safe_test_source = (
+                "itest-" in lowered
+                or "integration note for run" in lowered
+                or lowered in {"pasted.txt document", "pasted.txt"}
+            )
+            if not safe_test_source:
+                continue
+            score = 0
+            if lowered in {"pasted.txt document", "pasted.txt"}:
+                score = 0
+            elif "itest-file-" in lowered:
+                score = 1
+            elif "itest-text-" in lowered or "integration note for run" in lowered:
+                score = 2
+            candidates.append({
+                "card": card,
+                "source_name": self._normalize_source_match_text(card.get("title")) or normalized_identity,
+                "identity": normalized_identity,
+                "index": index,
+                "score": score,
+                "source_limit": source_limit,
+                "reason": "text_test_source_capacity_prune",
+            })
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (item["score"], item["index"]))
+        return candidates[0]
+
     def _select_project_source_capacity_prune_candidate(
         self,
         *,
@@ -14123,6 +14384,9 @@ class ChatGPTBrowserClient:
         if source_kind == "text":
             add(normalized_value)
             add(display_name)
+            if self._text_source_document_conversion_expected(value):
+                for document_candidate in self._text_source_document_conversion_candidates(value, display_name):
+                    add(document_candidate)
             return candidates
 
         parsed = urlparse(normalized_value)

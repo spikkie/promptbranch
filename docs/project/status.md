@@ -171,3 +171,9 @@ This candidate is not accepted/current until runtime release-control and `pb art
 `v0.1.78.2.20.3` preserves the working large prompt-file attachment transport from `v0.1.78.2.20.2` and only polishes diagnostics. The ask result now flattens attachment upload/readiness, filename evidence, button submit, submit-causality confirmation, response-causality confirmation, and response-wait state onto stable top-level JSON fields. This keeps downstream large-prompt smokes from depending on nested `submit_evidence` / `ask_phase_timings` internals. No prompt transport behavior, CV generator logic, Project Source behavior, artifact registry behavior, or normal slice state changes.
 
 This candidate is not accepted/current until live large-prompt smoke, release-control, and `pb artifact current --json` evidence confirm it.
+
+## v0.1.78.2.20.4 repair status
+
+`v0.1.78.2.20.3` proved large prompt-file attachment diagnostics, but full release-control remained blocked by `project_source_add_text`. A focused repro with `project_ensure` reproduced the blocker: the retained test project had a valid project context, five existing Project Sources, no rate-limit evidence, and the text add failed with `persistence_not_verified` / `ui_trigger_not_observed_not_verified_present`.
+
+`v0.1.78.2.20.4` keeps the prompt-file attachment behavior unchanged and narrows the repair to Project Source text add. The live text-source test now uses a large run-id-bearing text body so document conversion is explicit; the verifier adds first-line `.txt` document candidates, rejects generic stale `pasted.txt Document` without run-id proof, and can prune only safe retained-test sources at the observed five-source boundary.

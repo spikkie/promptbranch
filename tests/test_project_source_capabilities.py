@@ -2310,3 +2310,84 @@ def test_post_commit_recovery_is_limited_to_stale_inflight_file_commit(
             "save_finished": 1,
         },
     ) is False
+
+
+def test_text_source_document_conversion_candidates_use_first_line_and_display_name(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    value = "\n".join([
+        "Integration note for run 20260620-152824-163044",
+        "Promptbranch text-source document conversion proof.",
+        *(f"filler-{index:04d}" for index in range(1400)),
+    ])
+
+    assert browser_client._text_source_document_conversion_expected(value)
+    candidates = browser_client._build_source_match_candidates(
+        "text",
+        value=value,
+        display_name="itest-text-20260620-152824-163044",
+        file_path=None,
+    )
+
+    assert "Integration note for run 20260620-152824-163044.txt Document" in candidates
+    assert "itest-text-20260620-152824-163044.txt Document" in candidates
+
+
+def test_text_source_document_conversion_content_proof_rejects_generic_old_pasted_document(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    proof = browser_client._text_source_card_content_proof(
+        {"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt\nDocument"},
+        value="Integration note for run 20260620-152824-163044\nbody",
+        display_name="itest-text-20260620-152824-163044",
+    )
+
+    assert proof["content_match_verified"] is False
+    assert proof["generic_document_only"] is True
+
+
+def test_text_source_document_conversion_content_proof_accepts_run_id_filename(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    proof = browser_client._text_source_card_content_proof(
+        {
+            "identity": "Integration note for run 20260620-152824-163044.txt Document",
+            "title": "Integration note for run 20260620-152824-163044.txt",
+            "text": "Integration note for run 20260620-152824-163044.txt\nDocument",
+        },
+        value="Integration note for run 20260620-152824-163044\nbody",
+        display_name="itest-text-20260620-152824-163044",
+    )
+
+    assert proof["content_match_verified"] is True
+    assert proof["matched_anchor"] == "Integration note for run 20260620-152824-163044"
+
+
+def test_select_text_test_capacity_prune_candidate_is_limited_to_safe_test_sources(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {"identity": "customer-notes.txt Document", "title": "customer-notes.txt", "text": "customer-notes.txt Document"},
+        {"identity": "itest-file-20260619-200759-3669939.txt Document", "title": "itest-file-20260619-200759-3669939.txt", "text": "itest-file-20260619-200759-3669939.txt Document"},
+        {"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt Document"},
+        {"identity": "other.txt Document", "title": "other.txt", "text": "other.txt Document"},
+        {"identity": "more.txt Document", "title": "more.txt", "text": "more.txt Document"},
+    ]
+
+    candidate = browser_client._select_project_source_text_test_capacity_prune_candidate(
+        value="Integration note for run 20260620-152824-163044",
+        display_name="itest-text-20260620-152824-163044",
+        source_cards=sources,
+        source_limit=5,
+    )
+
+    assert candidate is not None
+    assert candidate["source_name"] == "pasted.txt"
+    assert candidate["reason"] == "text_test_source_capacity_prune"
+
+    assert browser_client._select_project_source_text_test_capacity_prune_candidate(
+        value="real user note",
+        display_name="real-note",
+        source_cards=sources,
+        source_limit=5,
+    ) is None
