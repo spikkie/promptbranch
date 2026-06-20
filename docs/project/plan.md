@@ -798,3 +798,23 @@ Out of scope:
 - Project Source semantic changes beyond preserving the prior text-source recovery.
 - Artifact adoption/current mutation.
 - Normal v0.1.79 work.
+
+## Slice definition — v0.1.78.2.20.8.5 repair release
+
+Release: v0.1.78.2.20.8.5
+
+Scope: repair-only cleanup-policy evidence label consistency on top of `v0.1.78.2.20.8.4`.
+
+In scope:
+
+- Remove the stale top-level `cleanup_policy="same_run_ephemeral_cleanup"` full-integration summary label.
+- Ensure retained-project cleanup evidence reports `no_project_delete_until_secure_protocol`.
+- Preserve the immutable no-delete invariant from `v0.1.78.2.20.8.4`.
+
+Out of scope:
+
+- Project deletion behavior changes.
+- Secure delete protocol design or implementation.
+- Project Source add/remove behavior changes.
+- Artifact adoption/current changes.
+- Normal `v0.1.79` scope.
