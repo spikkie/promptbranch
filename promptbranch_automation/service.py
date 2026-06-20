@@ -1093,28 +1093,13 @@ class ChatGPTAutomationService:
             created_project_name=created_project_name,
             created_project_id=created_project_id,
         )
-        if not validation.get("ok"):
-            logger.warning("Project deletion requested but blocked by delete safety freeze")
-            return project_delete_disabled_result(
-                project_url=self.settings.project_url,
-                project_name=project_name,
-                blocked_at_layer="automation_service",
-                validation=validation,
-            )
-        logger.info("Removing same-run ephemeral Promptbranch test project")
-        async with self._lock.operation("remove_project", wait_timeout_seconds=profile_lock_wait_seconds):
-            return await self._with_retries(
-                "remove_project",
-                lambda: self._build_bot().remove_project(
-                    keep_open=keep_open,
-                    project_name=project_name,
-                    project_url=self.settings.project_url,
-                    allow_ephemeral_test_cleanup=True,
-                    created_project_url=created_project_url,
-                    created_project_name=created_project_name,
-                    created_project_id=created_project_id,
-                ),
-            )
+        logger.warning("Project deletion requested but blocked by immutable delete safety freeze")
+        return project_delete_disabled_result(
+            project_url=self.settings.project_url,
+            project_name=project_name,
+            blocked_at_layer="automation_service",
+            validation=validation,
+        )
 
     async def add_project_source(
         self,

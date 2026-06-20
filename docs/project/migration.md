@@ -309,3 +309,7 @@ No user data, Project Source, artifact-current, or prompt-file transport migrati
 ## v0.1.78.2.20.8.3 migration note
 
 No user data, Project Source content, artifact-current, prompt-file transport, or broad project deletion migration is performed. This repair only changes validation/recovery logic: slugged same-run ephemeral Project URLs are compared by canonical Project id for cleanup safety, and committed text-source saves receive bounded post-commit Project Sources refresh recovery before failing closed.
+
+## v0.1.78.2.20.8.4 migration note
+
+No user data, Project Source content, artifact-current, prompt-file transport, or normal release slice migration is performed. This repair supersedes the same-run ephemeral cleanup exception from `v0.1.78.2.20.8.3`: all Project deletion paths are now immutable-frozen, and focused integration cleanup retains Projects without calling a remove service.

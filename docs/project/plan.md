@@ -777,3 +777,24 @@ Out of scope:
 - Broad Project deletion or user-project deletion.
 - Artifact adoption/current mutation.
 - Project Source success semantics changes.
+
+## Slice definition — v0.1.78.2.20.8.4 repair release
+
+Release: v0.1.78.2.20.8.4
+
+Goal: repair the unsafe same-run ephemeral Project deletion exception introduced by v0.1.78.2.20.8.3 and restore an immutable no-delete invariant for every ChatGPT Project path.
+
+In scope:
+
+- Block all Project remove/delete requests at API, service, browser-client, and private browser-operation layers.
+- Make full-integration cleanup record retained-project/delete-frozen status without calling any remove service.
+- Preserve same-run identity fields as diagnostic-only evidence.
+- Add regression tests proving `allow_ephemeral_test_cleanup=True` cannot authorize deletion.
+- Preserve v0.1.78.2.20.8.3 text-source post-commit recovery behavior.
+
+Out of scope:
+
+- Secure project delete protocol.
+- Project Source semantic changes beyond preserving the prior text-source recovery.
+- Artifact adoption/current mutation.
+- Normal v0.1.79 work.

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from promptbranch_browser_auth import ChatGPTBrowserClient, ChatGPTBrowserConfig
-from promptbranch_project_delete_safety import project_delete_disabled_result
+from promptbranch_project_delete_safety import project_delete_disabled_result, validate_ephemeral_test_project_cleanup_request
 
 
 _JSON_PROMPT_DEFAULT_RULES = """
@@ -494,20 +494,20 @@ class ChatGPTAutomation:
         created_project_name: Optional[str] = None,
         created_project_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        if allow_ephemeral_test_cleanup:
-            return await self.client.remove_project(
-                keep_open=keep_open,
-                project_name=project_name,
-                project_url=project_url or self.project_url,
-                allow_ephemeral_test_cleanup=True,
-                created_project_url=created_project_url,
-                created_project_name=created_project_name,
-                created_project_id=created_project_id,
-            )
+        effective_project_url = project_url or self.project_url
+        validation = validate_ephemeral_test_project_cleanup_request(
+            allow_ephemeral_test_cleanup=allow_ephemeral_test_cleanup,
+            project_url=effective_project_url,
+            project_name=project_name,
+            created_project_url=created_project_url,
+            created_project_name=created_project_name,
+            created_project_id=created_project_id,
+        )
         return project_delete_disabled_result(
-            project_url=project_url or self.project_url,
+            project_url=effective_project_url,
             project_name=project_name,
             blocked_at_layer="automation_wrapper",
+            validation=validation,
         )
 
     async def add_project_source(

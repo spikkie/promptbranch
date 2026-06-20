@@ -1,5 +1,8 @@
 # Repair v0.1.78.2.20.8.3 — Slugged cleanup identity and text-source post-commit recovery
 
+> Superseded safety note: `v0.1.78.2.20.8.4` rejects the same-run ephemeral Project deletion exception introduced here. Project deletion is now immutable-frozen with no cleanup exception.
+
+
 ## Base release
 
 `v0.1.78.2.20.8.2`

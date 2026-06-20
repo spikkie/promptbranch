@@ -187,3 +187,5 @@ Acceptance criteria:
 | DOD-075 | Same-run ephemeral project cleanup normalizes project URL shapes before removal without changing Project Source add behavior | done | `promptbranch_browser_auth/client.py`, `tests/test_project_delete_safety.py`, focused cleanup/normalization tests, `docs/repair-v0.1.78.2.20.8.2.md` | v0.1.78.2.20.8.2 |
 
 | DOD-076 | Same-run ephemeral cleanup compares canonical Project ids and text-source save commits receive bounded post-commit source-surface recovery | done | `promptbranch_project_delete_safety.py`, `promptbranch_browser_auth/client.py`, focused cleanup/source tests, `docs/repair-v0.1.78.2.20.8.3.md` | v0.1.78.2.20.8.3 |
+
+| DOD-077 | ChatGPT Project deletion is immutable-frozen with no same-run, ephemeral, focused-test, or command-line exception | done | `promptbranch_project_delete_safety.py`, `promptbranch_container_api.py`, `promptbranch_automation/service.py`, `promptbranch_browser_auth/client.py`, `promptbranch_full_integration_test.py`, focused delete-safety/cleanup tests, `docs/repair-v0.1.78.2.20.8.4.md` | v0.1.78.2.20.8.4 |

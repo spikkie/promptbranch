@@ -419,393 +419,31 @@ def test_extract_conversation_url_from_ask_result_can_build_from_project_and_id(
 
 
 
-def test_project_remove_cleanup_retries_browser_profile_busy(monkeypatch) -> None:
+def test_project_remove_cleanup_is_non_destructive_even_when_service_is_dangerous(monkeypatch) -> None:
     import asyncio
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
 
-    sleeps: list[float] = []
-
     async def fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
+        raise AssertionError("cleanup should not wait/retry because deletion is frozen before service calls")
 
     monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
 
-    class FakeService:
-        def __init__(self) -> None:
-            self.calls = 0
+    class DangerousService:
+        project_url = "https://chatgpt.com/g/g-p-danger-itest-promptbranch-run/project"
 
-        async def remove_project(self, *, keep_open: bool = False):
-            self.calls += 1
-            if self.calls == 1:
-                return {
-                    "ok": False,
-                    "status": "browser_profile_busy",
-                    "error_type": "BrowserProfileBusyError",
-                    "retry_after_seconds": 0.25,
-                    "active_operation": "add_project_source",
-                }
+        def __init__(self) -> None:
+            self.remove_called = False
+            self.resolve_called = False
+
+        async def remove_project(self, **_kwargs):  # pragma: no cover - should not be reached
+            self.remove_called = True
             return {"ok": True, "status": "removed"}
 
-    cleanup_steps = []
-    result = asyncio.run(
-        _remove_project_cleanup_with_retry(
-            cleanup_steps,
-            FakeService(),
-            keep_open=False,
-            step_delay_seconds=0.0,
-            max_attempts=2,
-        )
-    )
-
-    assert result["ok"] is True
-    assert sleeps == [0.25]
-    assert [step.name for step in cleanup_steps] == [
-        "project_remove_cleanup_retry_wait",
-        "project_remove_cleanup",
-    ]
-    assert cleanup_steps[-1].ok is True
-    assert cleanup_steps[-1].details["retry_count"] == 1
-
-
-def test_project_remove_cleanup_requires_absence_verification_for_sidebar_not_found(monkeypatch) -> None:
-    import asyncio
-    import httpx
-    import pytest
-    from promptbranch_full_integration_test import IntegrationAssertionError, _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
-            response = httpx.Response(504, request=request)
-            raise httpx.HTTPStatusError(
-                "504 error for POST http://localhost:8000/v1/projects/remove: "
-                "Could not find the configured project in the sidebar",
-                request=request,
-                response=response,
-            )
-
-    cleanup_steps = []
-    with pytest.raises(IntegrationAssertionError):
-        asyncio.run(
-            _remove_project_cleanup_with_retry(
-                cleanup_steps,
-                FakeService(),
-                keep_open=False,
-                step_delay_seconds=0.0,
-                max_attempts=1,
-                project_name="itest-leak",
-            )
-        )
-
-    assert cleanup_steps[-1].name == "project_remove_cleanup"
-    assert cleanup_steps[-1].ok is False
-    assert cleanup_steps[-1].details["status"] == "project_remove_cleanup_missing_unverified"
-    assert cleanup_steps[-1].details["absence_verification"]["reason"] == "resolve_project_unavailable"
-
-
-def test_project_remove_cleanup_accepts_sidebar_not_found_only_after_absence_verified(monkeypatch) -> None:
-    import asyncio
-    import httpx
-    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
-            response = httpx.Response(504, request=request)
-            raise httpx.HTTPStatusError(
-                "504 error for POST http://localhost:8000/v1/projects/remove: "
-                "Could not find the configured project in the sidebar",
-                request=request,
-                response=response,
-            )
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False):
-            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
-
-    cleanup_steps = []
-    result = asyncio.run(
-        _remove_project_cleanup_with_retry(
-            cleanup_steps,
-            FakeService(),
-            keep_open=False,
-            step_delay_seconds=0.0,
-            max_attempts=1,
-            project_name="itest-absent",
-        )
-    )
-
-    assert result["ok"] is True
-    assert result["status"] == "project_remove_cleanup_absence_verified"
-    assert result["absence_verification"]["ok"] is True
-    assert result["absence_verification"]["resolve_result"]["match_count"] == 0
-    assert cleanup_steps[-1].ok is True
-
-
-def test_project_remove_cleanup_payload_not_found_requires_absence_verification(monkeypatch) -> None:
-    import asyncio
-    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            return {
-                "ok": False,
-                "status": "project_not_found",
-                "diagnostic": "Could not find the configured project in the sidebar",
-            }
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False):
-            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
-
-    cleanup_steps = []
-    result = asyncio.run(
-        _remove_project_cleanup_with_retry(
-            cleanup_steps,
-            FakeService(),
-            keep_open=False,
-            step_delay_seconds=0.0,
-            max_attempts=1,
-            project_name="itest-absent",
-        )
-    )
-
-    assert result["ok"] is True
-    assert result["status"] == "project_remove_cleanup_absence_verified"
-    assert result["absence_verification"]["resolve_result"]["match_count"] == 0
-    assert result["missing_payload"]["status"] == "project_not_found"
-
-
-def test_project_remove_cleanup_fails_when_absence_check_finds_project(monkeypatch) -> None:
-    import asyncio
-    import pytest
-    from promptbranch_full_integration_test import IntegrationAssertionError, _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            return {
-                "ok": False,
-                "status": "project_not_found",
-                "diagnostic": "Could not find the configured project in the sidebar",
-            }
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False):
-            return {"ok": True, "match_count": 1, "project_url": "https://chatgpt.com/g/g-p-leak/project"}
-
-    cleanup_steps = []
-    with pytest.raises(IntegrationAssertionError):
-        asyncio.run(
-            _remove_project_cleanup_with_retry(
-                cleanup_steps,
-                FakeService(),
-                keep_open=False,
-                step_delay_seconds=0.0,
-                max_attempts=1,
-                project_name="itest-leak",
-            )
-        )
-
-    assert cleanup_steps[-1].ok is False
-    assert cleanup_steps[-1].details["status"] == "project_remove_cleanup_missing_unverified"
-    assert cleanup_steps[-1].details["absence_verification"]["status"] == "project_still_present_or_ambiguous"
-
-
-def test_project_remove_cleanup_reports_final_browser_profile_busy(monkeypatch) -> None:
-    import asyncio
-    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            return {
-                "ok": False,
-                "status": "browser_profile_busy",
-                "error_type": "BrowserProfileBusyError",
-                "retry_after_seconds": 0.01,
-                "active_operation": "add_project_source",
-            }
-
-    cleanup_steps = []
-    with pytest.raises(IntegrationAssertionError):
-        asyncio.run(
-            _remove_project_cleanup_with_retry(
-                cleanup_steps,
-                FakeService(),
-                keep_open=False,
-                step_delay_seconds=0.0,
-                max_attempts=1,
-            )
-        )
-
-    assert cleanup_steps[-1].name == "project_remove_cleanup"
-    assert cleanup_steps[-1].ok is False
-    assert cleanup_steps[-1].details["status"] == "browser_profile_busy"
-
-
-def _http_status_error_with_detail(detail: dict) -> Exception:
-    import httpx
-
-    request = httpx.Request("POST", "http://localhost:8000/v1/project-sources")
-    response = httpx.Response(423, json={"detail": detail}, request=request)
-    return httpx.HTTPStatusError("locked", request=request, response=response)
-
-
-def test_docker_service_adapter_retries_fresh_same_family_source_lock(monkeypatch, tmp_path) -> None:
-    import asyncio
-    from promptbranch_full_integration_test import DockerServiceAdapter
-
-    adapter = DockerServiceAdapter(
-        base_url="http://localhost:8000",
-        token=None,
-        timeout_seconds=30.0,
-        project_url="https://chatgpt.com/g/g-p-demo/project",
-    )
-    calls = {"count": 0}
-
-    def fake_add(*args, **kwargs):
-        calls["count"] += 1
-        if calls["count"] == 1:
-            raise _http_status_error_with_detail(
-                {
-                    "status": "browser_profile_busy",
-                    "operation": "add_project_source",
-                    "active_operation": "add_project_source",
-                    "active_elapsed_seconds": 0.5,
-                    "stale_lock_expired": False,
-                    "retry_after_seconds": 0.001,
-                }
-            )
-        return {"ok": True, "persistence_verified": True}
-
-    monkeypatch.setattr(adapter, "_add_project_source_sync", fake_add)
-
-    result = asyncio.run(
-        adapter.add_project_source(
-            source_kind="file",
-            file_path=str(tmp_path / "demo.zip"),
-            overwrite_existing=True,
-        )
-    )
-
-    assert result["ok"] is True
-    assert result["profile_contention_retried"] is True
-    assert result["profile_contention_retry_attempts"] == 1
-    assert calls["count"] == 2
-
-
-def test_docker_service_adapter_does_not_retry_stale_source_lock(monkeypatch, tmp_path) -> None:
-    import asyncio
-    import httpx
-    from promptbranch_full_integration_test import DockerServiceAdapter
-
-    adapter = DockerServiceAdapter(
-        base_url="http://localhost:8000",
-        token=None,
-        timeout_seconds=30.0,
-        project_url="https://chatgpt.com/g/g-p-demo/project",
-    )
-
-    def fake_add(*args, **kwargs):
-        raise _http_status_error_with_detail(
-            {
-                "status": "browser_profile_busy",
-                "operation": "add_project_source",
-                "active_operation": "add_project_source",
-                "active_elapsed_seconds": 400.0,
-                "stale_lock_expired": True,
-                "retry_after_seconds": 0.001,
-            }
-        )
-
-    monkeypatch.setattr(adapter, "_add_project_source_sync", fake_add)
-
-    with pytest.raises(httpx.HTTPStatusError):
-        asyncio.run(
-            adapter.add_project_source(
-                source_kind="file",
-                file_path=str(tmp_path / "demo.zip"),
-                overwrite_existing=True,
-            )
-        )
-
-def test_source_mutation_profile_wait_defaults_to_scheduler_budget() -> None:
-    import promptbranch_full_integration_test as full
-
-    assert full.SOURCE_MUTATION_PROFILE_WAIT_SECONDS == 600.0
-
-
-def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_finds_project(monkeypatch) -> None:
-    import asyncio
-    import httpx
-    from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
-
-    sleeps: list[float] = []
-
-    async def fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    class FakeService:
-        def __init__(self) -> None:
-            self.calls = 0
-            self.project_url = "https://chatgpt.com/g/g-p-base/project"
-            self.remove_project_urls: list[str | None] = []
-            self.resolve_project_urls: list[str | None] = []
-
-        async def remove_project(self, *, keep_open: bool = False, project_url: str | None = None):
-            self.calls += 1
-            self.remove_project_urls.append(project_url)
-            if self.calls == 1:
-                request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
-                response = httpx.Response(504, request=request)
-                raise httpx.HTTPStatusError(
-                    "504 error for POST http://localhost:8000/v1/projects/remove: "
-                    "Could not find the configured project in the sidebar",
-                    request=request,
-                    response=response,
-                )
-            return {"ok": True, "status": "removed"}
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None):
-            self.resolve_project_urls.append(project_url)
-            if self.calls == 1:
-                return {
-                    "ok": True,
-                    "match_count": 1,
-                    "matches": [
-                        {
-                            "name": name,
-                            "url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
-                        }
-                    ],
-                    "project_url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
-                }
-            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
-
-    service = FakeService()
+        async def resolve_project(self, **_kwargs):  # pragma: no cover - should not be reached
+            self.resolve_called = True
+            return {"ok": True, "match_count": 1}
+
+    service = DangerousService()
     cleanup_steps = []
     result = asyncio.run(
         _remove_project_cleanup_with_retry(
@@ -813,122 +451,44 @@ def test_project_remove_cleanup_retries_sidebar_not_found_when_resolve_still_fin
             service,
             keep_open=False,
             step_delay_seconds=0.0,
-            max_attempts=2,
-            project_name="itest-leak",
+            max_attempts=3,
+            project_name="itest-promptbranch-run",
+            allow_ephemeral_test_cleanup=True,
+            created_project_url=service.project_url,
+            created_project_name="itest-promptbranch-run",
+            created_project_id="g-p-danger",
         )
     )
 
+    assert service.remove_called is False
+    assert service.resolve_called is False
     assert result["ok"] is True
-    assert result["status"] == "removed"
-    assert result["absence_verification"]["ok"] is True
-    assert service.calls == 2
-    assert service.project_url == "https://chatgpt.com/g/g-p-base-itest-leak/project"
-    assert service.remove_project_urls == [
-        "https://chatgpt.com/g/g-p-base/project",
-        "https://chatgpt.com/g/g-p-base-itest-leak/project",
-    ]
-    assert service.resolve_project_urls == [
-        "https://chatgpt.com/g/g-p-base/project",
-        "https://chatgpt.com/g/g-p-base-itest-leak/project",
-    ]
-    assert cleanup_steps[0].name == "project_remove_cleanup_retry_wait"
-    assert cleanup_steps[0].details["status"] == "project_remove_cleanup_missing_unverified_retry_wait"
-    assert cleanup_steps[0].details["retarget"]["retargeted"] is True
-    assert sleeps == [1.0]
+    assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
+    assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["destructive_action_executed"] is False
+    assert result["allow_ephemeral_test_cleanup_requested"] is True
+    assert cleanup_steps[-1].ok is True
+    assert cleanup_steps[-1].details == result
 
 
-def test_project_remove_cleanup_verifies_successful_remove_when_project_name_known(monkeypatch) -> None:
+def test_project_remove_cleanup_does_not_retarget_or_verify_absence_when_delete_is_frozen() -> None:
     import asyncio
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
 
-    async def fake_sleep(seconds: float) -> None:
-        return None
+    class ServiceWithProjectUrl:
+        project_url = "https://chatgpt.com/g/g-p-base/project"
 
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
+        async def remove_project(self, **_kwargs):  # pragma: no cover - should not be reached
+            raise AssertionError("remove_project must not be called")
 
-    class FakeService:
-        async def remove_project(self, *, keep_open: bool = False):
-            return {"ok": True, "status": "removed"}
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False):
-            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+        async def resolve_project(self, **_kwargs):  # pragma: no cover - should not be reached
+            raise AssertionError("resolve_project must not be called")
 
     cleanup_steps = []
     result = asyncio.run(
         _remove_project_cleanup_with_retry(
             cleanup_steps,
-            FakeService(),
-            keep_open=False,
-            step_delay_seconds=0.0,
-            max_attempts=1,
-            project_name="itest-removed",
-        )
-    )
-
-    assert result["ok"] is True
-    assert result["status"] == "removed"
-    assert result["absence_verification"]["ok"] is True
-    assert result["postcondition"] == "temporary_project_absent"
-
-
-def test_docker_service_adapter_cleanup_retry_uses_explicit_project_url(monkeypatch) -> None:
-    import asyncio
-    import httpx
-    from promptbranch_full_integration_test import DockerServiceAdapter, _remove_project_cleanup_with_retry
-
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("promptbranch_full_integration_test.asyncio.sleep", fake_sleep)
-
-    adapter = DockerServiceAdapter(
-        base_url="http://localhost:8000",
-        token=None,
-        timeout_seconds=30.0,
-        project_url="https://chatgpt.com/g/g-p-base/project",
-    )
-    calls = {"remove": 0}
-    remove_urls: list[str | None] = []
-    resolve_urls: list[str | None] = []
-
-    def fake_remove(keep_open: bool, project_url: str | None = None):
-        calls["remove"] += 1
-        remove_urls.append(project_url)
-        if calls["remove"] == 1:
-            request = httpx.Request("POST", "http://localhost:8000/v1/projects/remove")
-            response = httpx.Response(504, request=request)
-            raise httpx.HTTPStatusError(
-                "504 error for POST http://localhost:8000/v1/projects/remove: "
-                "Could not find the configured project in the sidebar",
-                request=request,
-                response=response,
-            )
-        return {"ok": True, "status": "removed"}
-
-    def fake_resolve(name: str, keep_open: bool, project_url: str | None = None):
-        resolve_urls.append(project_url)
-        if calls["remove"] == 1:
-            return {
-                "ok": True,
-                "match_count": 1,
-                "project_url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
-                "matches": [
-                    {
-                        "name": name,
-                        "url": "https://chatgpt.com/g/g-p-base-itest-leak/project",
-                    }
-                ],
-            }
-        return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
-
-    monkeypatch.setattr(adapter, "_remove_project_sync", fake_remove)
-    monkeypatch.setattr(adapter, "_resolve_project_sync", fake_resolve)
-
-    cleanup_steps = []
-    result = asyncio.run(
-        _remove_project_cleanup_with_retry(
-            cleanup_steps,
-            adapter,
+            ServiceWithProjectUrl(),
             keep_open=False,
             step_delay_seconds=0.0,
             max_attempts=2,
@@ -936,18 +496,11 @@ def test_docker_service_adapter_cleanup_retry_uses_explicit_project_url(monkeypa
         )
     )
 
-    assert result["ok"] is True
-    assert result["status"] == "removed"
-    assert remove_urls == [
-        "https://chatgpt.com/g/g-p-base/project",
-        "https://chatgpt.com/g/g-p-base-itest-leak/project",
-    ]
-    assert resolve_urls == [
-        "https://chatgpt.com/g/g-p-base/project",
-        "https://chatgpt.com/g/g-p-base-itest-leak/project",
-    ]
-    assert cleanup_steps[0].details["retarget"]["retargeted"] is True
-
+    assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
+    assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["project_url"] == "https://chatgpt.com/g/g-p-base/project"
+    assert "absence_verification" not in result
+    assert cleanup_steps == cleanup_steps[:1]
 
 
 def test_run_step_marks_returned_false_result_as_failed() -> None:
@@ -985,7 +538,7 @@ def test_resolve_step_selection_keeps_existing_project_source_only_without_clean
     assert "project_remove_cleanup" not in selection.enabled_steps
 
 
-def test_project_remove_cleanup_passes_same_run_ephemeral_cleanup_proof(monkeypatch) -> None:
+def test_project_remove_cleanup_retains_project_without_calling_service_remove(monkeypatch) -> None:
     import asyncio
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
 
@@ -998,14 +551,11 @@ def test_project_remove_cleanup_passes_same_run_ephemeral_cleanup_proof(monkeypa
         project_url = "https://chatgpt.com/g/g-p-demo-itest-promptbranch-run/project"
 
         def __init__(self) -> None:
-            self.kwargs = None
+            self.remove_called = False
 
-        async def remove_project(self, **kwargs):
-            self.kwargs = kwargs
-            return {"ok": True, "status": "removed"}
-
-        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None):
-            return {"ok": False, "error": "project_not_found", "match_count": 0, "project_name": name}
+        async def remove_project(self, **kwargs):  # pragma: no cover - should not be reached
+            self.remove_called = True
+            raise AssertionError("cleanup must not call remove_project")
 
     service = FakeService()
     cleanup_steps = []
@@ -1024,7 +574,10 @@ def test_project_remove_cleanup_passes_same_run_ephemeral_cleanup_proof(monkeypa
         )
     )
 
+    assert service.remove_called is False
     assert result["ok"] is True
-    assert service.kwargs["allow_ephemeral_test_cleanup"] is True
-    assert service.kwargs["created_project_name"] == "itest-promptbranch-run"
+    assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
+    assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["destructive_action_executed"] is False
+    assert result["allow_ephemeral_test_cleanup_requested"] is True
     assert cleanup_steps[-1].ok is True
