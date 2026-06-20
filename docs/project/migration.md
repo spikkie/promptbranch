@@ -264,3 +264,11 @@ No user data, artifact-current, CV generator, prompt-file transport, or project 
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Focused `project_ensure` + `source_add_text` repro and UI screenshot showing generated `.txt` document chip | live failure/change request evidence | `docs/repair-v0.1.78.2.20.4.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repro isolated `project_source_add_text` from prompt-file attachment work and showed no rate-limit evidence; UI evidence supports document-conversion-aware verification. |
+
+## v0.1.78.2.20.5 migration note
+
+No user data, artifact-current, CV generator, prompt-file transport, or project deletion migration is performed. This repair changes only Project Source text-add classification for large document-converted text sources: generic `pasted.txt` / `Document` identities are no longer sufficient proof unless the saved document/card can be tied to the current run id. Generated/dedicated `.txt` names remain supported when they expose the run anchor.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Focused `.20.4` source-add repro and operator UI observation about generated `.txt` names | live evidence/change request | `docs/repair-v0.1.78.2.20.5.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | `.20.4` cleared save/persistence but not the stricter content-proof contract for generic document-converted text. |
