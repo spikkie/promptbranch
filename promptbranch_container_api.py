@@ -114,6 +114,18 @@ class AskResponse(BaseModel):
     service_internal_timeout_seconds: Optional[float] = None
     progress_status: Optional[str] = None
     progress_updated_at_monotonic: Optional[float] = None
+    submit_method: Optional[str] = None
+    prefer_button_submit: Optional[bool] = None
+    submit_button_visible: Optional[bool] = None
+    submit_button_enabled: Optional[bool] = None
+    submit_prepare_request_observed: Optional[bool] = None
+    submit_prepare_response_observed: Optional[bool] = None
+    submit_message_request_observed: Optional[bool] = None
+    submit_backend_commit_confirmed: Optional[bool] = None
+    post_submit_user_turn_visibility_status: Optional[str] = None
+    submit_dom_delta_status: Optional[str] = None
+    answer_text: Optional[str] = None
+    answer_text_length: Optional[int] = None
 
 
 class ProjectResolveRequest(BaseModel):
@@ -428,6 +440,7 @@ async def ask(
     keep_open: bool = Form(False),
     retries: Optional[int] = Form(None),
     service_timeout_seconds: Optional[float] = Form(default=None),
+    prefer_button_submit: bool = Form(False),
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
@@ -450,6 +463,8 @@ async def ask(
             "keep_open": keep_open,
             "retries": retries,
         }
+        if prefer_button_submit:
+            ask_kwargs["prefer_button_submit"] = True
         if service_timeout_seconds is not None:
             ask_kwargs["service_timeout_seconds"] = service_timeout_seconds
         if len(temp_paths) == 1:
@@ -522,6 +537,18 @@ async def ask(
             service_internal_timeout_seconds=result.get("service_internal_timeout_seconds") if isinstance(result, dict) else None,
             progress_status=result.get("progress_status") if isinstance(result, dict) else None,
             progress_updated_at_monotonic=result.get("progress_updated_at_monotonic") if isinstance(result, dict) else None,
+            submit_method=result.get("submit_method") if isinstance(result, dict) else None,
+            prefer_button_submit=result.get("prefer_button_submit") if isinstance(result, dict) else None,
+            submit_button_visible=result.get("submit_button_visible") if isinstance(result, dict) else None,
+            submit_button_enabled=result.get("submit_button_enabled") if isinstance(result, dict) else None,
+            submit_prepare_request_observed=result.get("submit_prepare_request_observed") if isinstance(result, dict) else None,
+            submit_prepare_response_observed=result.get("submit_prepare_response_observed") if isinstance(result, dict) else None,
+            submit_message_request_observed=result.get("submit_message_request_observed") if isinstance(result, dict) else None,
+            submit_backend_commit_confirmed=result.get("submit_backend_commit_confirmed") if isinstance(result, dict) else None,
+            post_submit_user_turn_visibility_status=result.get("post_submit_user_turn_visibility_status") if isinstance(result, dict) else None,
+            submit_dom_delta_status=result.get("submit_dom_delta_status") if isinstance(result, dict) else None,
+            answer_text=result.get("answer_text") if isinstance(result, dict) else None,
+            answer_text_length=result.get("answer_text_length") if isinstance(result, dict) else None,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)

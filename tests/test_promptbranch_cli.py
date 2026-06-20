@@ -2270,7 +2270,7 @@ def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_
             events.append("remove")
             return {"ok": True, "status": "removed"}
 
-        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None):
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
             calls.append({
                 "prompt": prompt,
                 "attachment_paths": attachment_paths,
@@ -2278,6 +2278,7 @@ def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_
                 "expect_json": expect_json,
                 "keep_open": keep_open,
                 "retries": retries,
+                "prefer_button_submit": prefer_button_submit,
             })
             match = re.search(r"ASK_LIVE_[A-Z_]+_UNIT", prompt)
             sentinel = match.group(0) if match else "ASK_LIVE_UNKNOWN_UNIT"
@@ -2302,6 +2303,8 @@ def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_
     assert payload["selected_steps"] == ["plain", "prompt_file"]
     assert payload["step_count"] == 2
     assert len(calls) == 2
+    assert calls[0]["prefer_button_submit"] is False
+    assert calls[1]["prefer_button_submit"] is True
     assert all(call["expect_json"] is False for call in calls)
     assert all(call["conversation_url"] == test_project_url for call in calls)
     assert all(step["in_expected_project"] is True for step in payload["steps"])
@@ -2367,7 +2370,7 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
             calls.append({"remove_project_keep_open": keep_open})
             return {"ok": True, "status": "removed"}
 
-        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None):
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
             assert conversation_url == self.project_url
             calls.append({
                 "prompt": prompt,
@@ -2503,7 +2506,7 @@ def test_visual_artifact_roundtrip_failure_payload_waits_for_temp_project_cleanu
             calls.append({"remove_project_keep_open": keep_open})
             return {"ok": True, "status": "removed"}
 
-        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None):
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
             assert conversation_url == self.project_url
             return {
                 "ok": False,
@@ -2546,7 +2549,7 @@ def test_visual_artifact_roundtrip_explicit_conversation_url_skips_temp_project(
         async def remove_project(self, *args, **kwargs):
             raise AssertionError("explicit conversation URL must not remove a temp project")
 
-        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None):
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
             calls.append({"conversation_url": conversation_url, "expect_json": expect_json})
             assert conversation_url == explicit_url
             envelope = {
@@ -10610,6 +10613,7 @@ def test_main_ask_combines_prompt_file_and_repeatable_attachments(monkeypatch, c
     assert capsys.readouterr().out.strip() == "ok"
     assert captured_kwargs["attachment_paths"] == [str(first), str(second)]
     assert captured_kwargs["file_path"] is None
+    assert captured_kwargs["prefer_button_submit"] is True
 
 
 def test_test_full_uses_rate_limit_safe_defaults(monkeypatch, capsys) -> None:

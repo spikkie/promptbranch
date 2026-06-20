@@ -211,3 +211,9 @@ No user data migration is required. This repair constrains Project Source remove
 No Project Source, adoption/current, or project deletion migration is performed. This repair only prevents Project Source add/list/remove/capability operations and Project Source persistence refreshes from waiting on persisted conversation-history cooldown after a 429 modal is acknowledged. The cooldown remains recorded for history-reading operations. Operators should rerun only the focused file `src add` path before running full release-control.
 
 | `docs/repair-v0.1.78.2.16.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/status.md` | summarized | Repair evidence for file-source post-commit stale-inflight refreshed verification recovery; no normal slice advanced. |
+
+## v0.1.78.2.17 migration note
+
+No user data, Project Source, artifact-current, or project deletion migration is performed. Operators should install the candidate and run `scripts/smoke-pb-ask-prompt-file.sh` against the live ChatGPT profile before retrying CV generator live-call workflows. This repair only carries prompt-file submit intent into the browser layer, uses button-first submit for prompt-file asks, and keeps prepare-token-only states fail-closed.
+
+| `Change Request Bug Report- pb ask --prompt-file submit causality failure.pdf` | live failure/change request evidence | `docs/repair-v0.1.78.2.17.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/status.md`, `docs/project/decisions.md` | summarized | Prompt-file ask calls loaded the composer but keyboard Enter could stop at prepare-token-only without backend commit; repair is button-first submit plus fail-closed diagnostics. |

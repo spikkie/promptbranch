@@ -137,6 +137,56 @@ def test_add_project_source_file_preserves_uploaded_basename_and_defaults_displa
     assert captured["overwrite_existing"] is True
 
 
+
+
+def test_ask_passes_prefer_button_submit_when_requested(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeService:
+        async def ask_question_result(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "ok": False,
+                "answer": None,
+                "answer_text": "",
+                "answer_text_length": 0,
+                "status": "prepare_token_set_not_consumed",
+                "error_type": "prepare_token_set_not_consumed",
+                "submit_method": "button_click",
+                "prefer_button_submit": True,
+                "submit_button_visible": True,
+                "submit_button_enabled": True,
+                "submit_prepare_request_observed": True,
+                "submit_prepare_response_observed": True,
+                "submit_message_request_observed": False,
+                "submit_backend_commit_confirmed": False,
+                "post_submit_user_turn_visibility_status": "user_turn_echo_not_visible",
+                "submit_dom_delta_status": "dom_delta_user_turn_not_confirmed",
+            }
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post(
+        "/v1/ask",
+        data={"prompt": "hello", "prefer_button_submit": "true"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured["prefer_button_submit"] is True
+    assert payload["status"] == "prepare_token_set_not_consumed"
+    assert payload["submit_method"] == "button_click"
+    assert payload["prefer_button_submit"] is True
+    assert payload["submit_button_visible"] is True
+    assert payload["submit_button_enabled"] is True
+    assert payload["submit_prepare_request_observed"] is True
+    assert payload["submit_prepare_response_observed"] is True
+    assert payload["submit_message_request_observed"] is False
+    assert payload["submit_backend_commit_confirmed"] is False
+    assert payload["post_submit_user_turn_visibility_status"] == "user_turn_echo_not_visible"
+    assert payload["submit_dom_delta_status"] == "dom_delta_user_turn_not_confirmed"
+    assert payload["answer_text_length"] == 0
+
 def test_ask_file_upload_preserves_uploaded_basename(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

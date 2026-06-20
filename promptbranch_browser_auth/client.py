@@ -1041,6 +1041,7 @@ class ChatGPTBrowserClient:
         expect_json: bool = False,
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
+        prefer_button_submit: bool = False,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
@@ -1049,6 +1050,7 @@ class ChatGPTBrowserClient:
             expect_json=expect_json,
             keep_open=keep_open,
             service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
         )
         return result["answer"]
 
@@ -1061,6 +1063,7 @@ class ChatGPTBrowserClient:
         expect_json: bool = False,
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
+        prefer_button_submit: bool = False,
     ) -> dict[str, Any]:
         self._clear_ask_progress()
         self._record_ask_progress(
@@ -1094,6 +1097,7 @@ class ChatGPTBrowserClient:
             expect_json=expect_json,
             keep_open=keep_open,
             service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
         )
 
     async def list_projects(
@@ -2095,6 +2099,7 @@ class ChatGPTBrowserClient:
         expect_json: bool,
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
+        prefer_button_submit: bool = False,
     ) -> dict[str, Any]:
         operation_started = time.monotonic()
         ask_operation_deadline_monotonic = self._ask_operation_deadline_monotonic(
@@ -2105,6 +2110,7 @@ class ChatGPTBrowserClient:
             "submit_method": None,
             "slow_phase_warnings": [],
             "service_timeout_seconds": float(service_timeout_seconds) if service_timeout_seconds is not None else None,
+            "prefer_button_submit": bool(prefer_button_submit),
             "ask_operation_deadline_reserve_ms": self._ask_operation_deadline_reserve_ms(),
             "ask_operation_deadline_monotonic": ask_operation_deadline_monotonic,
         }
@@ -2287,7 +2293,11 @@ class ChatGPTBrowserClient:
             prompt="Debug pause before submit. Inspect focus, send/stop buttons, and network panel, then press Enter to submit... ",
         )
 
-        submit_evidence = await self._submit_prompt(page, prompt=prompt, prefer_button=bool(upload_paths))
+        submit_evidence = await self._submit_prompt(
+            page,
+            prompt=prompt,
+            prefer_button=bool(prefer_button_submit or upload_paths),
+        )
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
         # service-log timestamps.  submit_wait_seconds now includes the
         # button/Enter dispatch, post-dispatch composer snapshot, and
@@ -2735,7 +2745,7 @@ class ChatGPTBrowserClient:
             phase_timings["response_wait_skipped_reason"] = failure_reason
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             current_url_after_unconfirmed_submit = await self._safe_page_url(page)
-            return {
+            result = {
                 "ok": False,
                 "action": "ask",
                 "status": failure_status,
@@ -2746,6 +2756,9 @@ class ChatGPTBrowserClient:
                 "partial_result": True,
                 "ask_phase_timings": phase_timings,
             }
+            result.update(self._submit_failure_diagnostic_fields(submit_evidence))
+            self._record_ask_progress(**result)
+            return result
 
         response_wait_started = time.monotonic()
         if isinstance(response_context, dict):
@@ -10564,6 +10577,70 @@ class ChatGPTBrowserClient:
         })
         return result
 
+
+    def _submit_failure_diagnostic_fields(self, submit_evidence: Any) -> dict[str, Any]:
+        """Flatten submit-causality evidence for fail-closed ask JSON output."""
+        if not isinstance(submit_evidence, dict):
+            return {
+                "submit_method": None,
+                "prefer_button_submit": None,
+                "submit_button_visible": None,
+                "submit_button_enabled": None,
+                "submit_prepare_request_observed": None,
+                "submit_prepare_response_observed": None,
+                "submit_message_request_observed": None,
+                "submit_backend_commit_confirmed": None,
+                "post_submit_user_turn_visibility_status": None,
+                "submit_dom_delta_status": None,
+                "answer_text": "",
+                "answer_text_length": 0,
+            }
+
+        def first_present(*values: Any) -> Any:
+            for value in values:
+                if value is not None:
+                    return value
+            return None
+
+        before_composer = submit_evidence.get("before_composer") if isinstance(submit_evidence.get("before_composer"), dict) else {}
+        before_button = before_composer.get("submit_button") if isinstance(before_composer.get("submit_button"), dict) else {}
+        visible_probe: dict[str, Any] = {}
+        for probe in reversed(list(submit_evidence.get("probe_history") or [])):
+            if isinstance(probe, dict) and probe.get("visible") is not None:
+                visible_probe = probe
+                if probe.get("visible"):
+                    break
+        confirmed_by = submit_evidence.get("submit_confirmed_by") or []
+        backend_commit_confirmed = bool(
+            submit_evidence.get("submit_backend_commit_after_prepare_found")
+            or submit_evidence.get("submit_backend_task_message_found")
+            or "backend_task_message" in confirmed_by
+        )
+        return {
+            "submit_method": submit_evidence.get("submit_method"),
+            "prefer_button_submit": submit_evidence.get("prefer_button_submit"),
+            "submit_button_visible": bool(first_present(
+                submit_evidence.get("button_visible"),
+                visible_probe.get("visible"),
+                before_button.get("visible"),
+                before_button.get("send_ready"),
+            )),
+            "submit_button_enabled": bool(first_present(
+                submit_evidence.get("button_enabled"),
+                visible_probe.get("enabled"),
+                before_button.get("enabled"),
+                before_button.get("send_ready"),
+            )),
+            "submit_prepare_request_observed": submit_evidence.get("submit_prepare_request_observed"),
+            "submit_prepare_response_observed": submit_evidence.get("submit_prepare_response_observed"),
+            "submit_message_request_observed": submit_evidence.get("submit_message_request_observed"),
+            "submit_backend_commit_confirmed": backend_commit_confirmed,
+            "post_submit_user_turn_visibility_status": submit_evidence.get("post_submit_user_turn_visibility_status"),
+            "submit_dom_delta_status": submit_evidence.get("submit_dom_delta_status"),
+            "answer_text": "",
+            "answer_text_length": 0,
+        }
+
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None, prefer_button: bool = False) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
@@ -10652,6 +10729,7 @@ class ChatGPTBrowserClient:
             before_assistant_count=before_assistant_count,
             composer_state_capture_seconds=composer_state_capture_seconds,
             assistant_turn_count_seconds=assistant_turn_count_seconds,
+            prefer_button_submit=bool(prefer_button),
         )
 
         async def click_enabled_submit_button(*, phase: str, attempt_number: int) -> dict[str, Any]:
@@ -10879,7 +10957,8 @@ class ChatGPTBrowserClient:
                 "attempt": click_result.get("attempt"),
                 "button_visible": click_result.get("button_visible"),
                 "button_enabled": click_result.get("button_enabled"),
-                "submit_method": method,
+                "submit_method": "button_click" if method == "button" else method,
+                "submit_dispatch_method": method,
                 "button_click_phase": click_result.get("phase"),
                 "send_button_probe_seconds": round(send_button_probe_seconds, 3),
                 "send_button_click_seconds": round(send_button_click_seconds, 3),

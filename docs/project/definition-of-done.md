@@ -164,3 +164,5 @@ Acceptance criteria:
 - Project Source persistence refresh navigation can clear rate-limit modals without sleeping on the persisted conversation-history cooldown.
 - Conversation-history cooldown telemetry and persisted cooldown state are still recorded for history-reading operations.
 - Docker provenance, live seed profile handling, strict rate-limit detection, text-source compatibility isolation, Project Source remove containment, and project deletion freeze remain preserved.
+
+| DOD-063 | `pb ask --prompt-file` preserves prompt-file origin through CLI/service/browser submit policy, uses button-first dispatch when the send button is available, keeps prepare-token-only fail-closed, and exposes submit-causality diagnostics | done | `promptbranch_cli.py`, `promptbranch_service_client.py`, `promptbranch_container_api.py`, `promptbranch_automation/service.py`, `promptbranch_browser_auth/client.py`, `scripts/smoke-pb-ask-prompt-file.sh`, focused prompt-file submit tests, `docs/repair-v0.1.78.2.17.md` | v0.1.78.2.17 |
