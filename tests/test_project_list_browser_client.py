@@ -4202,6 +4202,125 @@ def test_submit_prompt_prefer_button_overrides_keyboard_primary_when_prompt_file
     assert result["submit_backend_commit_after_prepare_found"] is True
 
 
+def test_submit_prompt_prompt_file_button_prepare_only_does_not_press_keyboard_after_dispatch(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyButton:
+        async def count(self):
+            return 1
+
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def is_enabled(self, timeout=None):
+            return True
+
+        async def get_attribute(self, name: str):
+            if name == "data-testid":
+                return "send-button"
+            if name == "aria-label":
+                return "Send prompt"
+            return None
+
+        async def click(self):
+            return None
+
+    class DummyLocator:
+        @property
+        def first(self):
+            return DummyButton()
+
+        def nth(self, index: int):
+            return DummyButton()
+
+        async def count(self):
+            return 1
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            return DummyLocator()
+
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"visible": True, "enabled": True, "send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def fake_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
+        return {
+            "status": "submit_confirmation_not_observed",
+            "confirmed": False,
+            "confirmed_by": [],
+            "confirmation_mode": "submit_prepare_token_set_not_consumed_timeout",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": False,
+            "causal_confirmation_reason": "prepare_token_set_not_consumed",
+            "network_submit_request_observed": False,
+            "network_submit_request_status": "prepare_token_set_not_consumed",
+            "submit_network_evidence": {
+                "status": "prepare_token_set_not_consumed",
+                "prepare_request_observed": True,
+                "prepare_response_observed": True,
+                "prepare_token_set_not_consumed": True,
+                "prepare_only_then_idle_without_commit": True,
+                "message_request_observed": False,
+                "message_request_count": 0,
+            },
+            "backend_task_message_evidence": {
+                "post_prepare_commit_found": False,
+            },
+        }
+
+    async def fake_after_composer(page, *, prompt=None):
+        return {
+            "snapshot_mode": "post_submit_minimal",
+            "skipped": False,
+            "text_length": 0,
+            "submit_button": {"idle_visible": True},
+        }
+
+    async def forbidden_keyboard_variant(*args, **kwargs):
+        raise AssertionError("prompt-file button-first policy must not press keyboard Enter after button dispatch")
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = fake_confirmation
+    client._capture_post_submit_composer_state = fake_after_composer
+    client._run_keyboard_submit_variant = forbidden_keyboard_variant
+    client._start_submit_network_observer = lambda page, prompt=None: {"observer": "network"}
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    import asyncio
+
+    result = asyncio.run(client._submit_prompt(page, prompt="Use prompt file", prefer_button=True))
+
+    assert page.keyboard.pressed == []
+    assert result["submit_method"] == "button_click"
+    assert result["submit_confirmed"] is False
+    assert result["submit_prepare_token_set_not_consumed"] is True
+    assert result["submit_variant_comparison_status"] == "skipped_prompt_file_button_first_policy"
+    assert result["submit_variant_comparison_result"] == "keyboard_fallback_after_button_dispatch_disabled"
+
+
+
 def test_submit_failure_diagnostics_flatten_prepare_token_not_consumed(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
 

@@ -217,3 +217,7 @@ No Project Source, adoption/current, or project deletion migration is performed.
 No user data, Project Source, artifact-current, or project deletion migration is performed. Operators should install the candidate and run `scripts/smoke-pb-ask-prompt-file.sh` against the live ChatGPT profile before retrying CV generator live-call workflows. This repair only carries prompt-file submit intent into the browser layer, uses button-first submit for prompt-file asks, and keeps prepare-token-only states fail-closed.
 
 | `Change Request Bug Report- pb ask --prompt-file submit causality failure.pdf` | live failure/change request evidence | `docs/repair-v0.1.78.2.17.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/status.md`, `docs/project/decisions.md` | summarized | Prompt-file ask calls loaded the composer but keyboard Enter could stop at prepare-token-only without backend commit; repair is button-first submit plus fail-closed diagnostics. |
+
+## v0.1.78.2.18 migration note
+
+No user data, Project Source, artifact-current, or project deletion migration is performed. Operators should install the candidate and rerun `scripts/smoke-pb-ask-prompt-file.sh`. If the smoke still fails, the diagnostic JSON is intentionally preserved and printed so the next repair can target the actual live failure instead of losing evidence in shell cleanup. This repair also disables keyboard Enter post-dispatch comparison for prompt-file button-click failures to preserve a single causal submit boundary.

@@ -139,3 +139,9 @@ v0.1.78.2.3 repair candidate build
 ## v0.1.78.2.17 repair status
 
 `v0.1.78.2.16` still allowed `pb ask --prompt-file` to use the keyboard-primary submit policy because the CLI merged prompt-file text into the prompt before the browser layer and did not preserve prompt-file origin. `v0.1.78.2.17` carries `prefer_button_submit` through CLI, service-client, container API, automation service, and browser layers. Prompt-file asks now use send-button-first dispatch when the button is visible/enabled, while prepare-token-only states remain hard failures with flattened submit-causality diagnostics. CV generator code, source add/remove behavior, project deletion, artifact registry behavior, and normal slice state are unchanged.
+
+## v0.1.78.2.18 repair status
+
+`v0.1.78.2.17` installed and ran the new prompt-file live smoke, but the smoke harness used `set -e` around `pb ask` and deleted the captured JSON in its EXIT trap. A non-zero `pb ask` therefore hid the exact submit-causality payload needed to decide whether the remaining failure was button-submit, backend commit, answer extraction, profile/auth, or service transport. `v0.1.78.2.18` preserves the diagnostic JSON on smoke failure, reports the `pb ask` exit code, and keeps the output path visible for operator/service-log correlation.
+
+`v0.1.78.2.18` also tightens the prompt-file button-first policy: when the send button was visible/enabled and a button click was dispatched, Promptbranch no longer presses keyboard Enter afterward as a post-dispatch comparison/fallback for prompt-file asks. Prepare-token-only after a button click remains fail-closed with diagnostics. CV generator code, source add/remove behavior, project deletion, artifact registry behavior, and normal slice state are unchanged.

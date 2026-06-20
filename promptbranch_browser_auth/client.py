@@ -11094,21 +11094,37 @@ class ChatGPTBrowserClient:
                 "classification": "composer_cleared_idle_without_backend_commit" if composer_cleared_idle_without_commit else None,
             }
             if method == "button" and not evidence.get("submit_confirmed") and bool(primary_network.get("prepare_only_then_idle_without_commit") or primary_network.get("prepare_token_set_not_consumed")):
-                variant_comparison = await self._compare_keyboard_submit_after_prepare_failure(
-                    page,
-                    prompt=prompt,
-                    before_assistant_count=before_assistant_count,
-                    before_user_turn_state=before_user_turns,
-                    primary_confirmation=confirmation,
-                    primary_after_composer=after_composer,
-                )
-                evidence["submit_variant_comparison"] = variant_comparison
-                evidence["submit_variant_comparison_status"] = variant_comparison.get("status")
-                evidence["submit_variant_comparison_result"] = variant_comparison.get("comparison")
-                keyboard_enter = variant_comparison.get("keyboard_enter") if isinstance(variant_comparison, dict) else None
-                if isinstance(keyboard_enter, dict):
-                    evidence["submit_variant_keyboard_enter_status"] = keyboard_enter.get("network_status") or keyboard_enter.get("confirmation_mode") or keyboard_enter.get("status")
-                    evidence["submit_variant_keyboard_enter_confirmed"] = bool(keyboard_enter.get("confirmed"))
+                if prefer_button:
+                    # Prompt-file asks are button-first and fail-closed: once a
+                    # visible/enabled send button was clicked, do not press
+                    # keyboard Enter as a post-dispatch fallback/comparison.
+                    # The original bug was a lost submit-causality boundary; a
+                    # second dispatch after prepare-only would make the emitted
+                    # JSON ambiguous for unattended workflows.
+                    evidence["submit_variant_comparison"] = {
+                        "enabled": False,
+                        "attempted": False,
+                        "status": "skipped_prompt_file_button_first_policy",
+                        "reason": "keyboard_enter_after_button_dispatch_disabled_for_prefer_button_submit",
+                    }
+                    evidence["submit_variant_comparison_status"] = "skipped_prompt_file_button_first_policy"
+                    evidence["submit_variant_comparison_result"] = "keyboard_fallback_after_button_dispatch_disabled"
+                else:
+                    variant_comparison = await self._compare_keyboard_submit_after_prepare_failure(
+                        page,
+                        prompt=prompt,
+                        before_assistant_count=before_assistant_count,
+                        before_user_turn_state=before_user_turns,
+                        primary_confirmation=confirmation,
+                        primary_after_composer=after_composer,
+                    )
+                    evidence["submit_variant_comparison"] = variant_comparison
+                    evidence["submit_variant_comparison_status"] = variant_comparison.get("status")
+                    evidence["submit_variant_comparison_result"] = variant_comparison.get("comparison")
+                    keyboard_enter = variant_comparison.get("keyboard_enter") if isinstance(variant_comparison, dict) else None
+                    if isinstance(keyboard_enter, dict):
+                        evidence["submit_variant_keyboard_enter_status"] = keyboard_enter.get("network_status") or keyboard_enter.get("confirmation_mode") or keyboard_enter.get("status")
+                        evidence["submit_variant_keyboard_enter_confirmed"] = bool(keyboard_enter.get("confirmed"))
             self._log(
                 "submit",
                 "submit confirmed without waiting for user-turn DOM",
