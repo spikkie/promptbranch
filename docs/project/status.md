@@ -149,3 +149,9 @@ v0.1.78.2.3 repair candidate build
 ## v0.1.78.2.19 repair status
 
 `v0.1.78.2.18` correctly preserved the prompt-file smoke diagnostic payload, which exposed that the automation service passed `prefer_button_submit` into `ChatGPTAutomation.ask_question_result()` while the intermediate automation wrapper still had the old signature. `v0.1.78.2.19` updates that wrapper to accept and forward `prefer_button_submit` to the browser client. This preserves the button-first prompt-file submit policy and lets the focused live smoke reach the browser submit layer instead of failing with service HTTP 500. CV generator code, source add/remove behavior, project deletion behavior, artifact registry behavior, and normal slice state are unchanged.
+
+## v0.1.78.2.20 repair status
+
+`v0.1.78.2.19` reached the live ChatGPT browser path and produced a successful fresh answer: `pb ask` exited 0, the submit method was `button_click`, the backend conversation POST was observed, the user turn was confirmed in the DOM, response freshness matched the injected nonce, and `prepare_token_set_not_consumed` was false. The remaining failure was the smoke contract itself: `pb ask --json` requests a structured assistant JSON response, so the returned token lives at `answer.token` rather than as raw `answer_text`. The top-level JSON result also kept submit evidence nested under `submit_evidence` / `ask_phase_timings`, leaving `prefer_button_submit` and `submit_method` null at the transport top level.
+
+`v0.1.78.2.20` updates the focused smoke to accept the structured JSON answer token while preserving the exact token assertion, and exposes successful submit-causality fields at the top level of ask JSON results. CV generator code, source add/remove behavior, project deletion behavior, artifact registry behavior, retry/backoff policy, and normal slice state are unchanged.

@@ -1760,6 +1760,9 @@ def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
     assert "pb_ask_exit_code" in content
     assert "diagnostic JSON kept at" in content
     assert "CV_LIVE_PROMPT_FILE_OK" in content
+    assert 'EXPECTED_TOKEN = "CV_LIVE_PROMPT_FILE_OK"' in content
+    assert 'answer_obj.get("token")' in content
+    assert 'ask_phase_timings = payload.get("ask_phase_timings")' in content
     assert 'prefer_button_submit is not true' in content
     assert 'submit_method not in {"button_click", "button_after_focus_retry", "send_button_click"}' in content
     assert "prepare_token_set_not_consumed remained unresolved" in content
