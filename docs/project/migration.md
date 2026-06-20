@@ -256,3 +256,11 @@ No user data, Project Source, artifact-current, CV generator, or project deletio
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | `Bug Report - Prompt File Attachment Mode.pdf` and successful `.20.2` large CV prompt smoke log | live change-request/evidence | `docs/repair-v0.1.78.2.20.3.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Attachment transport worked, but the top-level JSON envelope did not expose enough attachment/upload/submit/response causality evidence for automated gates. |
+
+## v0.1.78.2.20.4 migration note
+
+No user data, artifact-current, CV generator, prompt-file transport, or project deletion migration is performed. This repair only changes Project Source text-add validation for retained integration tests: large text is treated as potential `.txt` document conversion, generic `pasted.txt Document` is not accepted without current-run proof, and stale retained-test sources may be pruned at the observed five-source boundary.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Focused `project_ensure` + `source_add_text` repro and UI screenshot showing generated `.txt` document chip | live failure/change request evidence | `docs/repair-v0.1.78.2.20.4.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repro isolated `project_source_add_text` from prompt-file attachment work and showed no rate-limit evidence; UI evidence supports document-conversion-aware verification. |

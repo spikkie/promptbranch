@@ -2047,12 +2047,21 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 )
 
         if should_run("project_source_add_text"):
+            text_source_value = "\n".join(
+                [
+                    f"Integration note for run {run_id}",
+                    f"Promptbranch text-source document conversion proof for run {run_id}.",
+                    "This intentionally exceeds the large text threshold so ChatGPT may render it as a .txt document source.",
+                    "The verifier must prove the generated document belongs to this run before accepting it.",
+                    *(f"document-conversion-filler-{run_id}-{index:04d}" for index in range(260)),
+                ]
+            )
             text_add = await _run_step(
                 steps,
                 "project_source_add_text",
                 project_service.add_project_source(
                     source_kind="text",
-                    value=f"Integration note for run {run_id}",
+                    value=text_source_value,
                     display_name=text_source_name,
                     keep_open=args.keep_open,
                 ),
