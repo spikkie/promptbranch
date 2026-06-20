@@ -199,6 +199,36 @@ def test_projects_remove_endpoint_allows_strict_same_run_ephemeral_cleanup(monke
     assert payload["kwargs"]["created_project_name"] == "itest-promptbranch-abc"
 
 
+def test_browser_client_normalizes_project_cleanup_url_shapes(tmp_path) -> None:
+    config = ChatGPTBrowserConfig(
+        project_url="https://chatgpt.com/g/g-p-demo/project?tab=sources",
+        profile_dir=str(tmp_path / "profile"),
+        headless=True,
+        debug=False,
+        save_trace=False,
+        save_html=False,
+        save_screenshot=False,
+    )
+    client = ChatGPTBrowserClient(config)
+
+    assert (
+        client._normalize_project_url(
+            "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project?tab=sources#fragment"
+        )
+        == "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project"
+    )
+    assert (
+        client._normalize_project_url(
+            "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/c/6a366c9e-d30c-83eb-8436-3e0fa8611321"
+        )
+        == "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project"
+    )
+    assert (
+        client._normalize_project_url("https://chatgpt.com/g/g-p-demo/project")
+        == "https://chatgpt.com/g/g-p-demo/project"
+    )
+
+
 def test_browser_client_remove_project_allows_ephemeral_cleanup_without_broad_delete(tmp_path, monkeypatch) -> None:
     config = ChatGPTBrowserConfig(
         project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",

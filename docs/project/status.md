@@ -209,3 +209,8 @@ This candidate is not accepted/current until live focused cleanup/source proof, 
 ## v0.1.78.2.20.8.1 repair status
 
 `v0.1.78.2.20.8.1` repairs the `v0.1.78.2.20.8` transport ZIP packaging surface. The `v0.1.78.2.20.8` implementation scope remains unchanged, but the ZIP now includes the required repo-root `.gitignore` control file so release import planning can pass its required-root-files gate. No normal slice advanced.
+
+
+## v0.1.78.2.20.8.2 status
+
+Repair candidate `v0.1.78.2.20.8.2` fixes the same-run ephemeral project cleanup implementation defect observed in `.20.8.1`: `/v1/projects/remove` called the browser remove path but failed because `_normalize_project_url` was missing. The repair adds cleanup-target URL normalization while preserving the strict ephemeral deletion guard and leaving Project Source text-add behavior unchanged. Candidate validation is focused/local only until the live fresh-project cleanup proof is rerun.

@@ -300,3 +300,8 @@ No user data, artifact-current, CV generator, prompt-file transport, or broad pr
 ## v0.1.78.2.20.8.1 migration note
 
 No runtime migration is required. This repair preserves the `.20.8` implementation and fixes only the release ZIP packaging surface by ensuring the required repo-root `.gitignore` control file is present in the archive.
+
+
+## v0.1.78.2.20.8.2 migration note
+
+No user data, Project Source, artifact-current, or prompt-file transport migration is performed. This repair fixes only same-run ephemeral test-project cleanup URL normalization after `.20.8.1` failed `/v1/projects/remove` with a missing `_normalize_project_url` helper. Project deletion remains frozen for all normal/user projects.
