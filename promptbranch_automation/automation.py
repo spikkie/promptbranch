@@ -289,6 +289,7 @@ class ChatGPTAutomation:
         expect_json: bool = False,
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
+        prefer_button_submit: bool = False,
     ) -> Any:
         result = await self.ask_question_result(
             prompt=prompt,
@@ -297,6 +298,7 @@ class ChatGPTAutomation:
             expect_json=expect_json,
             keep_open=keep_open,
             service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
         )
         return result["answer"]
 
@@ -309,6 +311,7 @@ class ChatGPTAutomation:
         expect_json: bool = False,
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
+        prefer_button_submit: bool = False,
     ) -> dict[str, Any]:
         if expect_json:
             prompt = prompt + _JSON_PROMPT_DEFAULT_RULES + _JSON_PROMPT_END_STATEMENT
@@ -321,6 +324,7 @@ class ChatGPTAutomation:
             expect_json=expect_json,
             keep_open=keep_open,
             service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
         )
 
     async def run_login_check(self, keep_open: bool = False) -> dict[str, Any]:
