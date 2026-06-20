@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry
-from promptbranch_cli import _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload
+from promptbranch_cli import _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload, build_backend
 from promptbranch_project import load_repo_identity, project_registry_dir, write_repo_identity, join_local_repo
 from promptbranch_state import ConversationStateStore
 
@@ -54,6 +54,89 @@ def _add_current(project_dir: Path, repo_id: str, version: str) -> None:
         source_version=version,
         repo_id=repo_id,
     )
+
+
+def _backend_args(profile_dir: Path, *, explicit_profile_dir: bool) -> argparse.Namespace:
+    return argparse.Namespace(
+        service_base_url="http://localhost:8000",
+        service_token=None,
+        service_timeout_seconds=30.0,
+        project_url=PROJECT_URL,
+        email=None,
+        password=None,
+        password_file=None,
+        profile_dir=str(profile_dir),
+        headless=True,
+        use_playwright=False,
+        browser_channel=None,
+        enable_fedcm=False,
+        keep_no_sandbox=False,
+        max_retries=1,
+        retry_backoff_seconds=0.1,
+        debug_browser=False,
+        debug=False,
+        slow_mo_ms=0,
+        _profile_dir_explicit=explicit_profile_dir,
+    )
+
+
+def test_build_backend_reads_project_scoped_state_from_joined_repo(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    project_dir = project_registry_dir("kubernetes")
+    repo_profile = repo / ".pb_profile"
+    project_conversation = f"{PROJECT_URL[:-len('/project')]}/c/project-selected"
+    stale_repo_conversation = f"{PROJECT_URL[:-len('/project')]}/c/stale-repo-local"
+    ConversationStateStore(str(project_dir)).remember(PROJECT_URL, project_conversation, project_name="kubernetes")
+    ConversationStateStore(str(project_dir)).remember_artifact(
+        project_url=PROJECT_URL,
+        artifact_ref="my_awx_v0.0.212.4.zip",
+        artifact_version="v0.0.212.4",
+        source_ref="my_awx_v0.0.212.4.zip",
+        source_version="v0.0.212.4",
+        repo_id="my_awx",
+    )
+    ConversationStateStore(str(repo_profile)).remember(PROJECT_URL, stale_repo_conversation, project_name="kubernetes")
+    ConversationStateStore(str(repo_profile)).remember_artifact(
+        project_url=PROJECT_URL,
+        artifact_ref="my_awx_v0.0.200.8.zip",
+        artifact_version="v0.0.200.8",
+        source_ref="my_awx_v0.0.200.8.zip",
+        source_version="v0.0.200.8",
+        repo_id="my_awx",
+    )
+    monkeypatch.chdir(repo)
+
+    args = _backend_args(repo_profile, explicit_profile_dir=False)
+    backend = build_backend(args)
+    snapshot = backend.state_snapshot()
+
+    assert snapshot["state_file"] == str(project_dir / ".promptbranch_state.json")
+    assert snapshot["conversation_url"] == project_conversation
+    assert snapshot["conversation_id"] == "project-selected"
+    assert snapshot["artifact_ref"] == "my_awx_v0.0.212.4.zip"
+    assert args.profile_dir == str(repo_profile.resolve())
+
+
+def test_build_backend_explicit_profile_dir_keeps_profile_state_override(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    project_dir = project_registry_dir("kubernetes")
+    explicit_profile = tmp_path / "explicit-profile"
+    project_conversation = f"{PROJECT_URL[:-len('/project')]}/c/project-selected"
+    explicit_conversation = f"{PROJECT_URL[:-len('/project')]}/c/explicit-profile-selected"
+    ConversationStateStore(str(project_dir)).remember(PROJECT_URL, project_conversation, project_name="kubernetes")
+    ConversationStateStore(str(explicit_profile)).remember(PROJECT_URL, explicit_conversation, project_name="kubernetes")
+    monkeypatch.chdir(repo)
+
+    backend = build_backend(_backend_args(explicit_profile, explicit_profile_dir=True))
+    snapshot = backend.state_snapshot()
+
+    assert snapshot["state_file"] == str(explicit_profile / ".promptbranch_state.json")
+    assert snapshot["conversation_url"] == explicit_conversation
+    assert snapshot["conversation_id"] == "explicit-profile-selected"
 
 
 def test_repo_list_uses_project_registry_from_any_joined_repo(monkeypatch, tmp_path: Path) -> None:

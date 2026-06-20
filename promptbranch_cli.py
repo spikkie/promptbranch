@@ -1478,7 +1478,13 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
 def build_backend(args: argparse.Namespace) -> CommandBackend:
     resolved_profile_dir = str(resolve_profile_dir(getattr(args, "profile_dir", None)))
     args.profile_dir = resolved_profile_dir
-    conversation_state = ConversationStateStore(resolved_profile_dir)
+    # Browser profiles and Promptbranch workflow state are separate authority
+    # surfaces.  The browser still uses the resolved --profile-dir / repo-local
+    # .pb_profile path, but joined multi-repo projects must read/write
+    # conversation, task, workspace, and artifact state from the shared
+    # project-scoped profile unless the operator explicitly supplied
+    # --profile-dir as an override.
+    conversation_state = _state_store_from_args(args)
     if getattr(args, "debug_browser", False):
         # Local visual debugging intentionally bypasses the Docker service so the
         # operator can inspect a headed localhost browser.  Docker remains the

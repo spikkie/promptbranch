@@ -818,3 +818,25 @@ Out of scope:
 - Project Source add/remove behavior changes.
 - Artifact adoption/current changes.
 - Normal `v0.1.79` scope.
+
+## Slice definition — v0.1.78.2.20.8.6 repair release
+
+Release: v0.1.78.2.20.8.6
+
+Scope: repair-only joined-repo state authority consistency on top of `v0.1.78.2.20.8.5`.
+
+In scope:
+
+- Make backend state reads use the project-aware state store for joined repos.
+- Preserve browser profile resolution separately from workflow state resolution.
+- Preserve explicit `--profile-dir` override behavior.
+- Add focused regression tests for project-scoped default state and explicit profile override.
+- Preserve the immutable no-delete invariant and cleanup-policy evidence consistency.
+
+Out of scope:
+
+- Project deletion behavior changes.
+- Secure delete protocol design or implementation.
+- Project Source add/remove behavior changes.
+- Artifact adoption/current changes.
+- Normal `v0.1.79` scope.

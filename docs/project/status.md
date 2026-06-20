@@ -228,3 +228,7 @@ Repair candidate `v0.1.78.2.20.8.2` fixes the same-run ephemeral project cleanup
 ## v0.1.78.2.20.8.5 repair status
 
 `v0.1.78.2.20.8.4` fixed the dangerous deletion behavior, but fresh-project evidence still contained a stale top-level `cleanup_policy="same_run_ephemeral_cleanup"` label even though the actual cleanup step reported `no_project_delete_until_secure_protocol` and `destructive_action_executed=false`. `v0.1.78.2.20.8.5` is a repair-only evidence cleanup that makes the full-integration summary and cleanup-step labels consistently report `no_project_delete_until_secure_protocol`. No Project deletion path is re-enabled and no normal slice advances.
+
+## v0.1.78.2.20.8.6 repair status
+
+Operator logs proved that `pb task use` wrote the selected Kubernetes conversation into the project-scoped profile while plain `promptbranch state` read the stale repo-local `.pb_profile/.promptbranch_state.json`. `v0.1.78.2.20.8.6` repairs that state-authority split by making backend state reads use the same project-aware state-store resolver as task/source/artifact writes. Browser profile resolution remains unchanged, and explicit `--profile-dir` continues to override project-scoped state. No Project deletion path is re-enabled and no normal slice advances.
