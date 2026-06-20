@@ -280,3 +280,11 @@ No user data, artifact-current, CV generator, prompt-file transport, release-con
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Focused `.20.5` source-add repro and operator clarification about generated document names | live evidence/change request | `docs/repair-v0.1.78.2.20.6.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | `.20.5` failed closed on `pasted.txt Document`; `.20.6` treats that path as legacy/stale and requires the current generated-name contract. |
+
+## v0.1.78.2.20.7 migration note
+
+No user data, artifact-current, CV generator, prompt-file transport, release-control, or project deletion migration is performed. This repair changes only Project Source text-add release validation: source-add persistence remains release-blocking, while large pasted text document naming is diagnostic characterization rather than a hard generated-name contract.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Focused `.20.6` `source_add_text` rerun after cooldown | live evidence/change request | `docs/repair-v0.1.78.2.20.7.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Persistence verified with `source_match=pasted.txt Document`; `.20.7` makes that naming behavior non-release-blocking while preserving diagnostics. |

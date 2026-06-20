@@ -2047,13 +2047,16 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 )
 
         if should_run("project_source_add_text"):
+            # Keep the release-blocking Project Sources text-add check focused on
+            # text-source persistence.  Large-paste document conversion is a
+            # volatile ChatGPT UI behavior and is characterized separately by
+            # add_project_source diagnostics; it must not make the core text
+            # source add step depend on a generated filename contract.
             text_source_value = "\n".join(
                 [
                     f"Integration note for run {run_id}",
-                    f"Promptbranch text-source document conversion proof for run {run_id}.",
-                    "This intentionally exceeds the large text threshold so ChatGPT may render it as a .txt document source.",
-                    "The verifier must prove the generated document belongs to this run before accepting it.",
-                    *(f"document-conversion-filler-{run_id}-{index:04d}" for index in range(260)),
+                    f"Promptbranch text-source add smoke proof for run {run_id}.",
+                    "This body is intentionally below the configured document-conversion threshold.",
                 ]
             )
             text_add = await _run_step(

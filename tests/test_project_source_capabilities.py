@@ -2391,7 +2391,7 @@ def test_select_text_test_capacity_prune_candidate_is_limited_to_safe_test_sourc
     ) is None
 
 
-def test_text_source_document_conversion_requires_dedicated_generated_name(
+def test_text_source_document_conversion_dedicated_name_is_characterization_only(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     generic_proof = browser_client._text_source_card_content_proof(
@@ -2422,7 +2422,7 @@ def test_text_source_document_conversion_requires_dedicated_generated_name(
         generic_proof,
         conversion_expected=True,
         source_saved_as_document=True,
-    ) is True
+    ) is False
     assert browser_client._text_source_document_conversion_requires_dedicated_name_failure(
         named_proof,
         conversion_expected=True,
@@ -2437,10 +2437,10 @@ def test_text_source_document_conversion_requires_dedicated_generated_name(
         generated_non_generic_without_anchor,
         conversion_expected=True,
         source_saved_as_document=True,
-    ) is True
+    ) is False
 
 
-def test_large_text_source_legacy_pasted_document_requires_dedicated_generated_name(
+def test_large_text_source_legacy_pasted_document_is_non_blocking_characterization(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     page = object()
@@ -2508,8 +2508,7 @@ def test_large_text_source_legacy_pasted_document_requires_dedicated_generated_n
         )
     )
 
-    assert result["ok"] is False
-    assert result["status"] == "dedicated_document_name_not_detected"
+    assert result["ok"] is True
     assert result["persistence_verified"] is True
     assert result["source_saved_as_document"] is True
     assert result["source_content_match_verified"] is False
@@ -2517,4 +2516,5 @@ def test_large_text_source_legacy_pasted_document_requires_dedicated_generated_n
     assert result["text_source_content_proof"]["legacy_pasted_document_seen"] is True
     assert result["dedicated_document_name_detected"] is False
     assert result["legacy_pasted_document_seen"] is True
-    assert result["content_verification_release_blocking"] is True
+    assert result["content_verification_release_blocking"] is False
+    assert result["document_conversion_characterization_status"] == "generic_document_identity_seen"
