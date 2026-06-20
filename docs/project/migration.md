@@ -221,3 +221,9 @@ No user data, Project Source, artifact-current, or project deletion migration is
 ## v0.1.78.2.18 migration note
 
 No user data, Project Source, artifact-current, or project deletion migration is performed. Operators should install the candidate and rerun `scripts/smoke-pb-ask-prompt-file.sh`. If the smoke still fails, the diagnostic JSON is intentionally preserved and printed so the next repair can target the actual live failure instead of losing evidence in shell cleanup. This repair also disables keyboard Enter post-dispatch comparison for prompt-file button-click failures to preserve a single causal submit boundary.
+
+## v0.1.78.2.19 migration note
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Operator smoke output from `v0.1.78.2.18` | live repair evidence | `docs/repair-v0.1.78.2.19.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | The diagnostic-preserving smoke exposed the missing automation-wrapper `prefer_button_submit` keyword support. |

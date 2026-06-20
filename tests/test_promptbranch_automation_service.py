@@ -885,3 +885,35 @@ def test_browser_profile_busy_payload_marks_scheduler_path(monkeypatch, tmp_path
     assert payload["queue_timeout_seconds"] == 0.001
     assert payload["queue_wait_seconds"] is not None
     assert "list-start" not in events
+
+
+def test_automation_forwards_prefer_button_submit_to_browser_client(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _DummyAskClient:
+        async def ask_question_result(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "ok": True,
+                "answer": "CV_LIVE_PROMPT_FILE_OK",
+                "submit_method": "button_click",
+                "prefer_button_submit": kwargs.get("prefer_button_submit"),
+            }
+
+    monkeypatch.setattr(ChatGPTAutomation, "client", property(lambda self: _DummyAskClient()))
+
+    bot = ChatGPTAutomation(project_url="https://chatgpt.com/", email=None, password=None)
+    result = asyncio.run(
+        bot.ask_question_result(
+            prompt="Use the prompt file.",
+            expect_json=False,
+            keep_open=False,
+            service_timeout_seconds=30,
+            prefer_button_submit=True,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["prefer_button_submit"] is True
+    assert captured["prefer_button_submit"] is True
+    assert captured["prompt"] == "Use the prompt file."
