@@ -5270,22 +5270,15 @@ class ChatGPTBrowserClient:
                         for proof in current_text_document_proofs
                         if isinstance(proof, dict)
                     )
-                    if (
-                        result.get("text_source_document_conversion_expected")
-                        and result.get("legacy_pasted_document_seen")
-                        and not result.get("dedicated_document_name_detected")
-                    ):
-                        result.update({
-                            "status": "dedicated_document_name_not_detected",
-                            "release_blocking": True,
-                            "operator_review_required": True,
-                            "content_verification_release_blocking": True,
-                            "recovery_guidance": [
-                                "The current UI contract expects a dedicated/generated .txt document name for large pasted text.",
-                                "Legacy generic pasted.txt entries are cleanup noise and are not accepted as current source-add proof.",
-                                "Inspect the Project Sources surface and improve the generated-name detector if a dedicated name is visible.",
-                            ],
-                        })
+                    if result.get("text_source_document_conversion_expected"):
+                        result["document_conversion_characterization_status"] = (
+                            "dedicated_document_name_detected"
+                            if result.get("dedicated_document_name_detected")
+                            else "generic_document_identity_seen"
+                            if result.get("legacy_pasted_document_seen")
+                            else "document_identity_not_characterized"
+                        )
+                        result["content_verification_release_blocking"] = False
                 if overwrite_remove_result is not None:
                     result["overwrite_remove_result"] = overwrite_remove_result
                 if capacity_prune_result is not None:
@@ -5365,24 +5358,15 @@ class ChatGPTBrowserClient:
                 isinstance(text_document_conversion_proof, dict)
                 and text_document_conversion_proof.get("legacy_pasted_document_seen")
             )
-            if self._text_source_document_conversion_requires_dedicated_name_failure(
-                text_document_conversion_proof,
-                conversion_expected=bool(result.get("text_source_document_conversion_expected")),
-                source_saved_as_document=bool(result.get("source_saved_as_document")),
-            ):
-                result.update({
-                    "ok": False,
-                    "status": "dedicated_document_name_not_detected",
-                    "release_blocking": True,
-                    "operator_review_required": True,
-                    "content_verification_release_blocking": True,
-                    "recovery_guidance": [
-                        "Run `pb src list --json` and inspect the Project Sources surface before retrying.",
-                        "The current UI contract expects large pasted text to be saved as a dedicated/generated .txt document name.",
-                        "Legacy generic pasted.txt / pasted.txt Document entries are cleanup noise and are not accepted as current success evidence.",
-                        "If ChatGPT generated a dedicated name, add that visible identity to the match candidates or improve the source-card name detector.",
-                    ],
-                })
+            if result.get("text_source_document_conversion_expected"):
+                result["document_conversion_characterization_status"] = (
+                    "dedicated_document_name_detected"
+                    if result.get("dedicated_document_name_detected")
+                    else "generic_document_identity_seen"
+                    if result.get("legacy_pasted_document_seen")
+                    else "document_identity_not_characterized"
+                )
+                result["content_verification_release_blocking"] = False
         if overwrite_remove_result is not None:
             result["overwrite_remove_result"] = overwrite_remove_result
         if capacity_prune_result is not None:
@@ -14194,11 +14178,12 @@ class ChatGPTBrowserClient:
         conversion_expected: bool,
         source_saved_as_document: bool,
     ) -> bool:
-        if not conversion_expected or not source_saved_as_document:
-            return False
-        if not isinstance(proof, dict):
-            return True
-        return not bool(proof.get("dedicated_document_name_detected"))
+        # Project Sources Text input may persist large pasted text as a generic
+        # document identity such as "pasted.txt Document".  Dedicated filenames
+        # are useful characterization evidence, but they are not a stable
+        # release-blocking contract for the source-add operation.  Persistence
+        # verification remains the release gate.
+        return False
 
     def _is_text_source_test_candidate(self, value: Optional[str], display_name: Optional[str]) -> bool:
         normalized_value = self._normalize_source_match_text(value).lower()

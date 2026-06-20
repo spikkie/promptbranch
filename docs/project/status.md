@@ -189,3 +189,11 @@ This candidate is not accepted/current until live large-prompt smoke, release-co
 `v0.1.78.2.20.6` narrows the Project Source text-add document-conversion contract after `.20.5`: legacy `pasted.txt` / `pasted.txt Document` is treated only as stale retained-test cleanup noise, not as a current valid success identity. Large text-source conversion must now be proven by a dedicated/generated document name carrying the current run anchor.
 
 This repair preserves the large prompt-file attachment transport/diagnostics and does not advance normal `v0.1.79` scope. Assistant-side validation was focused/local only; live focused repro, full release-control, and adoption/current verification remain pending.
+
+## v0.1.78.2.20.7 repair status
+
+`v0.1.78.2.20.7` supersedes the `.20.6` dedicated-document-name release gate. Live `.20.6` evidence showed Project Source text add can save and verify persistence while still rendering the saved text source as `pasted.txt Document`. Therefore dedicated/generated document naming is treated as characterization evidence, not the release-blocking contract.
+
+The release-blocking `project_source_add_text` integration step now uses a smaller below-threshold text body and verifies the Text input persistence path. Large pasted text/document conversion diagnostics remain available on `add_project_source`, including `source_saved_as_document`, `source_content_match_verified`, `dedicated_document_name_detected`, `legacy_pasted_document_seen`, and `document_conversion_characterization_status`.
+
+This repair preserves prompt-file attachment behavior, release-control adoption behavior, artifact registry behavior, and project deletion freeze. It does not advance normal `v0.1.79` scope. The candidate is not accepted/current until live focused repro, release-control, and adoption/current verification pass.
