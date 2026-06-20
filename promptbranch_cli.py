@@ -573,6 +573,109 @@ def _enrich_ask_response_with_canonical_text(response: Any) -> Any:
         enriched["answer"] = normalized_answer
     return enriched
 
+def _flatten_prompt_file_attachment_diagnostics(response: Any, prompt_file_transport: Any) -> Any:
+    """Expose prompt-file attachment diagnostics at the top level.
+
+    Browser/service evidence remains nested for detailed debugging, but live
+    smokes and downstream automation need stable top-level fields for the
+    attachment/upload/submit/response causality contract.
+    """
+
+    if not isinstance(response, dict) or not isinstance(prompt_file_transport, dict):
+        return response
+    if prompt_file_transport.get("mode_effective") != "attachment":
+        return response
+
+    enriched = dict(response)
+    phase = enriched.get("ask_phase_timings") if isinstance(enriched.get("ask_phase_timings"), dict) else {}
+    submit = enriched.get("submit_evidence") if isinstance(enriched.get("submit_evidence"), dict) else {}
+
+    def first_present(*values: Any) -> Any:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    confirmed_by = list(submit.get("submit_confirmed_by") or phase.get("submit_confirmed_by") or enriched.get("submit_causality_confirmed_by") or [])
+    submit_confirmed = bool(
+        enriched.get("submit_causality_confirmed")
+        or submit.get("submit_causal_confirmation_verified")
+        or submit.get("submit_confirmed")
+        or phase.get("submit_causal_confirmation_verified")
+        or phase.get("submit_confirmed")
+    )
+    direct_backend_commit = bool(
+        submit.get("submit_backend_commit_after_prepare_found")
+        or submit.get("submit_backend_task_message_found")
+        or submit.get("backend_confirmed_user_turn_id")
+        or phase.get("backend_confirmed_user_turn_id")
+        or enriched.get("submit_backend_commit_confirmed_direct")
+    )
+    response_confirmed = bool(
+        enriched.get("response_causality_confirmed")
+        or enriched.get("response_freshness_verified")
+        or phase.get("response_freshness_verified")
+        or enriched.get("response_accepted_source")
+        or phase.get("response_accepted_source")
+        or phase.get("attachment_visible_answer_fallback_status") == "visible_answer_promoted"
+    )
+    attachment_ready = bool(first_present(
+        phase.get("attachment_submit_ready"),
+        enriched.get("attachment_ready_for_submit"),
+        phase.get("attachment_visible_answer_fallback_status") == "visible_answer_promoted",
+    ))
+    attachment_visible = bool(first_present(
+        phase.get("attachment_visible"),
+        enriched.get("attachment_visible"),
+        attachment_ready,
+        "attachment_visible_answer" in confirmed_by,
+    ))
+    filename_expected = first_present(
+        enriched.get("attachment_filename_expected"),
+        phase.get("attachment_filename_expected"),
+        prompt_file_transport.get("attachment_name"),
+    )
+    filename_visible = first_present(
+        enriched.get("attachment_filename_visible"),
+        phase.get("attachment_filename_visible"),
+        filename_expected if attachment_visible else None,
+    )
+
+    flattened = {
+        "attachment_mode": True,
+        "attachment_upload_started": bool(first_present(phase.get("attachment_upload_started"), prompt_file_transport.get("attachment_added"))),
+        "attachment_upload_completed": bool(first_present(phase.get("attachment_upload_completed"), attachment_ready, prompt_file_transport.get("attachment_added"))),
+        "attachment_visible": attachment_visible,
+        "attachment_filename_expected": filename_expected,
+        "attachment_filename_visible": filename_visible,
+        "attachment_filename_exact_match": bool(first_present(phase.get("attachment_filename_exact_match"), filename_expected == filename_visible if filename_expected and filename_visible else None)),
+        "attachment_ready_for_submit": attachment_ready,
+        "attachment_submit_ready_status": first_present(enriched.get("attachment_submit_ready_status"), phase.get("attachment_submit_ready_status")),
+        "submit_method": first_present(enriched.get("submit_method"), submit.get("submit_method"), phase.get("submit_method")),
+        "prefer_button_submit": first_present(enriched.get("prefer_button_submit"), submit.get("prefer_button_submit"), phase.get("prefer_button_submit")),
+        "submit_button_visible": first_present(enriched.get("submit_button_visible"), submit.get("button_visible")),
+        "submit_button_enabled": first_present(enriched.get("submit_button_enabled"), submit.get("button_enabled")),
+        "submit_backend_commit_confirmed": bool(first_present(enriched.get("submit_backend_commit_confirmed"), direct_backend_commit or submit_confirmed)),
+        "submit_backend_commit_confirmed_direct": bool(first_present(enriched.get("submit_backend_commit_confirmed_direct"), direct_backend_commit)),
+        "submit_backend_commit_confirmation_mode": first_present(
+            enriched.get("submit_backend_commit_confirmation_mode"),
+            "backend" if direct_backend_commit else "attachment_visible_answer_equivalent" if submit_confirmed and "attachment_visible_answer" in confirmed_by else None,
+            submit.get("submit_confirmation_mode"),
+            phase.get("submit_confirmation_mode"),
+        ),
+        "submit_causality_confirmed": submit_confirmed,
+        "submit_causality_confirmed_by": confirmed_by,
+        "submit_causality_reason": first_present(enriched.get("submit_causality_reason"), submit.get("submit_causal_confirmation_reason"), phase.get("submit_causal_confirmation_reason")),
+        "response_causality_confirmed": response_confirmed,
+        "response_causality_mode": first_present(enriched.get("response_causality_mode"), enriched.get("response_accepted_source"), phase.get("response_accepted_source")),
+        "response_wait_skipped": first_present(enriched.get("response_wait_skipped"), phase.get("response_wait_skipped")),
+        "response_wait_skipped_reason": first_present(enriched.get("response_wait_skipped_reason"), phase.get("response_wait_skipped_reason")),
+    }
+    for key, value in flattened.items():
+        if value is not None:
+            enriched[key] = value
+    return enriched
+
 
 def _read_prompt_file(path_value: str) -> str:
     if path_value == "-":
@@ -7221,6 +7324,7 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     response = _enrich_ask_response_with_canonical_text(response)
     if isinstance(response, dict) and isinstance(prompt_file_transport, dict) and prompt_file_transport.get("prompt_file_present"):
         response.setdefault("prompt_file_transport", prompt_file_transport)
+        response = _flatten_prompt_file_attachment_diagnostics(response, prompt_file_transport)
     ok = True
     if isinstance(response, dict) and response.get("ok") is False:
         ok = False

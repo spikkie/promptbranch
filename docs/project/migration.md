@@ -248,3 +248,11 @@ No user data, Project Source, artifact-current, or project deletion migration is
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | `Bug Report - Promptbranch Submit Issue.pdf` and CV raw stdout/stderr/session log | live failure/change request evidence | `docs/repair-v0.1.78.2.20.2.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Large CV RAG prompt-file submit used button click but lacked committed-turn proof; repair moves large prompt packages to attachment transport instead of weakening stale-answer guards. |
+
+## v0.1.78.2.20.3 migration note
+
+No user data, Project Source, artifact-current, CV generator, or project deletion migration is performed. This repair only flattens large prompt-file attachment diagnostics onto top-level ask JSON fields. Operators should rerun `scripts/smoke-pb-ask-large-prompt-file.sh` or the CV RAG prompt-file command and inspect top-level `attachment_*`, `submit_*`, and `response_*` fields before full release-control/adoption.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| `Bug Report - Prompt File Attachment Mode.pdf` and successful `.20.2` large CV prompt smoke log | live change-request/evidence | `docs/repair-v0.1.78.2.20.3.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Attachment transport worked, but the top-level JSON envelope did not expose enough attachment/upload/submit/response causality evidence for automated gates. |
