@@ -1756,7 +1756,9 @@ def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
 
     assert script.exists()
     assert os.access(script, os.X_OK)
-    assert 'pb ask "Use the prompt file." --prompt-file "$tmp_prompt" --json' in content
+    assert 'pb ask "Use the prompt file." --prompt-file "$tmp_prompt" --json > "$out_json"' in content
+    assert "pb_ask_exit_code" in content
+    assert "diagnostic JSON kept at" in content
     assert "CV_LIVE_PROMPT_FILE_OK" in content
     assert 'prefer_button_submit is not true' in content
     assert 'submit_method not in {"button_click", "button_after_focus_retry", "send_button_click"}' in content

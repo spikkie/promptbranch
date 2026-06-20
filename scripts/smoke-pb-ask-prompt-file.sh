@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
+
+trace_enabled="${PROMPTBRANCH_SMOKE_TRACE:-1}"
+if [[ "$trace_enabled" != "0" && "$trace_enabled" != "false" ]]; then
+  set -x
+fi
 
 tmp_prompt="$(mktemp)"
 out_json="${TMPDIR:-/tmp}/pb-ask-prompt-file-smoke.$$.json"
+keep_json=1
 cleanup() {
-  rm -f "$tmp_prompt" "$out_json"
+  rm -f "$tmp_prompt"
+  if [[ "$keep_json" == "0" ]]; then
+    rm -f "$out_json"
+  fi
 }
 trap cleanup EXIT
 
@@ -12,15 +21,32 @@ cat > "$tmp_prompt" <<'PROMPT'
 Return exactly the single token CV_LIVE_PROMPT_FILE_OK and nothing else.
 PROMPT
 
+set +e
 pb ask "Use the prompt file." --prompt-file "$tmp_prompt" --json > "$out_json"
+pb_rc=$?
+set -e
 
-python3 - "$out_json" <<'PY'
+set +e
+python3 - "$out_json" "$pb_rc" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-payload = json.loads(path.read_text(encoding="utf-8"))
+pb_rc = int(sys.argv[2])
+raw_text = path.read_text(encoding="utf-8") if path.exists() else ""
+try:
+    payload = json.loads(raw_text) if raw_text.strip() else {}
+except json.JSONDecodeError as exc:
+    print(json.dumps({
+        "ok": False,
+        "failures": [f"pb ask did not emit valid JSON: {exc}"],
+        "pb_ask_exit_code": pb_rc,
+        "output_json": str(path),
+        "raw_output_preview": raw_text[:2000],
+    }, indent=2, sort_keys=True), file=sys.stderr)
+    sys.exit(1)
+
 answer = str(payload.get("answer") or payload.get("answer_text") or "").strip()
 submit_evidence = payload.get("submit_evidence") if isinstance(payload.get("submit_evidence"), dict) else {}
 prefer_button_submit = payload.get("prefer_button_submit")
@@ -39,6 +65,8 @@ if backend_commit is None:
     )
 
 failures = []
+if pb_rc != 0:
+    failures.append(f"pb ask exited non-zero: {pb_rc}")
 if payload.get("ok") is not True:
     failures.append(f"ok is not true: {payload.get('ok')!r}")
 if answer != "CV_LIVE_PROMPT_FILE_OK":
@@ -55,7 +83,27 @@ if payload.get("answer_text_length") == 0:
     failures.append("answer_text_length is zero")
 
 if failures:
-    print(json.dumps({"ok": False, "failures": failures, "payload": payload}, indent=2, sort_keys=True), file=sys.stderr)
+    print(json.dumps({
+        "ok": False,
+        "failures": failures,
+        "pb_ask_exit_code": pb_rc,
+        "output_json": str(path),
+        "payload": payload,
+    }, indent=2, sort_keys=True), file=sys.stderr)
     sys.exit(1)
-print(json.dumps({"ok": True, "answer": answer, "submit_method": submit_method, "prefer_button_submit": prefer_button_submit}, indent=2, sort_keys=True))
+print(json.dumps({
+    "ok": True,
+    "answer": answer,
+    "submit_method": submit_method,
+    "prefer_button_submit": prefer_button_submit,
+    "pb_ask_exit_code": pb_rc,
+}, indent=2, sort_keys=True))
 PY
+py_rc=$?
+set -e
+if [[ "$py_rc" -eq 0 ]]; then
+  keep_json=0
+else
+  echo "Prompt-file smoke failed; diagnostic JSON kept at: $out_json" >&2
+fi
+exit "$py_rc"
