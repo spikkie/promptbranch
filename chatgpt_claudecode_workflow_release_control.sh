@@ -77,6 +77,7 @@ import_plan=0
 tests_only=0
 adopt_current=0
 adopt_if_green=0
+adopt_after_validation=0
 run_all_tests=0
 # Release-control run-all should treat ChatGPT conversation-history 429s as
 # temporary backpressure: click/dismiss the modal in browser code, wait for the
@@ -163,6 +164,10 @@ Options:
       --adopt-if-green        With --tests-only, adopt the selected ZIP only when pb test report
                               is ok:true, status:verified, and failure_count:0. Not valid with
                               the full --run-tests release workflow.
+      --adopt-after-validation
+                              With the full --run-tests or --run-all-tests workflow, adopt the
+                              selected local ZIP only after validation has completed successfully.
+                              This does not skip ZIP import, source add, install, service, or tests.
       --skip-tests            Explicitly skip pb test full/report.
       --skip-docker-logs      Skip docker logs capture.
       --release-log-dir DIR    Directory root for release-control logs. Default: .pb_profile/release_logs.
@@ -188,6 +193,7 @@ Typical use:
   $(basename "$0") --tests-only --adopt-if-green
   $(basename "$0") --adopt-current
   $(basename "$0") --run-tests --skip-docker-logs
+  $(basename "$0") --run-tests --adopt-after-validation --skip-docker-logs
   $(basename "$0") --skip-zip-import --run-tests
   $(basename "$0") --version v0.0.241 --import-plan
 USAGE
@@ -575,6 +581,10 @@ while [[ $# -gt 0 ]]; do
       adopt_if_green=1
       shift
       ;;
+    --adopt-after-validation)
+      adopt_after_validation=1
+      shift
+      ;;
     --skip-tests) skip_tests=1; shift ;;
     --skip-docker-logs) skip_docker_logs=1; shift ;;
     --keep-workdir) keep_workdir=1; shift ;;
@@ -611,12 +621,30 @@ fi
 if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
   fail "--adopt-if-green requires --tests-only to run the full test/report block"
 fi
+if [[ ${adopt_after_validation} -eq 1 && ${skip_tests} -eq 1 ]]; then
+  fail "--adopt-after-validation requires --run-tests or --run-all-tests"
+fi
+if [[ ${adopt_after_validation} -eq 1 && ${tests_only} -eq 1 ]]; then
+  fail "--adopt-after-validation is only supported with the full release workflow; use --tests-only --adopt-if-green for tests-only adoption"
+fi
+if [[ ${adopt_after_validation} -eq 1 && ${adopt_current} -eq 1 ]]; then
+  fail "--adopt-after-validation cannot be combined with --adopt-current"
+fi
+if [[ ${adopt_after_validation} -eq 1 && ${adopt_if_green} -eq 1 ]]; then
+  fail "--adopt-after-validation cannot be combined with --adopt-if-green"
+fi
+if [[ ${adopt_after_validation} -eq 1 && ${run_failing_tests} -eq 1 ]]; then
+  fail "--adopt-after-validation cannot be combined with --run-failing-tests"
+fi
 
 if [[ ${import_plan} -eq 1 && ${skip_zip_import} -eq 1 ]]; then
   fail "--import-plan requires a candidate ZIP; do not combine it with --skip-zip-import"
 fi
 if [[ ${import_plan} -eq 1 && ${adopt_current} -eq 1 ]]; then
   fail "--import-plan cannot be combined with --adopt-current"
+fi
+if [[ ${import_plan} -eq 1 && ${adopt_after_validation} -eq 1 ]]; then
+  fail "--import-plan cannot be combined with --adopt-after-validation"
 fi
 
 if [[ -z "${version_arg}" ]]; then
@@ -989,6 +1017,7 @@ printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   retained_project_delete_frozen\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
+printf 'adopt_after_validation: %s\n' "${adopt_after_validation}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
 printf 'import_plan:    %s\n' "${import_plan}"
 printf '\n'
@@ -1496,6 +1525,47 @@ for repo_id, repo_payload in artifact_current_entries(payload):
     failures.append({"repo_id": repo_id, "values": values, "refs": refs, "consistency": consistency})
 raise SystemExit(f"no artifact current repo entry matched expected version/artifact: expected_version={expected_version}, expected_artifact={expected_artifact_name}, checked={failures!r}")
 INNERPY
+}
+
+verify_all_tests_summary_green() {
+  local path="$1"
+  python3 - "$path" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+raw = path.read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit(f"invalid all-tests summary JSON in {path}: no JSON object found")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True or payload.get("final_verdict") != "GO":
+    raise SystemExit(f"all-tests summary is not GO in {path}")
+INNERPY
+}
+
+verify_validation_reports_green() {
+  case "${test_transport}" in
+    direct|localhost)
+      report_is_green "${report_json}"
+      ;;
+    both)
+      report_is_green "${direct_report_json}"
+      report_is_green "${localhost_report_json}"
+      ;;
+  esac
+  if [[ ${run_all_tests} -eq 1 ]]; then
+    verify_all_tests_summary_green "${all_tests_summary_json}"
+  fi
+}
+
+adopt_after_validation_if_green() {
+  echo "== Adopt after validation =="
+  if [[ ${workflow_rc} -ne 0 ]]; then
+    fail "--adopt-after-validation refused adoption because validation failed with exit_code=${workflow_rc}"
+  fi
+  verify_validation_reports_green
+  adopt_current_artifact
 }
 
 adopt_current_artifact() {
@@ -2553,6 +2623,10 @@ if [[ ${skip_tests} -eq 1 && ${adopt_current} -eq 1 ]]; then
   adopt_current_artifact
 fi
 
+if [[ ${adopt_after_validation} -eq 1 ]]; then
+  adopt_after_validation_if_green
+fi
+
 capture_docker_logs_best_effort() {
   if [[ -z "${container_id}" ]]; then
     container_id="$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk '/promptbranch|chatgpt/ {print $1; exit}' || true)"
@@ -2680,6 +2754,7 @@ report_json:   $(summary_value "${tests_summary_active}" "${report_json}")
 structured_summary: $(summary_value "${tests_summary_active}" "${structured_summary_json}")
 adopt_current: ${adopt_current}
 adopt_if_green: ${adopt_if_green}
+adopt_after_validation: ${adopt_after_validation}
 test_session:  $(summary_value "${tests_summary_active}" "${test_session_log}")
 service_log:   $(summary_value "${docker_log_summary_active}" "${service_log}")
 service_start: $(summary_value "${service_summary_active}" "${service_start_log}")

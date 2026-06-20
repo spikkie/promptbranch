@@ -1766,3 +1766,83 @@ def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
     assert 'prefer_button_submit is not true' in content
     assert 'submit_method not in {"button_click", "button_after_focus_retry", "send_button_click"}' in content
     assert "prepare_token_set_not_consumed remained unresolved" in content
+
+
+def test_release_control_adopt_after_validation_runs_full_tests_then_adopts(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    version = "v9.9.91.1"
+    artifact = f"repo_{version}.zip"
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    _write_release_control_fake_commands(fake_bin, calls, version=version)
+
+    packager = tmp_path / "packager.sh"
+    packager.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'INNERPY'\n"
+        "import zipfile\n"
+        f"with zipfile.ZipFile('{artifact}', 'w') as archive:\n"
+        f"    archive.writestr('VERSION', '{version}\\n')\n"
+        "    archive.writestr('pyproject.toml', '[project]\\nname = \\\"promptbranch\\\"\\n')\n"
+        "INNERPY\n",
+        encoding="utf-8",
+    )
+    packager.chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+
+    result = subprocess.run(
+        [
+            str(script),
+            "--version", version,
+            "--skip-zip-import",
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--skip-docker-logs",
+            "--packager", str(packager),
+            "--run-tests",
+            "--adopt-after-validation",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "adopt_after_validation: 1" in result.stdout
+    assert "== Adopt after validation ==" in result.stdout
+    assert "Adopt verified" in result.stdout
+    call_text = calls.read_text(encoding="utf-8")
+    assert "pb test full" in call_text
+    assert "pb test report" in call_text
+    assert call_text.index("pb test report") < call_text.index("pb artifact verify")
+    assert f"pb artifact adopt {artifact} --from-project-source --local-path {repo / artifact} --json" in call_text
+
+
+def test_release_control_rejects_adopt_after_validation_without_tests(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v9.9.92\n", encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+
+    result = subprocess.run(
+        [str(script), "--version", "v9.9.92", "--adopt-after-validation", "--skip-tests"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "--adopt-after-validation requires --run-tests or --run-all-tests" in result.stderr

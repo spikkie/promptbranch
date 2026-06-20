@@ -235,3 +235,7 @@ No user data, Project Source, artifact-current, or project deletion migration is
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Operator smoke output from `v0.1.78.2.19` | live repair evidence | `docs/repair-v0.1.78.2.20.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Live submit reached ChatGPT and returned a fresh answer through button click; the remaining defect was smoke/output normalization. |
+
+## v0.1.78.2.20.1 migration note
+
+No user data, Project Source, artifact-current, or project deletion migration is performed. This repair only adds the missing release-control `--adopt-after-validation` option so the operator can run a single full validate-then-adopt command after the focused prompt-file smoke has passed.
