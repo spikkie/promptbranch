@@ -5104,6 +5104,12 @@ class ChatGPTBrowserClient:
             return urlunparse(parsed._replace(path=base, query='', fragment=''))
         return urlunparse(parsed._replace(path=path, query='', fragment=''))
 
+    def _normalize_project_url(self, project_url: Optional[str] = None) -> str:
+        raw_url = str(project_url or self.config.project_url or "").strip()
+        if not raw_url:
+            raise ValueError("project_url is required for project cleanup")
+        return self._project_home_url_from_url(raw_url)
+
     def _project_slug_from_url(self, url: str) -> Optional[str]:
         path = urlparse(url).path or ''
         match = re.search(r'/g/([^/]+)/', path, re.IGNORECASE)
