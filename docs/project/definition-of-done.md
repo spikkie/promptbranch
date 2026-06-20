@@ -185,3 +185,5 @@ Acceptance criteria:
 
 | DOD-074 | Fresh Project Source integration runs classify pre-create missing projects as expected, remove only same-run ephemeral test projects, and use a sufficient scheduler/source lifecycle validation timeout | done | `promptbranch_full_integration_test.py`, `promptbranch_project_delete_safety.py`, `promptbranch_container_api.py`, `promptbranch_test_suite.py`, focused cleanup/classification tests, `docs/repair-v0.1.78.2.20.8.1.md` | v0.1.78.2.20.8 |
 | DOD-075 | Same-run ephemeral project cleanup normalizes project URL shapes before removal without changing Project Source add behavior | done | `promptbranch_browser_auth/client.py`, `tests/test_project_delete_safety.py`, focused cleanup/normalization tests, `docs/repair-v0.1.78.2.20.8.2.md` | v0.1.78.2.20.8.2 |
+
+| DOD-076 | Same-run ephemeral cleanup compares canonical Project ids and text-source save commits receive bounded post-commit source-surface recovery | done | `promptbranch_project_delete_safety.py`, `promptbranch_browser_auth/client.py`, focused cleanup/source tests, `docs/repair-v0.1.78.2.20.8.3.md` | v0.1.78.2.20.8.3 |

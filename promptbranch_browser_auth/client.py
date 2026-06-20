@@ -5225,9 +5225,15 @@ class ChatGPTBrowserClient:
                 )
             else:
                 persistence_false_negative_possible = bool(transaction.get("ambiguous"))
+                recovery_attempted = self._project_source_post_commit_recovery_allowed(
+                    source_kind=normalized_kind,
+                    transaction=transaction,
+                )
                 status = (
                     "overwrite_persistence_not_verified"
                     if overwritten_existing and removed_existing_via_ui
+                    else "post_commit_source_surface_not_refreshed"
+                    if recovery_attempted
                     else "persistence_not_verified"
                 )
                 result = {
@@ -5253,10 +5259,7 @@ class ChatGPTBrowserClient:
                     "removed_existing": removed_existing_via_ui,
                     "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
                     "post_commit_recovery": {
-                        "attempted": self._project_source_post_commit_recovery_allowed(
-                            source_kind=normalized_kind,
-                            transaction=transaction,
-                        ),
+                        "attempted": recovery_attempted,
                         "status": "not_recovered",
                     },
                     "operator_review_required": True,
@@ -16225,7 +16228,7 @@ class ChatGPTBrowserClient:
         source_kind: str,
         transaction: Optional[dict[str, Any]],
     ) -> bool:
-        if source_kind != "file" or not isinstance(transaction, dict):
+        if source_kind not in {"file", "text"} or not isinstance(transaction, dict):
             return False
         status = str(transaction.get("transaction_status") or "")
         if status != "commit_seen_with_stale_inflight_not_verified_present":
@@ -16250,11 +16253,11 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 30_000,
         backoff_ms: tuple[int, ...] = (3_000, 6_000, 10_000),
     ) -> Optional[dict[str, str]]:
-        """Recover a file source after a commit was observed but refreshed proof lagged.
+        """Recover a Project Source after a commit was observed but proof lagged.
 
-        File-source uploads can produce a durable commit before the Project
-        Sources surface indexes the replacement card.  The normal verifier must
-        stay fail-closed, but when the mutation transaction already observed a
+        File uploads and text-source saves can produce a durable commit before
+        the Project Sources surface indexes the new card.  The normal verifier
+        stays fail-closed, but when the mutation transaction already observed a
         successful commit and no failed save request, run a bounded post-commit
         refresh loop before returning a release-blocking false negative.
         """
@@ -16599,20 +16602,18 @@ class ChatGPTBrowserClient:
         effective_pre_refresh_timeout_ms = int(pre_refresh_timeout_ms)
         policy_reason = "default"
 
-        if source_kind == "file" and saw_commit:
-            # File uploads often produce a commit request before the source card is
-            # indexed on the refreshed Sources surface.  v0.1.78 failed in this
-            # exact state: saw_commit=true, failed=0, stale inflight, and no
-            # refreshed file card.  Widen only the post-commit file-source
-            # readback window; keep the final result fail-closed unless refreshed
-            # persistence is actually proven.
+        if source_kind in {"file", "text"} and saw_commit:
+            # File uploads and text-source saves can produce a commit request
+            # before the source card is indexed on the refreshed Sources
+            # surface.  Widen only the post-commit readback window; keep the
+            # final result fail-closed unless refreshed persistence is proven.
             effective_timeout_ms = max(effective_timeout_ms, 25_000)
             effective_max_refresh_attempts = max(effective_max_refresh_attempts, 6 if stale_inflight else 5)
             effective_retry_backoff_ms = tuple(max(0, int(v)) for v in (2_000, 4_000, 8_000, 12_000, 16_000))
             effective_pre_refresh_timeout_ms = max(effective_pre_refresh_timeout_ms, 12_000)
-            policy_reason = "file_commit_seen_extended_readback"
+            policy_reason = f"{source_kind}_commit_seen_extended_readback"
             if stale_inflight:
-                policy_reason = "file_commit_seen_stale_inflight_extended_readback"
+                policy_reason = f"{source_kind}_commit_seen_stale_inflight_extended_readback"
 
         return {
             "source_kind": source_kind,

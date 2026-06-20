@@ -757,3 +757,23 @@ Out of scope:
 - Project Source overwrite/remove containment changes beyond preserving v0.1.78.2.14.
 - Artifact adoption/current mutation.
 - v0.1.79/k8s-game work.
+
+## Slice definition — v0.1.78.2.20.8.3 repair release
+
+Release: v0.1.78.2.20.8.3
+
+Goal: repair the remaining focused fresh-project source-add/cleanup validation issues without changing source-add semantics.
+
+In scope:
+
+- Normalize slugged same-run ephemeral Project ids for cleanup validation.
+- Preserve strict `itest-promptbranch-*` same-run cleanup guards.
+- Extend bounded post-commit source-surface recovery to text-source commits with stale inflight state.
+- Preserve prompt-file attachment behavior and broad Project deletion freeze.
+
+Out of scope:
+
+- Normal `v0.1.79` work.
+- Broad Project deletion or user-project deletion.
+- Artifact adoption/current mutation.
+- Project Source success semantics changes.

@@ -2278,7 +2278,7 @@ def test_add_project_source_operation_recovers_stale_inflight_post_commit_verifi
     assert result["post_commit_recovery"]["status"] == "recovered"
 
 
-def test_post_commit_recovery_is_limited_to_stale_inflight_file_commit(
+def test_post_commit_recovery_is_limited_to_stale_inflight_project_source_commit(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     assert browser_client._project_source_post_commit_recovery_allowed(
@@ -2298,7 +2298,7 @@ def test_post_commit_recovery_is_limited_to_stale_inflight_file_commit(
             "save_saw_commit": True,
             "save_finished": 1,
         },
-    ) is False
+    ) is True
     assert browser_client._project_source_post_commit_recovery_allowed(
         source_kind="file",
         transaction={
@@ -2308,6 +2308,209 @@ def test_post_commit_recovery_is_limited_to_stale_inflight_file_commit(
             "save_finished": 1,
         },
     ) is False
+
+
+def test_add_text_project_source_operation_recovers_stale_inflight_post_commit_verification_timeout(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+    calls: dict[str, object] = {"added": False, "recovered": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_text_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "pasted.txt Document", "title": "pasted.txt Document", "text": "pasted.txt Document"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "inflight": 1,
+            "stale_inflight_after_commit": True,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("commit was observed but refreshed text card was not found")
+
+    async def fake_recover(*_args, **_kwargs):
+        calls["recovered"] = True
+        return {
+            "identity": "pasted.txt Document",
+            "title": "pasted.txt Document",
+            "text": "pasted.txt Document",
+            "_promptbranch_verification_mode": "post_commit_refresh_recovered",
+            "_promptbranch_ui_card_seen_before_refresh": True,
+            "_promptbranch_post_refresh_attempt": 2,
+            "_promptbranch_post_commit_recovery": {
+                "status": "recovered",
+                "attempt": 2,
+                "attempts": 3,
+            },
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_text_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "text",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value="Integration note for run 20260620-192032-1098158",
+            file_path=None,
+            display_name="itest-text-20260620-192032-1098158",
+            keep_open=False,
+        )
+    )
+
+    assert calls["added"] is True
+    assert calls["recovered"] is True
+    assert result["ok"] is True
+    assert result["source_kind"] == "text"
+    assert result["persistence_recovered_after_commit"] is True
+    assert result["verification_mode"] == "post_commit_refresh_recovered"
+    assert result["post_commit_recovery"]["status"] == "recovered"
+
+
+def test_text_commit_seen_stale_inflight_extends_persistence_readback(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    policy = browser_client._project_source_persistence_wait_policy(
+        save_watch={
+            "source_kind": "text",
+            "saw_commit": True,
+            "failed": 0,
+            "inflight": {object()},
+        },
+        timeout_ms=15_000,
+        max_refresh_attempts=3,
+        retry_backoff_ms=(2_000, 4_000),
+        pre_refresh_timeout_ms=10_000,
+    )
+
+    assert policy["reason"] == "text_commit_seen_stale_inflight_extended_readback"
+    assert policy["timeout_ms"] >= 25_000
+    assert policy["max_refresh_attempts"] >= 6
+
+
+def test_text_post_commit_recovery_failure_reports_specific_status(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_text_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("not found")
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 1, "failed": 0, "inflight": 1}
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("commit was observed but refreshed text card was not found")
+
+    async def fake_recover(*_args, **_kwargs):
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_text_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "text",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value="Integration note for run 20260620-192032-1098158",
+            file_path=None,
+            display_name="itest-text-20260620-192032-1098158",
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "post_commit_source_surface_not_refreshed"
+    assert result["post_commit_recovery"] == {"attempted": True, "status": "not_recovered"}
+    assert result["persistence_false_negative_possible"] is True
 
 
 def test_text_source_document_conversion_candidates_use_first_line_and_display_name(

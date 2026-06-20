@@ -305,3 +305,7 @@ No runtime migration is required. This repair preserves the `.20.8` implementati
 ## v0.1.78.2.20.8.2 migration note
 
 No user data, Project Source, artifact-current, or prompt-file transport migration is performed. This repair fixes only same-run ephemeral test-project cleanup URL normalization after `.20.8.1` failed `/v1/projects/remove` with a missing `_normalize_project_url` helper. Project deletion remains frozen for all normal/user projects.
+
+## v0.1.78.2.20.8.3 migration note
+
+No user data, Project Source content, artifact-current, prompt-file transport, or broad project deletion migration is performed. This repair only changes validation/recovery logic: slugged same-run ephemeral Project URLs are compared by canonical Project id for cleanup safety, and committed text-source saves receive bounded post-commit Project Sources refresh recovery before failing closed.

@@ -214,3 +214,9 @@ This candidate is not accepted/current until live focused cleanup/source proof, 
 ## v0.1.78.2.20.8.2 status
 
 Repair candidate `v0.1.78.2.20.8.2` fixes the same-run ephemeral project cleanup implementation defect observed in `.20.8.1`: `/v1/projects/remove` called the browser remove path but failed because `_normalize_project_url` was missing. The repair adds cleanup-target URL normalization while preserving the strict ephemeral deletion guard and leaving Project Source text-add behavior unchanged. Candidate validation is focused/local only until the live fresh-project cleanup proof is rerun.
+
+## v0.1.78.2.20.8.3 repair status
+
+`v0.1.78.2.20.8.2` fixed the missing `_normalize_project_url` cleanup crash but the live focused fresh-project rerun exposed two narrower repair defects: slugged Project URLs produced a false `project_id_mismatch` against the same run's bare created Project id, and text-source add did not use bounded post-commit source-surface recovery after `commit_seen_with_stale_inflight_not_verified_present`.
+
+`v0.1.78.2.20.8.3` normalizes same-run slugged ephemeral Project ids back to the stable created Project id before cleanup validation and extends the existing bounded post-commit Project Source recovery/readback policy from file sources to text sources. Source-add success semantics are unchanged: persistence proof remains required, `pasted.txt Document` remains a valid Project Sources identity only when persistence is verified, and prompt-file attachment behavior is unchanged. Broad Project deletion remains frozen.
