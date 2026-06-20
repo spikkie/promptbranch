@@ -141,3 +141,93 @@ def test_full_integration_cleanup_accepts_delete_frozen_payload() -> None:
     assert result["postcondition"] == "temporary_project_retained_delete_frozen"
     assert cleanup_steps[-1].ok is True
     assert cleanup_steps[-1].name == "project_remove_cleanup"
+
+
+def test_ephemeral_cleanup_validation_requires_same_run_project_identity() -> None:
+    from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
+
+    valid = validate_ephemeral_test_project_cleanup_request(
+        allow_ephemeral_test_cleanup=True,
+        project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+        project_name="itest-promptbranch-abc",
+        created_project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+        created_project_name="itest-promptbranch-abc",
+    )
+    assert valid["ok"] is True
+    assert valid["delete_policy"] == "same_run_ephemeral_project_cleanup_only"
+
+    invalid = validate_ephemeral_test_project_cleanup_request(
+        allow_ephemeral_test_cleanup=True,
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        project_name="promptbranch",
+        created_project_url="https://chatgpt.com/g/g-p-demo/project",
+        created_project_name="promptbranch",
+    )
+    assert invalid["ok"] is False
+    assert "project_name_not_ephemeral_test_project" in invalid["reasons"]
+
+
+def test_projects_remove_endpoint_allows_strict_same_run_ephemeral_cleanup(monkeypatch) -> None:
+    class FakeService:
+        async def remove_project(self, **kwargs):
+            return {"ok": True, "status": "removed", "kwargs": kwargs}
+
+    def fake_service_for(project_url):
+        assert project_url == "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project"
+        return FakeService()
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", fake_service_for)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/projects/remove",
+        json={
+            "project_url": "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+            "project_name": "itest-promptbranch-abc",
+            "created_project_url": "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+            "created_project_name": "itest-promptbranch-abc",
+            "allow_ephemeral_test_cleanup": True,
+            "keep_open": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["status"] == "removed"
+    assert payload["kwargs"]["allow_ephemeral_test_cleanup"] is True
+    assert payload["kwargs"]["created_project_name"] == "itest-promptbranch-abc"
+
+
+def test_browser_client_remove_project_allows_ephemeral_cleanup_without_broad_delete(tmp_path, monkeypatch) -> None:
+    config = ChatGPTBrowserConfig(
+        project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+        profile_dir=str(tmp_path / "profile"),
+        headless=True,
+        debug=False,
+        save_trace=False,
+        save_html=False,
+        save_screenshot=False,
+    )
+    client = ChatGPTBrowserClient(config)
+    calls = []
+
+    async def fake_run_with_context(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True, "status": "removed"}
+
+    monkeypatch.setattr(client, "_run_with_context", fake_run_with_context)
+
+    payload = asyncio.run(
+        client.remove_project(
+            project_name="itest-promptbranch-abc",
+            project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+            allow_ephemeral_test_cleanup=True,
+            created_project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+            created_project_name="itest-promptbranch-abc",
+        )
+    )
+
+    assert payload["ok"] is True
+    assert calls
+    assert calls[0]["operation_name"] == "project_remove_ephemeral_cleanup"

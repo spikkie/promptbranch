@@ -197,3 +197,15 @@ This repair preserves the large prompt-file attachment transport/diagnostics and
 The release-blocking `project_source_add_text` integration step now uses a smaller below-threshold text body and verifies the Text input persistence path. Large pasted text/document conversion diagnostics remain available on `add_project_source`, including `source_saved_as_document`, `source_content_match_verified`, `dedicated_document_name_detected`, `legacy_pasted_document_seen`, and `document_conversion_characterization_status`.
 
 This repair preserves prompt-file attachment behavior, release-control adoption behavior, artifact registry behavior, and project deletion freeze. It does not advance normal `v0.1.79` scope. The candidate is not accepted/current until live focused repro, release-control, and adoption/current verification pass.
+
+## v0.1.78.2.20.8 repair status
+
+`v0.1.78.2.20.8` follows the fresh-project `.20.7` evidence. That run proved `project_source_add_text` can create a fresh project, save the source as `pasted.txt Document`, observe two save requests finishing, and verify the source after refresh. The remaining failures were harness/reporting and lifecycle defects, not a Project Source text-add persistence defect.
+
+This repair makes `project_resolve_before_create` with `expected_missing=true` an informational/pass condition, enables strict same-run cleanup for newly created `itest-promptbranch-*` projects, keeps broad project deletion frozen, and increases the `browser_scheduler_source_lifecycle` release-validation group timeout from 120 seconds to 300 seconds. Prompt-file attachment behavior, Project Source text-add persistence semantics, artifact registry behavior, and normal `v0.1.79` scope are unchanged.
+
+This candidate is not accepted/current until live focused cleanup/source proof, full release-control, and adoption/current verification pass.
+
+## v0.1.78.2.20.8.1 repair status
+
+`v0.1.78.2.20.8.1` repairs the `v0.1.78.2.20.8` transport ZIP packaging surface. The `v0.1.78.2.20.8` implementation scope remains unchanged, but the ZIP now includes the required repo-root `.gitignore` control file so release import planning can pass its required-root-files gate. No normal slice advanced.

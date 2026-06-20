@@ -363,6 +363,10 @@ class ChatGPTServiceClient:
         project_url: Optional[str] = None,
         project_name: Optional[str] = None,
         profile_lock_wait_seconds: Optional[float] = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: Optional[str] = None,
+        created_project_name: Optional[str] = None,
+        created_project_id: Optional[str] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"keep_open": keep_open}
         if project_url:
@@ -371,6 +375,14 @@ class ChatGPTServiceClient:
             payload["project_name"] = project_name
         if profile_lock_wait_seconds is not None:
             payload["profile_lock_wait_seconds"] = float(profile_lock_wait_seconds)
+        if allow_ephemeral_test_cleanup:
+            payload["allow_ephemeral_test_cleanup"] = True
+        if created_project_url:
+            payload["created_project_url"] = created_project_url
+        if created_project_name:
+            payload["created_project_name"] = created_project_name
+        if created_project_id:
+            payload["created_project_id"] = created_project_id
         return self._json(self._client.post("/v1/projects/remove", json=payload))
 
     def add_project_source(

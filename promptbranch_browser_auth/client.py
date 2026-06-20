@@ -17,7 +17,10 @@ from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
-from promptbranch_project_delete_safety import project_delete_disabled_result
+from promptbranch_project_delete_safety import (
+    project_delete_disabled_result,
+    validate_ephemeral_test_project_cleanup_request,
+)
 from .exceptions import (
     AuthenticationError,
     AuthChallengeRequiredError,
@@ -1379,15 +1382,38 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
         project_name: Optional[str] = None,
         project_url: Optional[str] = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: Optional[str] = None,
+        created_project_name: Optional[str] = None,
+        created_project_id: Optional[str] = None,
     ) -> dict[str, Any]:
         effective_project_url = project_url or self.config.project_url
-        result = project_delete_disabled_result(
+        validation = validate_ephemeral_test_project_cleanup_request(
+            allow_ephemeral_test_cleanup=allow_ephemeral_test_cleanup,
             project_url=effective_project_url,
             project_name=project_name,
-            blocked_at_layer="browser_client",
+            created_project_url=created_project_url,
+            created_project_name=created_project_name,
+            created_project_id=created_project_id,
         )
-        self._log("project-remove", "project deletion blocked by safety freeze", **result)
-        return result
+        if not validation.get("ok"):
+            result = project_delete_disabled_result(
+                project_url=effective_project_url,
+                project_name=project_name,
+                blocked_at_layer="browser_client",
+                validation=validation,
+            )
+            self._log("project-remove", "project deletion blocked by safety freeze", **result)
+            return result
+
+        self._log("project-remove", "same-run ephemeral test cleanup allowed", **validation)
+        return await self._run_with_context(
+            operation_name="project_remove_ephemeral_cleanup",
+            operation=self._remove_project_operation,
+            keep_open=keep_open,
+            project_name=project_name,
+            project_url=effective_project_url,
+        )
 
     async def add_project_source(
         self,

@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from promptbranch_project_delete_safety import project_delete_disabled_result
+from promptbranch_project_delete_safety import (
+    project_delete_disabled_result,
+    validate_ephemeral_test_project_cleanup_request,
+)
 from promptbranch_browser_auth.exceptions import (
     AuthenticationError,
     AuthChallengeRequiredError,
@@ -1077,13 +1080,41 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
         project_name: Optional[str] = None,
         profile_lock_wait_seconds: float | None = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: Optional[str] = None,
+        created_project_name: Optional[str] = None,
+        created_project_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        logger.warning("Project deletion requested but blocked by delete safety freeze")
-        return project_delete_disabled_result(
+        validation = validate_ephemeral_test_project_cleanup_request(
+            allow_ephemeral_test_cleanup=allow_ephemeral_test_cleanup,
             project_url=self.settings.project_url,
             project_name=project_name,
-            blocked_at_layer="automation_service",
+            created_project_url=created_project_url,
+            created_project_name=created_project_name,
+            created_project_id=created_project_id,
         )
+        if not validation.get("ok"):
+            logger.warning("Project deletion requested but blocked by delete safety freeze")
+            return project_delete_disabled_result(
+                project_url=self.settings.project_url,
+                project_name=project_name,
+                blocked_at_layer="automation_service",
+                validation=validation,
+            )
+        logger.info("Removing same-run ephemeral Promptbranch test project")
+        async with self._lock.operation("remove_project", wait_timeout_seconds=profile_lock_wait_seconds):
+            return await self._with_retries(
+                "remove_project",
+                lambda: self._build_bot().remove_project(
+                    keep_open=keep_open,
+                    project_name=project_name,
+                    project_url=self.settings.project_url,
+                    allow_ephemeral_test_cleanup=True,
+                    created_project_url=created_project_url,
+                    created_project_name=created_project_name,
+                    created_project_id=created_project_id,
+                ),
+            )
 
     async def add_project_source(
         self,

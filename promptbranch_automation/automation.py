@@ -489,7 +489,21 @@ class ChatGPTAutomation:
         keep_open: bool = False,
         project_name: Optional[str] = None,
         project_url: Optional[str] = None,
+        allow_ephemeral_test_cleanup: bool = False,
+        created_project_url: Optional[str] = None,
+        created_project_name: Optional[str] = None,
+        created_project_id: Optional[str] = None,
     ) -> dict[str, Any]:
+        if allow_ephemeral_test_cleanup:
+            return await self.client.remove_project(
+                keep_open=keep_open,
+                project_name=project_name,
+                project_url=project_url or self.project_url,
+                allow_ephemeral_test_cleanup=True,
+                created_project_url=created_project_url,
+                created_project_name=created_project_name,
+                created_project_id=created_project_id,
+            )
         return project_delete_disabled_result(
             project_url=project_url or self.project_url,
             project_name=project_name,
