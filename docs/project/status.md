@@ -161,3 +161,7 @@ v0.1.78.2.3 repair candidate build
 `v0.1.78.2.20.1` repairs the release-control command surface after the `v0.1.78.2.20` prompt-file live smoke passed. The only behavior change is support for `--adopt-after-validation` in the full release workflow: after `--run-tests` or `--run-all-tests` succeeds and validation reports are green, release-control reuses the existing verified artifact adoption path. The prompt-file submit implementation and smoke contract from `v0.1.78.2.20` are unchanged.
 
 This candidate is not accepted/current until runtime release-control and `pb artifact current --json` evidence confirm state artifact/source and registry current alignment.
+
+## v0.1.78.2.20.2 repair status
+
+`v0.1.78.2.20.2` preserves the `v0.1.78.2.20` button-first prompt-file submit repair and `v0.1.78.2.20.1` release-control flag repair, then changes the large prompt-file strategy: `pb ask --prompt-file` now defaults to auto-attaching large prompt files instead of inserting the entire package into the composer. The attachment threshold defaults to 12,000 UTF-8 bytes and can be overridden with `--prompt-file-attach-threshold-bytes` or `PROMPTBRANCH_PROMPT_FILE_ATTACH_THRESHOLD_BYTES`. Small prompt files remain inline. This targets the CV RAG prompt-package failure where button click worked but committed-turn proof failed on a pasted/document-style large prompt. The candidate is not accepted/current until live large-prompt smoke, release-control, and `pb artifact current --json` evidence confirm it.
