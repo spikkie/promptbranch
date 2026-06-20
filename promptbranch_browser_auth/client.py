@@ -1396,24 +1396,14 @@ class ChatGPTBrowserClient:
             created_project_name=created_project_name,
             created_project_id=created_project_id,
         )
-        if not validation.get("ok"):
-            result = project_delete_disabled_result(
-                project_url=effective_project_url,
-                project_name=project_name,
-                blocked_at_layer="browser_client",
-                validation=validation,
-            )
-            self._log("project-remove", "project deletion blocked by safety freeze", **result)
-            return result
-
-        self._log("project-remove", "same-run ephemeral test cleanup allowed", **validation)
-        return await self._run_with_context(
-            operation_name="project_remove_ephemeral_cleanup",
-            operation=self._remove_project_operation,
-            keep_open=keep_open,
-            project_name=project_name,
+        result = project_delete_disabled_result(
             project_url=effective_project_url,
+            project_name=project_name,
+            blocked_at_layer="browser_client",
+            validation=validation,
         )
+        self._log("project-remove", "project deletion blocked by immutable safety freeze", **result)
+        return result
 
     async def add_project_source(
         self,
@@ -4449,161 +4439,25 @@ class ChatGPTBrowserClient:
         project_name: Optional[str] = None,
         project_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        await self.ensure_logged_in(page, context)
-        project_home_url = self._normalize_project_url(project_url) if project_url else self._project_home_url()
-        project_id = self._extract_project_id_from_url(project_home_url)
-        await self._goto(page, project_home_url, label="project-remove-home")
-        await self._ensure_sidebar_open(page)
+        """Fail closed if an internal caller accidentally reaches remove operation.
 
-        current_url = await self._safe_page_url(page)
-        delete_action = None
+        The public ``remove_project`` method should return before opening a
+        browser context.  This private guard exists as defense in depth so no
+        Project deletion click path remains reachable through tests, monkeypatches,
+        or older wrapper code.
+        """
 
-        if self._project_urls_refer_to_same_project(current_url, project_home_url) and self._is_project_home_url(current_url):
-            await self._wait_for_rate_limit_modal_to_clear(
-                page,
-                label="project-remove-page-details-preflight",
-                timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 20_000),
-            )
-            page_details_button = await self._find_visible_locator(
-                page,
-                PROJECT_PAGE_DETAILS_MENU_SELECTORS,
-                label="project-page-details-menu",
-                timeout_ms=8_000,
-            )
-            if page_details_button is not None:
-                try:
-                    await page_details_button.scroll_into_view_if_needed(timeout=2_000)
-                except Exception:
-                    pass
-                try:
-                    await page_details_button.click(timeout=5_000)
-                except Exception:
-                    await page_details_button.click(timeout=5_000, force=True)
-                delete_action = await self._wait_for_visible_locator(
-                    page,
-                    PROJECT_REMOVE_ACTION_SELECTORS,
-                    label="project-remove-action",
-                    total_timeout_ms=3_000,
-                    poll_interval_ms=250,
-                )
-
-        if delete_action is None:
-            container = None
-            sidebar_attempts: list[tuple[str, Callable[[], Any]]] = [
-                ("initial", lambda: None),
-                ("expand", lambda: self._expand_projects_section(page)),
-                ("prime_expand", lambda: self._prime_project_sidebar(page)),
-                ("more_projects", lambda: self._open_more_projects_menu(page)),
-                ("more_projects_prime", lambda: self._prime_project_sidebar(page)),
-            ]
-            for attempt, (label, prepare) in enumerate(sidebar_attempts):
-                if label == "prime_expand":
-                    await self._prime_project_sidebar(page)
-                    await self._expand_projects_section(page)
-                elif label == "more_projects_prime":
-                    await self._prime_project_sidebar(page)
-                    await self._open_more_projects_menu(page)
-                else:
-                    prepared = prepare()
-                    if inspect.isawaitable(prepared):
-                        await prepared
-
-                container = await self._find_project_sidebar_container(page, project_url=project_home_url, project_name=project_name)
-                if container is not None:
-                    break
-                self._log(
-                    "project-remove",
-                    "configured project not visible in sidebar attempt",
-                    attempt=attempt + 1,
-                    strategy=label,
-                    project_id=project_id,
-                    project_url=project_home_url,
-                    project_name=project_name,
-                )
-                await page.wait_for_timeout(350)
-
-            if container is None:
-                await self._wait_for_rate_limit_modal_to_clear(
-                    page,
-                    label="project-remove-sidebar-final-rate-limit-check",
-                    timeout_ms=min(self.config.rate_limit_modal_wait_timeout_ms, 20_000),
-                )
-                container = await self._find_project_sidebar_container(page, project_url=project_home_url, project_name=project_name)
-
-            if container is None:
-                raise ResponseTimeoutError("Could not find the configured project in the sidebar")
-
-            try:
-                await container.hover(timeout=2_000)
-            except Exception:
-                pass
-
-            options_button = await self._find_project_options_button(container)
-            if options_button is None:
-                raise ResponseTimeoutError("Could not find the options button for the configured project")
-            try:
-                await options_button.scroll_into_view_if_needed(timeout=2_000)
-            except Exception:
-                pass
-            try:
-                await self._click_locator_with_fallback(
-            options_button,
-            label="project-source-remove-options",
-            timeout_ms=5_000,
+        effective_project_url = project_url or self.config.project_url
+        result = project_delete_disabled_result(
+            project_url=effective_project_url,
+            project_name=project_name,
+            blocked_at_layer="browser_client_operation",
+            validation=validate_ephemeral_test_project_cleanup_request(
+                project_url=effective_project_url,
+                project_name=project_name,
+            ),
         )
-            except Exception:
-                await options_button.click(timeout=5_000, force=True)
-
-            delete_action = await self._wait_for_visible_locator(
-                page,
-                PROJECT_REMOVE_ACTION_SELECTORS,
-                label="project-remove-action",
-                total_timeout_ms=3_000,
-                poll_interval_ms=250,
-            )
-            if delete_action is None:
-                settings_action = await self._wait_for_visible_locator(
-                    page,
-                    PROJECT_REMOVE_SETTINGS_SELECTORS,
-                    label="project-remove-settings-action",
-                    total_timeout_ms=3_000,
-                    poll_interval_ms=250,
-                )
-                if settings_action is not None:
-                    await settings_action.click(timeout=5_000)
-                    delete_action = await self._wait_for_visible_locator(
-                        page,
-                        PROJECT_REMOVE_ACTION_SELECTORS,
-                        label="project-remove-action-after-settings",
-                        total_timeout_ms=8_000,
-                        poll_interval_ms=250,
-                    )
-
-        if delete_action is None:
-            raise ResponseTimeoutError("Could not find the delete action for the configured project")
-        await delete_action.click(timeout=5_000)
-
-        confirm_button = await self._wait_for_visible_locator(
-            page,
-            PROJECT_CONFIRM_REMOVE_SELECTORS,
-            label="project-remove-confirm",
-            total_timeout_ms=8_000,
-        )
-        if confirm_button is None:
-            raise ResponseTimeoutError("Could not find the delete confirmation button for the configured project")
-        await confirm_button.click(timeout=5_000)
-
-        await self._wait_for_project_absence(page, deleted_project_url=project_home_url)
-        result = {
-            "ok": True,
-            "action": "remove_project",
-            "deleted_project_url": project_home_url,
-            "deleted_project_id": project_id,
-            "current_url": await self._safe_page_url(page),
-        }
-        self._log("project-remove", "project removed", **result)
-        if keep_open and self.config.is_headed:
-            await self._pause_for_keep_open("Project removed. Press Enter to close the browser... ")
+        self._log("project-remove", "private project remove operation blocked by immutable safety freeze", **result)
         return result
 
     async def _discover_project_source_capabilities_operation(

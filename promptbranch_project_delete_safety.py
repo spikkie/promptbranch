@@ -11,7 +11,6 @@ PROJECT_DELETE_DISABLED_ERROR = (
     "Project deletion is too dangerous for the current automation path and must remain "
     "unavailable until a separately designed secure delete protocol is implemented."
 )
-EPHEMERAL_TEST_CLEANUP_POLICY = "same_run_ephemeral_project_cleanup_only"
 
 
 def extract_project_id(project_url: str | None) -> str | None:
@@ -67,33 +66,31 @@ def validate_ephemeral_test_project_cleanup_request(
     created_project_name: str | None = None,
     created_project_id: str | None = None,
 ) -> dict[str, Any]:
-    """Validate the only project-deletion exception allowed by Promptbranch.
+    """Return a fail-closed cleanup validation payload.
 
-    Deletion remains frozen for normal/user projects. The only exception is a
-    same-run integration-test project whose name and identity are explicitly
-    carried from create/ensure into cleanup. The helper returns a structured
-    payload so every layer can block without opening a browser when validation
-    fails.
+    Earlier repair candidates introduced a same-run ephemeral cleanup exception.
+    That exception is unsafe because a targeting or routing bug can turn a test
+    cleanup into deletion of the operator's real ChatGPT Project.  Promptbranch
+    therefore treats *every* Project deletion request as disabled, including
+    requests that carry ``allow_ephemeral_test_cleanup=True`` and same-run
+    identity fields.  The identity fields are still echoed for diagnostics only;
+    they never authorize deletion.
     """
 
     raw_project_id = extract_project_id(project_url)
     raw_expected_id = str(created_project_id or "").strip() or extract_project_id(created_project_url)
     project_id = canonical_project_id(raw_project_id, project_name=project_name)
     expected_id = canonical_project_id(raw_expected_id, project_name=created_project_name or project_name)
-    reasons: list[str] = []
+    reasons: list[str] = ["project_deletion_never_allowed"]
 
-    if not allow_ephemeral_test_cleanup:
-        reasons.append("allow_ephemeral_test_cleanup_false")
+    if allow_ephemeral_test_cleanup:
+        reasons.append("allow_ephemeral_test_cleanup_ignored")
     if not project_url or not project_id:
         reasons.append("project_url_or_id_missing")
-    if not is_ephemeral_test_project_name(project_name):
+    if project_name and not is_ephemeral_test_project_name(project_name):
         reasons.append("project_name_not_ephemeral_test_project")
     if created_project_name and project_name and str(created_project_name) != str(project_name):
         reasons.append("created_project_name_mismatch")
-    if not created_project_name:
-        reasons.append("created_project_name_missing")
-    if not expected_id:
-        reasons.append("created_project_id_missing")
     if raw_project_id and raw_expected_id and not project_ids_refer_to_same_project(
         raw_project_id,
         raw_expected_id,
@@ -101,12 +98,11 @@ def validate_ephemeral_test_project_cleanup_request(
     ):
         reasons.append("project_id_mismatch")
 
-    ok = not reasons
     return {
-        "ok": ok,
+        "ok": False,
         "action": "validate_ephemeral_test_project_cleanup",
-        "status": "validated" if ok else "blocked",
-        "delete_policy": EPHEMERAL_TEST_CLEANUP_POLICY if ok else PROJECT_DELETE_POLICY,
+        "status": "blocked",
+        "delete_policy": PROJECT_DELETE_POLICY,
         "allow_ephemeral_test_cleanup": bool(allow_ephemeral_test_cleanup),
         "project_url": project_url,
         "project_name": project_name,
@@ -116,6 +112,7 @@ def validate_ephemeral_test_project_cleanup_request(
         "created_project_name": created_project_name,
         "created_project_id": expected_id,
         "raw_created_project_id": raw_expected_id,
+        "destructive_action_executed": False,
         "reasons": reasons,
     }
 

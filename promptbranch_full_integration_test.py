@@ -1027,6 +1027,31 @@ async def _remove_project_cleanup_with_retry(
 
     active_project_url = str(getattr(project_service, "project_url", "") or "").strip() or None
 
+    details = {
+        "ok": True,
+        "status": "project_remove_cleanup_skipped_delete_frozen",
+        "postcondition": "temporary_project_retained_delete_frozen",
+        "cleanup_policy": "no_project_delete_until_secure_protocol",
+        "project_url": active_project_url,
+        "project_name": project_name,
+        "allow_ephemeral_test_cleanup_requested": bool(allow_ephemeral_test_cleanup),
+        "created_project_url": created_project_url,
+        "created_project_name": created_project_name,
+        "created_project_id": created_project_id,
+        "destructive_action_executed": False,
+        "attempt": 0,
+        "max_attempts": max(1, int(max_attempts or 1)),
+    }
+    cleanup_steps.append(
+        StepResult(
+            name="project_remove_cleanup",
+            ok=True,
+            duration_seconds=0.0,
+            details=details,
+        )
+    )
+    return details
+
     async def _remove_project_call() -> dict[str, Any]:
         remover = getattr(project_service, "remove_project")
         kwargs: dict[str, Any] = {"keep_open": keep_open}
@@ -2377,7 +2402,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             else:
                 try:
                     project_service = build_service(args, project_url=project_url)
-                    await _remove_project_cleanup_with_retry(
+                    cleanup_result = await _remove_project_cleanup_with_retry(
                         cleanup_steps,
                         project_service,
                         keep_open=args.keep_open,
@@ -2389,7 +2414,9 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                         created_project_name=created_project_name,
                         created_project_id=created_project_id,
                     )
-                    summary["kept_project"] = False
+                    summary["kept_project"] = (
+                        cleanup_result.get("postcondition") == "temporary_project_retained_delete_frozen"
+                    )
                 except Exception as exc:
                     if not cleanup_steps or bool(cleanup_steps[-1].ok):
                         cleanup_steps.append(

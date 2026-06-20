@@ -4,6 +4,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
+from promptbranch_automation.automation import ChatGPTAutomation
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
 from promptbranch_browser_auth import ChatGPTBrowserClient, ChatGPTBrowserConfig
 from promptbranch_container_api import app
@@ -110,6 +111,40 @@ def test_browser_client_remove_project_is_frozen_before_browser_context(tmp_path
     assert payload["destructive_action_executed"] is False
 
 
+def test_automation_wrapper_remove_project_blocks_ephemeral_cleanup_before_client_call(monkeypatch, tmp_path) -> None:
+    async def forbidden_client_remove(*_args, **_kwargs):  # pragma: no cover - should not be reached
+        raise AssertionError("automation wrapper must not call browser client remove_project")
+
+    monkeypatch.setattr("promptbranch_browser_auth.ChatGPTBrowserClient.remove_project", forbidden_client_remove)
+    automation = ChatGPTAutomation(
+        project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+        email=None,
+        password=None,
+        profile_dir=str(tmp_path / "profile"),
+        headless=True,
+        use_patchright=False,
+        debug=False,
+        save_trace=False,
+        save_html=False,
+        save_screenshot=False,
+    )
+
+    payload = asyncio.run(
+        automation.remove_project(
+            project_name="itest-promptbranch-abc",
+            allow_ephemeral_test_cleanup=True,
+            created_project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+            created_project_name="itest-promptbranch-abc",
+        )
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == PROJECT_DELETE_DISABLED_STATUS
+    assert payload["blocked_at_layer"] == "automation_wrapper"
+    assert payload["destructive_action_executed"] is False
+    assert "allow_ephemeral_test_cleanup_ignored" in payload["ephemeral_cleanup_validation"]["reasons"]
+
+
 def test_full_integration_cleanup_accepts_delete_frozen_payload() -> None:
     from promptbranch_full_integration_test import _remove_project_cleanup_with_retry
 
@@ -143,10 +178,10 @@ def test_full_integration_cleanup_accepts_delete_frozen_payload() -> None:
     assert cleanup_steps[-1].name == "project_remove_cleanup"
 
 
-def test_ephemeral_cleanup_validation_requires_same_run_project_identity() -> None:
+def test_ephemeral_cleanup_validation_never_authorizes_deletion_even_with_same_run_identity() -> None:
     from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
 
-    valid = validate_ephemeral_test_project_cleanup_request(
+    payload = validate_ephemeral_test_project_cleanup_request(
         allow_ephemeral_test_cleanup=True,
         project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
         project_name="itest-promptbranch-abc",
@@ -154,42 +189,21 @@ def test_ephemeral_cleanup_validation_requires_same_run_project_identity() -> No
         created_project_name="itest-promptbranch-abc",
         created_project_id="g-p-demo",
     )
-    assert valid["ok"] is True
-    assert valid["delete_policy"] == "same_run_ephemeral_project_cleanup_only"
-    assert valid["project_id"] == "g-p-demo"
-    assert valid["created_project_id"] == "g-p-demo"
 
-    invalid = validate_ephemeral_test_project_cleanup_request(
-        allow_ephemeral_test_cleanup=True,
-        project_url="https://chatgpt.com/g/g-p-demo/project",
-        project_name="promptbranch",
-        created_project_url="https://chatgpt.com/g/g-p-demo/project",
-        created_project_name="promptbranch",
-    )
-    assert invalid["ok"] is False
-    assert "project_name_not_ephemeral_test_project" in invalid["reasons"]
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert payload["delete_policy"] == "frozen_until_secure_delete_protocol"
+    assert payload["destructive_action_executed"] is False
+    assert "project_deletion_never_allowed" in payload["reasons"]
+    assert "allow_ephemeral_test_cleanup_ignored" in payload["reasons"]
+    assert payload["project_id"] == "g-p-demo"
+    assert payload["created_project_id"] == "g-p-demo"
 
 
-def test_ephemeral_cleanup_validation_rejects_wrong_slug_suffix() -> None:
+def test_ephemeral_cleanup_validation_keeps_slug_diagnostics_but_still_blocks() -> None:
     from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
 
-    invalid = validate_ephemeral_test_project_cleanup_request(
-        allow_ephemeral_test_cleanup=True,
-        project_url="https://chatgpt.com/g/g-p-demo-other-project/project",
-        project_name="itest-promptbranch-abc",
-        created_project_url="https://chatgpt.com/g/g-p-demo/project",
-        created_project_name="itest-promptbranch-abc",
-        created_project_id="g-p-demo",
-    )
-
-    assert invalid["ok"] is False
-    assert "project_id_mismatch" in invalid["reasons"]
-
-
-def test_ephemeral_cleanup_validation_treats_resolved_slug_as_same_project() -> None:
-    from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
-
-    valid = validate_ephemeral_test_project_cleanup_request(
+    payload = validate_ephemeral_test_project_cleanup_request(
         allow_ephemeral_test_cleanup=True,
         project_url="https://chatgpt.com/g/g-p-6a36cc554c2c8191ab943a11e1a9ffa8-itest-promptbranch-source-add-20260620-192032/project",
         project_name="itest-promptbranch-source-add-20260620-192032",
@@ -198,22 +212,19 @@ def test_ephemeral_cleanup_validation_treats_resolved_slug_as_same_project() -> 
         created_project_id="g-p-6a36cc554c2c8191ab943a11e1a9ffa8",
     )
 
-    assert valid["ok"] is True
-    assert valid["raw_project_id"].endswith("-itest-promptbranch-source-add-20260620-192032")
-    assert valid["project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
-    assert valid["created_project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert payload["raw_project_id"].endswith("-itest-promptbranch-source-add-20260620-192032")
+    assert payload["project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
+    assert payload["created_project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
+    assert "project_deletion_never_allowed" in payload["reasons"]
 
 
-def test_projects_remove_endpoint_allows_strict_same_run_ephemeral_cleanup(monkeypatch) -> None:
-    class FakeService:
-        async def remove_project(self, **kwargs):
-            return {"ok": True, "status": "removed", "kwargs": kwargs}
+def test_projects_remove_endpoint_blocks_same_run_ephemeral_cleanup_before_service_resolution(monkeypatch) -> None:
+    def forbidden_service_resolution(project_url):  # pragma: no cover - should not be reached
+        raise AssertionError("same-run cleanup must not resolve or call the browser service")
 
-    def fake_service_for(project_url):
-        assert project_url == "https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project"
-        return FakeService()
-
-    monkeypatch.setattr("promptbranch_container_api._service_for", fake_service_for)
+    monkeypatch.setattr("promptbranch_container_api._service_for", forbidden_service_resolution)
     client = TestClient(app)
 
     response = client.post(
@@ -230,10 +241,13 @@ def test_projects_remove_endpoint_allows_strict_same_run_ephemeral_cleanup(monke
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ok"] is True
-    assert payload["status"] == "removed"
-    assert payload["kwargs"]["allow_ephemeral_test_cleanup"] is True
-    assert payload["kwargs"]["created_project_name"] == "itest-promptbranch-abc"
+    assert payload["ok"] is False
+    assert payload["status"] == PROJECT_DELETE_DISABLED_STATUS
+    assert payload["blocked_at_layer"] == "container_api"
+    assert payload["destructive_action_executed"] is False
+    validation = payload["ephemeral_cleanup_validation"]
+    assert validation["allow_ephemeral_test_cleanup"] is True
+    assert "allow_ephemeral_test_cleanup_ignored" in validation["reasons"]
 
 
 def test_browser_client_normalizes_project_cleanup_url_shapes(tmp_path) -> None:
@@ -266,7 +280,7 @@ def test_browser_client_normalizes_project_cleanup_url_shapes(tmp_path) -> None:
     )
 
 
-def test_browser_client_remove_project_allows_ephemeral_cleanup_without_broad_delete(tmp_path, monkeypatch) -> None:
+def test_browser_client_remove_project_blocks_ephemeral_cleanup_before_context(tmp_path, monkeypatch) -> None:
     config = ChatGPTBrowserConfig(
         project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
         profile_dir=str(tmp_path / "profile"),
@@ -279,11 +293,11 @@ def test_browser_client_remove_project_allows_ephemeral_cleanup_without_broad_de
     client = ChatGPTBrowserClient(config)
     calls = []
 
-    async def fake_run_with_context(**kwargs):
+    async def forbidden_run_with_context(**kwargs):  # pragma: no cover - should not be reached
         calls.append(kwargs)
-        return {"ok": True, "status": "removed"}
+        raise AssertionError("ephemeral cleanup must not open a browser context")
 
-    monkeypatch.setattr(client, "_run_with_context", fake_run_with_context)
+    monkeypatch.setattr(client, "_run_with_context", forbidden_run_with_context)
 
     payload = asyncio.run(
         client.remove_project(
@@ -295,6 +309,11 @@ def test_browser_client_remove_project_allows_ephemeral_cleanup_without_broad_de
         )
     )
 
-    assert payload["ok"] is True
-    assert calls
-    assert calls[0]["operation_name"] == "project_remove_ephemeral_cleanup"
+    assert payload["ok"] is False
+    assert payload["status"] == PROJECT_DELETE_DISABLED_STATUS
+    assert payload["blocked_at_layer"] == "browser_client"
+    assert payload["destructive_action_executed"] is False
+    assert calls == []
+    validation = payload["ephemeral_cleanup_validation"]
+    assert validation["allow_ephemeral_test_cleanup"] is True
+    assert "allow_ephemeral_test_cleanup_ignored" in validation["reasons"]

@@ -763,27 +763,12 @@ async def remove_project(payload: ProjectRemoveRequest) -> dict:
         created_project_name=payload.created_project_name,
         created_project_id=payload.created_project_id,
     )
-    if not validation.get("ok"):
-        # Project deletion remains frozen at the HTTP boundary unless the
-        # caller proves a same-run ephemeral integration-test project identity.
-        return project_delete_disabled_result(
-            project_url=payload.project_url,
-            project_name=payload.project_name,
-            blocked_at_layer="container_api",
-            validation=validation,
-        )
-    try:
-        return await _service_for(payload.project_url).remove_project(
-            keep_open=payload.keep_open,
-            project_name=payload.project_name,
-            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
-            allow_ephemeral_test_cleanup=True,
-            created_project_url=payload.created_project_url,
-            created_project_name=payload.created_project_name,
-            created_project_id=payload.created_project_id,
-        )
-    except Exception as exc:  # pragma: no cover - exercised by live runs
-        _raise_http_error(exc)
+    return project_delete_disabled_result(
+        project_url=payload.project_url,
+        project_name=payload.project_name,
+        blocked_at_layer="container_api",
+        validation=validation,
+    )
 
 
 @protected.post("/project-sources", dependencies=[Depends(require_service_token)])
