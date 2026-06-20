@@ -10579,6 +10579,76 @@ def test_task_list_payload_recomputes_stale_service_visibility_diagnostics() -> 
     assert payload["recent_state_count"] == 0
 
 
+
+def test_main_ask_auto_attaches_large_prompt_file(monkeypatch, capsys, tmp_path) -> None:
+    prompt_file = tmp_path / "cv_prompt.md"
+    prompt_file.write_text("# Large prompt\n" + ("A" * 13000), encoding="utf-8")
+    explicit_attachment = tmp_path / "evidence.log"
+    explicit_attachment.write_text("evidence", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"ok": True, "answer": "CV_MARKDOWN\n\nEVIDENCE_SIDECAR_JSON", "conversation_url": "https://chatgpt.com/g/demo/c/large"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile"),
+        "--project-url", "https://chatgpt.com/g/demo/project",
+        "ask", "Use the prompt file as the full instruction.",
+        "--prompt-file", str(prompt_file),
+        "--attach", str(explicit_attachment),
+    ])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["prompt_file_transport"]["mode_effective"] == "attachment"
+    assert payload["prompt_file_transport"]["attachment_added"] is True
+    assert payload["prompt_file_transport"]["size_bytes"] >= 12000
+    assert captured["attachment_paths"] == [str(explicit_attachment), str(prompt_file)]
+    assert "# Large prompt" not in str(captured["prompt"])
+    assert "PROMPTBRANCH PROMPT-FILE ATTACHMENT MODE" in str(captured["prompt"])
+    assert captured["prefer_button_submit"] is True
+
+
+def test_main_ask_can_force_large_prompt_file_inline(monkeypatch, capsys, tmp_path) -> None:
+    prompt_file = tmp_path / "large.md"
+    prompt_file.write_text("INLINE-ONLY\n" + ("B" * 13000), encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"ok": True, "answer": "ok", "conversation_url": "https://chatgpt.com/g/demo/c/inline"}
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile"),
+        "--project-url", "https://chatgpt.com/g/demo/project",
+        "ask", "review",
+        "--prompt-file", str(prompt_file),
+        "--prompt-file-mode", "inline",
+    ])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["prompt_file_transport"]["mode_effective"] == "inline"
+    assert captured["attachment_paths"] == []
+    assert "INLINE-ONLY" in str(captured["prompt"])
+
 def test_main_ask_combines_prompt_file_and_repeatable_attachments(monkeypatch, capsys, tmp_path) -> None:
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("extra context", encoding="utf-8")

@@ -591,6 +591,94 @@ def _merge_prompt_text(prompt: Optional[str], prompt_file: Optional[str]) -> str
     return "\n\n".join(part for part in parts if part)
 
 
+
+DEFAULT_PROMPT_FILE_ATTACHMENT_THRESHOLD_BYTES = 12_000
+
+
+def _prompt_file_attachment_threshold_bytes(args: argparse.Namespace) -> int:
+    raw = getattr(args, "prompt_file_attach_threshold_bytes", None)
+    if raw is None:
+        raw = os.getenv("PROMPTBRANCH_PROMPT_FILE_ATTACH_THRESHOLD_BYTES")
+    if raw in {None, ""}:
+        return DEFAULT_PROMPT_FILE_ATTACHMENT_THRESHOLD_BYTES
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_PROMPT_FILE_ATTACHMENT_THRESHOLD_BYTES
+
+
+def _prompt_file_attachment_mode(args: argparse.Namespace) -> str:
+    value = str(getattr(args, "prompt_file_mode", None) or os.getenv("PROMPTBRANCH_PROMPT_FILE_MODE") or "auto").strip().lower()
+    if value not in {"auto", "inline", "attach"}:
+        return "auto"
+    return value
+
+
+def _large_prompt_file_attachment_instruction(prompt_file: str) -> str:
+    name = Path(prompt_file).name if prompt_file != "-" else "stdin-prompt-file"
+    return (
+        "PROMPTBRANCH PROMPT-FILE ATTACHMENT MODE:\n"
+        f"The full prompt-file content is attached as `{name}`.\n"
+        "Read the attached file as the authoritative prompt-file content for this request.\n"
+        "Use the inline text above only as the operator routing/contract instruction.\n"
+        "Do not ignore the attachment."
+    )
+
+
+def _prepare_prompt_file_transport(
+    prompt: Optional[str],
+    prompt_file: Optional[str],
+    args: argparse.Namespace,
+    *,
+    attachment_paths: list[str],
+) -> tuple[str, list[str], dict[str, Any]]:
+    """Return composer prompt, attachments, and prompt-file transport evidence.
+
+    Small prompt files remain inline for backwards compatibility. Large prompt
+    files default to attachment mode because ChatGPT renders them as document
+    turns, where full-text DOM matching is fragile and exact-marker submit
+    confirmation can fail even after a successful button click.
+    """
+    evidence: dict[str, Any] = {
+        "prompt_file_present": bool(prompt_file),
+        "mode_requested": _prompt_file_attachment_mode(args),
+        "mode_effective": "none",
+        "threshold_bytes": _prompt_file_attachment_threshold_bytes(args),
+        "size_bytes": None,
+        "attachment_added": False,
+        "stdin_inline_forced": False,
+    }
+    if not prompt_file:
+        return _merge_prompt_text(prompt, None), attachment_paths, evidence
+
+    prompt_text = _read_prompt_file(prompt_file).strip()
+    size_bytes = len(prompt_text.encode("utf-8", errors="replace"))
+    evidence["size_bytes"] = size_bytes
+    mode = _prompt_file_attachment_mode(args)
+    threshold = _prompt_file_attachment_threshold_bytes(args)
+    attach_requested = mode == "attach" or (mode == "auto" and size_bytes >= threshold)
+    if prompt_file == "-":
+        attach_requested = False
+        evidence["stdin_inline_forced"] = True
+
+    if not attach_requested:
+        evidence["mode_effective"] = "inline"
+        return _merge_prompt_text(prompt, prompt_file), attachment_paths, evidence
+
+    composer_parts = [str(prompt or "").strip(), _large_prompt_file_attachment_instruction(prompt_file)]
+    composer_prompt = "\n\n".join(part for part in composer_parts if part)
+    if not composer_prompt:
+        composer_prompt = _large_prompt_file_attachment_instruction(prompt_file)
+    normalized_attachments = list(attachment_paths)
+    if prompt_file not in normalized_attachments:
+        normalized_attachments.append(prompt_file)
+        evidence["attachment_added"] = True
+    evidence["mode_effective"] = "attachment"
+    evidence["attachment_path"] = prompt_file
+    evidence["attachment_name"] = Path(prompt_file).name
+    evidence["composer_prompt_length"] = len(composer_prompt)
+    return composer_prompt, normalized_attachments, evidence
+
 def _collect_ask_attachment_paths(args: argparse.Namespace) -> list[str]:
     paths: list[str] = []
     legacy_file = getattr(args, "file", None)
@@ -6924,7 +7012,6 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
 
     release_prompt = _build_ask_release_user_prompt(raw_prompt, expected, envelope)
     prompt = render_protocol_ask_prompt(envelope, user_prompt=release_prompt)
-    attachment_paths = _collect_ask_attachment_paths(args)
     for attachment_path in attachment_paths:
         if not Path(attachment_path).is_file():
             print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)
@@ -7019,8 +7106,14 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
     return _emit_protocol_result(args, result)
 
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
+    attachment_paths = _collect_ask_attachment_paths(args)
     try:
-        prompt = _merge_prompt_text(args.prompt, getattr(args, "prompt_file", None))
+        prompt, attachment_paths, prompt_file_transport = _prepare_prompt_file_transport(
+            args.prompt,
+            getattr(args, "prompt_file", None),
+            args,
+            attachment_paths=attachment_paths,
+        )
     except (OSError, UnicodeError) as exc:
         print(f"error: could not read prompt file: {exc}", file=sys.stderr)
         return 2
@@ -7041,13 +7134,15 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         print("error: --parse-reply requires --protocol", file=sys.stderr)
         return 2
 
-    attachment_paths = _collect_ask_attachment_paths(args)
     for attachment_path in attachment_paths:
         if not Path(attachment_path).is_file():
             print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)
             return 2
 
-    legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) else None
+    prompt_file_attachment_active = bool(
+        isinstance(prompt_file_transport, dict) and prompt_file_transport.get("mode_effective") == "attachment"
+    )
+    legacy_single_file = args.file if args.file and not getattr(args, "attachments", None) and not prompt_file_attachment_active else None
     repeatable_attachments = attachment_paths if not legacy_single_file else None
 
     if getattr(args, "debug_browser", False):
@@ -7124,6 +7219,8 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         return _emit_protocol_result(args, result)
 
     response = _enrich_ask_response_with_canonical_text(response)
+    if isinstance(response, dict) and isinstance(prompt_file_transport, dict) and prompt_file_transport.get("prompt_file_present"):
+        response.setdefault("prompt_file_transport", prompt_file_transport)
     ok = True
     if isinstance(response, dict) and response.get("ok") is False:
         ok = False
@@ -7215,7 +7312,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
         "version": [],
-        "ask": ["--file", "--attach", "--attachment", "--json", "--expect-json", "--text", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
+        "ask": ["--file", "--attach", "--attachment", "--prompt-file-mode", "--prompt-file-attach-threshold-bytes", "--json", "--expect-json", "--text", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--baseline-artifact", "--baseline-version", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
@@ -22977,6 +23074,8 @@ def make_parser() -> argparse.ArgumentParser:
     ask = subparsers.add_parser("ask", help="Send one prompt and print the response.")
     ask.add_argument("prompt", nargs="?", help="Prompt text. If omitted, stdin is read.")
     ask.add_argument("--prompt-file", help="Read additional prompt text from a UTF-8 file. If prompt text is also provided, both are joined with a blank line.")
+    ask.add_argument("--prompt-file-mode", choices=["auto", "inline", "attach"], default=None, help="Transport prompt-file content inline, as an attachment, or automatically attach large files. Default: auto.")
+    ask.add_argument("--prompt-file-attach-threshold-bytes", type=int, default=None, help="Auto-attach prompt files at or above this UTF-8 byte size. Default: 12000 or PROMPTBRANCH_PROMPT_FILE_ATTACH_THRESHOLD_BYTES.")
     ask.add_argument("--file", help="Legacy single chat attachment. Prefer repeatable --attach for multiple files.")
     ask.add_argument("--attach", "--attachment", dest="attachments", action="append", default=[], help="Attach a local file to this chat message without adding it to Project Sources. May be repeated.")
     ask.add_argument("--json", "--expect-json", dest="json", action="store_true", help="Request strict assistant JSON. Structured JSON result output is the default.")

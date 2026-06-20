@@ -239,3 +239,12 @@ No user data, Project Source, artifact-current, or project deletion migration is
 ## v0.1.78.2.20.1 migration note
 
 No user data, Project Source, artifact-current, or project deletion migration is performed. This repair only adds the missing release-control `--adopt-after-validation` option so the operator can run a single full validate-then-adopt command after the focused prompt-file smoke has passed.
+
+
+## v0.1.78.2.20.2 migration note
+
+No user data, Project Source, artifact-current, or project deletion migration is performed. This repair only changes `pb ask --prompt-file` transport selection for large prompt files: large files are attached automatically, small files remain inline, and operators can force either behavior with `--prompt-file-mode inline` or `--prompt-file-mode attach`.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| `Bug Report - Promptbranch Submit Issue.pdf` and CV raw stdout/stderr/session log | live failure/change request evidence | `docs/repair-v0.1.78.2.20.2.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Large CV RAG prompt-file submit used button click but lacked committed-turn proof; repair moves large prompt packages to attachment transport instead of weakening stale-answer guards. |
