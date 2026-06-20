@@ -2391,3 +2391,129 @@ def test_select_text_test_capacity_prune_candidate_is_limited_to_safe_test_sourc
         source_cards=sources,
         source_limit=5,
     ) is None
+
+
+def test_text_source_document_conversion_requires_content_proof_for_generic_pasted_document(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    generic_proof = browser_client._text_source_card_content_proof(
+        {"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt\nDocument"},
+        value="Integration note for run 20260620-160620-308713\nbody",
+        display_name="itest-text-20260620-160620-308713",
+    )
+    named_proof = browser_client._text_source_card_content_proof(
+        {
+            "identity": "Integration note for run 20260620-160620-308713.txt Document",
+            "title": "Integration note for run 20260620-160620-308713.txt",
+            "text": "Integration note for run 20260620-160620-308713.txt\nDocument",
+        },
+        value="Integration note for run 20260620-160620-308713\nbody",
+        display_name="itest-text-20260620-160620-308713",
+    )
+    generated_non_generic_without_anchor = browser_client._text_source_card_content_proof(
+        {
+            "identity": "json-orchestration-state.txt Document",
+            "title": "json-orchestration-state.txt",
+            "text": "json-orchestration-state.txt\nDocument",
+        },
+        value="Integration note for run 20260620-160620-308713\nbody",
+        display_name="itest-text-20260620-160620-308713",
+    )
+
+    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+        generic_proof,
+        conversion_expected=True,
+        source_saved_as_document=True,
+    ) is True
+    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+        named_proof,
+        conversion_expected=True,
+        source_saved_as_document=True,
+    ) is False
+    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+        generic_proof,
+        conversion_expected=False,
+        source_saved_as_document=True,
+    ) is False
+    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+        generated_non_generic_without_anchor,
+        conversion_expected=True,
+        source_saved_as_document=True,
+    ) is False
+
+
+def test_large_text_source_generic_pasted_document_requires_current_run_content_proof(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+    run_id = "20260620-160620-308713"
+    value = "\n".join([
+        f"Integration note for run {run_id}",
+        "Promptbranch text-source document conversion proof.",
+        *(f"document-conversion-filler-{run_id}-{index:04d}" for index in range(700)),
+    ])
+
+    assert browser_client._text_source_document_conversion_expected(value)
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_textual_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("Timed out waiting for project source to appear")
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return {"dialog_visible": False, "source_card_count": 1}
+
+    async def fake_wait_for_save_quiet(*_args, **_kwargs):
+        return {"saw_relevant": True, "saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0}
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        return {"identity": "pasted.txt Document", "title": "pasted.txt", "subtitle": "Document", "text": "pasted.txt\nDocument"}
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_textual_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value=value,
+            file_path=None,
+            display_name=f"itest-text-{run_id}",
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "document_conversion_content_not_verified"
+    assert result["persistence_verified"] is True
+    assert result["source_saved_as_document"] is True
+    assert result["source_content_match_verified"] is False
+    assert result["text_source_content_proof"]["generic_document_only"] is True
+    assert result["content_verification_release_blocking"] is True

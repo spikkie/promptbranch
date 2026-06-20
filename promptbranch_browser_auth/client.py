@@ -5327,6 +5327,27 @@ class ChatGPTBrowserClient:
                 and text_document_conversion_proof.get("content_match_verified")
             )
             result["text_source_content_proof"] = text_document_conversion_proof
+            result["document_conversion_content_verification_required"] = bool(
+                result.get("text_source_document_conversion_expected")
+                and result.get("source_saved_as_document")
+            )
+            if self._text_source_document_conversion_requires_content_proof_failure(
+                text_document_conversion_proof,
+                conversion_expected=bool(result.get("text_source_document_conversion_expected")),
+                source_saved_as_document=bool(result.get("source_saved_as_document")),
+            ):
+                result.update({
+                    "ok": False,
+                    "status": "document_conversion_content_not_verified",
+                    "release_blocking": True,
+                    "operator_review_required": True,
+                    "content_verification_release_blocking": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` and inspect the Project Sources surface before retrying.",
+                        "If the source is a generic document such as pasted.txt Document, open it or use Show in text field to verify the current run id before accepting it.",
+                        "If the generated document has a dedicated name containing the run id, rerun with the newer UI verifier or add that name to the match candidates.",
+                    ],
+                })
         if overwrite_remove_result is not None:
             result["overwrite_remove_result"] = overwrite_remove_result
         if capacity_prune_result is not None:
@@ -14124,6 +14145,21 @@ class ChatGPTBrowserClient:
             "card_candidates": card_candidates,
             "generic_document_only": bool(generic_document and not matched_anchor),
         }
+
+    def _text_source_document_conversion_requires_content_proof_failure(
+        self,
+        proof: Optional[dict[str, Any]],
+        *,
+        conversion_expected: bool,
+        source_saved_as_document: bool,
+    ) -> bool:
+        if not conversion_expected or not source_saved_as_document:
+            return False
+        if not isinstance(proof, dict):
+            return True
+        if proof.get("content_match_verified"):
+            return False
+        return bool(proof.get("generic_document_only"))
 
     def _is_text_source_test_candidate(self, value: Optional[str], display_name: Optional[str]) -> bool:
         normalized_value = self._normalize_source_match_text(value).lower()
