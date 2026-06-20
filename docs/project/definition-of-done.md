@@ -178,3 +178,5 @@ Acceptance criteria:
 | DOD-070 | Project Source text add treats large pasted text/document conversion as success only with current-run content proof, and prunes only safe retained-test sources at the observed source-capacity boundary | done | `promptbranch_browser_auth/client.py`, `promptbranch_full_integration_test.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.4.md` | v0.1.78.2.20.4 |
 
 | DOD-071 | Generic document-converted text sources cannot satisfy Project Source text-add unless current-run content proof succeeds | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.5.md` | v0.1.78.2.20.5 |
+
+| DOD-072 | Project Source large text-document conversion requires a dedicated/generated document name; legacy `pasted.txt` identities are cleanup noise only | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.20.6.md` | v0.1.78.2.20.6 |
