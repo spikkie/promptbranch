@@ -23,6 +23,37 @@ def extract_project_id(project_url: str | None) -> str | None:
     return match.group(0) if match else None
 
 
+def canonical_project_id(project_id: str | None, *, project_name: str | None = None) -> str | None:
+    """Return the stable ChatGPT project id behind a route slug.
+
+    ChatGPT can expose the same Project as either ``g-p-<id>`` or as a route
+    slug ``g-p-<id>-<project-name>``.  Same-run ephemeral cleanup must compare
+    the stable id so retargeting from a bare create URL to a slugged resolve URL
+    does not falsely trip the safety guard.  The function only strips a suffix
+    derived from the expected project name, keeping broad/unknown slug handling
+    fail-closed.
+    """
+
+    text = str(project_id or "").strip()
+    if not text:
+        return None
+    name = str(project_name or "").strip().lower()
+    if name and text.lower().endswith(f"-{name}"):
+        return text[: -(len(name) + 1)]
+    return text
+
+
+def project_ids_refer_to_same_project(
+    left: str | None,
+    right: str | None,
+    *,
+    project_name: str | None = None,
+) -> bool:
+    left_key = canonical_project_id(left, project_name=project_name)
+    right_key = canonical_project_id(right, project_name=project_name)
+    return bool(left_key and right_key and left_key == right_key)
+
+
 def is_ephemeral_test_project_name(project_name: str | None) -> bool:
     return str(project_name or "").startswith(EPHEMERAL_TEST_PROJECT_PREFIX)
 
@@ -45,8 +76,10 @@ def validate_ephemeral_test_project_cleanup_request(
     fails.
     """
 
-    project_id = extract_project_id(project_url)
-    expected_id = str(created_project_id or "").strip() or extract_project_id(created_project_url)
+    raw_project_id = extract_project_id(project_url)
+    raw_expected_id = str(created_project_id or "").strip() or extract_project_id(created_project_url)
+    project_id = canonical_project_id(raw_project_id, project_name=project_name)
+    expected_id = canonical_project_id(raw_expected_id, project_name=created_project_name or project_name)
     reasons: list[str] = []
 
     if not allow_ephemeral_test_cleanup:
@@ -61,7 +94,11 @@ def validate_ephemeral_test_project_cleanup_request(
         reasons.append("created_project_name_missing")
     if not expected_id:
         reasons.append("created_project_id_missing")
-    if project_id and expected_id and project_id != expected_id:
+    if raw_project_id and raw_expected_id and not project_ids_refer_to_same_project(
+        raw_project_id,
+        raw_expected_id,
+        project_name=created_project_name or project_name,
+    ):
         reasons.append("project_id_mismatch")
 
     ok = not reasons
@@ -74,9 +111,11 @@ def validate_ephemeral_test_project_cleanup_request(
         "project_url": project_url,
         "project_name": project_name,
         "project_id": project_id,
+        "raw_project_id": raw_project_id,
         "created_project_url": created_project_url,
         "created_project_name": created_project_name,
         "created_project_id": expected_id,
+        "raw_created_project_id": raw_expected_id,
         "reasons": reasons,
     }
 

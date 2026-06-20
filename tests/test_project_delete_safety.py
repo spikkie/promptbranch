@@ -150,11 +150,14 @@ def test_ephemeral_cleanup_validation_requires_same_run_project_identity() -> No
         allow_ephemeral_test_cleanup=True,
         project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
         project_name="itest-promptbranch-abc",
-        created_project_url="https://chatgpt.com/g/g-p-demo-itest-promptbranch-abc/project",
+        created_project_url="https://chatgpt.com/g/g-p-demo/project",
         created_project_name="itest-promptbranch-abc",
+        created_project_id="g-p-demo",
     )
     assert valid["ok"] is True
     assert valid["delete_policy"] == "same_run_ephemeral_project_cleanup_only"
+    assert valid["project_id"] == "g-p-demo"
+    assert valid["created_project_id"] == "g-p-demo"
 
     invalid = validate_ephemeral_test_project_cleanup_request(
         allow_ephemeral_test_cleanup=True,
@@ -165,6 +168,40 @@ def test_ephemeral_cleanup_validation_requires_same_run_project_identity() -> No
     )
     assert invalid["ok"] is False
     assert "project_name_not_ephemeral_test_project" in invalid["reasons"]
+
+
+def test_ephemeral_cleanup_validation_rejects_wrong_slug_suffix() -> None:
+    from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
+
+    invalid = validate_ephemeral_test_project_cleanup_request(
+        allow_ephemeral_test_cleanup=True,
+        project_url="https://chatgpt.com/g/g-p-demo-other-project/project",
+        project_name="itest-promptbranch-abc",
+        created_project_url="https://chatgpt.com/g/g-p-demo/project",
+        created_project_name="itest-promptbranch-abc",
+        created_project_id="g-p-demo",
+    )
+
+    assert invalid["ok"] is False
+    assert "project_id_mismatch" in invalid["reasons"]
+
+
+def test_ephemeral_cleanup_validation_treats_resolved_slug_as_same_project() -> None:
+    from promptbranch_project_delete_safety import validate_ephemeral_test_project_cleanup_request
+
+    valid = validate_ephemeral_test_project_cleanup_request(
+        allow_ephemeral_test_cleanup=True,
+        project_url="https://chatgpt.com/g/g-p-6a36cc554c2c8191ab943a11e1a9ffa8-itest-promptbranch-source-add-20260620-192032/project",
+        project_name="itest-promptbranch-source-add-20260620-192032",
+        created_project_url="https://chatgpt.com/g/g-p-6a36cc554c2c8191ab943a11e1a9ffa8/project",
+        created_project_name="itest-promptbranch-source-add-20260620-192032",
+        created_project_id="g-p-6a36cc554c2c8191ab943a11e1a9ffa8",
+    )
+
+    assert valid["ok"] is True
+    assert valid["raw_project_id"].endswith("-itest-promptbranch-source-add-20260620-192032")
+    assert valid["project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
+    assert valid["created_project_id"] == "g-p-6a36cc554c2c8191ab943a11e1a9ffa8"
 
 
 def test_projects_remove_endpoint_allows_strict_same_run_ephemeral_cleanup(monkeypatch) -> None:
