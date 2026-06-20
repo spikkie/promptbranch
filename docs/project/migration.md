@@ -272,3 +272,11 @@ No user data, artifact-current, CV generator, prompt-file transport, or project 
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Focused `.20.4` source-add repro and operator UI observation about generated `.txt` names | live evidence/change request | `docs/repair-v0.1.78.2.20.5.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | `.20.4` cleared save/persistence but not the stricter content-proof contract for generic document-converted text. |
+
+## v0.1.78.2.20.6 migration note
+
+No user data, artifact-current, CV generator, prompt-file transport, release-control, or project deletion migration is performed. This repair changes only Project Source text-add validation: legacy `pasted.txt` / `pasted.txt Document` entries are retained-test cleanup noise only, while current large text-source conversion must surface a dedicated/generated document name containing the current run anchor.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Focused `.20.5` source-add repro and operator clarification about generated document names | live evidence/change request | `docs/repair-v0.1.78.2.20.6.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | `.20.5` failed closed on `pasted.txt Document`; `.20.6` treats that path as legacy/stale and requires the current generated-name contract. |

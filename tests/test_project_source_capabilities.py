@@ -434,7 +434,7 @@ def test_verify_project_source_persistence_refreshes_after_pre_refresh_timeout(b
     assert page.wait_calls == []
 
 
-def test_build_persistence_source_candidates_adds_text_generic_fallback_when_new(browser_client: ChatGPTBrowserClient) -> None:
+def test_build_persistence_source_candidates_omits_legacy_pasted_text_fallback(browser_client: ChatGPTBrowserClient) -> None:
     candidates = browser_client._build_persistence_source_candidates(
         requested_match="Integration note for run 123",
         source_match_candidates=["Integration note for run 123", "itest-text-123"],
@@ -446,9 +446,9 @@ def test_build_persistence_source_candidates_adds_text_generic_fallback_when_new
     assert candidates == [
         "Integration note for run 123",
         "itest-text-123",
-        "pasted.txt Document",
-        "pasted.txt",
     ]
+    assert "pasted.txt Document" not in candidates
+    assert "pasted.txt" not in candidates
 
 
 def test_build_persistence_source_candidates_does_not_match_old_generic_text_source(browser_client: ChatGPTBrowserClient) -> None:
@@ -502,10 +502,8 @@ def test_add_project_source_operation_defers_text_presence_timeout_to_persistenc
         assert kwargs["source_match_candidates"] == [
             "Integration note for run 123",
             "itest-text-123",
-            "pasted.txt Document",
-            "pasted.txt",
         ]
-        return {"identity": "pasted.txt Document", "title": "pasted.txt", "text": "pasted.txt Document"}
+        return {"identity": "Integration note for run 123.txt Document", "title": "Integration note for run 123.txt", "text": "Integration note for run 123.txt Document"}
 
     async def fake_safe_page_url(*_args, **_kwargs) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
@@ -537,7 +535,7 @@ def test_add_project_source_operation_defers_text_presence_timeout_to_persistenc
 
     assert call_order == ["initial_presence_timeout", "settle", "save_quiet", "verify"]
     assert result["ok"] is True
-    assert result["source_match"] == "pasted.txt Document"
+    assert result["source_match"] == "Integration note for run 123.txt Document"
     assert result["persistence_verified"] is True
 
 
@@ -2393,7 +2391,7 @@ def test_select_text_test_capacity_prune_candidate_is_limited_to_safe_test_sourc
     ) is None
 
 
-def test_text_source_document_conversion_requires_content_proof_for_generic_pasted_document(
+def test_text_source_document_conversion_requires_dedicated_generated_name(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     generic_proof = browser_client._text_source_card_content_proof(
@@ -2420,29 +2418,29 @@ def test_text_source_document_conversion_requires_content_proof_for_generic_past
         display_name="itest-text-20260620-160620-308713",
     )
 
-    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+    assert browser_client._text_source_document_conversion_requires_dedicated_name_failure(
         generic_proof,
         conversion_expected=True,
         source_saved_as_document=True,
     ) is True
-    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+    assert browser_client._text_source_document_conversion_requires_dedicated_name_failure(
         named_proof,
         conversion_expected=True,
         source_saved_as_document=True,
     ) is False
-    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+    assert browser_client._text_source_document_conversion_requires_dedicated_name_failure(
         generic_proof,
         conversion_expected=False,
         source_saved_as_document=True,
     ) is False
-    assert browser_client._text_source_document_conversion_requires_content_proof_failure(
+    assert browser_client._text_source_document_conversion_requires_dedicated_name_failure(
         generated_non_generic_without_anchor,
         conversion_expected=True,
         source_saved_as_document=True,
-    ) is False
+    ) is True
 
 
-def test_large_text_source_generic_pasted_document_requires_current_run_content_proof(
+def test_large_text_source_legacy_pasted_document_requires_dedicated_generated_name(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     page = object()
@@ -2511,9 +2509,12 @@ def test_large_text_source_generic_pasted_document_requires_current_run_content_
     )
 
     assert result["ok"] is False
-    assert result["status"] == "document_conversion_content_not_verified"
+    assert result["status"] == "dedicated_document_name_not_detected"
     assert result["persistence_verified"] is True
     assert result["source_saved_as_document"] is True
     assert result["source_content_match_verified"] is False
     assert result["text_source_content_proof"]["generic_document_only"] is True
+    assert result["text_source_content_proof"]["legacy_pasted_document_seen"] is True
+    assert result["dedicated_document_name_detected"] is False
+    assert result["legacy_pasted_document_seen"] is True
     assert result["content_verification_release_blocking"] is True

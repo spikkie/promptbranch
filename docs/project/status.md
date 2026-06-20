@@ -183,3 +183,9 @@ This candidate is not accepted/current until live large-prompt smoke, release-co
 `v0.1.78.2.20.4` fixed the immediate `project_source_add_text` persistence failure in the focused repro, but the green result still showed `source_match=pasted.txt Document`, `source_saved_as_document=true`, and `source_content_match_verified=false`. That means the verifier could accept a generic document-converted text source without proving it belonged to the current run.
 
 `v0.1.78.2.20.5` narrows that behavior: generic `pasted.txt` / `Document` identities are release-blocking unless the source card/content proof contains a current-run anchor. Dedicated generated `.txt` names remain supported through the first-line/display-name candidate path when they expose the run id. Prompt-file attachment behavior, release-control adoption flags, artifact registry behavior, and project deletion freeze are unchanged.
+
+## v0.1.78.2.20.6 repair status
+
+`v0.1.78.2.20.6` narrows the Project Source text-add document-conversion contract after `.20.5`: legacy `pasted.txt` / `pasted.txt Document` is treated only as stale retained-test cleanup noise, not as a current valid success identity. Large text-source conversion must now be proven by a dedicated/generated document name carrying the current run anchor.
+
+This repair preserves the large prompt-file attachment transport/diagnostics and does not advance normal `v0.1.79` scope. Assistant-side validation was focused/local only; live focused repro, full release-control, and adoption/current verification remain pending.

@@ -5260,6 +5260,32 @@ class ChatGPTBrowserClient:
                         for proof in current_text_document_proofs
                         if isinstance(proof, dict)
                     )
+                    result["dedicated_document_name_detected"] = any(
+                        bool(proof.get("dedicated_document_name_detected"))
+                        for proof in current_text_document_proofs
+                        if isinstance(proof, dict)
+                    )
+                    result["legacy_pasted_document_seen"] = any(
+                        bool(proof.get("legacy_pasted_document_seen"))
+                        for proof in current_text_document_proofs
+                        if isinstance(proof, dict)
+                    )
+                    if (
+                        result.get("text_source_document_conversion_expected")
+                        and result.get("legacy_pasted_document_seen")
+                        and not result.get("dedicated_document_name_detected")
+                    ):
+                        result.update({
+                            "status": "dedicated_document_name_not_detected",
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "content_verification_release_blocking": True,
+                            "recovery_guidance": [
+                                "The current UI contract expects a dedicated/generated .txt document name for large pasted text.",
+                                "Legacy generic pasted.txt entries are cleanup noise and are not accepted as current source-add proof.",
+                                "Inspect the Project Sources surface and improve the generated-name detector if a dedicated name is visible.",
+                            ],
+                        })
                 if overwrite_remove_result is not None:
                     result["overwrite_remove_result"] = overwrite_remove_result
                 if capacity_prune_result is not None:
@@ -5331,21 +5357,30 @@ class ChatGPTBrowserClient:
                 result.get("text_source_document_conversion_expected")
                 and result.get("source_saved_as_document")
             )
-            if self._text_source_document_conversion_requires_content_proof_failure(
+            result["dedicated_document_name_detected"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("dedicated_document_name_detected")
+            )
+            result["legacy_pasted_document_seen"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("legacy_pasted_document_seen")
+            )
+            if self._text_source_document_conversion_requires_dedicated_name_failure(
                 text_document_conversion_proof,
                 conversion_expected=bool(result.get("text_source_document_conversion_expected")),
                 source_saved_as_document=bool(result.get("source_saved_as_document")),
             ):
                 result.update({
                     "ok": False,
-                    "status": "document_conversion_content_not_verified",
+                    "status": "dedicated_document_name_not_detected",
                     "release_blocking": True,
                     "operator_review_required": True,
                     "content_verification_release_blocking": True,
                     "recovery_guidance": [
                         "Run `pb src list --json` and inspect the Project Sources surface before retrying.",
-                        "If the source is a generic document such as pasted.txt Document, open it or use Show in text field to verify the current run id before accepting it.",
-                        "If the generated document has a dedicated name containing the run id, rerun with the newer UI verifier or add that name to the match candidates.",
+                        "The current UI contract expects large pasted text to be saved as a dedicated/generated .txt document name.",
+                        "Legacy generic pasted.txt / pasted.txt Document entries are cleanup noise and are not accepted as current success evidence.",
+                        "If ChatGPT generated a dedicated name, add that visible identity to the match candidates or improve the source-card name detector.",
                     ],
                 })
         if overwrite_remove_result is not None:
@@ -14118,6 +14153,9 @@ class ChatGPTBrowserClient:
             add(f"{stem}.txt Document")
         return candidates
 
+    def _legacy_pasted_text_document_names(self) -> set[str]:
+        return {"pasted.txt document", "pasted.txt", "document"}
+
     def _text_source_card_content_proof(
         self,
         card: Optional[dict[str, str]],
@@ -14134,19 +14172,22 @@ class ChatGPTBrowserClient:
             if normalized_anchor and normalized_anchor in normalized_card_text:
                 matched_anchor = anchor
                 break
-        generic_document = any(
-            candidate.lower() in {"pasted.txt document", "pasted.txt", "document"}
+        legacy_pasted_document = any(
+            candidate.lower() in self._legacy_pasted_text_document_names()
             for candidate in card_candidates
         )
+        dedicated_document_name_detected = bool(matched_anchor and not legacy_pasted_document)
         return {
             "content_match_verified": bool(matched_anchor),
+            "dedicated_document_name_detected": dedicated_document_name_detected,
             "matched_anchor": matched_anchor,
             "anchors": anchors,
             "card_candidates": card_candidates,
-            "generic_document_only": bool(generic_document and not matched_anchor),
+            "legacy_pasted_document_seen": bool(legacy_pasted_document),
+            "generic_document_only": bool(legacy_pasted_document and not matched_anchor),
         }
 
-    def _text_source_document_conversion_requires_content_proof_failure(
+    def _text_source_document_conversion_requires_dedicated_name_failure(
         self,
         proof: Optional[dict[str, Any]],
         *,
@@ -14157,9 +14198,7 @@ class ChatGPTBrowserClient:
             return False
         if not isinstance(proof, dict):
             return True
-        if proof.get("content_match_verified"):
-            return False
-        return bool(proof.get("generic_document_only"))
+        return not bool(proof.get("dedicated_document_name_detected"))
 
     def _is_text_source_test_candidate(self, value: Optional[str], display_name: Optional[str]) -> bool:
         normalized_value = self._normalize_source_match_text(value).lower()
@@ -14365,21 +14404,11 @@ class ChatGPTBrowserClient:
         for candidate in self._source_card_identity_candidates(matched_card):
             add(candidate, from_matched_card=True)
 
-        # ChatGPT can render ad-hoc text sources as a generic uploaded-note card
-        # such as "pasted.txt Document" instead of the text body or caller label.
-        # Add that fallback only when it was not already present before the save,
-        # so we do not incorrectly match an old generic text source.
-        if source_kind == "text" and matched_card is None:
-            before_candidates: set[str] = set()
-            for card in before_sources or []:
-                for value in self._source_card_identity_candidates(card):
-                    normalized = self._normalize_source_match_text(value)
-                    if normalized:
-                        before_candidates.add(normalized.lower())
-            for fallback in ("pasted.txt Document", "pasted.txt"):
-                normalized_fallback = self._normalize_source_match_text(fallback)
-                if normalized_fallback and normalized_fallback.lower() not in before_candidates:
-                    add(normalized_fallback)
+        # Do not add legacy generic pasted.txt fallbacks for text sources.
+        # Current ChatGPT behavior is expected to generate a dedicated document
+        # name for large pasted text. Legacy pasted.txt entries may be pruned as
+        # retained-test cleanup noise, but they are not accepted as proof that the
+        # current text-source add succeeded.
         return candidates
 
     def _build_source_match_candidates(
