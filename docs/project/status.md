@@ -224,3 +224,7 @@ Repair candidate `v0.1.78.2.20.8.2` fixes the same-run ephemeral project cleanup
 ## v0.1.78.2.20.8.4 repair status
 
 `v0.1.78.2.20.8.3` is unsafe because it reintroduced real ChatGPT Project deletion through a same-run ephemeral cleanup exception. `v0.1.78.2.20.8.4` repairs that defect by making Project deletion immutable-frozen at every layer: container API, automation service, browser client, private browser operation, and full-integration cleanup. Cleanup now records `project_remove_cleanup_skipped_delete_frozen` and retains the Project; it does not call `remove_project`. `allow_ephemeral_test_cleanup=True` is diagnostic-only and cannot authorize deletion. No normal slice advanced.
+
+## v0.1.78.2.20.8.5 repair status
+
+`v0.1.78.2.20.8.4` fixed the dangerous deletion behavior, but fresh-project evidence still contained a stale top-level `cleanup_policy="same_run_ephemeral_cleanup"` label even though the actual cleanup step reported `no_project_delete_until_secure_protocol` and `destructive_action_executed=false`. `v0.1.78.2.20.8.5` is a repair-only evidence cleanup that makes the full-integration summary and cleanup-step labels consistently report `no_project_delete_until_secure_protocol`. No Project deletion path is re-enabled and no normal slice advances.

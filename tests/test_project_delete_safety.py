@@ -220,7 +220,7 @@ def test_ephemeral_cleanup_validation_keeps_slug_diagnostics_but_still_blocks() 
     assert "project_deletion_never_allowed" in payload["reasons"]
 
 
-def test_projects_remove_endpoint_blocks_same_run_ephemeral_cleanup_before_service_resolution(monkeypatch) -> None:
+def test_projects_remove_endpoint_blocks_cleanup_request_before_service_resolution(monkeypatch) -> None:
     def forbidden_service_resolution(project_url):  # pragma: no cover - should not be reached
         raise AssertionError("same-run cleanup must not resolve or call the browser service")
 

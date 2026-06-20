@@ -313,3 +313,9 @@ No user data, Project Source content, artifact-current, prompt-file transport, o
 ## v0.1.78.2.20.8.4 migration note
 
 No user data, Project Source content, artifact-current, prompt-file transport, or normal release slice migration is performed. This repair supersedes the same-run ephemeral cleanup exception from `v0.1.78.2.20.8.3`: all Project deletion paths are now immutable-frozen, and focused integration cleanup retains Projects without calling a remove service.
+
+## v0.1.78.2.20.8.5 migration note
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/repair-v0.1.78.2.20.8.4.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.5.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.4 fixed Project deletion behavior but left a stale top-level cleanup-policy label in fresh-project evidence. v0.1.78.2.20.8.5 repairs evidence wording only and does not advance a normal slice. |

@@ -1017,12 +1017,11 @@ async def _remove_project_cleanup_with_retry(
     created_project_name: str | None = None,
     created_project_id: str | None = None,
 ) -> dict[str, Any]:
-    """Remove the temporary project and prove the cleanup postcondition.
+    """Record non-destructive temporary-project retention.
 
-    Project cleanup must fail closed: a sidebar lookup failure is not proof that
-    the temporary project disappeared. When the sidebar cannot find the configured
-    URL but a name-based resolve still finds the project, retry removal instead
-    of silently leaking an integration-test project.
+    ChatGPT Project deletion is immutable-frozen. Cleanup is an evidence record
+    only: it must not call the service removal path, retry deletion, or verify
+    absence through the browser.
     """
 
     active_project_url = str(getattr(project_service, "project_url", "") or "").strip() or None
@@ -1925,7 +1924,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "project_url": None,
         "project_id": None,
         "kept_project": not cleanup_enabled,
-        "cleanup_policy": "same_run_ephemeral_cleanup" if cleanup_enabled else "kept_or_not_selected",
+        "cleanup_policy": "no_project_delete_until_secure_protocol",
         "strict_remove_ui": bool(args.strict_remove_ui),
         "requested_only": list(selection.requested_only),
         "requested_skip": list(selection.requested_skip),
@@ -2392,7 +2391,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                             "ok": True,
                             "status": "project_remove_cleanup_skipped_not_created_this_run",
                             "postcondition": "project_retained_not_owned_by_this_run",
-                            "cleanup_policy": "same_run_ephemeral_cleanup_only",
+                            "cleanup_policy": "no_project_delete_until_secure_protocol",
                             "project_url": project_url,
                             "project_name": project_name,
                             "created_project_this_run": False,

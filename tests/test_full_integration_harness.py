@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
 
 from promptbranch_full_integration_test import (
     _normalize_expected_missing_resolve_result,
@@ -465,6 +466,7 @@ def test_project_remove_cleanup_is_non_destructive_even_when_service_is_dangerou
     assert result["ok"] is True
     assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
     assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["cleanup_policy"] == "no_project_delete_until_secure_protocol"
     assert result["destructive_action_executed"] is False
     assert result["allow_ephemeral_test_cleanup_requested"] is True
     assert cleanup_steps[-1].ok is True
@@ -498,6 +500,7 @@ def test_project_remove_cleanup_does_not_retarget_or_verify_absence_when_delete_
 
     assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
     assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["cleanup_policy"] == "no_project_delete_until_secure_protocol"
     assert result["project_url"] == "https://chatgpt.com/g/g-p-base/project"
     assert "absence_verification" not in result
     assert cleanup_steps == cleanup_steps[:1]
@@ -578,6 +581,14 @@ def test_project_remove_cleanup_retains_project_without_calling_service_remove(m
     assert result["ok"] is True
     assert result["status"] == "project_remove_cleanup_skipped_delete_frozen"
     assert result["postcondition"] == "temporary_project_retained_delete_frozen"
+    assert result["cleanup_policy"] == "no_project_delete_until_secure_protocol"
     assert result["destructive_action_executed"] is False
     assert result["allow_ephemeral_test_cleanup_requested"] is True
     assert cleanup_steps[-1].ok is True
+
+
+def test_full_integration_cleanup_evidence_has_no_stale_ephemeral_policy_label() -> None:
+    source = Path("promptbranch_full_integration_test.py").read_text(encoding="utf-8")
+    stale_policy = "_".join(["same", "run", "ephemeral", "cleanup"])
+    assert stale_policy not in source
+    assert "no_project_delete_until_secure_protocol" in source
