@@ -49,12 +49,26 @@ if "CV_MARKDOWN" not in answer_text:
     failures.append("answer missing CV_MARKDOWN")
 if "EVIDENCE_SIDECAR_JSON" not in answer_text:
     failures.append("answer missing EVIDENCE_SIDECAR_JSON")
+if payload.get("attachment_mode") is not True:
+    failures.append(f"attachment_mode is not true: {payload.get('attachment_mode')!r}")
+if payload.get("attachment_upload_completed") is not True:
+    failures.append(f"attachment_upload_completed is not true: {payload.get('attachment_upload_completed')!r}")
+if payload.get("attachment_visible") is not True:
+    failures.append(f"attachment_visible is not true: {payload.get('attachment_visible')!r}")
+if payload.get("attachment_filename_expected") != payload.get("attachment_filename_visible"):
+    failures.append(f"attachment filename mismatch: expected={payload.get('attachment_filename_expected')!r} visible={payload.get('attachment_filename_visible')!r}")
+if payload.get("attachment_ready_for_submit") is not True:
+    failures.append(f"attachment_ready_for_submit is not true: {payload.get('attachment_ready_for_submit')!r}")
 if payload.get("submit_method") not in {"button_click", "button_after_focus_retry", "send_button_click"}:
     failures.append(f"submit_method is not button-first: {payload.get('submit_method')!r}")
 if payload.get("prefer_button_submit") is not True:
     failures.append(f"prefer_button_submit is not true: {payload.get('prefer_button_submit')!r}")
-if phase.get("response_wait_skipped") is True:
-    failures.append(f"response wait was skipped: {phase.get('response_wait_skipped_reason')!r}")
+if payload.get("submit_causality_confirmed") is not True:
+    failures.append(f"submit_causality_confirmed is not true: {payload.get('submit_causality_confirmed')!r}")
+if payload.get("response_causality_confirmed") is not True:
+    failures.append(f"response_causality_confirmed is not true: {payload.get('response_causality_confirmed')!r}")
+if payload.get("response_wait_skipped") is True or phase.get("response_wait_skipped") is True:
+    failures.append(f"response wait was skipped: {payload.get('response_wait_skipped_reason') or phase.get('response_wait_skipped_reason')!r}")
 if payload.get("answer_text_length") == 0:
     failures.append("answer_text_length is zero")
 
@@ -73,8 +87,16 @@ print(json.dumps({
     "pb_ask_exit_code": pb_rc,
     "answer_text_length": payload.get("answer_text_length"),
     "prompt_file_transport": transport,
+    "attachment_mode": payload.get("attachment_mode"),
+    "attachment_upload_completed": payload.get("attachment_upload_completed"),
+    "attachment_visible": payload.get("attachment_visible"),
+    "attachment_filename_expected": payload.get("attachment_filename_expected"),
+    "attachment_filename_visible": payload.get("attachment_filename_visible"),
+    "attachment_ready_for_submit": payload.get("attachment_ready_for_submit"),
     "submit_method": payload.get("submit_method"),
     "prefer_button_submit": payload.get("prefer_button_submit"),
+    "submit_causality_confirmed": payload.get("submit_causality_confirmed"),
+    "response_causality_confirmed": payload.get("response_causality_confirmed"),
     "response_accepted_source": payload.get("response_accepted_source") or phase.get("response_accepted_source"),
 }, indent=2, sort_keys=True))
 PY

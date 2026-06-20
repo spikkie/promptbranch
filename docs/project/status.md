@@ -165,3 +165,9 @@ This candidate is not accepted/current until runtime release-control and `pb art
 ## v0.1.78.2.20.2 repair status
 
 `v0.1.78.2.20.2` preserves the `v0.1.78.2.20` button-first prompt-file submit repair and `v0.1.78.2.20.1` release-control flag repair, then changes the large prompt-file strategy: `pb ask --prompt-file` now defaults to auto-attaching large prompt files instead of inserting the entire package into the composer. The attachment threshold defaults to 12,000 UTF-8 bytes and can be overridden with `--prompt-file-attach-threshold-bytes` or `PROMPTBRANCH_PROMPT_FILE_ATTACH_THRESHOLD_BYTES`. Small prompt files remain inline. This targets the CV RAG prompt-package failure where button click worked but committed-turn proof failed on a pasted/document-style large prompt. The candidate is not accepted/current until live large-prompt smoke, release-control, and `pb artifact current --json` evidence confirm it.
+
+## v0.1.78.2.20.3 repair status
+
+`v0.1.78.2.20.3` preserves the working large prompt-file attachment transport from `v0.1.78.2.20.2` and only polishes diagnostics. The ask result now flattens attachment upload/readiness, filename evidence, button submit, submit-causality confirmation, response-causality confirmation, and response-wait state onto stable top-level JSON fields. This keeps downstream large-prompt smokes from depending on nested `submit_evidence` / `ask_phase_timings` internals. No prompt transport behavior, CV generator logic, Project Source behavior, artifact registry behavior, or normal slice state changes.
+
+This candidate is not accepted/current until live large-prompt smoke, release-control, and `pb artifact current --json` evidence confirm it.

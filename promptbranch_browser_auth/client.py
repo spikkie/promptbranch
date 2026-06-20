@@ -2028,6 +2028,118 @@ class ChatGPTBrowserClient:
                 await file_input.first.set_input_files(path)
         self._log("upload", "file uploaded to browser input", file_paths=normalized_paths, attachment_count=len(normalized_paths))
 
+    async def _capture_attachment_visible_state(
+        self,
+        page: Any,
+        *,
+        expected_filenames: list[str],
+    ) -> dict[str, Any]:
+        """Capture best-effort attachment-chip visibility diagnostics.
+
+        This is diagnostic-only: it must not change submit behavior.  ChatGPT's
+        attachment DOM is not a stable public API, so we collect both exact
+        filename matches and coarse visible attachment/file element evidence.
+        """
+
+        expected = [str(name) for name in expected_filenames if str(name).strip()]
+        if not expected:
+            return {
+                "status": "no_expected_attachment_filename",
+                "visible": False,
+                "filename_expected": None,
+                "filename_visible": None,
+                "exact_filename_match": False,
+            }
+        try:
+            state = await page.evaluate(
+                """
+                (expected) => {
+                  const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    if (!style || style.visibility === 'hidden' || style.display === 'none') return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                  };
+                  const selectors = [
+                    '[data-testid*=\"attachment\" i]',
+                    '[data-testid*=\"file\" i]',
+                    '[aria-label*=\"attachment\" i]',
+                    '[aria-label*=\"file\" i]',
+                    '[class*=\"attachment\" i]',
+                    '[class*=\"file\" i]',
+                    'button',
+                    'span',
+                    'div'
+                  ];
+                  const nodes = [];
+                  const seen = new Set();
+                  for (const selector of selectors) {
+                    for (const el of Array.from(document.querySelectorAll(selector))) {
+                      if (seen.has(el) || !isVisible(el)) continue;
+                      seen.add(el);
+                      const text = (el.innerText || el.textContent || '').trim();
+                      const aria = (el.getAttribute('aria-label') || '').trim();
+                      const title = (el.getAttribute('title') || '').trim();
+                      const testid = (el.getAttribute('data-testid') || '').trim();
+                      const combined = [text, aria, title, testid].filter(Boolean).join(' | ');
+                      if (!combined) continue;
+                      const matches = expected.filter(name => combined.includes(name));
+                      const looksFileLike = /attach|attachment|file|document|upload/i.test(combined);
+                      if (matches.length || looksFileLike) {
+                        nodes.push({
+                          tag: el.tagName,
+                          text: text.slice(0, 240),
+                          aria_label: aria.slice(0, 240),
+                          title: title.slice(0, 240),
+                          data_testid: testid.slice(0, 120),
+                          matched_filenames: matches
+                        });
+                      }
+                    }
+                    if (nodes.length >= 20) break;
+                  }
+                  const bodyText = ((document.body && (document.body.innerText || document.body.textContent)) || '').slice(0, 200000);
+                  const bodyMatches = expected.filter(name => bodyText.includes(name));
+                  const nodeMatches = [];
+                  for (const node of nodes) {
+                    for (const name of node.matched_filenames || []) {
+                      if (!nodeMatches.includes(name)) nodeMatches.push(name);
+                    }
+                  }
+                  const matches = Array.from(new Set([...bodyMatches, ...nodeMatches]));
+                  return {
+                    status: matches.length ? 'attachment_filename_visible' : (nodes.length ? 'attachment_chip_visible_without_exact_filename' : 'attachment_chip_not_visible'),
+                    visible: matches.length > 0 || nodes.length > 0,
+                    filename_expected: expected[0] || null,
+                    filename_visible: matches[0] || null,
+                    exact_filename_match: matches.length > 0,
+                    visible_candidate_count: nodes.length,
+                    visible_candidates: nodes.slice(0, 8)
+                  };
+                }
+                """,
+                expected,
+            )
+            if isinstance(state, dict):
+                return state
+        except Exception as exc:  # pragma: no cover - browser diagnostics only
+            return {
+                "status": "attachment_visibility_probe_failed",
+                "visible": False,
+                "filename_expected": expected[0],
+                "filename_visible": None,
+                "exact_filename_match": False,
+                "error": str(exc),
+            }
+        return {
+            "status": "attachment_visibility_probe_invalid_result",
+            "visible": False,
+            "filename_expected": expected[0],
+            "filename_visible": None,
+            "exact_filename_match": False,
+        }
+
     async def _wait_for_attachment_submit_ready(
         self,
         page: Any,
@@ -2244,13 +2356,32 @@ class ChatGPTBrowserClient:
         phase_started = time.monotonic()
         attachment_submit_ready_evidence: dict[str, Any] | None = None
         if upload_paths:
+            expected_attachment_filenames = [Path(path).name for path in upload_paths]
+            phase_timings["attachment_mode"] = True
+            phase_timings["attachment_upload_started"] = True
+            phase_timings["attachment_upload_completed"] = False
+            phase_timings["attachment_count"] = len(upload_paths)
+            phase_timings["attachment_filename_expected"] = expected_attachment_filenames[0] if len(expected_attachment_filenames) == 1 else expected_attachment_filenames
             await self._upload_chat_attachments(page, upload_paths)
+            phase_timings["attachment_upload_completed"] = True
+            mark_phase("attachment_upload_seconds", phase_started)
+            attachment_visibility = await self._capture_attachment_visible_state(page, expected_filenames=expected_attachment_filenames)
+            phase_timings["attachment_visibility_status"] = attachment_visibility.get("status")
+            phase_timings["attachment_visible"] = attachment_visibility.get("visible")
+            phase_timings["attachment_filename_visible"] = attachment_visibility.get("filename_visible")
+            phase_timings["attachment_filename_exact_match"] = attachment_visibility.get("exact_filename_match")
+            phase_timings["attachment_visibility_evidence"] = attachment_visibility
             attachment_submit_ready_evidence = await self._wait_for_attachment_submit_ready(page)
             phase_timings["attachment_submit_ready_status"] = attachment_submit_ready_evidence.get("status")
             phase_timings["attachment_submit_ready"] = attachment_submit_ready_evidence.get("ready")
             phase_timings["attachment_submit_ready_seconds"] = attachment_submit_ready_evidence.get("duration_seconds")
             phase_timings["attachment_submit_ready_attempt_count"] = attachment_submit_ready_evidence.get("attempt_count")
             phase_timings["attachment_submit_ready_last_state"] = attachment_submit_ready_evidence.get("last_state")
+        else:
+            phase_timings["attachment_mode"] = False
+            phase_timings["attachment_upload_started"] = False
+            phase_timings["attachment_upload_completed"] = False
+            mark_phase("attachment_upload_seconds", phase_started)
 
         if file_path:
             self._log("upload", "upload requested", file_path=file_path)
@@ -2654,6 +2785,7 @@ class ChatGPTBrowserClient:
                 "response_accepted_source": promoted_visibility_answer.get("source"),
                 "response_freshness_verified": True,
             }
+            result.update(self._submit_failure_diagnostic_fields(submit_evidence, phase_timings, answer=promoted_payload))
             self._record_ask_progress(**result)
             self._log(
                 "response",
@@ -2761,7 +2893,7 @@ class ChatGPTBrowserClient:
                 "partial_result": True,
                 "ask_phase_timings": phase_timings,
             }
-            result.update(self._submit_failure_diagnostic_fields(submit_evidence))
+            result.update(self._submit_failure_diagnostic_fields(submit_evidence, phase_timings))
             self._record_ask_progress(**result)
             return result
 
@@ -2834,7 +2966,7 @@ class ChatGPTBrowserClient:
             self._log("ask", "slow ask phases observed", slow_phase_warnings=slow_warnings, ask_phase_timings=phase_timings)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Question completed. Press Enter to close the browser... ")
-        diagnostic_fields = self._submit_failure_diagnostic_fields(submit_evidence)
+        diagnostic_fields = self._submit_failure_diagnostic_fields(submit_evidence, phase_timings, answer=answer)
         result = {
             "answer": answer,
             "conversation_url": conversation_url,
@@ -9320,6 +9452,7 @@ class ChatGPTBrowserClient:
             "response_accepted_source": "attachment_visible_answer_after_unconfirmed_submit",
             "response_freshness_verified": True,
         }
+        result.update(self._submit_failure_diagnostic_fields(submit_evidence, phase_timings, answer=answer))
         self._record_ask_progress(**result)
         self._log(
             "response",
@@ -10593,22 +10726,52 @@ class ChatGPTBrowserClient:
         return result
 
 
-    def _submit_failure_diagnostic_fields(self, submit_evidence: Any) -> dict[str, Any]:
-        """Flatten submit-causality evidence for fail-closed ask JSON output."""
+    def _submit_failure_diagnostic_fields(
+        self,
+        submit_evidence: Any,
+        phase_timings: Any | None = None,
+        *,
+        answer: Any | None = None,
+    ) -> dict[str, Any]:
+        """Flatten submit/attachment/response causality evidence.
+
+        The name is kept for compatibility with earlier repair tests, but the
+        function is now used for both fail-closed and successful ask results so
+        operators do not have to chase nested timing structures.
+        """
+
+        phase = phase_timings if isinstance(phase_timings, dict) else {}
+
+        def answer_to_text(value: Any) -> str:
+            if value is None:
+                return ""
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                text = value.get("text") or value.get("content") or value.get("answer")
+                if isinstance(text, str):
+                    return text
+            return str(value)
+
+        answer_text = answer_to_text(answer)
         if not isinstance(submit_evidence, dict):
             return {
-                "submit_method": None,
-                "prefer_button_submit": None,
+                "submit_method": phase.get("submit_method"),
+                "prefer_button_submit": phase.get("prefer_button_submit"),
                 "submit_button_visible": None,
                 "submit_button_enabled": None,
-                "submit_prepare_request_observed": None,
-                "submit_prepare_response_observed": None,
-                "submit_message_request_observed": None,
-                "submit_backend_commit_confirmed": None,
-                "post_submit_user_turn_visibility_status": None,
-                "submit_dom_delta_status": None,
-                "answer_text": "",
-                "answer_text_length": 0,
+                "submit_prepare_request_observed": phase.get("submit_prepare_request_observed"),
+                "submit_prepare_response_observed": phase.get("submit_prepare_response_observed"),
+                "submit_message_request_observed": phase.get("submit_message_request_observed"),
+                "submit_backend_commit_confirmed": False,
+                "submit_causality_confirmed": False,
+                "response_causality_confirmed": bool(phase.get("response_freshness_verified")),
+                "post_submit_user_turn_visibility_status": phase.get("post_submit_user_turn_visibility_status"),
+                "submit_dom_delta_status": phase.get("submit_dom_delta_status"),
+                "response_wait_skipped": phase.get("response_wait_skipped"),
+                "response_wait_skipped_reason": phase.get("response_wait_skipped_reason"),
+                "answer_text": answer_text,
+                "answer_text_length": len(answer_text),
             }
 
         def first_present(*values: Any) -> Any:
@@ -10625,15 +10788,43 @@ class ChatGPTBrowserClient:
                 visible_probe = probe
                 if probe.get("visible"):
                     break
-        confirmed_by = submit_evidence.get("submit_confirmed_by") or []
-        backend_commit_confirmed = bool(
+        confirmed_by = list(submit_evidence.get("submit_confirmed_by") or phase.get("submit_confirmed_by") or [])
+        direct_backend_commit_confirmed = bool(
             submit_evidence.get("submit_backend_commit_after_prepare_found")
             or submit_evidence.get("submit_backend_task_message_found")
+            or submit_evidence.get("backend_confirmed_user_turn_id")
+            or phase.get("backend_confirmed_user_turn_id")
             or "backend_task_message" in confirmed_by
         )
+        submit_causality_confirmed = bool(
+            submit_evidence.get("submit_causal_confirmation_verified")
+            or submit_evidence.get("submit_confirmed")
+            or phase.get("submit_causal_confirmation_verified")
+            or phase.get("submit_confirmed")
+        )
+        response_causality_confirmed = bool(
+            phase.get("response_freshness_verified")
+            or submit_evidence.get("submit_attachment_visible_answer_fallback_used")
+            or phase.get("attachment_visible_answer_fallback_status") == "visible_answer_promoted"
+        )
+        attachment_visible = first_present(
+            phase.get("attachment_visible"),
+            phase.get("attachment_submit_ready"),
+            submit_evidence.get("submit_attachment_visible_answer_fallback_used"),
+            phase.get("attachment_visible_answer_fallback_status") == "visible_answer_promoted",
+        )
+        attachment_filename_visible = first_present(
+            phase.get("attachment_filename_visible"),
+            phase.get("attachment_filename_expected") if attachment_visible else None,
+        )
+        commit_mode = "backend" if direct_backend_commit_confirmed else (
+            "attachment_visible_answer_equivalent"
+            if submit_causality_confirmed and "attachment_visible_answer" in confirmed_by
+            else submit_evidence.get("submit_confirmation_mode") or phase.get("submit_confirmation_mode")
+        )
         return {
-            "submit_method": submit_evidence.get("submit_method"),
-            "prefer_button_submit": submit_evidence.get("prefer_button_submit"),
+            "submit_method": first_present(submit_evidence.get("submit_method"), phase.get("submit_method")),
+            "prefer_button_submit": first_present(submit_evidence.get("prefer_button_submit"), phase.get("prefer_button_submit")),
             "submit_button_visible": bool(first_present(
                 submit_evidence.get("button_visible"),
                 visible_probe.get("visible"),
@@ -10646,14 +10837,32 @@ class ChatGPTBrowserClient:
                 before_button.get("enabled"),
                 before_button.get("send_ready"),
             )),
-            "submit_prepare_request_observed": submit_evidence.get("submit_prepare_request_observed"),
-            "submit_prepare_response_observed": submit_evidence.get("submit_prepare_response_observed"),
-            "submit_message_request_observed": submit_evidence.get("submit_message_request_observed"),
-            "submit_backend_commit_confirmed": backend_commit_confirmed,
-            "post_submit_user_turn_visibility_status": submit_evidence.get("post_submit_user_turn_visibility_status"),
-            "submit_dom_delta_status": submit_evidence.get("submit_dom_delta_status"),
-            "answer_text": "",
-            "answer_text_length": 0,
+            "submit_prepare_request_observed": first_present(submit_evidence.get("submit_prepare_request_observed"), phase.get("submit_prepare_request_observed")),
+            "submit_prepare_response_observed": first_present(submit_evidence.get("submit_prepare_response_observed"), phase.get("submit_prepare_response_observed")),
+            "submit_message_request_observed": first_present(submit_evidence.get("submit_message_request_observed"), phase.get("submit_message_request_observed")),
+            "submit_backend_commit_confirmed": bool(direct_backend_commit_confirmed or submit_causality_confirmed),
+            "submit_backend_commit_confirmed_direct": direct_backend_commit_confirmed,
+            "submit_backend_commit_confirmation_mode": commit_mode,
+            "submit_causality_confirmed": submit_causality_confirmed,
+            "submit_causality_confirmed_by": confirmed_by,
+            "submit_causality_reason": first_present(submit_evidence.get("submit_causal_confirmation_reason"), phase.get("submit_causal_confirmation_reason")),
+            "post_submit_user_turn_visibility_status": first_present(submit_evidence.get("post_submit_user_turn_visibility_status"), phase.get("post_submit_user_turn_visibility_status")),
+            "submit_dom_delta_status": first_present(submit_evidence.get("submit_dom_delta_status"), phase.get("submit_dom_delta_status")),
+            "attachment_mode": bool(phase.get("attachment_mode")),
+            "attachment_upload_started": bool(phase.get("attachment_upload_started")),
+            "attachment_upload_completed": bool(phase.get("attachment_upload_completed")),
+            "attachment_visible": bool(attachment_visible),
+            "attachment_filename_expected": phase.get("attachment_filename_expected"),
+            "attachment_filename_visible": attachment_filename_visible,
+            "attachment_filename_exact_match": phase.get("attachment_filename_exact_match"),
+            "attachment_ready_for_submit": bool(phase.get("attachment_submit_ready")),
+            "attachment_submit_ready_status": phase.get("attachment_submit_ready_status"),
+            "response_causality_confirmed": response_causality_confirmed,
+            "response_causality_mode": first_present(phase.get("response_accepted_source"), submit_evidence.get("submit_attachment_visible_answer_fallback_status")),
+            "response_wait_skipped": phase.get("response_wait_skipped"),
+            "response_wait_skipped_reason": phase.get("response_wait_skipped_reason"),
+            "answer_text": answer_text,
+            "answer_text_length": len(answer_text),
         }
 
     async def _submit_prompt(self, page: Any, *, prompt: str | None = None, prefer_button: bool = False) -> dict[str, Any]:

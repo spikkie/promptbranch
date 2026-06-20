@@ -597,6 +597,12 @@ def test_attachment_visible_answer_promotes_after_unconfirmed_submit(tmp_path: P
     assert result["submit_evidence"]["submit_confirmed"] is True
     assert result["submit_evidence"]["submit_confirmation_mode"] == "attachment_visible_answer_after_unconfirmed_submit"
     assert "attachment_visible_answer" in result["submit_evidence"]["submit_confirmed_by"]
+    assert result["submit_causality_confirmed"] is True
+    assert result["submit_backend_commit_confirmed"] is True
+    assert result["submit_backend_commit_confirmation_mode"] == "attachment_visible_answer_equivalent"
+    assert result["response_causality_confirmed"] is True
+    assert result["response_causality_mode"] == "attachment_visible_answer_after_unconfirmed_submit"
+    assert result["answer_text_length"] == len("ASK_LIVE_FILE_ATTACHMENT_UNIT")
     assert phase_timings["attachment_visible_answer_fallback_status"] == "visible_answer_promoted"
     assert phase_timings["response_freshness_verified"] is True
 

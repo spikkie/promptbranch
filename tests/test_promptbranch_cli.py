@@ -10618,6 +10618,82 @@ def test_main_ask_auto_attaches_large_prompt_file(monkeypatch, capsys, tmp_path)
     assert captured["prefer_button_submit"] is True
 
 
+
+
+def test_main_ask_flattens_large_prompt_file_attachment_diagnostics(monkeypatch, capsys, tmp_path) -> None:
+    prompt_file = tmp_path / "cv_prompt.md"
+    prompt_file.write_text("# Large prompt\n" + ("A" * 13000), encoding="utf-8")
+
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+        def ask_result(self, prompt: str, **kwargs):
+            return {
+                "ok": True,
+                "answer": "CV_MARKDOWN\n\nEVIDENCE_SIDECAR_JSON",
+                "conversation_url": "https://chatgpt.com/g/demo/c/large",
+                "submit_evidence": {
+                    "submit_method": "button_click",
+                    "prefer_button_submit": True,
+                    "button_visible": True,
+                    "button_enabled": True,
+                    "submit_confirmed": True,
+                    "submit_confirmed_by": ["url_conversation", "attachment_visible_answer"],
+                    "submit_causal_confirmation_verified": True,
+                    "submit_causal_confirmation_reason": "attachment_visible_answer_after_unconfirmed_submit",
+                    "submit_confirmation_mode": "attachment_visible_answer_after_unconfirmed_submit",
+                    "submit_attachment_visible_answer_fallback_used": True,
+                },
+                "ask_phase_timings": {
+                    "submit_method": "button_click",
+                    "prefer_button_submit": True,
+                    "attachment_mode": True,
+                    "attachment_upload_started": True,
+                    "attachment_upload_completed": True,
+                    "attachment_visible": True,
+                    "attachment_filename_expected": prompt_file.name,
+                    "attachment_filename_visible": prompt_file.name,
+                    "attachment_filename_exact_match": True,
+                    "attachment_submit_ready": True,
+                    "attachment_submit_ready_status": "attachment_submit_ready",
+                    "response_freshness_verified": True,
+                    "response_accepted_source": "attachment_visible_answer_after_unconfirmed_submit",
+                    "response_wait_skipped": False,
+                },
+                "status": "completed",
+                "response_accepted_source": "attachment_visible_answer_after_unconfirmed_submit",
+                "response_freshness_verified": True,
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path / "profile"),
+        "--project-url", "https://chatgpt.com/g/demo/project",
+        "ask", "Use the attached prompt file as the full instruction.",
+        "--prompt-file", str(prompt_file),
+    ])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["prompt_file_transport"]["mode_effective"] == "attachment"
+    assert payload["attachment_mode"] is True
+    assert payload["attachment_upload_started"] is True
+    assert payload["attachment_upload_completed"] is True
+    assert payload["attachment_visible"] is True
+    assert payload["attachment_filename_expected"] == prompt_file.name
+    assert payload["attachment_filename_visible"] == prompt_file.name
+    assert payload["attachment_ready_for_submit"] is True
+    assert payload["submit_method"] == "button_click"
+    assert payload["prefer_button_submit"] is True
+    assert payload["submit_backend_commit_confirmed"] is True
+    assert payload["submit_backend_commit_confirmation_mode"] == "attachment_visible_answer_equivalent"
+    assert payload["submit_causality_confirmed"] is True
+    assert payload["response_causality_confirmed"] is True
+    assert payload["response_wait_skipped"] is False
+
 def test_main_ask_can_force_large_prompt_file_inline(monkeypatch, capsys, tmp_path) -> None:
     prompt_file = tmp_path / "large.md"
     prompt_file.write_text("INLINE-ONLY\n" + ("B" * 13000), encoding="utf-8")
