@@ -155,3 +155,9 @@ v0.1.78.2.3 repair candidate build
 `v0.1.78.2.19` reached the live ChatGPT browser path and produced a successful fresh answer: `pb ask` exited 0, the submit method was `button_click`, the backend conversation POST was observed, the user turn was confirmed in the DOM, response freshness matched the injected nonce, and `prepare_token_set_not_consumed` was false. The remaining failure was the smoke contract itself: `pb ask --json` requests a structured assistant JSON response, so the returned token lives at `answer.token` rather than as raw `answer_text`. The top-level JSON result also kept submit evidence nested under `submit_evidence` / `ask_phase_timings`, leaving `prefer_button_submit` and `submit_method` null at the transport top level.
 
 `v0.1.78.2.20` updates the focused smoke to accept the structured JSON answer token while preserving the exact token assertion, and exposes successful submit-causality fields at the top level of ask JSON results. CV generator code, source add/remove behavior, project deletion behavior, artifact registry behavior, retry/backoff policy, and normal slice state are unchanged.
+
+## v0.1.78.2.20.1 repair status
+
+`v0.1.78.2.20.1` repairs the release-control command surface after the `v0.1.78.2.20` prompt-file live smoke passed. The only behavior change is support for `--adopt-after-validation` in the full release workflow: after `--run-tests` or `--run-all-tests` succeeds and validation reports are green, release-control reuses the existing verified artifact adoption path. The prompt-file submit implementation and smoke contract from `v0.1.78.2.20` are unchanged.
+
+This candidate is not accepted/current until runtime release-control and `pb artifact current --json` evidence confirm state artifact/source and registry current alignment.
