@@ -2298,6 +2298,11 @@ class ChatGPTBrowserClient:
             prompt=prompt,
             prefer_button=bool(prefer_button_submit or upload_paths),
         )
+        if isinstance(submit_evidence, dict):
+            # Keep the originating submit policy on the causal evidence object so
+            # every downstream JSON envelope can expose it without having to
+            # infer it from ask_phase_timings.
+            submit_evidence.setdefault("prefer_button_submit", bool(prefer_button_submit))
         # v0.0.278.9 keeps submit timing narrow and reconciliable with
         # service-log timestamps.  submit_wait_seconds now includes the
         # button/Enter dispatch, post-dispatch composer snapshot, and
@@ -2829,12 +2834,22 @@ class ChatGPTBrowserClient:
             self._log("ask", "slow ask phases observed", slow_phase_warnings=slow_warnings, ask_phase_timings=phase_timings)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Question completed. Press Enter to close the browser... ")
-        return {
+        diagnostic_fields = self._submit_failure_diagnostic_fields(submit_evidence)
+        result = {
             "answer": answer,
             "conversation_url": conversation_url,
             "submit_evidence": submit_evidence,
             "ask_phase_timings": phase_timings,
+            "status": "completed",
         }
+        # Expose the same submit-causality fields on successful ask results that
+        # fail-closed submit errors already expose.  This keeps live smoke tests
+        # and downstream release gates from depending on nested, unstable timing
+        # structures when the submit actually succeeded.
+        for key, value in diagnostic_fields.items():
+            if key not in {"answer_text", "answer_text_length"}:
+                result[key] = value
+        return result
 
     async def _list_projects_operation(
         self,

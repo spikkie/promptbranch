@@ -5675,3 +5675,12 @@ def test_create_project_refills_name_when_submit_stays_disabled(tmp_path: Path) 
     assert submit_click["locator"] == "submit-second"
     assert submit_click["allow_force"] is False
     assert submit_click["allow_evaluate"] is False
+
+
+def test_successful_ask_result_flattens_submit_diagnostics_for_json_transport() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+
+    assert 'submit_evidence.setdefault("prefer_button_submit", bool(prefer_button_submit))' in source
+    assert 'diagnostic_fields = self._submit_failure_diagnostic_fields(submit_evidence)' in source
+    assert 'if key not in {"answer_text", "answer_text_length"}' in source
+    assert 'result[key] = value' in source

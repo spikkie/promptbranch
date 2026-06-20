@@ -227,3 +227,11 @@ No user data, Project Source, artifact-current, or project deletion migration is
 | Source | Type | Destination | Disposition | Notes |
 | --- | --- | --- | --- | --- |
 | Operator smoke output from `v0.1.78.2.18` | live repair evidence | `docs/repair-v0.1.78.2.19.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | The diagnostic-preserving smoke exposed the missing automation-wrapper `prefer_button_submit` keyword support. |
+
+## v0.1.78.2.20 migration note
+
+No user data, Project Source, artifact-current, or project deletion migration is performed. Operators should install the candidate and rerun `scripts/smoke-pb-ask-prompt-file.sh`. This repair only updates the prompt-file live smoke contract for the existing `pb ask --json` structured-answer mode and exposes successful submit-causality fields at the top level of ask JSON output.
+
+| Source | Type | Destination | Disposition | Notes |
+| --- | --- | --- | --- | --- |
+| Operator smoke output from `v0.1.78.2.19` | live repair evidence | `docs/repair-v0.1.78.2.20.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Live submit reached ChatGPT and returned a fresh answer through button click; the remaining defect was smoke/output normalization. |

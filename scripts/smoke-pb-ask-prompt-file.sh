@@ -47,21 +47,35 @@ except json.JSONDecodeError as exc:
     }, indent=2, sort_keys=True), file=sys.stderr)
     sys.exit(1)
 
-answer = str(payload.get("answer") or payload.get("answer_text") or "").strip()
+EXPECTED_TOKEN = "CV_LIVE_PROMPT_FILE_OK"
+answer_obj = payload.get("answer")
+answer_text = str(payload.get("answer_text") or "").strip()
+if isinstance(answer_obj, dict):
+    answer = str(answer_obj.get("token") or answer_obj.get("answer") or answer_obj.get("text") or answer_text).strip()
+else:
+    answer = str(answer_obj or answer_text or "").strip()
 submit_evidence = payload.get("submit_evidence") if isinstance(payload.get("submit_evidence"), dict) else {}
+ask_phase_timings = payload.get("ask_phase_timings") if isinstance(payload.get("ask_phase_timings"), dict) else {}
 prefer_button_submit = payload.get("prefer_button_submit")
 if prefer_button_submit is None:
     prefer_button_submit = submit_evidence.get("prefer_button_submit")
-submit_method = payload.get("submit_method") or submit_evidence.get("submit_method")
+if prefer_button_submit is None:
+    prefer_button_submit = ask_phase_timings.get("prefer_button_submit")
+submit_method = payload.get("submit_method") or submit_evidence.get("submit_method") or ask_phase_timings.get("submit_method")
 submit_message_observed = payload.get("submit_message_request_observed")
 if submit_message_observed is None:
     submit_message_observed = submit_evidence.get("submit_message_request_observed")
+if submit_message_observed is None:
+    submit_message_observed = ask_phase_timings.get("submit_message_request_observed")
 backend_commit = payload.get("submit_backend_commit_confirmed")
 if backend_commit is None:
     backend_commit = bool(
         submit_evidence.get("submit_backend_commit_after_prepare_found")
         or submit_evidence.get("submit_backend_task_message_found")
         or submit_evidence.get("submit_confirmed")
+        or ask_phase_timings.get("submit_backend_commit_after_prepare_found")
+        or ask_phase_timings.get("submit_backend_task_message_found")
+        or ask_phase_timings.get("submit_confirmed")
     )
 
 failures = []
@@ -69,7 +83,7 @@ if pb_rc != 0:
     failures.append(f"pb ask exited non-zero: {pb_rc}")
 if payload.get("ok") is not True:
     failures.append(f"ok is not true: {payload.get('ok')!r}")
-if answer != "CV_LIVE_PROMPT_FILE_OK":
+if answer != EXPECTED_TOKEN:
     failures.append(f"unexpected answer: {answer!r}")
 if prefer_button_submit is not True:
     failures.append(f"prefer_button_submit is not true: {prefer_button_submit!r}")
@@ -94,6 +108,7 @@ if failures:
 print(json.dumps({
     "ok": True,
     "answer": answer,
+    "expected_token": EXPECTED_TOKEN,
     "submit_method": submit_method,
     "prefer_button_submit": prefer_button_submit,
     "pb_ask_exit_code": pb_rc,
