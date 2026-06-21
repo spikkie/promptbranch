@@ -351,3 +351,8 @@ No user data, Project Source content, artifact-current registry, browser profile
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/design/orchestration/docs/current_status.md` | historical orchestration line status | `docs/project/status.md`, `docs/project/plan.md`, `docs/design/orchestration/docs/event_intake_foundation.md` | summarized | Earlier orchestration documents are preserved. `v0.1.79` narrows the next normal slice to proposal-only event intake rather than broad k8s-game runtime work. |
+
+
+## v0.1.79 candidate correction note
+
+The corrected candidate keeps the release version `v0.1.79` because the earlier `v0.1.79` artifact was not accepted/current. The correction is limited to default event-intake example resolution and fail-closed zero-default behavior for `pb orchestration validate-event --json`; no user data, Project Source, artifact-current, browser profile, deployment, or accepted-event ledger migration is performed.
