@@ -1021,3 +1021,30 @@ Out of scope:
 - Project Source mutation.
 - Artifact adoption/current mutation.
 - Deployment or model execution.
+
+## Focused working slice — v0.1.84
+
+```text
+slice: Accepted-event ledger validation command
+status: focused working candidate
+accepted/current baseline remains: chatgpt_claudecode_workflow-2_v0.1.79.zip
+working context: v0.1.83 focused-validated candidate
+```
+
+Scope:
+
+- Add `pb orchestration validate-ledger --json`.
+- Validate the accepted-event ledger scaffold without creating or writing the ledger.
+- Treat an absent ledger as valid during the pre-write phase when the directory and schema scaffold are present.
+- Fail closed for malformed existing ledger JSONL records.
+- Preserve no-mutation authority: no accepted state write, no Project Source mutation, no artifact adoption, no deployment, and no model execution.
+
+Out of scope:
+
+- `accept-event --write`.
+- Ledger creation or append.
+- Project Source mutation.
+- Artifact adoption/current mutation.
+- Deployment or model execution.
+
+DoD target: DOD-087.

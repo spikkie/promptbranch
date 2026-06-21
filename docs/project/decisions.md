@@ -142,3 +142,11 @@ For installed `pb` commands, explicit repo-relative orchestration input must res
 ## Decision — Accepted-event ledger must be scaffolded before writes
 
 `v0.1.83` keeps the accepted-event ledger as a read-only scaffold. The project now exposes `pb orchestration ledger-status --json` so operators can verify the future ledger path, record schema, append-only requirement, and no-mutation authority before any `accept-event --write` implementation exists. This prevents a jump from dry-run previews directly into mutable accepted state.
+
+## Decision — Validate ledger before enabling ledger writes
+
+`v0.1.84` adds `pb orchestration validate-ledger --json` as a read-only validation command before any ledger write path exists. An absent ledger is valid for this pre-write phase when the ledger directory and record schema scaffold are present. Existing ledger JSONL content, if present, must validate before any future write command can be considered. This preserves the authority boundary: no accepted state write, Project Source mutation, artifact adoption/current mutation, deployment, or model execution is introduced by validation.
+
+## Decision — Root `.gitignore` remains release-required
+
+Artifact Guardian continues to require a repo-root `.gitignore` in Promptbranch release ZIPs. Focused working slices may move quickly, but release candidates must still carry the root hygiene surface so generated files, local browser profiles, and `.pb_profile_local_debug_pools/` are excluded from future packaging.

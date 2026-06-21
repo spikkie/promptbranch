@@ -1412,3 +1412,11 @@ def test_parser_accepts_orchestration_ledger_status_command() -> None:
     assert args.command == "orchestration"
     assert args.orchestration_command == "ledger-status"
     assert args.json is True
+
+
+def test_parser_accepts_orchestration_validate_ledger_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["orchestration", "validate-ledger", "--json"])
+    assert args.command == "orchestration"
+    assert args.orchestration_command == "validate-ledger"
+    assert args.json is True

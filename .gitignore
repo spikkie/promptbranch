@@ -1,118 +1,62 @@
-# Python bytecode files
+# Promptbranch generated/local files
+
+# Git metadata is never included in release artifacts
+.git/
+
+# Python caches and test caches
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Virtual environment directories
-venv/
-env/
-.venv/
-.env/
-
-# Distribution / packaging
+# Build/package outputs
+build/
 dist/
 *.egg-info/
+promptbranch.egg-info/
+*.zip
+*.tar.gz
 
-# VS Code settings
-.vscode/
+# Local virtual environments
+.venv/
+venv/
 
-# PyCharm settings
-.idea/
+# Local secrets/environment
+.env
+.env.*
+!.env.example
 
-# MyPy
-.mypy_cache/
-
-# pytest
-.cache/
-nosetests.xml
-coverage.xml
-*.cover
-
-# Sphinx documentation
-docs/_build/
-
-# Jupyter notebook checkpoints
-.ipynb_checkpoints/
-
-# Docker
+# Logs and local release/test output
 *.log
-*.logs
-*.env.*
+*.log.*
+session_*.log
+release_logs/
+pb_*.json
+pb_*.report.json
 
-
-# SQLite
-*.sqlite
-*.sqlite3
-
-# Logs
-*.log
-
-# Secrets and credentials
-*.key
-*.pem
-*.env
-
-# macOS
-.DS_Store
-
-# Linux
-*.swp
-
-# Windows
-Thumbs.db
-Desktop.ini
-
-# my changes
-frontend/node_modules/
-artifacts/
-
-#
-.dev
-
-
-#log debug files
-log.*
-
-# transfer/
-transfer*/
-
-# test prod ssh keys
-.test/
-.prod/
-
-frontend/test-results/
-todo_dir/
-out/
-
-#zip versions
-chatgpt_claudecode_workflow*.zip
-
-#browser profile
+# Local browser/profile state
 .pb_profile/
-profile/
-
-#debug info
-debug_artifacts/
-
-# chatgpt projects
-promptbranch-project-list.json
-
-
-# temp ignore 
-chatgpt_claudecode_workflow_v0.0.146/
-# ollama_mcp_verification_harness.zip  # covered by *.zip
-# ollama_mcp_verification_harness/  # intentionally tracked release verification harness
-# ollama_mcp_verification_harness_v2.zip  # covered by *.zip
-# ollama_mcp_verification_harness_v2/  # intentionally tracked release verification harness
-
-# promptbranch services pid
-.promptbranch-service-start.*.pid
-
-# Project package metadata is intentionally tracked for version/API regression tests.
-!promptbranch.egg-info/
-!promptbranch.egg-info/**
-
-# Promptbranch task transcript/debug exports
-*.task.show.json
 .pb_profile_local_debug/
 .pb_profile_local_debug_pools/
+profile/
+
+# Debug/generated probes
+coverage/
+debug_artifacts/
+debug_projects_popup_/
+task_*.messages
+task_*.messages.txt
+task_*_message.txt
+task_*_final.txt
+stdout.json
+stderr.txt
+task_show_*_messages.txt
+*.task.show
+task_*.show
+.promptbranch-service-start.*.pid
+promptbranch-project-list.json
+
+# Kubernetes render output
+helm-chart/charts/

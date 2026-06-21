@@ -315,3 +315,29 @@ Explicit input files must resolve inside the repository root. Parent-relative pa
 ## v0.1.82 candidate correction — explicit dry-run installed path resolution
 
 `v0.1.82` remains a focused working candidate only. The corrected candidate fixes an installed-runtime explicit-path resolution defect where accepted-event dry-run could look under `site-packages/docs/...` instead of the repository working tree. Accepted/current remains `v0.1.79` until a later promotion/adoption gate.
+
+## v0.1.84 focused working candidate status
+
+Accepted/current baseline remains:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.79.zip
+```
+
+Working candidate chain:
+
+```text
+v0.1.80 focused-validated candidate -> v0.1.81 focused-validated candidate -> v0.1.82 focused-validated candidate -> v0.1.83 focused-validated candidate -> v0.1.84 focused working candidate
+```
+
+`v0.1.84` adds a read-only accepted-event ledger validation command:
+
+```text
+pb orchestration validate-ledger --json
+```
+
+The command validates the future ledger scaffold and, for this pre-write slice, treats an absent ledger file as valid when the ledger directory and record schema are present. It does not create or append to the ledger, write accepted state, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions. Full all-tests and adoption/current promotion remain intentionally deferred under the focused-slice validation model.
+
+### v0.1.84 candidate hygiene note
+
+During local Artifact Guardian validation, the candidate exposed a required root `.gitignore` omission inherited from the focused working chain. The `v0.1.84` candidate restores a repo-root `.gitignore` that excludes generated/cache/local profile artifacts, including `.pb_profile_local_debug_pools/`. This is candidate hygiene only and does not advance ledger write scope.

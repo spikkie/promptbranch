@@ -397,3 +397,16 @@ No user data migration. Reinstall the corrected `chatgpt_claudecode_workflow-2_v
 |---|---|---|---|---|
 | `docs/design/orchestration/accepted_event_ledger/README.md` | current_source | `docs/project/plan.md`, `docs/project/status.md`, `docs/project/definition-of-done.md` | summarized | Defines the future append-only accepted-event ledger path and explicitly keeps writes out of scope. |
 | `docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json` | current_source | `docs/project/definition-of-done.md` | referenced | Record schema scaffold for future ledger appends; no ledger file is created in v0.1.83. |
+
+## Migration note — v0.1.84 accepted-event ledger validation
+
+No user data, Project Source content, artifact-current registry, browser profile, deployment, or accepted-event ledger migration is performed. `v0.1.84` is a focused working slice on top of the `v0.1.83` working candidate context. It adds only a read-only ledger validation command and preserves the accepted/current baseline as `chatgpt_claudecode_workflow-2_v0.1.79.zip` until a later full promotion/adoption gate.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/design/orchestration/accepted_event_ledger/README.md` | ledger scaffold documentation | `pb orchestration validate-ledger --json`, `docs/project/plan.md`, `docs/project/status.md`, `docs/project/definition-of-done.md` | extended | Ledger scaffold remains read-only; no ledger file is created or appended. |
+| `docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json` | future ledger record schema scaffold | `pb orchestration validate-ledger --json` | referenced | Validator checks schema/scaffold and existing JSONL records if a ledger file exists. |
+
+## v0.1.84 candidate hygiene note
+
+The `v0.1.84` candidate restores the required repo-root `.gitignore` after Artifact Guardian reported it missing from the focused working chain. The restored ignore file covers generated/cache/local profile outputs, including `.pb_profile_local_debug_pools/`. No accepted-event ledger write, Project Source mutation, artifact adoption/current mutation, deployment, or model execution migration is performed.
