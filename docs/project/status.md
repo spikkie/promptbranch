@@ -5,8 +5,8 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
 accepted version: v0.1.79
-active normal candidate: chatgpt_claudecode_workflow-2_v0.1.80.zip
-next normal target: chatgpt_claudecode_workflow-2_v0.1.80.zip
+active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.83.zip
+next normal target: deferred until focused-candidate promotion gate
 ```
 
 ## Current MVP state
@@ -15,7 +15,7 @@ next normal target: chatgpt_claudecode_workflow-2_v0.1.80.zip
 MVP status: active
 DoD status: in_progress
 last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
-active plan slice: v0.1.80 — Accepted-event validation foundation
+active plan slice: v0.1.83 — Accepted-event ledger design scaffold
 active repair: none
 ```
 
@@ -23,8 +23,8 @@ active repair: none
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.80.zip candidate once packaged
-release status: v0.1.80 candidate extends the JSON orchestration MVP authority model with read-only accepted-event validation only
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.83.zip focused candidate once packaged
+release status: v0.1.80-v0.1.83 are focused candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
 ```
 
 ## Current risks
@@ -37,8 +37,8 @@ release status: v0.1.80 candidate extends the JSON orchestration MVP authority m
 
 ## Current blockers
 
-- `v0.1.80` remains candidate-only until the installed runtime proves `pb orchestration validate-accepted-event --json` returns `ok=true` with `validated_count=7`.
-- `v0.1.80` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run all tests, then adopt only after all tests pass.
+- `v0.1.83` remains candidate-only until installed/runtime `pb orchestration ledger-status --json` and dedicated changed-code tests pass; v0.1.80-v0.1.82 remain focused candidates only.
+- `v0.1.83` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
 - No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, or artifact adoption behavior change is allowed in this slice.
 
 ## Current unknowns
@@ -50,13 +50,13 @@ release status: v0.1.80 candidate extends the JSON orchestration MVP authority m
 ## Next safe action
 
 ```text
-Install the corrected chatgpt_claudecode_workflow-2_v0.1.80.zip candidate, run the dedicated installed-runtime accepted-event validator command first, then run dedicated pytest for the changed code before broad/full release-control gates.
+Install chatgpt_claudecode_workflow-2_v0.1.83.zip, run `pb orchestration ledger-status --json` first, then run dedicated changed-code pytest before any broad/full release-control gate.
 ```
 
 ## Last updated
 
 ```text
-v0.1.80 corrected candidate build
+v0.1.83 focused candidate build
 ```
 
 
@@ -311,3 +311,7 @@ pb orchestration accept-event --dry-run --json <accepted-event-file>
 ```
 
 Explicit input files must resolve inside the repository root. Parent-relative paths, repository-external absolute paths, missing files, and invalid accepted-event JSON fail closed. The command still does not write accepted state, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions. Full all-tests and adoption/current promotion remain intentionally deferred under the focused-slice validation model.
+
+## v0.1.82 candidate correction — explicit dry-run installed path resolution
+
+`v0.1.82` remains a focused working candidate only. The corrected candidate fixes an installed-runtime explicit-path resolution defect where accepted-event dry-run could look under `site-packages/docs/...` instead of the repository working tree. Accepted/current remains `v0.1.79` until a later promotion/adoption gate.

@@ -386,3 +386,14 @@ No user data, Project Source content, artifact-current registry, browser profile
 |---|---|---|---|---|
 | `pb orchestration accept-event --dry-run --json` | committed-fixture dry-run preview command | explicit input dry-run preview | extended | Explicit accepted-event files may be supplied only when they resolve inside the repository root. Unsafe, missing, or invalid input fails closed. |
 | `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | explicit input examples and regression tests | reused | Fixtures remain data-only and no ledger write path is introduced. |
+
+## v0.1.82 candidate correction migration note
+
+No user data migration. Reinstall the corrected `chatgpt_claudecode_workflow-2_v0.1.82.zip` candidate before rerunning `pb orchestration accept-event --dry-run --json <repo-relative accepted-event file>`. This correction only fixes installed-runtime explicit path/root resolution and does not write accepted state or mutate Project Source/artifacts/deployment/runtime.
+
+## Migration note — v0.1.83 accepted-event ledger scaffold
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/design/orchestration/accepted_event_ledger/README.md` | current_source | `docs/project/plan.md`, `docs/project/status.md`, `docs/project/definition-of-done.md` | summarized | Defines the future append-only accepted-event ledger path and explicitly keeps writes out of scope. |
+| `docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json` | current_source | `docs/project/definition-of-done.md` | referenced | Record schema scaffold for future ledger appends; no ledger file is created in v0.1.83. |

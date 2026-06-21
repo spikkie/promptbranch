@@ -294,3 +294,79 @@ def test_accept_event_dry_run_rejects_absolute_external_explicit_input(tmp_path)
     assert payload["accepted_event_preview"] == []
     assert payload["accepted_state_written"] is False
     assert any("must resolve inside the repository root" in reason for reason in payload["rejection_reasons"])
+
+def test_accept_event_explicit_path_uses_worktree_when_module_root_is_installed(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_orchestration as module
+    fake_site_packages = tmp_path / "site-packages"
+    fake_site_packages.mkdir()
+    monkeypatch.setattr(module, "ROOT", fake_site_packages)
+    monkeypatch.chdir(ROOT)
+
+    explicit_path = Path("docs/design/orchestration/examples/accepted_events/G0_intent.accepted_event.example.json")
+    payload = module.dry_run_accept_event_paths([explicit_path])
+
+    assert payload["ok"] is True
+    assert payload["input_mode"] == "explicit_paths"
+    assert payload["validated_count"] == 1
+    assert payload["validated_paths"] == [str(explicit_path)]
+    assert payload["accepted_event_preview"][0]["path"] == str(explicit_path)
+    assert payload["accepted_state_written"] is False
+    assert payload["artifact_adoption_allowed"] is False
+
+
+def test_validate_accepted_event_explicit_path_uses_worktree_when_module_root_is_installed(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_orchestration as module
+    fake_site_packages = tmp_path / "site-packages"
+    fake_site_packages.mkdir()
+    monkeypatch.setattr(module, "ROOT", fake_site_packages)
+    monkeypatch.chdir(ROOT)
+
+    explicit_path = Path("docs/design/orchestration/examples/accepted_events/G0_intent.accepted_event.example.json")
+    payload = module.validate_accepted_event_paths([explicit_path])
+
+    assert payload["ok"] is True
+    assert payload["input_mode"] == "explicit_paths"
+    assert payload["validated_count"] == 1
+    assert payload["validated_paths"] == [str(explicit_path)]
+    assert payload["state_machine"] == "docs/design/orchestration/state_machines/k8s_game_mvp.state_machine.json"
+
+
+
+def test_accepted_event_ledger_status_scaffold_is_read_only() -> None:
+    import promptbranch_orchestration as module
+
+    payload = module.accepted_event_ledger_status()
+
+    assert payload["ok"] is True
+    assert payload["action"] == "orchestration_accepted_event_ledger_status"
+    assert payload["status"] == "accepted_event_ledger_scaffold_ready"
+    assert payload["ledger_path"] == "docs/design/orchestration/accepted_event_ledger/accepted_events.jsonl"
+    assert payload["record_schema_path"] == "docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json"
+    assert payload["ledger_exists"] is False
+    assert payload["record_count"] == 0
+    assert payload["append_only_required"] is True
+    assert payload["write_command_available"] is False
+    assert payload["accept_event_write_supported"] is False
+    assert payload["accepted_state_written"] is False
+    assert payload["runtime_state_mutation_allowed"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert payload["deployment_allowed"] is False
+    assert payload["model_may_execute"] is False
+    assert payload["validation_errors"] == []
+
+
+def test_accepted_event_ledger_status_uses_worktree_when_module_root_is_installed(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_orchestration as module
+
+    fake_site_packages = tmp_path / "site-packages"
+    fake_site_packages.mkdir()
+    monkeypatch.setattr(module, "ROOT", fake_site_packages)
+    monkeypatch.chdir(ROOT)
+
+    payload = module.accepted_event_ledger_status()
+
+    assert payload["ok"] is True
+    assert payload["ledger_directory"] == "docs/design/orchestration/accepted_event_ledger"
+    assert payload["record_schema_path"] == "docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json"
+    assert payload["accepted_state_written"] is False

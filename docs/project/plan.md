@@ -997,3 +997,27 @@ Out of scope:
 - Artifact adoption/current mutation beyond later release-control adoption.
 
 DoD target: DOD-085.
+
+## Focused working slice — v0.1.83
+
+```text
+slice: Accepted-event ledger design scaffold
+status: focused working candidate
+accepted/current baseline remains: chatgpt_claudecode_workflow-2_v0.1.79.zip
+working context: v0.1.82 focused-validated candidate
+```
+
+Scope:
+
+- Add `pb orchestration ledger-status --json`.
+- Define the future append-only accepted-event ledger path.
+- Define the accepted-event ledger record schema path.
+- Report future write preconditions and no-mutation authority.
+
+Out of scope:
+
+- `accept-event --write`.
+- Ledger creation or append.
+- Project Source mutation.
+- Artifact adoption/current mutation.
+- Deployment or model execution.

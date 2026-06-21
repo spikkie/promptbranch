@@ -50,3 +50,14 @@ The command validates the supplied accepted-event file, returns a single-record 
 - Full all-tests.
 - Artifact adoption/current verification.
 - Git commit/push.
+
+## Candidate correction — installed explicit-path root resolution
+
+The first `v0.1.82` working candidate exposed an installed-runtime defect: `pb orchestration accept-event --dry-run --json docs/...` could resolve explicit repo-relative input and the state machine under the installed `site-packages` module directory instead of the operator working tree. This corrected candidate resolves explicit accepted-event paths from the repo worktree / supplied file location before falling back to module layout.
+
+Validation added:
+
+- explicit accepted-event dry-run from repo-relative path succeeds after module `ROOT` is monkeypatched to a fake `site-packages` directory;
+- accepted-event validation from repo-relative path succeeds after module `ROOT` is monkeypatched to a fake `site-packages` directory;
+- parent-relative explicit paths still fail closed;
+- no accepted state, source mutation, artifact adoption, deployment, or model execution authority is introduced.
