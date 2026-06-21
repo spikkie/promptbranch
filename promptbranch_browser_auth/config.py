@@ -34,6 +34,7 @@ class ChatGPTBrowserConfig:
     conversation_history_rate_limit_cooldown_seconds: float = 180.0
     rate_limit_modal_wait_timeout_ms: int = 180_000
     rate_limit_modal_poll_interval_ms: int = 1_000
+    rate_limit_modal_ack_wait_seconds: float = 60.0
     clear_singleton_locks: bool = False
     dom_diagnostic_mode: str = "light"
     pause_before_fill: bool = False
@@ -59,6 +60,8 @@ class ChatGPTBrowserConfig:
             raise ValueError("rate_limit_modal_wait_timeout_ms must be positive")
         if self.rate_limit_modal_poll_interval_ms <= 0:
             raise ValueError("rate_limit_modal_poll_interval_ms must be positive")
+        if self.rate_limit_modal_ack_wait_seconds < 0:
+            raise ValueError("rate_limit_modal_ack_wait_seconds must be non-negative")
         normalized_dom_mode = (self.dom_diagnostic_mode or "light").strip().lower()
         if normalized_dom_mode not in {"light", "deep", "disabled"}:
             raise ValueError("dom_diagnostic_mode must be one of: light, deep, disabled")

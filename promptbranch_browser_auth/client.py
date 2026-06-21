@@ -870,6 +870,19 @@ class ChatGPTBrowserClient:
         self._log('rate-limit', 'waiting for persisted conversation history cooldown', wait_seconds=round(wait_seconds, 3), path=str(self._rate_limit_cooldown_path))
         await asyncio.sleep(wait_seconds)
 
+    async def _wait_after_rate_limit_modal_ack(self, *, label: str) -> None:
+        wait_seconds = max(0.0, float(getattr(self.config, 'rate_limit_modal_ack_wait_seconds', 60.0)))
+        if wait_seconds <= 0:
+            return
+        self._rate_limit_cooldown_wait_seconds_total += wait_seconds
+        self._rate_limit_cooldown_wait_count += 1
+        self._record_rate_limit_event(kind='modal_ack_wait', trigger='modal_ack', label=label, wait_seconds=wait_seconds)
+        self._log('rate-limit', 'waiting after rate limit modal acknowledgement', label=label, wait_seconds=round(wait_seconds, 3))
+        await asyncio.sleep(wait_seconds)
+        self._write_rate_limit_cooldown_until(time.time())
+        self._record_rate_limit_event(kind='modal_ack_wait_satisfied_cooldown', trigger='modal_ack', label=label, wait_seconds=0.0)
+        self._log('rate-limit', 'rate limit modal acknowledgement wait completed', label=label)
+
     def _can_wait_for_keep_open(self) -> bool:
         stdin = getattr(sys, "stdin", None)
         if stdin is None:
@@ -918,13 +931,27 @@ class ChatGPTBrowserClient:
         poll_interval_ms = self.config.rate_limit_modal_poll_interval_ms
         deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
         saw_modal = False
+        ack_wait_performed = False
         while True:
             modal = await self._find_visible_locator(page, RATE_LIMIT_MODAL_SELECTORS, label=f'{label}-rate-limit-modal')
             if modal is None:
                 if saw_modal:
                     self._log('rate-limit', 'rate limit modal cleared', label=label)
-                    if respect_history_rate_limit_cooldown:
+                    if respect_history_rate_limit_cooldown and not ack_wait_performed:
                         await self._respect_rate_limit_cooldown()
+                    elif respect_history_rate_limit_cooldown and ack_wait_performed:
+                        self._record_rate_limit_event(
+                            kind='cooldown_wait_satisfied_by_modal_ack_wait',
+                            trigger='modal_ack',
+                            label=label,
+                            wait_seconds=0.0,
+                        )
+                        self._log(
+                            'rate-limit',
+                            'persisted conversation history cooldown satisfied by modal acknowledgement wait',
+                            label=label,
+                            cooldown_remaining=round(self._conversation_history_cooldown_remaining(), 3),
+                        )
                     else:
                         self._record_rate_limit_event(
                             kind='cooldown_wait_skipped',
@@ -958,6 +985,14 @@ class ChatGPTBrowserClient:
                         timeout_ms=min(5_000, timeout_ms),
                         handle_rate_limit=False,
                     )
+                    self._record_rate_limit_event(kind='modal_acknowledged', trigger='modal_ack', label=label, wait_seconds=0.0)
+                    if respect_history_rate_limit_cooldown and not ack_wait_performed:
+                        await self._wait_after_rate_limit_modal_ack(label=label)
+                        ack_wait_performed = True
+                        deadline = max(
+                            deadline,
+                            asyncio.get_running_loop().time() + max(1.0, poll_interval_ms / 1000),
+                        )
                 except Exception as exc:
                     self._log('rate-limit', 'rate limit modal acknowledgement click failed', label=label, error=repr(exc))
             if asyncio.get_running_loop().time() >= deadline:

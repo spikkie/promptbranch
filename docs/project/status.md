@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
 accepted version: v0.1.79
-active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.83.zip
+active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.2.zip
 next normal target: deferred until focused-candidate promotion gate
 ```
 
@@ -15,16 +15,16 @@ next normal target: deferred until focused-candidate promotion gate
 MVP status: active
 DoD status: in_progress
 last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
-active plan slice: v0.1.83 — Accepted-event ledger design scaffold
-active repair: none
+active plan slice: v0.1.84 — Accepted-event ledger validation command
+active repair: v0.1.84.2 — acknowledge ChatGPT 429 modal and wait before continuing
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.83.zip focused candidate once packaged
-release status: v0.1.80-v0.1.83 are focused candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.2.zip repair candidate once packaged
+release status: v0.1.80-v0.1.84.2 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
 ```
 
 ## Current risks
@@ -37,9 +37,9 @@ release status: v0.1.80-v0.1.83 are focused candidates only; accepted/current re
 
 ## Current blockers
 
-- `v0.1.83` remains candidate-only until installed/runtime `pb orchestration ledger-status --json` and dedicated changed-code tests pass; v0.1.80-v0.1.82 remain focused candidates only.
-- `v0.1.83` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
-- No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, or artifact adoption behavior change is allowed in this slice.
+- `v0.1.84.2` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
+- `v0.1.84.2` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
+- No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, artifact adoption behavior change, or ChatGPT Project deletion behavior change is allowed in this repair.
 
 ## Current unknowns
 
@@ -50,13 +50,13 @@ release status: v0.1.80-v0.1.83 are focused candidates only; accepted/current re
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.83.zip, run `pb orchestration ledger-status --json` first, then run dedicated changed-code pytest before any broad/full release-control gate.
+Install chatgpt_claudecode_workflow-2_v0.1.84.2.zip, then run a single ask-live proof that exercises the 429 modal acknowledgement path before any broad/full release-control gate.
 ```
 
 ## Last updated
 
 ```text
-v0.1.83 focused candidate build
+v0.1.84.2 repair candidate build
 ```
 
 

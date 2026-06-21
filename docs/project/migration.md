@@ -415,3 +415,8 @@ The `v0.1.84` candidate restores the required repo-root `.gitignore` after Artif
 ## Repair migration note — v0.1.84.1
 
 `v0.1.84.1` supersedes the old retained-quarantine live-test default from `v0.1.78.2.3`/`v0.1.78.2.4` for new validation runs. Project deletion remains frozen, but release-control and live-test profiles now use a fresh run-scoped Project name by default to avoid accumulating browser/project history in one retained Project. Existing retained/leaked test Projects are not deleted by this repair. No ledger/write scope advanced.
+
+
+## v0.1.84.2 repair note
+
+`v0.1.84.2` is a repair-only candidate on top of focused `v0.1.84.1`. It changes live/browser 429 modal handling so history-sensitive operations click `Got it`, wait the configured acknowledgement cooldown, and continue polling instead of failing on a short modal timeout. It does not advance ledger/write/orchestration scope and does not re-enable ChatGPT Project deletion. Accepted/current remains `v0.1.79` until later adoption/current evidence exists.

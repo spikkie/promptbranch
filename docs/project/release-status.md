@@ -149,3 +149,8 @@ A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, 
 | v0.1.84 | normal | Accepted-event ledger validation command | focused_candidate | local validate-ledger smoke, ledger absent-valid/invalid-JSONL/worktree-path tests, version/control-surface checks, compileall, shell syntax, artifact guard; full all-tests/adoption deferred | DOD-087 focused; DOD-083/DOD-084/DOD-085/DOD-086 preserved | pending adoption evidence |
 
 | v0.1.84.1 | repair | Fresh delete-frozen test Project per validation run | candidate | focused parser/CLI/release-control shell tests, compileall, bash syntax, ZIP hygiene before operator install/runtime validation | DOD-088 focused; v0.1.84 ledger scope preserved | pending |
+
+
+## v0.1.84.2 repair note
+
+`v0.1.84.2` is a repair-only candidate on top of focused `v0.1.84.1`. It changes live/browser 429 modal handling so history-sensitive operations click `Got it`, wait the configured acknowledgement cooldown, and continue polling instead of failing on a short modal timeout. It does not advance ledger/write/orchestration scope and does not re-enable ChatGPT Project deletion. Accepted/current remains `v0.1.79` until later adoption/current evidence exists.
