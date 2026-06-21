@@ -2673,25 +2673,12 @@ class ChatGPTBrowserClient:
         if submit_button is None:
             raise ResponseTimeoutError("Create project submit button did not become visible")
 
-        if not await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
-            await self._log_project_create_disabled_state(page, name_input, submit_button, label="project-create-submit-pre-refill")
-            await self._fill_locator_text(name_input, name)
-            try:
-                await name_input.press("Tab", timeout=1_000)
-            except Exception:
-                pass
-            await page.wait_for_timeout(500)
-            submit_button = await self._wait_for_visible_locator(
-                page,
-                PROJECT_CREATE_SUBMIT_SELECTORS,
-                label="project-create-submit-after-refill",
-                total_timeout_ms=5_000,
-            )
-            if submit_button is None:
-                raise ResponseTimeoutError("Create project submit button disappeared after filling project name")
-        if not await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
-            await self._log_project_create_disabled_state(page, name_input, submit_button, label="project-create-submit-still-disabled")
-            raise ResponseTimeoutError("Create project submit button stayed disabled after filling project name")
+        submit_button = await self._recover_project_create_submit_enabled(
+            page,
+            name_input,
+            submit_button,
+            name=name,
+        )
 
         before_url = await self._safe_page_url(page)
         await self._click_locator_with_fallback(
@@ -8251,6 +8238,120 @@ class ChatGPTBrowserClient:
             input_value=input_value,
             button_state=button_state,
             visible_preview=visible_preview,
+        )
+
+    async def _recover_project_create_submit_enabled(
+        self,
+        page: Any,
+        name_input: Any,
+        submit_button: Any,
+        *,
+        name: str,
+    ) -> Any:
+        if await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
+            return submit_button
+
+        max_attempts = max(0, int(getattr(self.config, 'project_create_disabled_recovery_attempts', 2)))
+        recovery_wait_ms = max(0, int(getattr(self.config, 'project_create_disabled_recovery_wait_ms', 1_000)))
+        await self._log_project_create_disabled_state(
+            page,
+            name_input,
+            submit_button,
+            label="project-create-submit-pre-recovery",
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            label = f"project-create-submit-recovery-{attempt}"
+            self._log(
+                "project-create",
+                "attempting disabled create-project submit recovery",
+                label=label,
+                attempt=attempt,
+                max_attempts=max_attempts,
+            )
+            await self._wait_for_rate_limit_modal_to_clear(
+                page,
+                label=f"{label}-rate-limit",
+                respect_history_rate_limit_cooldown=True,
+            )
+            try:
+                await name_input.press("Control+A", timeout=1_000)
+                await page.wait_for_timeout(100)
+            except Exception:
+                pass
+            try:
+                await name_input.fill("")
+                await page.wait_for_timeout(100)
+            except Exception:
+                pass
+            await self._fill_locator_text(name_input, name)
+            try:
+                await name_input.evaluate(
+                    """
+                    (el, value) => {
+                        const tag = (el.tagName || '').toLowerCase();
+                        if (tag === 'input' || tag === 'textarea') {
+                            el.value = value;
+                        } else if ('innerText' in el) {
+                            el.innerText = value;
+                        } else {
+                            el.textContent = value;
+                        }
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+                        if (typeof el.blur === 'function') {
+                            el.blur();
+                        }
+                    }
+                    """,
+                    name,
+                )
+            except Exception:
+                pass
+            try:
+                await name_input.press("Tab", timeout=1_000)
+            except Exception:
+                pass
+            if recovery_wait_ms > 0:
+                await page.wait_for_timeout(recovery_wait_ms)
+            submit_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_CREATE_SUBMIT_SELECTORS,
+                label=f"{label}-button",
+                total_timeout_ms=5_000,
+            )
+            if submit_button is None:
+                self._log(
+                    "project-create",
+                    "create-project submit disappeared during recovery",
+                    label=label,
+                    attempt=attempt,
+                )
+                continue
+            if await self._wait_for_enabled_locator(submit_button, timeout_ms=8_000):
+                self._log(
+                    "project-create",
+                    "create-project submit enabled after bounded recovery",
+                    label=label,
+                    attempt=attempt,
+                )
+                return submit_button
+            await self._log_project_create_disabled_state(
+                page,
+                name_input,
+                submit_button,
+                label=f"{label}-still-disabled",
+            )
+
+        await self._log_project_create_disabled_state(
+            page,
+            name_input,
+            submit_button,
+            label="project-create-submit-disabled-after-recovery",
+        )
+        raise ResponseTimeoutError(
+            "Create project submit button stayed disabled after bounded recovery following project name fill"
         )
 
     async def _locator_is_enabled(self, locator: Any) -> bool:
