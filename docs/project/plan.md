@@ -840,3 +840,25 @@ Out of scope:
 - Project Source add/remove behavior changes.
 - Artifact adoption/current changes.
 - Normal `v0.1.79` scope.
+
+## Slice definition — v0.1.78.2.20.8.7 repair release
+
+Release: v0.1.78.2.20.8.7
+
+Scope: repair-only plain-text response-wait diagnostic bookkeeping on top of `v0.1.78.2.20.8.6`.
+
+In scope:
+
+- Initialize `response_wait_breakdown` in `_wait_and_get_response()` before diagnostic/deadline branches can write to it.
+- Preserve existing plain-text answer completion predicates and freshness/idle behavior.
+- Add focused regression coverage for the debug artifact skipped due to deadline path.
+- Preserve joined-repo state authority consistency and immutable Project deletion freeze.
+
+Out of scope:
+
+- Degraded completion when the answer text is stable but the stop button remains visible.
+- Project deletion behavior changes.
+- Secure delete protocol design or implementation.
+- Project Source add/remove behavior changes.
+- Artifact adoption/current changes.
+- Normal `v0.1.79` scope.

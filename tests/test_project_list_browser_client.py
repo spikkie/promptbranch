@@ -5007,6 +5007,73 @@ def test_backend_marker_missing_candidate_falls_through_to_dom_visible_answer(tm
     assert candidates[1]["contains_request_marker"] is True
 
 
+
+def test_wait_and_get_response_initializes_breakdown_for_debug_deadline_skip(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.debug = True
+
+    class StopAfterDebugSkip(Exception):
+        pass
+
+    context: dict[str, object] = {}
+
+    class DummyPage:
+        url = "https://chatgpt.com/g/g-p-current-demo/c/test-conversation"
+
+        async def wait_for_timeout(self, ms: int):
+            breakdown = context["response_wait_breakdown"]
+            assert isinstance(breakdown, dict)
+            assert breakdown["response_debug_artifact_skipped_due_to_deadline"] is True
+            raise StopAfterDebugSkip()
+
+    async def noop_open(*args, **kwargs):
+        return None
+
+    async def fake_extract(*args, **kwargs):
+        return 'section[data-turn="assistant"]', 2, 'ASK_LIVE_REPEAT_FIRST_20260620T225346Z', []
+
+    async def fake_submit_state(*args, **kwargs):
+        return {
+            "selector": '#composer-submit-button[data-testid="stop-button"]',
+            "send_ready": False,
+            "idle_visible": False,
+            "visible_enabled_count": 1,
+            "aria_label": "Stop answering",
+            "data_testid": "stop-button",
+            "stop_visible": True,
+        }
+
+    async def fake_thinking_state(*args, **kwargs):
+        return {"visible": False, "text": ""}
+
+    async def fake_url(*args, **kwargs):
+        return DummyPage.url
+
+    async def forbidden_debug(*args, **kwargs):
+        raise AssertionError("deadline-exhausted response wait must skip debug artifact writes")
+
+    client._maybe_open_new_project_conversation = noop_open
+    client._extract_last_text_from_selectors = fake_extract
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._safe_page_url = fake_url
+    client._save_response_diagnostics = forbidden_debug
+    client._response_deadline_budget_available = lambda *args, **kwargs: False
+
+    import asyncio
+
+    try:
+        asyncio.run(client._wait_and_get_response(DummyPage(), response_context=context))
+    except StopAfterDebugSkip:
+        pass
+    else:
+        raise AssertionError("expected test-controlled stop after debug skip marker")
+
+    breakdown = context["response_wait_breakdown"]
+    assert isinstance(breakdown, dict)
+    assert breakdown["response_debug_artifact_skipped_due_to_deadline"] is True
+    assert "response_wait_started_at_monotonic" in breakdown
+
 def test_wait_and_get_json_skips_final_debug_when_hard_deadline_exhausted(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.debug = True
