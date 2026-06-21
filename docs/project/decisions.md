@@ -134,3 +134,11 @@ The text Project Source add path can fail with `ui_trigger_not_observed_not_veri
 | ADR-PROJ-084 | 2026-06-21 | Accepted-event promotion must start as dry-run only | `v0.1.80` validates accepted-event fixtures but does not define how an operator can preview future accepted-state writes. Adding writes immediately would create authority drift. | `v0.1.81` adds `pb orchestration accept-event --dry-run --json`, which previews validated accepted-event records and preserves all no-mutation flags. Ledger writes, proposal promotion, runtime execution, Project Source mutation, artifact adoption, and deployment remain out of scope. |
 
 | ADR-PROJ-085 | 2026-06-21 | Accepted-event dry-run explicit inputs must be repo-local and fail closed before ledger writes exist | `v0.1.81` previewed committed fixtures only. Operators need to dry-run one supplied accepted-event file before any future ledger design, but accepting external or parent-relative paths would create authority and evidence ambiguity. | `v0.1.82` allows explicit repo-local accepted-event input for dry-run only, reports `input_mode=explicit_paths`, and rejects parent-relative, external absolute, missing, or invalid files without writing accepted state, mutating Project Sources, adopting artifacts, deploying, or executing model-proposed actions. |
+
+## Decision — v0.1.82 explicit orchestration input resolves from worktree
+
+For installed `pb` commands, explicit repo-relative orchestration input must resolve from the operator repository worktree / supplied file location, not from the installed package directory. Package/module code may be installed under `site-packages`, but orchestration examples, state machines, and accepted-event fixtures remain repository content for this MVP slice.
+
+## Decision — Accepted-event ledger must be scaffolded before writes
+
+`v0.1.83` keeps the accepted-event ledger as a read-only scaffold. The project now exposes `pb orchestration ledger-status --json` so operators can verify the future ledger path, record schema, append-only requirement, and no-mutation authority before any `accept-event --write` implementation exists. This prevents a jump from dry-run previews directly into mutable accepted state.

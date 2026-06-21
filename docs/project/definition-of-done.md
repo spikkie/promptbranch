@@ -199,3 +199,17 @@ Acceptance criteria:
 | DOD-083 | Accepted-event fixtures have a dedicated read-only CLI validator, committed G0-G6 examples, explicit accepted-current baseline binding, fail-closed zero-default behavior, and no state/source/artifact/deployment mutation authority | done | `promptbranch_orchestration.py`, `pb orchestration validate-accepted-event`, `scripts/orchestration/validate_accepted_event.py` compatibility wrapper, `tests/orchestration/test_orchestration_accepted_event_schema.py`, `docs/design/orchestration/examples/accepted_events/*.json` | v0.1.80 |
 | DOD-084 | Accepted-event dry-run promotion previews validated accepted-event records without writing accepted state or mutating source/artifacts/deployment/runtime | focused | `promptbranch_orchestration.py`, `pb orchestration accept-event --dry-run`, `tests/orchestration/test_orchestration_accepted_event_schema.py`, `tests/test_cli_parser.py` | v0.1.81 |
 | DOD-085 | Accepted-event dry-run supports explicit repo-local input files and fails closed for unsafe/missing/invalid explicit paths without writing state or mutating source/artifacts/deployment/runtime | focused | `promptbranch_orchestration.py`, `pb orchestration accept-event --dry-run --json <accepted-event-file>`, `tests/orchestration/test_orchestration_accepted_event_schema.py`, `tests/test_cli_parser.py` | v0.1.82 |
+
+| DOD-085a | Accepted-event dry-run explicit input works from installed runtime/worktree path resolution and does not fall back to `site-packages/docs/...` | focused_candidate | `tests/orchestration/test_orchestration_accepted_event_schema.py`; `pb orchestration accept-event --dry-run --json docs/design/orchestration/examples/accepted_events/G0_intent.accepted_event.example.json` expected after install | v0.1.82 candidate |
+
+## DOD-086 — Accepted-event ledger scaffold remains read-only
+
+Status: done for v0.1.83 focused candidate.
+
+Acceptance criteria:
+
+- `pb orchestration ledger-status --json` reports the future accepted-event ledger path and record schema path.
+- The ledger scaffold reports `write_command_available=false` and `accept_event_write_supported=false`.
+- No accepted state, runtime state, Project Source, artifact adoption, deployment, or model-execution authority is introduced.
+- The command works from installed-runtime/worktree path resolution and does not rely on `site-packages/docs/...`.
+- The actual append-only ledger write remains out of scope.

@@ -193,6 +193,9 @@ ACCEPTED_EVENT_SCHEMA_VERSION = "1.0"
 GRILL_SCHEMA_ID = "promptbranch.orchestration.grill"
 ACCEPTED_EVENT_STATE_MACHINE_RELATIVE_PATH = ORCHESTRATION_RELATIVE_DIR / "state_machines" / "k8s_game_mvp.state_machine.json"
 ACCEPTED_EVENT_EXAMPLES_RELATIVE_DIR = ORCHESTRATION_RELATIVE_DIR / "examples" / "accepted_events"
+ACCEPTED_EVENT_LEDGER_RELATIVE_DIR = ORCHESTRATION_RELATIVE_DIR / "accepted_event_ledger"
+ACCEPTED_EVENT_LEDGER_RELATIVE_PATH = ACCEPTED_EVENT_LEDGER_RELATIVE_DIR / "accepted_events.jsonl"
+ACCEPTED_EVENT_LEDGER_RECORD_SCHEMA_RELATIVE_PATH = ORCHESTRATION_RELATIVE_DIR / "schemas" / "accepted_event_ledger_record.schema.json"
 VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 ARTIFACT_REF_PATTERN = re.compile(r"^chatgpt_claudecode_workflow-2_v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*\.zip$")
 ACCEPTED_EVENT_EXPECTED_CONSTRAINTS = {
@@ -619,15 +622,53 @@ def validate_accepted_event(
     return errors
 
 
-def _accepted_event_input_mode(paths: list[Path], *, default_count: int | None = None) -> str:
+def _accepted_event_input_mode(
+    paths: list[Path],
+    *,
+    root: Path | None = None,
+    default_count: int | None = None,
+) -> str:
     if not paths:
         return "none"
+    repo_root = discover_repo_root(root)
     if default_count is not None and len(paths) == default_count:
-        default_names = {path.name for path in accepted_event_example_paths()}
+        default_names = {path.name for path in accepted_event_example_paths(repo_root)}
         path_names = {path.name for path in paths}
         if default_names and path_names == default_names:
             return "committed_default_examples"
     return "explicit_paths"
+
+
+def _discover_repo_root_for_accepted_event_inputs(paths: list[Path], *, root: Path | None = None) -> Path:
+    """Resolve the repository root for installed-runtime accepted-event commands.
+
+    pipx installs Promptbranch modules under ``site-packages`` while operators
+    usually run ``pb`` from the repository worktree.  Explicit relative paths
+    must therefore be interpreted from the process working directory / supplied
+    file location first, not from the installed package directory.  This keeps
+    ``pb orchestration accept-event --dry-run docs/...`` usable after install.
+    """
+    if root is not None:
+        return discover_repo_root(root)
+
+    for original in paths:
+        if not isinstance(original, Path):
+            continue
+        if ".." in original.parts:
+            continue
+        if original.is_absolute():
+            candidate = original
+        else:
+            candidate = Path.cwd() / original
+        try:
+            candidate = candidate.resolve(strict=False)
+        except OSError:
+            pass
+        discovered = discover_repo_root(candidate)
+        if (discovered / ORCHESTRATION_RELATIVE_DIR).is_dir():
+            return discovered
+
+    return discover_repo_root(None)
 
 
 def _resolve_accepted_event_input_paths(
@@ -658,9 +699,13 @@ def _resolve_accepted_event_input_paths(
 
 
 def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
-    repo_root = discover_repo_root(root)
     raw_paths = list(paths)
-    input_mode = _accepted_event_input_mode(raw_paths, default_count=len(accepted_event_example_paths(repo_root)))
+    repo_root = _discover_repo_root_for_accepted_event_inputs(raw_paths, root=root)
+    input_mode = _accepted_event_input_mode(
+        raw_paths,
+        root=repo_root,
+        default_count=len(accepted_event_example_paths(repo_root)),
+    )
     resolved_paths, path_errors = _resolve_accepted_event_input_paths(raw_paths, root=repo_root)
     if not raw_paths:
         return {
@@ -751,8 +796,8 @@ def _accepted_event_preview(path: Path, value: dict[str, Any], *, root: Path) ->
 
 
 def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
-    repo_root = discover_repo_root(root)
     raw_paths = list(paths)
+    repo_root = _discover_repo_root_for_accepted_event_inputs(raw_paths, root=root)
     resolved_paths, path_errors = _resolve_accepted_event_input_paths(raw_paths, root=repo_root)
     validation_payload = validate_accepted_event_paths(raw_paths, root=repo_root)
     base_payload: dict[str, Any] = {
@@ -810,6 +855,124 @@ def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -
             else "fix_accepted_event_json_and_rerun_dry_run"
         ),
     }
+
+
+def accepted_event_ledger_status(root: Path | None = None) -> dict[str, Any]:
+    """Return the read-only accepted-event ledger scaffold contract.
+
+    This slice deliberately does not create or write a ledger.  The command is
+    an operator-visible design/status scaffold for the future append-only
+    accepted-event ledger.
+    """
+    repo_root = discover_repo_root(root)
+    ledger_dir = repo_root / ACCEPTED_EVENT_LEDGER_RELATIVE_DIR
+    ledger_path = repo_root / ACCEPTED_EVENT_LEDGER_RELATIVE_PATH
+    schema_path = repo_root / ACCEPTED_EVENT_LEDGER_RECORD_SCHEMA_RELATIVE_PATH
+    errors: list[str] = []
+    record_count = 0
+
+    if not ledger_dir.is_dir():
+        errors.append(f"missing ledger scaffold directory: {display_path_for_root(ledger_dir, root=repo_root)}")
+    if not schema_path.is_file():
+        errors.append(f"missing ledger record schema: {display_path_for_root(schema_path, root=repo_root)}")
+    else:
+        try:
+            schema_value = read_json(schema_path)
+        except Exception as exc:  # noqa: BLE001 - report deterministic scaffold errors.
+            errors.append(f"{display_path_for_root(schema_path, root=repo_root)}: failed to read JSON schema: {exc}")
+        else:
+            if schema_value.get("$id") != "promptbranch.orchestration.accepted_event_ledger_record":
+                errors.append(
+                    f"{display_path_for_root(schema_path, root=repo_root)}: $id must be "
+                    "promptbranch.orchestration.accepted_event_ledger_record"
+                )
+
+    if ledger_path.exists():
+        if not ledger_path.is_file():
+            errors.append(f"ledger path is not a file: {display_path_for_root(ledger_path, root=repo_root)}")
+        else:
+            try:
+                lines = ledger_path.read_text(encoding="utf-8").splitlines()
+            except Exception as exc:  # noqa: BLE001 - report deterministic read errors.
+                errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}: failed to read ledger JSONL: {exc}")
+                lines = []
+            for index, line in enumerate(lines, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: invalid JSONL record: {exc}")
+                    continue
+                if not isinstance(record, dict):
+                    errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: ledger record must be an object")
+                    continue
+                record_count += 1
+                if record.get("schema") != "promptbranch.orchestration.accepted_event_ledger_record":
+                    errors.append(
+                        f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: schema must be "
+                        "promptbranch.orchestration.accepted_event_ledger_record"
+                    )
+                if record.get("schema_version") != "1.0":
+                    errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: schema_version must be 1.0")
+                if not str(record.get("record_id") or "").strip():
+                    errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: record_id is required")
+                if not isinstance(record.get("accepted_event"), dict):
+                    errors.append(f"{display_path_for_root(ledger_path, root=repo_root)}:{index}: accepted_event object is required")
+
+    ledger_exists = ledger_path.is_file()
+    ok = not errors
+    return {
+        "ok": ok,
+        "action": "orchestration_accepted_event_ledger_status",
+        "status": (
+            "accepted_event_ledger_valid"
+            if ok and ledger_exists
+            else "accepted_event_ledger_scaffold_ready"
+            if ok
+            else "accepted_event_ledger_invalid"
+        ),
+        "schema": "promptbranch.orchestration.accepted_event_ledger",
+        "schema_version": "1.0",
+        "ledger_path": display_path_for_root(ledger_path, root=repo_root),
+        "ledger_exists": ledger_exists,
+        "ledger_directory": display_path_for_root(ledger_dir, root=repo_root),
+        "record_schema_path": display_path_for_root(schema_path, root=repo_root),
+        "record_count": record_count,
+        "append_only_required": True,
+        "write_command_available": False,
+        "accept_event_write_supported": False,
+        "accepted_state_written": False,
+        "runtime_state_mutation_allowed": False,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+        "deployment_allowed": False,
+        "model_may_execute": False,
+        "future_write_preconditions": [
+            "accepted-event payload validates successfully",
+            "current accepted baseline is proven before write",
+            "ledger append target is repo-local and append-only",
+            "operator explicitly requests a future write command",
+            "no Project Source, artifact adoption, deployment, or model execution side effect is performed by ledger append",
+        ],
+        "validation_errors": errors,
+        "operator_action": (
+            "accepted_event_ledger_contract_may_be_reviewed; no state was mutated"
+            if ok
+            else "fix_accepted_event_ledger_scaffold_and_rerun_status"
+        ),
+    }
+
+
+def render_accepted_event_ledger_status_text(payload: dict[str, Any]) -> str:
+    if payload.get("ok"):
+        return (
+            f"{payload['status']}: ledger_exists={str(payload.get('ledger_exists')).lower()} "
+            f"record_count={payload.get('record_count')} write_command_available=false"
+        )
+    lines = [f"{payload.get('status')}: {len(payload.get('validation_errors') or [])} error(s)"]
+    lines.extend(f"- {error}" for error in payload.get("validation_errors") or [])
+    return "\n".join(lines)
 
 
 def render_accept_event_dry_run_text(payload: dict[str, Any]) -> str:

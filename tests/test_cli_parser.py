@@ -1404,3 +1404,11 @@ def test_parser_accepts_orchestration_accept_event_dry_run_command() -> None:
     assert args.dry_run is True
     assert args.json is True
     assert args.paths == []
+
+
+def test_parser_accepts_orchestration_ledger_status_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["orchestration", "ledger-status", "--json"])
+    assert args.command == "orchestration"
+    assert args.orchestration_command == "ledger-status"
+    assert args.json is True

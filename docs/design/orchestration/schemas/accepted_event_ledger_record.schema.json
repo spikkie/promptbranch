@@ -1,0 +1,45 @@
+{
+  "$id": "promptbranch.orchestration.accepted_event_ledger_record",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "record_id",
+    "recorded_at",
+    "accepted_event"
+  ],
+  "properties": {
+    "schema": {
+      "const": "promptbranch.orchestration.accepted_event_ledger_record"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recorded_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "accepted_event": {
+      "type": "object"
+    },
+    "baseline": {
+      "type": "object"
+    },
+    "authority": {
+      "type": "object",
+      "properties": {
+        "accepted_state_written": {"const": true},
+        "runtime_state_mutation_allowed": {"const": false},
+        "source_mutation_allowed": {"const": false},
+        "artifact_adoption_allowed": {"const": false},
+        "deployment_allowed": {"const": false},
+        "model_may_execute": {"const": false}
+      }
+    }
+  },
+  "additionalProperties": true
+}
