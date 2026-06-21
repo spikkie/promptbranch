@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
 accepted version: v0.1.79
-active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.3.zip
+active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.4.zip
 next normal target: deferred until focused-candidate promotion gate
 ```
 
@@ -16,15 +16,15 @@ MVP status: active
 DoD status: in_progress
 last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
 active plan slice: v0.1.84 — Accepted-event ledger validation command
-active repair: v0.1.84.3 — recover disabled project-create submit after 429/cooldown
+active repair: v0.1.84.4 — cap generated test Project names at 50 characters
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.3.zip repair candidate once packaged
-release status: v0.1.80-v0.1.84.3 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.4.zip repair candidate once packaged
+release status: v0.1.80-v0.1.84.4 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
 ```
 
 ## Current risks
@@ -37,8 +37,8 @@ release status: v0.1.80-v0.1.84.3 are focused/repair candidates only; accepted/c
 
 ## Current blockers
 
-- `v0.1.84.3` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
-- `v0.1.84.3` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
+- `v0.1.84.4` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
+- `v0.1.84.4` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
 - No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, artifact adoption behavior change, or ChatGPT Project deletion behavior change is allowed in this repair.
 
 ## Current unknowns
@@ -50,13 +50,13 @@ release status: v0.1.80-v0.1.84.3 are focused/repair candidates only; accepted/c
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.84.3.zip, then run a single project-ensure/ask-live proof that exercises project creation after 429/cooldown before any broad/full release-control gate.
+Install chatgpt_claudecode_workflow-2_v0.1.84.4.zip, then run a single project-ensure/ask-live proof that exercises project creation after 429/cooldown before any broad/full release-control gate.
 ```
 
 ## Last updated
 
 ```text
-v0.1.84.3 repair candidate build
+v0.1.84.4 repair candidate build
 ```
 
 
@@ -359,3 +359,8 @@ The repair does not advance accepted-event ledger functionality, does not add le
 ## v0.1.84.3 repair status
 
 Uploaded `release_control.v0.1.84.2.run_all_tests.log` ended after the release-control rate-limit retry wait line, so it did not prove a second retry failure. It did prove a release-blocking first-attempt failure in `project_ensure_create_or_reuse`: after 429 modal acknowledgement and cooldown, the ChatGPT create-project submit button stayed disabled after the project name was filled. `v0.1.84.3` repairs only that browser recovery path by adding bounded create-project disabled-submit recovery: check/acknowledge rate-limit modal again, wait configured cooldown, clear/refill the project name, dispatch input/change/keyup/blur events, tab out, reacquire the submit button, and retry enablement before failing closed with structured disabled-state logs. Project deletion remains frozen; ledger/write/orchestration scope does not advance.
+
+
+## v0.1.84.4 repair status
+
+ChatGPT Project names are limited to 50 characters. `v0.1.84.4` repairs generated test Project naming only: release-control and live-test generated names are capped at 50 characters while preserving run-scoped uniqueness through a stable hash suffix when truncation is required. Explicit `PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME` values longer than 50 characters now fail fast. Project deletion remains frozen; ledger/write/orchestration scope does not advance.

@@ -209,6 +209,34 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+chatgpt_project_name_max_length=50
+
+shorten_chatgpt_project_name() {
+  local raw="$1"
+  local max_len="${2:-${chatgpt_project_name_max_length}}"
+  local clean hash head_len head
+  clean="$(printf '%s' "${raw}" | sed -E 's/[^A-Za-z0-9_-]+/-/g; s/^[-_]+//; s/[-_]+$//')"
+  if [[ -z "${clean}" ]]; then
+    clean="itest-promptbranch"
+  fi
+  if (( ${#clean} <= max_len )); then
+    printf '%s\n' "${clean}"
+    return 0
+  fi
+  hash="$(printf '%s' "${clean}" | sha256sum | awk '{print substr($1,1,8)}')"
+  head_len=$(( max_len - 9 ))
+  if (( head_len < 1 )); then
+    head_len=1
+  fi
+  head="${clean:0:head_len}"
+  head="${head%-}"
+  head="${head%_}"
+  if [[ -z "${head}" ]]; then
+    head="${clean:0:head_len}"
+  fi
+  printf '%s-%s\n' "${head}" "${hash}"
+}
+
 normalize_version() {
   local raw="$1"
   raw="${raw##*/}"
@@ -662,7 +690,9 @@ ver_plain="${ver#v}"
 if [[ -z "${release_test_project_name}" ]]; then
   release_test_project_version="${ver//[^A-Za-z0-9]/-}"
   release_test_project_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-  release_test_project_name="itest-promptbranch-${release_test_project_version}-${release_test_project_stamp}"
+  release_test_project_name="$(shorten_chatgpt_project_name "itest-promptbranch-${release_test_project_version}-${release_test_project_stamp}")"
+else
+  [[ ${#release_test_project_name} -le ${chatgpt_project_name_max_length} ]] || fail "PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME exceeds ChatGPT project-name limit (${chatgpt_project_name_max_length} chars): ${release_test_project_name}"
 fi
 if [[ ${install_from_zip} -eq 1 ]]; then
   [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"

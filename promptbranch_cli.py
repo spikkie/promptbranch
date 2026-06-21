@@ -88,6 +88,7 @@ ASK_LIVE_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-ask-live"
 VISUAL_ARTIFACT_ROUNDTRIP_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-visual-artifact-roundtrip"
 RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-release-live"
 DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY = "unique_project_delete_frozen_retained"
+CHATGPT_PROJECT_NAME_MAX_LENGTH = 50
 
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
 from promptbranch_task_fanout import (
@@ -20591,6 +20592,31 @@ def _default_live_test_project_prefix(profile: str) -> str:
     return DELETE_FROZEN_TEST_PROJECT_PREFIX
 
 
+def _safe_live_test_name_component(value: object, *, fallback: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "-", str(value or "")).strip("-_")
+    return safe or fallback
+
+
+def _bounded_generated_chatgpt_project_name(prefix: object, run_id: object, *, max_length: int = CHATGPT_PROJECT_NAME_MAX_LENGTH) -> str:
+    """Build a fresh test Project name that respects ChatGPT's 50-char limit.
+
+    The name must stay run-scoped while whole-project deletion is frozen, but
+    ChatGPT rejects names longer than 50 characters.  Long prefix/run-id pairs
+    are therefore shortened with a stable hash suffix instead of silently
+    reusing a shared project.
+    """
+
+    safe_prefix = _safe_live_test_name_component(prefix, fallback=DELETE_FROZEN_TEST_PROJECT_PREFIX)
+    safe_run = _safe_live_test_name_component(run_id, fallback="run")
+    raw = f"{safe_prefix}-{safe_run}"
+    if len(raw) <= max_length:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    head_length = max(1, max_length - len(digest) - 1)
+    head = raw[:head_length].rstrip("-_") or raw[:head_length]
+    return f"{head}-{digest}"
+
+
 def _apply_delete_frozen_live_test_defaults(args: argparse.Namespace, *, profile: str) -> None:
     """Apply delete-frozen live-test defaults.
 
@@ -20667,9 +20693,11 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
             test_project_url = project_home_url_from_url(explicit_conversation_url) or explicit_conversation_url
             test_project_name = "explicit-conversation-url"
         else:
-            safe_run = re.sub(r"[^A-Za-z0-9_-]+", "-", run_id).strip("-") or "run"
             prefix = str(getattr(args, "project_name_prefix", None) or "ask-live-temp")
-            test_project_name = str(getattr(args, "project_name", None) or f"{prefix}-{safe_run}")
+            test_project_name = str(
+                getattr(args, "project_name", None)
+                or _bounded_generated_chatgpt_project_name(prefix, run_id)
+            )
             setup_result = await backend.ensure_project(
                 name=test_project_name,
                 icon=getattr(args, "project_icon", None),
@@ -21147,9 +21175,11 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             test_project_name = "explicit-conversation-url"
             setattr(args, "conversation_url", explicit_conversation_url)
         else:
-            safe_run = re.sub(r"[^A-Za-z0-9_-]+", "-", run_id).strip("-") or "run"
             prefix = str(getattr(args, "project_name_prefix", None) or "visual-artifact-roundtrip-temp")
-            test_project_name = str(getattr(args, "project_name", None) or f"{prefix}-{safe_run}")
+            test_project_name = str(
+                getattr(args, "project_name", None)
+                or _bounded_generated_chatgpt_project_name(prefix, run_id)
+            )
             setup_result = await backend.ensure_project(
                 name=test_project_name,
                 icon=getattr(args, "project_icon", None),
