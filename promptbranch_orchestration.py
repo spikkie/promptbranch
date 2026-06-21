@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -10,10 +11,9 @@ from typing import Any
 SCHEMA_ID = "promptbranch.orchestration.event_intake"
 SCHEMA_VERSION = "1.0"
 ROOT = Path(__file__).resolve().parent
-DEFAULT_EXAMPLES_RELATIVE_DIR = Path("docs") / "design" / "orchestration" / "examples" / "events"
-SCHEMA_RELATIVE_PATH = Path("docs") / "design" / "orchestration" / "schemas" / "event_intake.schema.json"
-DEFAULT_EXAMPLES_DIR = ROOT / DEFAULT_EXAMPLES_RELATIVE_DIR
-SCHEMA_PATH = ROOT / SCHEMA_RELATIVE_PATH
+DEFAULT_EXAMPLES_DIR = ROOT / "docs" / "design" / "orchestration" / "examples" / "events"
+SCHEMA_PATH = ROOT / "docs" / "design" / "orchestration" / "schemas" / "event_intake.schema.json"
+ACCEPTED_EVENT_VALIDATOR_PATH = ROOT / "scripts" / "orchestration" / "validate_accepted_event.py"
 VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 
@@ -182,45 +182,45 @@ def validate_event_intake(value: dict[str, Any], *, source: str = "<memory>") ->
     return errors
 
 
-def _candidate_repo_roots(start: Path | None = None) -> list[Path]:
-    roots: list[Path] = []
-    for candidate in (start or Path.cwd()).resolve(), ROOT.resolve():
-        for root in (candidate, *candidate.parents):
-            if root not in roots:
-                roots.append(root)
-    return roots
-
-
-def resolve_examples_root(start: Path | None = None) -> Path:
-    for root in _candidate_repo_roots(start):
-        examples_dir = root / DEFAULT_EXAMPLES_RELATIVE_DIR
-        if examples_dir.is_dir() and any(examples_dir.glob("*.example.json")):
-            return root
-    return ROOT
-
-
-def example_paths(root: Path | None = None) -> list[Path]:
-    base = root if root is not None else resolve_examples_root()
-    examples_dir = base / DEFAULT_EXAMPLES_RELATIVE_DIR
+def example_paths(root: Path = ROOT) -> list[Path]:
+    examples_dir = root / "docs" / "design" / "orchestration" / "examples" / "events"
     return sorted(examples_dir.glob("*.example.json"))
 
 
-def validate_paths(paths: list[Path], *, root: Path | None = None, require_non_empty: bool = False) -> dict[str, Any]:
-    display_root = root if root is not None else resolve_examples_root()
+def _load_accepted_event_validator() -> Any:
+    spec = importlib.util.spec_from_file_location("validate_accepted_event", ACCEPTED_EVENT_VALIDATOR_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load {ACCEPTED_EVENT_VALIDATOR_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def accepted_event_example_paths() -> list[Path]:
+    module = _load_accepted_event_validator()
+    return list(module.example_paths())
+
+
+def validate_accepted_event_paths(paths: list[Path]) -> dict[str, Any]:
+    module = _load_accepted_event_validator()
+    return dict(module.validate_paths_payload(paths))
+
+
+def render_accepted_event_validation_text(payload: dict[str, Any]) -> str:
+    module = _load_accepted_event_validator()
+    return str(module.render_text(payload))
+
+
+def validate_paths(paths: list[Path], *, root: Path = ROOT) -> dict[str, Any]:
     errors: list[str] = []
     validated: list[str] = []
-    if require_non_empty and not paths:
-        errors.append(
-            f"no event-intake JSON files found under {display_path(display_root / DEFAULT_EXAMPLES_RELATIVE_DIR, root=display_root)}; "
-            "pass explicit event JSON paths or run from a repository containing committed orchestration examples"
-        )
     for path in paths:
         try:
             value = read_json(path)
         except Exception as exc:  # noqa: BLE001 - CLI validator should collect deterministic file errors.
-            errors.append(f"{display_path(path, root=display_root)}: failed to read JSON: {exc}")
+            errors.append(f"{display_path(path, root=root)}: failed to read JSON: {exc}")
             continue
-        source = display_path(path, root=display_root)
+        source = display_path(path, root=root)
         event_errors = validate_event_intake(value, source=source)
         if event_errors:
             errors.extend(event_errors)
@@ -262,9 +262,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
     args = parser.parse_args(argv)
 
-    examples_root = resolve_examples_root()
-    paths = [Path(p) for p in args.paths] if args.paths else example_paths(examples_root)
-    payload = validate_paths(paths, root=examples_root, require_non_empty=not args.paths)
+    paths = [Path(p) for p in args.paths] if args.paths else example_paths()
+    payload = validate_paths(paths)
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:

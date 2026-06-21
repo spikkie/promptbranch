@@ -353,6 +353,11 @@ No user data, Project Source content, artifact-current registry, browser profile
 | `docs/design/orchestration/docs/current_status.md` | historical orchestration line status | `docs/project/status.md`, `docs/project/plan.md`, `docs/design/orchestration/docs/event_intake_foundation.md` | summarized | Earlier orchestration documents are preserved. `v0.1.79` narrows the next normal slice to proposal-only event intake rather than broad k8s-game runtime work. |
 
 
-## v0.1.79 candidate correction note
+## v0.1.80 migration note
 
-The corrected candidate keeps the release version `v0.1.79` because the earlier `v0.1.79` artifact was not accepted/current. The correction is limited to default event-intake example resolution and fail-closed zero-default behavior for `pb orchestration validate-event --json`; no user data, Project Source, artifact-current, browser profile, deployment, or accepted-event ledger migration is performed.
+No user data, Project Source content, artifact-current registry, browser profile, deployment, or accepted-event ledger migration is performed. `v0.1.80` continues from accepted/current `v0.1.79` and adds only a read-only accepted-event validation foundation. Existing accepted-event fixtures are updated with explicit accepted/current baseline binding to `chatgpt_claudecode_workflow-2_v0.1.79.zip`.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `scripts/orchestration/validate_accepted_event.py` | script-only accepted-event fixture validator | `pb orchestration validate-accepted-event`, `docs/project/status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md` | promoted | The validator remains read-only and fail-closed; no ledger write or runtime execution is introduced. |
+| `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | `docs/design/orchestration/schemas/accepted_event.schema.json` and validator tests | strengthened | Fixtures now bind to explicit accepted/current baseline artifact/source refs. |

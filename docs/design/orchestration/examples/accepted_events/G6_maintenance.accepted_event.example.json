@@ -6,6 +6,13 @@
     "id": "k8s-game-mvp",
     "role": "orchestration-model-test-vehicle"
   },
+  "baseline": {
+    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.79.zip",
+    "artifact_version": "v0.1.79",
+    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.79.zip",
+    "source_version": "v0.1.79",
+    "role": "accepted_current_source_baseline"
+  },
   "source_grill": {
     "path": "docs/design/orchestration/examples/grills/G6_maintenance.example.json",
     "stage": "G6_maintenance",

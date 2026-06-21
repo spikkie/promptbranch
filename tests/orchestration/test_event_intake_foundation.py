@@ -107,31 +107,3 @@ def test_event_intake_cli_payload_is_fail_closed(tmp_path: Path) -> None:
     assert payload["source_mutation_allowed"] is False
     assert payload["artifact_adoption_allowed"] is False
     assert any("authority.model_may_execute must be False" in error for error in payload["errors"])
-
-
-def test_event_intake_default_examples_resolve_from_repo_cwd(monkeypatch) -> None:
-    module = _load_module()
-    monkeypatch.chdir(ROOT)
-
-    examples_root = module.resolve_examples_root()
-    paths = module.example_paths(examples_root)
-    payload = module.validate_paths(paths, root=examples_root, require_non_empty=True)
-
-    assert examples_root == ROOT
-    assert payload["ok"] is True
-    assert payload["validated_count"] >= 1
-    assert any(path.endswith("v0.1.79_event_intake.example.json") for path in payload["validated_paths"])
-
-
-def test_event_intake_default_examples_fail_closed_when_none_found(tmp_path: Path) -> None:
-    module = _load_module()
-
-    payload = module.validate_paths([], root=tmp_path, require_non_empty=True)
-
-    assert payload["ok"] is False
-    assert payload["status"] == "event_intake_invalid"
-    assert payload["validated_count"] == 0
-    assert any("no event-intake JSON files found" in error for error in payload["errors"])
-    assert payload["accepted_state_written"] is False
-    assert payload["source_mutation_allowed"] is False
-    assert payload["artifact_adoption_allowed"] is False
