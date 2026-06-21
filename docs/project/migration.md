@@ -368,3 +368,12 @@ No user data, Project Source content, artifact-current registry, browser profile
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `scripts/orchestration/validate_accepted_event.py` | source-tree compatibility wrapper | `promptbranch_orchestration.py` | migrated | Accepted-event validation logic now lives in installed module code so `pb orchestration validate-accepted-event` does not depend on a repo-local script under pipx/site-packages. |
+
+## v0.1.81 migration note
+
+No user data, Project Source content, artifact-current registry, browser profile, deployment, or accepted-event ledger migration is performed. `v0.1.81` is a focused working slice on top of the `v0.1.80` working candidate context. It adds only a dry-run accepted-event promotion preview and preserves the accepted/current baseline as `chatgpt_claudecode_workflow-2_v0.1.79.zip` until a later full promotion/adoption gate.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `pb orchestration validate-accepted-event` | read-only accepted-event validation command | `pb orchestration accept-event --dry-run --json` | extended | Dry-run promotion reuses validation and returns previews without writing accepted state. |
+| `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | dry-run accepted-event previews | reused | Fixtures remain data-only and no ledger write path is introduced. |

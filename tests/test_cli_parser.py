@@ -1394,3 +1394,13 @@ def test_parser_accepts_release_lifecycle_dry_run_scheduler_context() -> None:
     assert args.service_id == "default"
     assert args.plan is True
     assert args.json is True
+
+
+def test_parser_accepts_orchestration_accept_event_dry_run_command() -> None:
+    parser = make_parser()
+    args = parser.parse_args(["orchestration", "accept-event", "--dry-run", "--json"])
+    assert args.command == "orchestration"
+    assert args.orchestration_command == "accept-event"
+    assert args.dry_run is True
+    assert args.json is True
+    assert args.paths == []

@@ -683,6 +683,101 @@ def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None
     }
 
 
+def _accepted_event_preview(path: Path, value: dict[str, Any], *, root: Path) -> dict[str, Any]:
+    baseline = value.get("baseline") if isinstance(value.get("baseline"), dict) else {}
+    source_grill = value.get("source_grill") if isinstance(value.get("source_grill"), dict) else {}
+    transition = value.get("accepted_transition") if isinstance(value.get("accepted_transition"), dict) else {}
+    project = value.get("project") if isinstance(value.get("project"), dict) else {}
+    return {
+        "path": display_path_for_root(path, root=root),
+        "event_id": value.get("event_id"),
+        "project_id": project.get("id"),
+        "source_grill_stage": source_grill.get("stage"),
+        "source_grill_path": source_grill.get("path"),
+        "accepted_transition": {
+            "from": transition.get("from"),
+            "to": transition.get("to"),
+        },
+        "decision": value.get("decision"),
+        "baseline": {
+            "artifact_ref": baseline.get("artifact_ref"),
+            "artifact_version": baseline.get("artifact_version"),
+            "source_ref": baseline.get("source_ref"),
+            "source_version": baseline.get("source_version"),
+        },
+    }
+
+
+def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
+    repo_root = discover_repo_root(root)
+    resolved_paths = list(paths)
+    validation_payload = validate_accepted_event_paths(resolved_paths, root=repo_root)
+    base_payload: dict[str, Any] = {
+        "action": "orchestration_accept_event_dry_run",
+        "schema": ACCEPTED_EVENT_SCHEMA_ID,
+        "schema_version": ACCEPTED_EVENT_SCHEMA_VERSION,
+        "dry_run": True,
+        "accepted_state_written": False,
+        "runtime_state_mutation_allowed": False,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+        "deployment_allowed": False,
+        "model_may_execute": False,
+    }
+    if not validation_payload.get("ok"):
+        return {
+            **base_payload,
+            "ok": False,
+            "status": "accepted_event_dry_run_rejected",
+            "would_accept": False,
+            "validated_count": 0,
+            "validated_paths": [],
+            "accepted_event_preview": [],
+            "missing_evidence": [],
+            "rejection_reasons": list(validation_payload.get("errors") or []),
+            "validation": validation_payload,
+            "operator_action": "fix_accepted_event_json_and_rerun_dry_run",
+        }
+    previews: list[dict[str, Any]] = []
+    missing_evidence: list[str] = []
+    for path in resolved_paths:
+        try:
+            value = read_json(path)
+        except Exception as exc:  # noqa: BLE001 - should not happen after validation; keep deterministic payload.
+            missing_evidence.append(f"{display_path_for_root(path, root=repo_root)}: failed to reread JSON for preview: {exc}")
+            continue
+        previews.append(_accepted_event_preview(path, value, root=repo_root))
+    ok = not missing_evidence and bool(previews)
+    return {
+        **base_payload,
+        "ok": ok,
+        "status": "accepted_event_dry_run_ready" if ok else "accepted_event_dry_run_rejected",
+        "would_accept": ok,
+        "validated_count": validation_payload.get("validated_count", 0),
+        "validated_paths": list(validation_payload.get("validated_paths") or []),
+        "accepted_event_preview": previews,
+        "missing_evidence": missing_evidence,
+        "rejection_reasons": [] if ok else missing_evidence,
+        "validation": validation_payload,
+        "operator_action": (
+            "accepted_event_may_be_reviewed_for_future_write; no state was mutated"
+            if ok
+            else "fix_accepted_event_json_and_rerun_dry_run"
+        ),
+    }
+
+
+def render_accept_event_dry_run_text(payload: dict[str, Any]) -> str:
+    if payload.get("ok"):
+        return (
+            f"{payload['status']}: would_accept={str(payload.get('would_accept')).lower()} "
+            f"validated_count={payload.get('validated_count')} accepted_state_written=false"
+        )
+    lines = [f"{payload.get('status')}: {len(payload.get('rejection_reasons') or [])} rejection(s)"]
+    lines.extend(f"- {reason}" for reason in payload.get("rejection_reasons") or [])
+    return "\n".join(lines)
+
+
 def render_accepted_event_validation_text(payload: dict[str, Any]) -> str:
     if payload.get("ok"):
         return (

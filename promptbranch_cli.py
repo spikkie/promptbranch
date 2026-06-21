@@ -70,7 +70,9 @@ from promptbranch_test_report import build_test_report, build_test_status, rende
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_orchestration import (
     accepted_event_example_paths,
+    dry_run_accept_event_paths,
     render_accepted_event_validation_text,
+    render_accept_event_dry_run_text,
     render_text as render_orchestration_validation_text,
     validate_accepted_event_paths,
     validate_paths as validate_orchestration_event_paths,
@@ -21642,6 +21644,35 @@ async def cmd_orchestration(backend: CommandBackend, args: argparse.Namespace) -
         else:
             print(render_accepted_event_validation_text(payload))
         return 0 if payload.get("ok") else 1
+    if args.orchestration_command == "accept-event":
+        if not getattr(args, "dry_run", False):
+            payload = {
+                "ok": False,
+                "action": "orchestration_accept_event_dry_run",
+                "status": "accepted_event_write_not_supported",
+                "dry_run": False,
+                "would_accept": False,
+                "accepted_state_written": False,
+                "runtime_state_mutation_allowed": False,
+                "source_mutation_allowed": False,
+                "artifact_adoption_allowed": False,
+                "deployment_allowed": False,
+                "model_may_execute": False,
+                "rejection_reasons": ["accept-event currently supports --dry-run only; no accepted ledger write exists in this slice"],
+                "operator_action": "rerun_with_--dry-run",
+            }
+            if getattr(args, "json", False):
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print(render_accept_event_dry_run_text(payload))
+            return 1
+        paths = [Path(p) for p in args.paths] if args.paths else accepted_event_example_paths()
+        payload = dry_run_accept_event_paths(paths)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_accept_event_dry_run_text(payload))
+        return 0 if payload.get("ok") else 1
     raise RuntimeError(f"Unknown orchestration command: {args.orchestration_command}")
 
 
@@ -22418,6 +22449,10 @@ def make_parser() -> argparse.ArgumentParser:
     orchestration_validate_accepted_event = orchestration_subparsers.add_parser("validate-accepted-event", help="Validate read-only accepted-event fixtures without mutating state.")
     orchestration_validate_accepted_event.add_argument("paths", nargs="*", help="Accepted-event JSON files. Defaults to committed examples.")
     orchestration_validate_accepted_event.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
+    orchestration_accept_event = orchestration_subparsers.add_parser("accept-event", help="Dry-run accepted-event promotion without writing accepted state.")
+    orchestration_accept_event.add_argument("paths", nargs="*", help="Accepted-event JSON files. Defaults to committed examples.")
+    orchestration_accept_event.add_argument("--dry-run", action="store_true", help="Preview acceptance only; required because ledger writes are out of scope.")
+    orchestration_accept_event.add_argument("--json", action="store_true", help="Emit structured dry-run result as JSON.")
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
