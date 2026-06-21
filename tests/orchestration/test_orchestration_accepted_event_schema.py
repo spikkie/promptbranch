@@ -223,20 +223,74 @@ def test_accept_event_dry_run_previews_validated_fixtures_without_writing_state(
 
 def test_accept_event_dry_run_rejects_invalid_accepted_event() -> None:
     import copy
-    import tempfile
     import promptbranch_orchestration as module
 
     example_path = module.accepted_event_example_paths()[0]
     candidate = copy.deepcopy(module.read_json(example_path))
     candidate["constraints"]["artifact_adoption_allowed"] = True
-    with tempfile.TemporaryDirectory() as tmp:
-        bad = Path(tmp) / "bad.accepted_event.json"
+    bad = ROOT / ".tmp_bad.accepted_event.json"
+    try:
         bad.write_text(json.dumps(candidate), encoding="utf-8")
         payload = module.dry_run_accept_event_paths([bad])
+    finally:
+        bad.unlink(missing_ok=True)
 
     assert payload["ok"] is False
     assert payload["status"] == "accepted_event_dry_run_rejected"
     assert payload["would_accept"] is False
+    assert payload["input_mode"] == "explicit_paths"
     assert payload["accepted_event_preview"] == []
     assert payload["accepted_state_written"] is False
     assert any("artifact_adoption_allowed" in reason for reason in payload["rejection_reasons"])
+
+
+def test_accept_event_dry_run_accepts_single_explicit_input_without_writing_state() -> None:
+    import promptbranch_orchestration as module
+
+    explicit_path = module.accepted_event_example_paths()[0]
+    payload = module.dry_run_accept_event_paths([explicit_path])
+
+    assert payload["ok"] is True
+    assert payload["status"] == "accepted_event_dry_run_ready"
+    assert payload["would_accept"] is True
+    assert payload["input_mode"] == "explicit_paths"
+    assert payload["validated_count"] == 1
+    assert len(payload["accepted_event_preview"]) == 1
+    assert payload["accepted_event_preview"][0]["path"].endswith("G0_intent.accepted_event.example.json")
+    assert payload["accepted_state_written"] is False
+    assert payload["runtime_state_mutation_allowed"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert payload["deployment_allowed"] is False
+    assert payload["model_may_execute"] is False
+
+
+def test_accept_event_dry_run_rejects_parent_relative_explicit_input() -> None:
+    import promptbranch_orchestration as module
+
+    payload = module.dry_run_accept_event_paths([Path("../outside.accepted_event.json")])
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_event_dry_run_rejected"
+    assert payload["would_accept"] is False
+    assert payload["input_mode"] == "explicit_paths"
+    assert payload["accepted_event_preview"] == []
+    assert payload["accepted_state_written"] is False
+    assert any("must not contain '..'" in reason for reason in payload["rejection_reasons"])
+
+
+def test_accept_event_dry_run_rejects_absolute_external_explicit_input(tmp_path) -> None:
+    import promptbranch_orchestration as module
+
+    external = tmp_path / "G0_intent.accepted_event.example.json"
+    external.write_text(module.accepted_event_example_paths()[0].read_text(encoding="utf-8"), encoding="utf-8")
+
+    payload = module.dry_run_accept_event_paths([external])
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_event_dry_run_rejected"
+    assert payload["would_accept"] is False
+    assert payload["input_mode"] == "explicit_paths"
+    assert payload["accepted_event_preview"] == []
+    assert payload["accepted_state_written"] is False
+    assert any("must resolve inside the repository root" in reason for reason in payload["rejection_reasons"])

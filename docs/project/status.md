@@ -289,3 +289,25 @@ pb orchestration accept-event --dry-run --json
 ```
 
 The command previews whether validated accepted-event fixtures would be acceptable for a future ledger write, but it does not write accepted state, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions. Full all-tests and adoption/current promotion are intentionally deferred under the focused-slice validation model.
+
+## v0.1.82 focused working candidate status
+
+Accepted/current baseline remains:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.79.zip
+```
+
+Working candidate chain:
+
+```text
+v0.1.80 focused-validated candidate -> v0.1.81 focused-validated candidate -> v0.1.82 focused working candidate
+```
+
+`v0.1.82` adds explicit accepted-event input support for dry-run promotion:
+
+```text
+pb orchestration accept-event --dry-run --json <accepted-event-file>
+```
+
+Explicit input files must resolve inside the repository root. Parent-relative paths, repository-external absolute paths, missing files, and invalid accepted-event JSON fail closed. The command still does not write accepted state, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions. Full all-tests and adoption/current promotion remain intentionally deferred under the focused-slice validation model.
