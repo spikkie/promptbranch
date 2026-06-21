@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
+import hashlib
 import json
 import re
 import sys
@@ -13,7 +13,6 @@ SCHEMA_VERSION = "1.0"
 ROOT = Path(__file__).resolve().parent
 DEFAULT_EXAMPLES_DIR = ROOT / "docs" / "design" / "orchestration" / "examples" / "events"
 SCHEMA_PATH = ROOT / "docs" / "design" / "orchestration" / "schemas" / "event_intake.schema.json"
-ACCEPTED_EVENT_VALIDATOR_PATH = ROOT / "scripts" / "orchestration" / "validate_accepted_event.py"
 VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 
@@ -187,28 +186,512 @@ def example_paths(root: Path = ROOT) -> list[Path]:
     return sorted(examples_dir.glob("*.example.json"))
 
 
-def _load_accepted_event_validator() -> Any:
-    spec = importlib.util.spec_from_file_location("validate_accepted_event", ACCEPTED_EVENT_VALIDATOR_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"failed to load {ACCEPTED_EVENT_VALIDATOR_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+
+ORCHESTRATION_RELATIVE_DIR = Path("docs") / "design" / "orchestration"
+ACCEPTED_EVENT_SCHEMA_ID = "promptbranch.orchestration.accepted_event"
+ACCEPTED_EVENT_SCHEMA_VERSION = "1.0"
+GRILL_SCHEMA_ID = "promptbranch.orchestration.grill"
+ACCEPTED_EVENT_STATE_MACHINE_RELATIVE_PATH = ORCHESTRATION_RELATIVE_DIR / "state_machines" / "k8s_game_mvp.state_machine.json"
+ACCEPTED_EVENT_EXAMPLES_RELATIVE_DIR = ORCHESTRATION_RELATIVE_DIR / "examples" / "accepted_events"
+VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
+ARTIFACT_REF_PATTERN = re.compile(r"^chatgpt_claudecode_workflow-2_v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*\.zip$")
+ACCEPTED_EVENT_EXPECTED_CONSTRAINTS = {
+    "fixture_only": True,
+    "runtime_state_mutation_allowed": False,
+    "source_mutation_allowed": False,
+    "artifact_adoption_allowed": False,
+    "deployment_allowed": False,
+    "model_may_execute": False,
+    "promptbranch_must_validate": True,
+}
+GRILL_ALLOWED_STAGES = {
+    "G0_intent",
+    "G1_mvp",
+    "G2_architecture",
+    "G3_slice",
+    "G4_implementation",
+    "G5_release_deployment",
+    "G6_maintenance",
+}
+GRILL_STAGE_TRANSITION_RECOMMENDATIONS = {
+    "G0_intent": ("draft", "intake_accepted"),
+    "G1_mvp": ("intake_accepted", "grill_me_accepted"),
+    "G2_architecture": ("grill_me_accepted", "architecture_accepted"),
+    "G3_slice": ("architecture_accepted", "slice_plan_accepted"),
+    "G4_implementation": ("slice_plan_accepted", "implementation_candidate"),
+    "G5_release_deployment": ("implementation_candidate", "artifact_verified"),
+    "G6_maintenance": ("deployment_smoke_passed", "maintenance_ready"),
+}
+GRILL_ALLOWED_PROVIDERS = {"chatgpt", "manual_fixture"}
+GRILL_REJECTED_PROVIDERS = {"ollama", "local_llm", "unknown"}
 
 
-def accepted_event_example_paths() -> list[Path]:
-    module = _load_accepted_event_validator()
-    return list(module.example_paths())
+def discover_repo_root(start: Path | None = None) -> Path:
+    """Find the repo root that owns docs/design/orchestration.
+
+    Promptbranch can run from an installed pipx module while the operator's
+    current working directory is the repository.  Validators must therefore not
+    assume package-install layout contains repo docs or scripts.  Prefer the
+    working tree when it exposes the orchestration docs; fall back to the module
+    directory for source-tree execution.
+    """
+    candidates: list[Path] = []
+    for seed in [start, Path.cwd(), ROOT]:
+        if seed is None:
+            continue
+        try:
+            resolved = seed.resolve()
+        except OSError:
+            resolved = seed
+        if resolved.is_file():
+            resolved = resolved.parent
+        candidates.extend([resolved, *resolved.parents])
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if (candidate / ORCHESTRATION_RELATIVE_DIR).is_dir():
+            return candidate
+    return ROOT
 
 
-def validate_accepted_event_paths(paths: list[Path]) -> dict[str, Any]:
-    module = _load_accepted_event_validator()
-    return dict(module.validate_paths_payload(paths))
+def orchestration_root(root: Path | None = None) -> Path:
+    return discover_repo_root(root) / ORCHESTRATION_RELATIVE_DIR
+
+
+def display_path_for_root(path: Path, *, root: Path | None = None) -> str:
+    base = discover_repo_root(root).resolve()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return str(path)
+    try:
+        return str(resolved.relative_to(base))
+    except ValueError:
+        return str(resolved)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def repo_relative_path_for_root(value: Any, *, root: Path | None = None) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    repo_root = discover_repo_root(root)
+    resolved = (repo_root / candidate).resolve()
+    try:
+        resolved.relative_to(repo_root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
+def accepted_event_state_machine_path(root: Path | None = None) -> Path:
+    return discover_repo_root(root) / ACCEPTED_EVENT_STATE_MACHINE_RELATIVE_PATH
+
+
+def accepted_event_example_paths(root: Path | None = None) -> list[Path]:
+    repo_root = discover_repo_root(root)
+    return sorted((repo_root / ACCEPTED_EVENT_EXAMPLES_RELATIVE_DIR).glob("*.example.json"))
+
+
+def load_accepted_event_state_machine(root: Path | None = None) -> dict[str, Any]:
+    path = accepted_event_state_machine_path(root)
+    value = read_json(path)
+    transitions = value.get("transitions")
+    if not isinstance(transitions, list):
+        raise ValueError(f"{display_path_for_root(path, root=root)} must contain a transitions list")
+    return value
+
+
+def state_machine_transition_pairs(machine: dict[str, Any]) -> set[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    for transition in machine.get("transitions", []):
+        if isinstance(transition, dict):
+            from_state = str(transition.get("from") or "").strip()
+            to_state = str(transition.get("to") or "").strip()
+            if from_state and to_state:
+                pairs.add((from_state, to_state))
+    return pairs
+
+
+def validate_grill_envelope(
+    value: dict[str, Any],
+    *,
+    source: str = "<memory>",
+    state_machine: dict[str, Any] | None = None,
+    root: Path | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if state_machine is None:
+        try:
+            state_machine = load_accepted_event_state_machine(root)
+        except Exception as exc:  # noqa: BLE001 - validator should report deterministic setup errors.
+            errors.append(f"{source}: failed to load state machine: {exc}")
+            state_machine = {}
+    transition_pairs = state_machine_transition_pairs(state_machine)
+
+    if value.get("schema") != GRILL_SCHEMA_ID:
+        errors.append(f"{source}: schema must be {GRILL_SCHEMA_ID}")
+    if value.get("schema_version") != "1.0":
+        errors.append(f"{source}: schema_version must be 1.0")
+
+    stage = value.get("stage")
+    if stage not in GRILL_ALLOWED_STAGES:
+        errors.append(f"{source}: stage must be one of {sorted(GRILL_ALLOWED_STAGES)}")
+
+    project = value.get("project") or {}
+    if not isinstance(project, dict):
+        errors.append(f"{source}: project must be an object")
+        project = {}
+    project_id = str(project.get("id") or "").strip()
+    if not project_id:
+        errors.append(f"{source}: project.id is required")
+    elif state_machine.get("project_id") and project_id != state_machine.get("project_id"):
+        errors.append(
+            f"{source}: project.id {project_id!r} must match state machine project_id "
+            f"{state_machine.get('project_id')!r}"
+        )
+    if not str(project.get("role") or "").strip():
+        errors.append(f"{source}: project.role is required")
+
+    provider = value.get("provider") or {}
+    if not isinstance(provider, dict):
+        errors.append(f"{source}: provider must be an object")
+        provider = {}
+    provider_kind = provider.get("kind")
+    if provider_kind in GRILL_REJECTED_PROVIDERS or provider_kind not in GRILL_ALLOWED_PROVIDERS:
+        errors.append(f"{source}: provider.kind rejected: {provider_kind!r}")
+    if provider_kind == "manual_fixture" and provider.get("critical_path") is not False:
+        errors.append(f"{source}: manual_fixture provider must not be critical_path")
+    if provider_kind == "chatgpt" and provider.get("critical_path") is not True:
+        errors.append(f"{source}: chatgpt provider must be critical_path=true")
+
+    if value.get("proposal_status") != "proposal_only":
+        errors.append(f"{source}: proposal_status must be proposal_only")
+
+    constraints = value.get("constraints") or {}
+    if not isinstance(constraints, dict):
+        errors.append(f"{source}: constraints must be an object")
+        constraints = {}
+    expected_constraints = {
+        "model_may_execute": False,
+        "promptbranch_must_validate": True,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+    }
+    for key, expected in expected_constraints.items():
+        if constraints.get(key) is not expected:
+            errors.append(f"{source}: constraints.{key} must be {expected!r}")
+
+    questions = value.get("questions") or []
+    if not isinstance(questions, list) or not questions:
+        errors.append(f"{source}: questions must be a non-empty list")
+    else:
+        seen_ids: set[str] = set()
+        for index, question in enumerate(questions):
+            if not isinstance(question, dict):
+                errors.append(f"{source}: questions[{index}] must be an object")
+                continue
+            qid = str(question.get("id") or "").strip()
+            if not qid:
+                errors.append(f"{source}: questions[{index}].id is required")
+            elif qid in seen_ids:
+                errors.append(f"{source}: duplicate question id {qid}")
+            seen_ids.add(qid)
+            if not str(question.get("question") or "").strip():
+                errors.append(f"{source}: questions[{index}].question is required")
+            if not str(question.get("risk") or "").strip():
+                errors.append(f"{source}: questions[{index}].risk is required")
+
+    acceptance = value.get("acceptance") or {}
+    if not isinstance(acceptance, dict):
+        errors.append(f"{source}: acceptance must be an object")
+        acceptance = {}
+    if acceptance.get("decision") not in {"continue", "revise", "block"}:
+        errors.append(f"{source}: acceptance.decision must be continue, revise, or block")
+    if not isinstance(acceptance.get("blocking_findings", []), list):
+        errors.append(f"{source}: acceptance.blocking_findings must be a list")
+
+    recommendation = value.get("next_state_recommendation") or {}
+    if not isinstance(recommendation, dict):
+        errors.append(f"{source}: next_state_recommendation must be an object")
+        recommendation = {}
+    for key in ("from", "to", "reason"):
+        if not str(recommendation.get(key) or "").strip():
+            errors.append(f"{source}: next_state_recommendation.{key} is required")
+
+    from_state = str(recommendation.get("from") or "").strip()
+    to_state = str(recommendation.get("to") or "").strip()
+    if from_state and to_state:
+        if (from_state, to_state) not in transition_pairs:
+            errors.append(
+                f"{source}: next_state_recommendation {from_state!r}->{to_state!r} "
+                "is not a k8s-game MVP state-machine transition"
+            )
+        expected_transition = GRILL_STAGE_TRANSITION_RECOMMENDATIONS.get(str(stage))
+        if expected_transition and (from_state, to_state) != expected_transition:
+            errors.append(
+                f"{source}: stage {stage} must recommend transition "
+                f"{expected_transition[0]!r}->{expected_transition[1]!r}, got {from_state!r}->{to_state!r}"
+            )
+
+    return errors
+
+
+def _validate_accepted_event_baseline(value: dict[str, Any], source: str, errors: list[str]) -> None:
+    baseline = value.get("baseline") or {}
+    if not isinstance(baseline, dict):
+        errors.append(f"{source}: baseline must be an object")
+        baseline = {}
+    required = ("artifact_ref", "artifact_version", "source_ref", "source_version", "role")
+    for key in required:
+        if not str(baseline.get(key) or "").strip():
+            errors.append(f"{source}: baseline.{key} is required")
+    artifact_ref = str(baseline.get("artifact_ref") or "").strip()
+    source_ref = str(baseline.get("source_ref") or "").strip()
+    artifact_version = str(baseline.get("artifact_version") or "").strip()
+    source_version = str(baseline.get("source_version") or "").strip()
+    if artifact_ref and not ARTIFACT_REF_PATTERN.match(artifact_ref):
+        errors.append(f"{source}: baseline.artifact_ref must be a canonical chatgpt_claudecode_workflow-2 release ZIP")
+    if source_ref and not ARTIFACT_REF_PATTERN.match(source_ref):
+        errors.append(f"{source}: baseline.source_ref must be a canonical chatgpt_claudecode_workflow-2 source ZIP")
+    if artifact_version and not VERSION_PATTERN.match(artifact_version):
+        errors.append(f"{source}: baseline.artifact_version must be a canonical v-prefixed version")
+    if source_version and not VERSION_PATTERN.match(source_version):
+        errors.append(f"{source}: baseline.source_version must be a canonical v-prefixed version")
+    if artifact_ref and artifact_version and artifact_version not in artifact_ref:
+        errors.append(f"{source}: baseline.artifact_ref must contain baseline.artifact_version")
+    if source_ref and source_version and source_version not in source_ref:
+        errors.append(f"{source}: baseline.source_ref must contain baseline.source_version")
+    if artifact_version and source_version and artifact_version != source_version:
+        errors.append(f"{source}: baseline.artifact_version must match baseline.source_version")
+    if str(baseline.get("role") or "").strip() != "accepted_current_source_baseline":
+        errors.append(f"{source}: baseline.role must be accepted_current_source_baseline")
+
+
+def validate_accepted_event(
+    value: dict[str, Any],
+    *,
+    source: str = "<memory>",
+    state_machine: dict[str, Any] | None = None,
+    root: Path | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    repo_root = discover_repo_root(root)
+    if state_machine is None:
+        try:
+            state_machine = load_accepted_event_state_machine(repo_root)
+        except Exception as exc:  # noqa: BLE001 - validator should report deterministic setup errors.
+            errors.append(f"{source}: failed to load state machine: {exc}")
+            state_machine = {}
+
+    if value.get("schema") != ACCEPTED_EVENT_SCHEMA_ID:
+        errors.append(f"{source}: schema must be {ACCEPTED_EVENT_SCHEMA_ID}")
+    if value.get("schema_version") != ACCEPTED_EVENT_SCHEMA_VERSION:
+        errors.append(f"{source}: schema_version must be {ACCEPTED_EVENT_SCHEMA_VERSION}")
+    if not str(value.get("event_id") or "").strip():
+        errors.append(f"{source}: event_id is required")
+    if value.get("decision") != "accepted":
+        errors.append(f"{source}: decision must be accepted")
+
+    project = value.get("project") or {}
+    if not isinstance(project, dict):
+        errors.append(f"{source}: project must be an object")
+        project = {}
+    project_id = str(project.get("id") or "").strip()
+    if not project_id:
+        errors.append(f"{source}: project.id is required")
+    elif state_machine.get("project_id") and project_id != state_machine.get("project_id"):
+        errors.append(
+            f"{source}: project.id {project_id!r} must match state machine project_id "
+            f"{state_machine.get('project_id')!r}"
+        )
+    if not str(project.get("role") or "").strip():
+        errors.append(f"{source}: project.role is required")
+
+    _validate_accepted_event_baseline(value, source, errors)
+
+    constraints = value.get("constraints") or {}
+    if not isinstance(constraints, dict):
+        errors.append(f"{source}: constraints must be an object")
+        constraints = {}
+    for key, expected in ACCEPTED_EVENT_EXPECTED_CONSTRAINTS.items():
+        if constraints.get(key) is not expected:
+            errors.append(f"{source}: constraints.{key} must be {expected!r}")
+
+    source_grill = value.get("source_grill") or {}
+    if not isinstance(source_grill, dict):
+        errors.append(f"{source}: source_grill must be an object")
+        source_grill = {}
+    grill_path = repo_relative_path_for_root(source_grill.get("path"), root=repo_root)
+    grill_value: dict[str, Any] = {}
+    if grill_path is None:
+        errors.append(f"{source}: source_grill.path must be a repo-relative path")
+    elif not grill_path.exists():
+        errors.append(f"{source}: source_grill.path does not exist: {display_path_for_root(grill_path, root=repo_root)}")
+    else:
+        try:
+            grill_value = read_json(grill_path)
+        except Exception as exc:  # noqa: BLE001 - report file errors as validation errors.
+            errors.append(f"{source}: failed to read source grill: {exc}")
+            grill_value = {}
+        expected_sha = str(source_grill.get("sha256") or "").strip()
+        actual_sha = sha256_file(grill_path)
+        if expected_sha != actual_sha:
+            errors.append(
+                f"{source}: source_grill.sha256 mismatch for {display_path_for_root(grill_path, root=repo_root)}: "
+                f"expected {expected_sha!r}, actual {actual_sha!r}"
+            )
+        if grill_value:
+            grill_errors = validate_grill_envelope(
+                grill_value,
+                source=display_path_for_root(grill_path, root=repo_root),
+                state_machine=state_machine,
+                root=repo_root,
+            )
+            if grill_errors:
+                errors.extend(f"{source}: source_grill invalid: {err}" for err in grill_errors)
+
+    grill_stage = str(grill_value.get("stage") or "").strip()
+    source_stage = str(source_grill.get("stage") or "").strip()
+    if not source_stage:
+        errors.append(f"{source}: source_grill.stage is required")
+    elif grill_stage and source_stage != grill_stage:
+        errors.append(f"{source}: source_grill.stage {source_stage!r} must match source grill stage {grill_stage!r}")
+
+    accepted_transition = value.get("accepted_transition") or {}
+    if not isinstance(accepted_transition, dict):
+        errors.append(f"{source}: accepted_transition must be an object")
+        accepted_transition = {}
+    from_state = str(accepted_transition.get("from") or "").strip()
+    to_state = str(accepted_transition.get("to") or "").strip()
+    if not from_state:
+        errors.append(f"{source}: accepted_transition.from is required")
+    if not to_state:
+        errors.append(f"{source}: accepted_transition.to is required")
+    if not str(accepted_transition.get("reason") or "").strip():
+        errors.append(f"{source}: accepted_transition.reason is required")
+    if from_state and to_state and (from_state, to_state) not in state_machine_transition_pairs(state_machine):
+        errors.append(
+            f"{source}: accepted transition {from_state!r}->{to_state!r} is not a k8s-game MVP "
+            "state-machine transition"
+        )
+
+    recommendation = grill_value.get("next_state_recommendation") if isinstance(grill_value, dict) else None
+    if isinstance(recommendation, dict) and from_state and to_state:
+        rec_from = str(recommendation.get("from") or "").strip()
+        rec_to = str(recommendation.get("to") or "").strip()
+        if (from_state, to_state) != (rec_from, rec_to):
+            errors.append(
+                f"{source}: accepted_transition {from_state!r}->{to_state!r} must match source grill "
+                f"recommendation {rec_from!r}->{rec_to!r}"
+            )
+
+    evidence = value.get("evidence") or {}
+    if not isinstance(evidence, dict):
+        errors.append(f"{source}: evidence must be an object")
+        evidence = {}
+    validated_by = evidence.get("validated_by") or []
+    if not isinstance(validated_by, list) or not validated_by:
+        errors.append(f"{source}: evidence.validated_by must be a non-empty list")
+    if "scripts/orchestration/validate_grill.py" not in validated_by:
+        errors.append(f"{source}: evidence.validated_by must include scripts/orchestration/validate_grill.py")
+    if (
+        "scripts/orchestration/validate_accepted_event.py" not in validated_by
+        and "pb orchestration validate-accepted-event" not in validated_by
+    ):
+        errors.append(
+            f"{source}: evidence.validated_by must include scripts/orchestration/validate_accepted_event.py "
+            "or pb orchestration validate-accepted-event"
+        )
+    if evidence.get("validation_status") != "read_only_fixture_validated":
+        errors.append(f"{source}: evidence.validation_status must be read_only_fixture_validated")
+    notes = evidence.get("validation_notes") or []
+    if not isinstance(notes, list) or not notes:
+        errors.append(f"{source}: evidence.validation_notes must be a non-empty list")
+
+    return errors
+
+
+def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
+    repo_root = discover_repo_root(root)
+    resolved_paths = list(paths)
+    if not resolved_paths:
+        return {
+            "ok": False,
+            "action": "orchestration_validate_accepted_event",
+            "status": "accepted_event_invalid",
+            "schema": ACCEPTED_EVENT_SCHEMA_ID,
+            "schema_version": ACCEPTED_EVENT_SCHEMA_VERSION,
+            "validated_count": 0,
+            "validated_paths": [],
+            "errors": ["no accepted-event examples were found; pass explicit paths or restore committed examples"],
+            "fixture_only": True,
+            "accepted_state_written": False,
+            "runtime_state_mutation_allowed": False,
+            "source_mutation_allowed": False,
+            "artifact_adoption_allowed": False,
+            "deployment_allowed": False,
+            "model_may_execute": False,
+            "operator_action": "restore_accepted_event_examples_or_pass_explicit_paths",
+        }
+    errors: list[str] = []
+    try:
+        state_machine = load_accepted_event_state_machine(repo_root)
+    except Exception as exc:  # noqa: BLE001 - collect deterministic setup error.
+        errors.append(f"failed to load state machine: {exc}")
+        state_machine = {}
+    for path in resolved_paths:
+        try:
+            value = read_json(path)
+        except Exception as exc:  # noqa: BLE001 - validator should report file errors.
+            errors.append(f"{display_path_for_root(path, root=repo_root)}: failed to read JSON: {exc}")
+            continue
+        errors.extend(
+            validate_accepted_event(
+                value,
+                source=display_path_for_root(path, root=repo_root),
+                state_machine=state_machine,
+                root=repo_root,
+            )
+        )
+    validated = [] if errors else [display_path_for_root(path, root=repo_root) for path in resolved_paths]
+    return {
+        "ok": not errors,
+        "action": "orchestration_validate_accepted_event",
+        "status": "accepted_event_examples_valid" if not errors else "accepted_event_invalid",
+        "schema": ACCEPTED_EVENT_SCHEMA_ID,
+        "schema_version": ACCEPTED_EVENT_SCHEMA_VERSION,
+        "validated_count": len(validated),
+        "validated_paths": validated,
+        "errors": errors,
+        "state_machine": display_path_for_root(accepted_event_state_machine_path(repo_root), root=repo_root),
+        "fixture_only": True,
+        "accepted_state_written": False,
+        "runtime_state_mutation_allowed": False,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+        "deployment_allowed": False,
+        "model_may_execute": False,
+        "operator_action": "accepted_event_may_be_reviewed; no state was mutated" if not errors else "fix_accepted_event_json_and_rerun_validator",
+    }
 
 
 def render_accepted_event_validation_text(payload: dict[str, Any]) -> str:
-    module = _load_accepted_event_validator()
-    return str(module.render_text(payload))
+    if payload.get("ok"):
+        return (
+            f"{payload['status']}: validated_count={payload['validated_count']} "
+            "fixture_only=true accepted_state_written=false"
+        )
+    lines = [f"{payload['status']}: {len(payload.get('errors') or [])} error(s)"]
+    lines.extend(f"- {error}" for error in payload.get("errors") or [])
+    return "\n".join(lines)
 
 
 def validate_paths(paths: list[Path], *, root: Path = ROOT) -> dict[str, Any]:

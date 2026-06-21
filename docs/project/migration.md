@@ -361,3 +361,10 @@ No user data, Project Source content, artifact-current registry, browser profile
 |---|---|---|---|---|
 | `scripts/orchestration/validate_accepted_event.py` | script-only accepted-event fixture validator | `pb orchestration validate-accepted-event`, `docs/project/status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md` | promoted | The validator remains read-only and fail-closed; no ledger write or runtime execution is introduced. |
 | `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | `docs/design/orchestration/schemas/accepted_event.schema.json` and validator tests | strengthened | Fixtures now bind to explicit accepted/current baseline artifact/source refs. |
+
+
+## v0.1.80 candidate correction migration note
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `scripts/orchestration/validate_accepted_event.py` | source-tree compatibility wrapper | `promptbranch_orchestration.py` | migrated | Accepted-event validation logic now lives in installed module code so `pb orchestration validate-accepted-event` does not depend on a repo-local script under pipx/site-packages. |
