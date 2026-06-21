@@ -21617,12 +21617,11 @@ async def cmd_queue(args: argparse.Namespace) -> int:
 
 async def cmd_orchestration(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.orchestration_command == "validate-event":
-        paths = [Path(p) for p in args.paths] if args.paths else []
-        if not paths:
-            from promptbranch_orchestration import example_paths
+        from promptbranch_orchestration import example_paths, resolve_examples_root
 
-            paths = example_paths()
-        payload = validate_orchestration_event_paths(paths)
+        examples_root = resolve_examples_root()
+        paths = [Path(p) for p in args.paths] if args.paths else example_paths(examples_root)
+        payload = validate_orchestration_event_paths(paths, root=examples_root, require_non_empty=not args.paths)
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:

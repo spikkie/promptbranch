@@ -251,7 +251,7 @@ Accepted/current baseline used for this normal release slice:
 chatgpt_claudecode_workflow-2_v0.1.78.2.20.8.8.zip
 ```
 
-`v0.1.79` resumes the normal JSON orchestration MVP line after the `.8.x` repair chain. This slice adds a proposal-only event-intake schema, committed example, read-only validator, and `pb orchestration validate-event` command. The validator is intentionally non-mutating: it does not write accepted state, mutate ChatGPT Project Sources, adopt artifacts, deploy, or execute model-proposed actions.
+`v0.1.79` resumes the normal JSON orchestration MVP line after the `.8.x` repair chain. This slice adds a proposal-only event-intake schema, committed example, read-only validator, and `pb orchestration validate-event` command. The validator is intentionally non-mutating: it does not write accepted state, mutate ChatGPT Project Sources, adopt artifacts, deploy, or execute model-proposed actions. The corrected candidate also makes the no-argument CLI path resolve committed default examples from the repository working tree when available and fail closed instead of returning `ok=true` with `validated_count=0` when no default examples are discoverable.
 
 ## Next safe action
 
