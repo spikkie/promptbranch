@@ -68,7 +68,13 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
-from promptbranch_orchestration import render_text as render_orchestration_validation_text, validate_paths as validate_orchestration_event_paths
+from promptbranch_orchestration import (
+    accepted_event_example_paths,
+    render_accepted_event_validation_text,
+    render_text as render_orchestration_validation_text,
+    validate_accepted_event_paths,
+    validate_paths as validate_orchestration_event_paths,
+)
 
 DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME = "itest-promptbranch-retained-delete-frozen"
 DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY = "retained_project_delete_frozen"
@@ -21617,15 +21623,24 @@ async def cmd_queue(args: argparse.Namespace) -> int:
 
 async def cmd_orchestration(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.orchestration_command == "validate-event":
-        from promptbranch_orchestration import example_paths, resolve_examples_root
+        paths = [Path(p) for p in args.paths] if args.paths else []
+        if not paths:
+            from promptbranch_orchestration import example_paths
 
-        examples_root = resolve_examples_root()
-        paths = [Path(p) for p in args.paths] if args.paths else example_paths(examples_root)
-        payload = validate_orchestration_event_paths(paths, root=examples_root, require_non_empty=not args.paths)
+            paths = example_paths()
+        payload = validate_orchestration_event_paths(paths)
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
             print(render_orchestration_validation_text(payload))
+        return 0 if payload.get("ok") else 1
+    if args.orchestration_command == "validate-accepted-event":
+        paths = [Path(p) for p in args.paths] if args.paths else accepted_event_example_paths()
+        payload = validate_accepted_event_paths(paths)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_accepted_event_validation_text(payload))
         return 0 if payload.get("ok") else 1
     raise RuntimeError(f"Unknown orchestration command: {args.orchestration_command}")
 
@@ -22395,11 +22410,14 @@ def make_parser() -> argparse.ArgumentParser:
     browser_wait_idle.add_argument("--poll-seconds", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS, help=f"Polling interval. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS}.")
     browser_wait_idle.add_argument("--json", action="store_true", help="Emit wait result as JSON.")
 
-    orchestration = subparsers.add_parser("orchestration", help="Read-only JSON orchestration event intake commands.")
+    orchestration = subparsers.add_parser("orchestration", help="Read-only JSON orchestration validation commands.")
     orchestration_subparsers = orchestration.add_subparsers(dest="orchestration_command", required=True)
     orchestration_validate_event = orchestration_subparsers.add_parser("validate-event", help="Validate proposal-only JSON orchestration event-intake files without mutating state.")
     orchestration_validate_event.add_argument("paths", nargs="*", help="Event-intake JSON files. Defaults to committed examples.")
     orchestration_validate_event.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
+    orchestration_validate_accepted_event = orchestration_subparsers.add_parser("validate-accepted-event", help="Validate read-only accepted-event fixtures without mutating state.")
+    orchestration_validate_accepted_event.add_argument("paths", nargs="*", help="Accepted-event JSON files. Defaults to committed examples.")
+    orchestration_validate_accepted_event.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)

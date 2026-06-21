@@ -23,6 +23,30 @@ def test_committed_accepted_event_examples_are_valid() -> None:
     paths = module.example_paths()
     assert len(paths) == 7
     assert module.validate_paths(paths) == []
+    payload = module.validate_paths_payload(paths)
+    assert payload["ok"] is True
+    assert payload["action"] == "orchestration_validate_accepted_event"
+    assert payload["validated_count"] == 7
+    assert payload["fixture_only"] is True
+    assert payload["accepted_state_written"] is False
+    assert payload["runtime_state_mutation_allowed"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert payload["deployment_allowed"] is False
+    assert payload["model_may_execute"] is False
+
+
+def test_accepted_event_no_default_examples_fail_closed() -> None:
+    module = _load_validator()
+    payload = module.validate_paths_payload([])
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_event_invalid"
+    assert payload["validated_count"] == 0
+    assert payload["accepted_state_written"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert any("no accepted-event examples" in error for error in payload["errors"])
 
 
 def test_committed_accepted_event_examples_cover_all_grill_stages() -> None:
@@ -67,6 +91,32 @@ def test_accepted_event_schema_file_is_valid_json() -> None:
     assert constraints["source_mutation_allowed"]["const"] is False
     assert constraints["artifact_adoption_allowed"]["const"] is False
     assert constraints["deployment_allowed"]["const"] is False
+    assert "baseline" in schema["required"]
+    assert schema["properties"]["baseline"]["properties"]["role"]["const"] == "accepted_current_source_baseline"
+
+
+def test_accepted_event_requires_baseline_binding() -> None:
+    module = _load_validator()
+    example = module.read_json(module.example_paths()[0])
+    candidate = copy.deepcopy(example)
+    candidate.pop("baseline")
+
+    errors = module.validate_accepted_event(candidate)
+
+    assert any("baseline.artifact_ref is required" in error for error in errors)
+    assert any("baseline.artifact_version is required" in error for error in errors)
+
+
+def test_accepted_event_rejects_mismatched_baseline_version_and_ref() -> None:
+    module = _load_validator()
+    example = module.read_json(module.example_paths()[0])
+    candidate = copy.deepcopy(example)
+    candidate["baseline"]["artifact_ref"] = "chatgpt_claudecode_workflow-2_v0.1.79.zip"
+    candidate["baseline"]["artifact_version"] = "v0.1.80"
+
+    errors = module.validate_accepted_event(candidate)
+
+    assert any("baseline.artifact_ref must contain baseline.artifact_version" in error for error in errors)
 
 
 def test_accepted_event_rejects_runtime_state_mutation() -> None:

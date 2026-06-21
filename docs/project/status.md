@@ -3,10 +3,10 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
-accepted checksum: 825e3b3a5e2d36214ddcdeb6f97ece8601a82f35322a34c96a6e3e2bab78af44
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.78.2.4.zip
-next normal target after accepted AG-001: chatgpt_claudecode_workflow-2_v0.1.79.zip
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
+accepted version: v0.1.79
+active normal candidate: chatgpt_claudecode_workflow-2_v0.1.80.zip
+next normal target: chatgpt_claudecode_workflow-2_v0.1.80.zip
 ```
 
 ## Current MVP state
@@ -14,19 +14,17 @@ next normal target after accepted AG-001: chatgpt_claudecode_workflow-2_v0.1.79.
 ```text
 MVP status: active
 DoD status: in_progress
-active plan slice: AG-001 — Deterministic Artifact Guardian Guard
-active repair: v0.1.78.2.4 — Delete-frozen live-test profile alignment and one-command all-tests report
-last completed slice: v0.1.77.11 repair line accepted/current
-next planned slice: v0.1.79 — rebaselined JSON orchestration / k8s-game MVP foundation
+last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
+active plan slice: v0.1.80 — Accepted-event validation foundation
+active repair: none
 ```
 
 ## Current release state
 
 ```text
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.78.2.4.zip candidate once packaged
-latest installed ZIP: chatgpt_claudecode_workflow-2_v0.1.78.zip failed release-control
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
-release status: v0.1.78.2 freezes ChatGPT Project deletion after v0.1.78.1 live-log delete evidence; not accepted/current
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.80.zip candidate once packaged
+release status: v0.1.80 candidate extends the JSON orchestration MVP authority model with read-only accepted-event validation only
 ```
 
 ## Current risks
@@ -251,8 +249,21 @@ Accepted/current baseline used for this normal release slice:
 chatgpt_claudecode_workflow-2_v0.1.78.2.20.8.8.zip
 ```
 
-`v0.1.79` resumes the normal JSON orchestration MVP line after the `.8.x` repair chain. This slice adds a proposal-only event-intake schema, committed example, read-only validator, and `pb orchestration validate-event` command. The validator is intentionally non-mutating: it does not write accepted state, mutate ChatGPT Project Sources, adopt artifacts, deploy, or execute model-proposed actions. The corrected candidate also makes the no-argument CLI path resolve committed default examples from the repository working tree when available and fail closed instead of returning `ok=true` with `validated_count=0` when no default examples are discoverable.
+`v0.1.79` resumes the normal JSON orchestration MVP line after the `.8.x` repair chain. This slice adds a proposal-only event-intake schema, committed example, read-only validator, and `pb orchestration validate-event` command. The validator is intentionally non-mutating: it does not write accepted state, mutate ChatGPT Project Sources, adopt artifacts, deploy, or execute model-proposed actions.
 
 ## Next safe action
 
 Run focused validation and then full release-control from the candidate ZIP. Do not call `v0.1.79` accepted/current until `pb artifact current --json` verifies runtime, state artifact, state source, registry current, and consistency alignment.
+
+
+## v0.1.80 candidate status
+
+Accepted/current baseline used for this normal release slice:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.79.zip
+```
+
+`v0.1.80` adds the accepted-event validation foundation after the `v0.1.79` proposal/event-intake layer. The slice exposes `pb orchestration validate-accepted-event`, validates the committed G0-G6 accepted-event fixtures, requires explicit baseline/source binding, and remains read-only. It does not write an accepted-event ledger, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions.
+
+Candidate validation is focused/local in this workspace only until operator release-control proves the ZIP. Do not call `v0.1.80` accepted/current until `pb artifact current --json` verifies runtime, state artifact, state source, registry current, and consistency alignment.

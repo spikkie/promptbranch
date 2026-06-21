@@ -912,3 +912,31 @@ Out of scope:
 - Project Source overwrite/remove behavior.
 - Artifact adoption/current mutation.
 - Project deletion behavior or secure delete protocol.
+
+
+## Slice definition — v0.1.80 normal MVP release
+
+Release: v0.1.80
+
+Name: Accepted-event validation foundation
+
+Baseline: chatgpt_claudecode_workflow-2_v0.1.79.zip
+
+Scope:
+
+- Expose `pb orchestration validate-accepted-event --json` as a first-class read-only CLI command.
+- Validate committed G0-G6 accepted-event fixtures through the same CLI surface operators use.
+- Require accepted-event fixtures to bind to explicit accepted/current baseline artifact/source refs and canonical versions.
+- Preserve accepted-event fixture-only status: no accepted ledger writes, no Project Source mutation, no artifact adoption, no deployment, and no model execution.
+- Keep the v0.1.79 event-intake validator behavior unchanged.
+
+Out of scope:
+
+- Accepted-event ledger write path.
+- Proposal promotion or `accept-event --write`.
+- Runtime orchestration engine.
+- k8s-game implementation/deployment.
+- Project Source mutation changes.
+- Artifact adoption/current mutation beyond normal release-control adoption.
+
+DoD target: DOD-083.

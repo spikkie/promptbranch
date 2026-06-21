@@ -13,14 +13,18 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2].resolve()
 ORCH = ROOT / "docs" / "design" / "orchestration"
 ACCEPTED_EVENT_SCHEMA_ID = "promptbranch.orchestration.accepted_event"
+ACCEPTED_EVENT_SCHEMA_VERSION = "1.0"
 STATE_MACHINE_PATH = ORCH / "state_machines" / "k8s_game_mvp.state_machine.json"
 GRILL_VALIDATOR_PATH = ROOT / "scripts" / "orchestration" / "validate_grill.py"
+VERSION_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
+ARTIFACT_REF_PATTERN = re.compile(r"^chatgpt_claudecode_workflow-2_v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*\.zip$")
 EXPECTED_CONSTRAINTS = {
     "fixture_only": True,
     "runtime_state_mutation_allowed": False,
@@ -68,6 +72,37 @@ def repo_relative_path(value: Any) -> Path | None:
     except ValueError:
         return None
     return resolved
+
+
+def _validate_baseline(value: dict[str, Any], source: str, errors: list[str]) -> None:
+    baseline = value.get("baseline") or {}
+    if not isinstance(baseline, dict):
+        errors.append(f"{source}: baseline must be an object")
+        return
+    required = ("artifact_ref", "artifact_version", "source_ref", "source_version", "role")
+    for key in required:
+        if not str(baseline.get(key) or "").strip():
+            errors.append(f"{source}: baseline.{key} is required")
+    artifact_ref = str(baseline.get("artifact_ref") or "").strip()
+    source_ref = str(baseline.get("source_ref") or "").strip()
+    artifact_version = str(baseline.get("artifact_version") or "").strip()
+    source_version = str(baseline.get("source_version") or "").strip()
+    if artifact_ref and not ARTIFACT_REF_PATTERN.match(artifact_ref):
+        errors.append(f"{source}: baseline.artifact_ref must be a canonical chatgpt_claudecode_workflow-2 release ZIP")
+    if source_ref and not ARTIFACT_REF_PATTERN.match(source_ref):
+        errors.append(f"{source}: baseline.source_ref must be a canonical chatgpt_claudecode_workflow-2 source ZIP")
+    if artifact_version and not VERSION_PATTERN.match(artifact_version):
+        errors.append(f"{source}: baseline.artifact_version must be a canonical v-prefixed version")
+    if source_version and not VERSION_PATTERN.match(source_version):
+        errors.append(f"{source}: baseline.source_version must be a canonical v-prefixed version")
+    if artifact_ref and artifact_version and artifact_version not in artifact_ref:
+        errors.append(f"{source}: baseline.artifact_ref must contain baseline.artifact_version")
+    if source_ref and source_version and source_version not in source_ref:
+        errors.append(f"{source}: baseline.source_ref must contain baseline.source_version")
+    if artifact_version and source_version and artifact_version != source_version:
+        errors.append(f"{source}: baseline.artifact_version must match baseline.source_version")
+    if str(baseline.get("role") or "").strip() != "accepted_current_source_baseline":
+        errors.append(f"{source}: baseline.role must be accepted_current_source_baseline")
 
 
 def load_grill_validator():
@@ -121,8 +156,8 @@ def validate_accepted_event(
 
     if value.get("schema") != ACCEPTED_EVENT_SCHEMA_ID:
         errors.append(f"{source}: schema must be {ACCEPTED_EVENT_SCHEMA_ID}")
-    if value.get("schema_version") != "1.0":
-        errors.append(f"{source}: schema_version must be 1.0")
+    if value.get("schema_version") != ACCEPTED_EVENT_SCHEMA_VERSION:
+        errors.append(f"{source}: schema_version must be {ACCEPTED_EVENT_SCHEMA_VERSION}")
     if not str(value.get("event_id") or "").strip():
         errors.append(f"{source}: event_id is required")
     if value.get("decision") != "accepted":
@@ -142,6 +177,8 @@ def validate_accepted_event(
         )
     if not str(project.get("role") or "").strip():
         errors.append(f"{source}: project.role is required")
+
+    _validate_baseline(value, source, errors)
 
     constraints = value.get("constraints") or {}
     if not isinstance(constraints, dict):
@@ -270,30 +307,74 @@ def validate_paths(paths: list[Path]) -> list[str]:
     return errors
 
 
+def validate_paths_payload(paths: list[Path]) -> dict[str, Any]:
+    resolved_paths = list(paths)
+    if not resolved_paths:
+        return {
+            "ok": False,
+            "action": "orchestration_validate_accepted_event",
+            "status": "accepted_event_invalid",
+            "schema": ACCEPTED_EVENT_SCHEMA_ID,
+            "schema_version": ACCEPTED_EVENT_SCHEMA_VERSION,
+            "validated_count": 0,
+            "validated_paths": [],
+            "errors": ["no accepted-event examples were found; pass explicit paths or restore committed examples"],
+            "fixture_only": True,
+            "accepted_state_written": False,
+            "runtime_state_mutation_allowed": False,
+            "source_mutation_allowed": False,
+            "artifact_adoption_allowed": False,
+            "deployment_allowed": False,
+            "model_may_execute": False,
+            "operator_action": "restore_accepted_event_examples_or_pass_explicit_paths",
+        }
+    errors = validate_paths(resolved_paths)
+    validated = [] if errors else [display_path(path) for path in resolved_paths]
+    return {
+        "ok": not errors,
+        "action": "orchestration_validate_accepted_event",
+        "status": "accepted_event_examples_valid" if not errors else "accepted_event_invalid",
+        "schema": ACCEPTED_EVENT_SCHEMA_ID,
+        "schema_version": ACCEPTED_EVENT_SCHEMA_VERSION,
+        "validated_count": len(validated),
+        "validated_paths": validated,
+        "errors": errors,
+        "state_machine": display_path(STATE_MACHINE_PATH),
+        "fixture_only": True,
+        "accepted_state_written": False,
+        "runtime_state_mutation_allowed": False,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+        "deployment_allowed": False,
+        "model_may_execute": False,
+        "operator_action": "accepted_event_may_be_reviewed; no state was mutated" if not errors else "fix_accepted_event_json_and_rerun_validator",
+    }
+
+
+def render_text(payload: dict[str, Any]) -> str:
+    if payload.get("ok"):
+        return (
+            f"{payload['status']}: validated_count={payload['validated_count']} "
+            "fixture_only=true accepted_state_written=false"
+        )
+    lines = [f"{payload['status']}: {len(payload.get('errors') or [])} error(s)"]
+    lines.extend(f"- {error}" for error in payload.get("errors") or [])
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate read-only orchestration accepted-event fixtures.")
     parser.add_argument("paths", nargs="*", help="Optional accepted-event JSON files. Defaults to committed examples.")
+    parser.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
     args = parser.parse_args(argv)
 
     paths = [Path(p) for p in args.paths] if args.paths else example_paths()
-    errors = validate_paths(paths)
-    if errors:
-        print(json.dumps({"ok": False, "status": "accepted_event_invalid", "errors": errors}, indent=2))
-        return 1
-    print(
-        json.dumps(
-            {
-                "ok": True,
-                "status": "accepted_event_examples_valid",
-                "validated_count": len(paths),
-                "state_machine": str(STATE_MACHINE_PATH.relative_to(ROOT)),
-                "read_only": True,
-                "mutating_actions_executed": False,
-            },
-            indent=2,
-        )
-    )
-    return 0
+    payload = validate_paths_payload(paths)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(render_text(payload))
+    return 0 if payload.get("ok") else 1
 
 
 if __name__ == "__main__":

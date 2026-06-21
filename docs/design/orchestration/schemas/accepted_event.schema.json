@@ -9,6 +9,7 @@
     "schema_version",
     "event_id",
     "project",
+    "baseline",
     "source_grill",
     "accepted_transition",
     "decision",
@@ -167,6 +168,38 @@
     },
     "notes": {
       "type": "string"
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_ref",
+        "artifact_version",
+        "source_ref",
+        "source_version",
+        "role"
+      ],
+      "properties": {
+        "artifact_ref": {
+          "type": "string",
+          "pattern": "^chatgpt_claudecode_workflow-2_v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*\\.zip$"
+        },
+        "artifact_version": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$"
+        },
+        "source_ref": {
+          "type": "string",
+          "pattern": "^chatgpt_claudecode_workflow-2_v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*\\.zip$"
+        },
+        "source_version": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$"
+        },
+        "role": {
+          "const": "accepted_current_source_baseline"
+        }
+      }
     }
   }
 }
