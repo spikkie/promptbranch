@@ -1500,6 +1500,126 @@ def test_rate_limit_modal_ack_waits_one_minute_and_consumes_cooldown(tmp_path: P
     assert any(event.get("kind") == "modal_ack_wait" for event in events)
     assert any(event.get("kind") == "cooldown_wait_satisfied_by_modal_ack_wait" for event in events)
 
+class _ProjectCreateButton:
+    def __init__(self, enabled_sequence):
+        self.enabled_sequence = list(enabled_sequence)
+        self.fill_values = []
+        self.press_values = []
+        self.click_count = 0
+
+    async def is_enabled(self):
+        if self.enabled_sequence:
+            return self.enabled_sequence.pop(0)
+        return False
+
+    async def get_attribute(self, _name):
+        return None
+
+    async def evaluate(self, _script, *args):
+        if args:
+            self.fill_values.append(args[0])
+        return {"disabled": False, "ariaDisabled": None, "visuallyDisabled": None, "text": "Create"}
+
+    async def click(self, *args, **kwargs):
+        self.click_count += 1
+
+    async def fill(self, value):
+        self.fill_values.append(value)
+
+    async def press(self, value, *args, **kwargs):
+        self.press_values.append(value)
+
+    async def scroll_into_view_if_needed(self, *args, **kwargs):
+        return None
+
+
+class _ProjectCreateInput(_ProjectCreateButton):
+    async def evaluate(self, _script, *args):
+        if args:
+            self.fill_values.append(args[0])
+            return None
+        return self.fill_values[-1] if self.fill_values else ""
+
+
+def test_project_create_disabled_submit_recovers_after_rate_limit_modal_ack(tmp_path: Path):
+    client = _make_client(tmp_path)
+    page = FakePage()
+    input_locator = _ProjectCreateInput([True])
+    submit_locator = _ProjectCreateButton([False])
+    calls = []
+    enabled_results = [False, True]
+
+    async def fake_wait_enabled(_locator, *, timeout_ms: int = 5_000):
+        return enabled_results.pop(0)
+
+    async def fake_wait_rate_limit(_page, *, label: str, **_kwargs):
+        calls.append(label)
+        return True
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        assert label == "project-create-submit-recovery-1-button"
+        return submit_locator
+
+    logs = []
+
+    async def fake_log_disabled_state(_page, _input, _button, *, label: str):
+        logs.append(label)
+
+    client._wait_for_enabled_locator = fake_wait_enabled  # type: ignore[method-assign]
+    client._wait_for_rate_limit_modal_to_clear = fake_wait_rate_limit  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._log_project_create_disabled_state = fake_log_disabled_state  # type: ignore[method-assign]
+
+    recovered = asyncio.run(
+        client._recover_project_create_submit_enabled(
+            page,
+            input_locator,
+            submit_locator,
+            name="itest-promptbranch-v0-1-84-3",
+        )
+    )
+
+    assert recovered is submit_locator
+    assert calls == ["project-create-submit-recovery-1-rate-limit"]
+    assert "project-create-submit-pre-recovery" in logs
+    assert input_locator.fill_values[-1] == "itest-promptbranch-v0-1-84-3"
+    assert "Tab" in input_locator.press_values
+
+
+def test_project_create_disabled_submit_fails_after_bounded_recovery(tmp_path: Path):
+    client = _make_client(tmp_path)
+    client.config.project_create_disabled_recovery_attempts = 1
+    page = FakePage()
+    input_locator = _ProjectCreateInput([True])
+    submit_locator = _ProjectCreateButton([False])
+
+    async def fake_wait_enabled(_locator, *, timeout_ms: int = 5_000):
+        return False
+
+    async def fake_wait_rate_limit(_page, *, label: str, **_kwargs):
+        return False
+
+    async def fake_wait_for_visible_locator(_page, _selectors, *, label: str, **_kwargs):
+        return submit_locator
+
+    async def fake_log_disabled_state(_page, _input, _button, *, label: str):
+        return None
+
+    client._wait_for_enabled_locator = fake_wait_enabled  # type: ignore[method-assign]
+    client._wait_for_rate_limit_modal_to_clear = fake_wait_rate_limit  # type: ignore[method-assign]
+    client._wait_for_visible_locator = fake_wait_for_visible_locator  # type: ignore[method-assign]
+    client._log_project_create_disabled_state = fake_log_disabled_state  # type: ignore[method-assign]
+
+    with pytest.raises(client_module.ResponseTimeoutError, match="bounded recovery"):
+        asyncio.run(
+            client._recover_project_create_submit_enabled(
+                page,
+                input_locator,
+                submit_locator,
+                name="itest-promptbranch-v0-1-84-3",
+            )
+        )
+
 
 class _FakeInteractiveStdin:
     def isatty(self) -> bool:
