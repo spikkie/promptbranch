@@ -335,3 +335,11 @@ No user data, Project Source content, artifact-current registry, prompt-file tra
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/repair-v0.1.78.2.20.8.6.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.7.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.6 fixed joined-repo state authority; v0.1.78.2.20.8.7 repairs the plain-text response wait debug/deadline `NameError` only and does not advance a normal slice. |
+
+## v0.1.78.2.20.8.8 migration note
+
+No user data, Project Source content, artifact-current registry, prompt-file transport, response completion semantics, or normal release slice migration is performed. This repair only changes localhost full-test/source-add diagnostics: the source-add service client waits long enough for fail-closed post-commit recovery diagnostics, and retained-project source-add failures attach a `pb src list --json` diagnostic before the harness raises.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/repair-v0.1.78.2.20.8.7.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.8.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.7 fixed plain-text response-wait diagnostics; live run-all evidence then isolated the remaining blocker to localhost source-add timeout masking a structured stale-inflight fail-closed result. |

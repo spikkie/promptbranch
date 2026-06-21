@@ -462,3 +462,25 @@ def test_ask_result_posts_service_timeout_seconds_form_field() -> None:
         payload = client.ask_result("hello", service_timeout_seconds=180.0)
 
     assert payload["answer"] == "ready"
+
+
+def test_add_project_source_uses_request_timeout_override() -> None:
+    observed_timeout: dict[str, float] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        timeout = request.extensions.get("timeout") or {}
+        observed_timeout["read"] = float(timeout.get("read"))
+        return httpx.Response(200, json={"ok": True, "status": "post_commit_source_surface_not_refreshed"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", timeout=300.0, transport=transport) as client:
+        payload = client.add_project_source(
+            source_kind="text",
+            value="hello",
+            display_name="source.txt",
+            request_timeout_seconds=900.0,
+        )
+
+    assert payload["ok"] is True
+    assert observed_timeout["read"] == 900.0

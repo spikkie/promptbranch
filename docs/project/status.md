@@ -236,3 +236,9 @@ Operator logs proved that `pb task use` wrote the selected Kubernetes conversati
 ## v0.1.78.2.20.8.7 repair status
 
 `v0.1.78.2.20.8.6` exposed a plain-text response wait diagnostic bug: the requested sentinel answer was already visible, but the completion loop remained blocked by stop-button/composer-idle predicates, and the debug/deadline branch attempted to write `response_debug_artifact_skipped_due_to_deadline` through an undefined local `breakdown`. `v0.1.78.2.20.8.7` initializes `response_wait_breakdown` in `_wait_and_get_response()` before the loop can enter diagnostic bookkeeping. This repair does not change response completion semantics, Project Source behavior, artifact adoption/current state, or the immutable Project deletion freeze.
+
+## v0.1.78.2.20.8.8 repair status
+
+`v0.1.78.2.20.8.7` cleared the live-profile/headed browser path under `--run-all-tests`, but adoption still failed in the localhost full transport at `project_source_add_text`. The service-side browser flow continued after the CLI client timed out and eventually produced the structured fail-closed diagnostic `post_commit_source_surface_not_refreshed` with `transaction_status=commit_seen_with_stale_inflight_not_verified_present`.
+
+`v0.1.78.2.20.8.8` keeps that failure release-blocking, but aligns the localhost source-mutation client timeout with the service-side post-commit persistence/recovery window so the CLI receives structured diagnostics instead of a generic `ReadTimeout`. The full-integration harness also attaches a `pb src list --json` diagnostic after the specific stale-inflight post-commit source-add failure so retained-project operators can inspect whether the source later appears before retrying. No Project Source success semantics, Project deletion behavior, prompt-file transport, artifact-current state, or normal `v0.1.79` scope advances.

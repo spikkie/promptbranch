@@ -862,3 +862,26 @@ Out of scope:
 - Project Source add/remove behavior changes.
 - Artifact adoption/current changes.
 - Normal `v0.1.79` scope.
+
+## Slice definition — v0.1.78.2.20.8.8 repair release
+
+Release: v0.1.78.2.20.8.8
+
+Scope: repair-only localhost Project Source add stale-inflight diagnostic timeout alignment on top of `v0.1.78.2.20.8.7`.
+
+In scope:
+
+- Make Docker-service Project Source add client requests wait long enough to receive the service-side post-commit persistence/recovery result.
+- Keep `commit_seen_with_stale_inflight_not_verified_present` and `post_commit_source_surface_not_refreshed` release-blocking and operator-review-required.
+- Add a retained-project `pb src list --json` diagnostic after the specific post-commit source-surface failure.
+- Add focused regression coverage for request-timeout override, source-mutation timeout floor, post-failure source-list diagnostics, and stale-inflight release-blocking payload fields.
+- Preserve joined-repo state authority consistency, plain-text response wait diagnostics, and immutable Project deletion freeze.
+
+Out of scope:
+
+- Treating ambiguous source-add persistence as success.
+- Increasing or relaxing Project Source success criteria.
+- Project deletion behavior changes.
+- Secure delete protocol design or implementation.
+- Artifact adoption/current changes.
+- Normal `v0.1.79` scope.

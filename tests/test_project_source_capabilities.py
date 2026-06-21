@@ -2511,6 +2511,11 @@ def test_text_post_commit_recovery_failure_reports_specific_status(
     assert result["status"] == "post_commit_source_surface_not_refreshed"
     assert result["post_commit_recovery"] == {"attempted": True, "status": "not_recovered"}
     assert result["persistence_false_negative_possible"] is True
+    assert result["release_blocking"] is True
+    assert result["operator_review_required"] is True
+    assert result["transaction_status"] == "commit_seen_with_stale_inflight_not_verified_present"
+    assert result["source_mutation_transaction"]["release_blocking"] is True
+    assert any("pb src list --json" in item for item in result["recovery_guidance"])
 
 
 def test_text_source_document_conversion_candidates_use_first_line_and_display_name(

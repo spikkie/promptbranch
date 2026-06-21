@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import pytest
 from pathlib import Path
 
 from promptbranch_full_integration_test import (
+    DockerServiceAdapter,
+    SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS,
+    StepResult,
+    _attach_project_source_failure_diagnostic,
     _normalize_expected_missing_resolve_result,
     _extract_conversation_url_from_ask_result,
     _normalize_expected_skip_result,
@@ -60,6 +67,54 @@ def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:
     assert args.service_base_url == "http://localhost:8000"
     assert args.service_token == "secret-token"
     assert args.service_timeout_seconds == 45.0
+
+
+def test_docker_service_adapter_source_mutation_timeout_exceeds_general_client_timeout() -> None:
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+    )
+
+    assert adapter._source_mutation_timeout_seconds() >= SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS
+    assert adapter._source_mutation_timeout_seconds() > adapter.timeout_seconds
+
+
+def test_post_commit_source_failure_diagnostic_lists_retained_project_sources() -> None:
+    class FakeProjectService:
+        async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+            assert keep_open is True
+            return {
+                "ok": True,
+                "action": "list",
+                "sources": [{"name": "late-visible-source.txt"}],
+            }
+
+    steps: list[StepResult] = []
+    failure_payload: dict[str, Any] = {
+        "ok": False,
+        "status": "post_commit_source_surface_not_refreshed",
+        "transaction_status": "commit_seen_with_stale_inflight_not_verified_present",
+    }
+
+    asyncio.run(
+        _attach_project_source_failure_diagnostic(
+            steps,
+            FakeProjectService(),
+            failure_payload,
+            diagnostic_step_name="project_source_list_after_add_text_failure",
+            keep_open=True,
+        )
+    )
+
+    assert failure_payload["post_failure_source_list_command"] == "pb src list --json"
+    diagnostic = failure_payload["post_failure_source_list_diagnostic"]
+    assert diagnostic["ok"] is True
+    assert diagnostic["source_list"]["sources"][0]["name"] == "late-visible-source.txt"
+    assert steps[-1].name == "project_source_list_after_add_text_failure"
+    assert steps[-1].ok is True
+
 
 
 def test_resolve_step_selection_expands_aliases_and_forces_login_and_capabilities() -> None:
