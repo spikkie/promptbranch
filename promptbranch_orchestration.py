@@ -964,11 +964,62 @@ def accepted_event_ledger_status(root: Path | None = None) -> dict[str, Any]:
     }
 
 
+def validate_accepted_event_ledger(root: Path | None = None) -> dict[str, Any]:
+    """Validate the accepted-event ledger contract without creating or writing it.
+
+    ``ledger-status`` is a design/status scaffold.  ``validate-ledger`` is the
+    release-checkable read-only validation command: an absent ledger is valid
+    for this pre-write slice, while an existing ledger must be repo-local JSONL
+    with minimally valid accepted-event ledger records.
+    """
+    status_payload = accepted_event_ledger_status(root=root)
+    errors = list(status_payload.get("validation_errors") or [])
+    ledger_exists = bool(status_payload.get("ledger_exists"))
+    ok = not errors
+    payload = {
+        **status_payload,
+        "ok": ok,
+        "action": "orchestration_validate_accepted_event_ledger",
+        "status": (
+            "accepted_event_ledger_valid"
+            if ok and ledger_exists
+            else "accepted_event_ledger_absent_valid"
+            if ok
+            else "accepted_event_ledger_invalid"
+        ),
+        "validation_mode": "read_only",
+        "ledger_write_performed": False,
+        "accepted_state_written": False,
+        "runtime_state_mutation_allowed": False,
+        "source_mutation_allowed": False,
+        "artifact_adoption_allowed": False,
+        "deployment_allowed": False,
+        "model_may_execute": False,
+        "operator_action": (
+            "accepted_event_ledger_validation_passed; no state was mutated"
+            if ok
+            else "fix_accepted_event_ledger_and_rerun_validator"
+        ),
+    }
+    return payload
+
+
 def render_accepted_event_ledger_status_text(payload: dict[str, Any]) -> str:
     if payload.get("ok"):
         return (
             f"{payload['status']}: ledger_exists={str(payload.get('ledger_exists')).lower()} "
             f"record_count={payload.get('record_count')} write_command_available=false"
+        )
+    lines = [f"{payload.get('status')}: {len(payload.get('validation_errors') or [])} error(s)"]
+    lines.extend(f"- {error}" for error in payload.get("validation_errors") or [])
+    return "\n".join(lines)
+
+
+def render_accepted_event_ledger_validation_text(payload: dict[str, Any]) -> str:
+    if payload.get("ok"):
+        return (
+            f"{payload['status']}: ledger_exists={str(payload.get('ledger_exists')).lower()} "
+            f"record_count={payload.get('record_count')} ledger_write_performed=false"
         )
     lines = [f"{payload.get('status')}: {len(payload.get('validation_errors') or [])} error(s)"]
     lines.extend(f"- {error}" for error in payload.get("validation_errors") or [])

@@ -370,3 +370,67 @@ def test_accepted_event_ledger_status_uses_worktree_when_module_root_is_installe
     assert payload["ledger_directory"] == "docs/design/orchestration/accepted_event_ledger"
     assert payload["record_schema_path"] == "docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json"
     assert payload["accepted_state_written"] is False
+
+
+def test_validate_accepted_event_ledger_absent_is_valid_and_read_only() -> None:
+    import promptbranch_orchestration as module
+
+    payload = module.validate_accepted_event_ledger()
+
+    assert payload["ok"] is True
+    assert payload["action"] == "orchestration_validate_accepted_event_ledger"
+    assert payload["status"] == "accepted_event_ledger_absent_valid"
+    assert payload["ledger_exists"] is False
+    assert payload["record_count"] == 0
+    assert payload["validation_mode"] == "read_only"
+    assert payload["ledger_write_performed"] is False
+    assert payload["write_command_available"] is False
+    assert payload["accept_event_write_supported"] is False
+    assert payload["accepted_state_written"] is False
+    assert payload["runtime_state_mutation_allowed"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert payload["deployment_allowed"] is False
+    assert payload["model_may_execute"] is False
+    assert payload["validation_errors"] == []
+
+
+def test_validate_accepted_event_ledger_rejects_invalid_jsonl(tmp_path: Path) -> None:
+    import promptbranch_orchestration as module
+
+    ledger_dir = tmp_path / "docs" / "design" / "orchestration" / "accepted_event_ledger"
+    schema_dir = tmp_path / "docs" / "design" / "orchestration" / "schemas"
+    ledger_dir.mkdir(parents=True)
+    schema_dir.mkdir(parents=True)
+    (schema_dir / "accepted_event_ledger_record.schema.json").write_text(
+        json.dumps({"$id": "promptbranch.orchestration.accepted_event_ledger_record"}),
+        encoding="utf-8",
+    )
+    (ledger_dir / "accepted_events.jsonl").write_text("{not-json\n", encoding="utf-8")
+
+    payload = module.validate_accepted_event_ledger(root=tmp_path)
+
+    assert payload["ok"] is False
+    assert payload["action"] == "orchestration_validate_accepted_event_ledger"
+    assert payload["status"] == "accepted_event_ledger_invalid"
+    assert payload["ledger_exists"] is True
+    assert payload["ledger_write_performed"] is False
+    assert payload["accepted_state_written"] is False
+    assert any("invalid JSONL record" in error for error in payload["validation_errors"])
+
+
+def test_validate_accepted_event_ledger_uses_worktree_when_module_root_is_installed(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_orchestration as module
+
+    fake_site_packages = tmp_path / "site-packages"
+    fake_site_packages.mkdir()
+    monkeypatch.setattr(module, "ROOT", fake_site_packages)
+    monkeypatch.chdir(ROOT)
+
+    payload = module.validate_accepted_event_ledger()
+
+    assert payload["ok"] is True
+    assert payload["status"] == "accepted_event_ledger_absent_valid"
+    assert payload["ledger_path"] == "docs/design/orchestration/accepted_event_ledger/accepted_events.jsonl"
+    assert payload["record_schema_path"] == "docs/design/orchestration/schemas/accepted_event_ledger_record.schema.json"
+    assert payload["accepted_state_written"] is False

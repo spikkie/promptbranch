@@ -213,3 +213,4 @@ Acceptance criteria:
 - No accepted state, runtime state, Project Source, artifact adoption, deployment, or model-execution authority is introduced.
 - The command works from installed-runtime/worktree path resolution and does not rely on `site-packages/docs/...`.
 - The actual append-only ledger write remains out of scope.
+| DOD-087 | Accepted-event ledger validation command validates the pre-write ledger scaffold read-only, treats absent ledger as valid when scaffold exists, fails closed for malformed existing JSONL, and introduces no ledger write or mutation authority | focused | `promptbranch_orchestration.py`, `pb orchestration validate-ledger --json`, `tests/orchestration/test_orchestration_accepted_event_schema.py`, `tests/test_cli_parser.py` | v0.1.84 |

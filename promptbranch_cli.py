@@ -75,7 +75,9 @@ from promptbranch_orchestration import (
     render_accepted_event_validation_text,
     render_accept_event_dry_run_text,
     render_accepted_event_ledger_status_text,
+    render_accepted_event_ledger_validation_text,
     render_text as render_orchestration_validation_text,
+    validate_accepted_event_ledger,
     validate_accepted_event_paths,
     validate_paths as validate_orchestration_event_paths,
 )
@@ -21653,6 +21655,13 @@ async def cmd_orchestration(backend: CommandBackend, args: argparse.Namespace) -
         else:
             print(render_accepted_event_ledger_status_text(payload))
         return 0 if payload.get("ok") else 1
+    if args.orchestration_command == "validate-ledger":
+        payload = validate_accepted_event_ledger()
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_accepted_event_ledger_validation_text(payload))
+        return 0 if payload.get("ok") else 1
     if args.orchestration_command == "accept-event":
         if not getattr(args, "dry_run", False):
             payload = {
@@ -22460,6 +22469,8 @@ def make_parser() -> argparse.ArgumentParser:
     orchestration_validate_accepted_event.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
     orchestration_ledger_status = orchestration_subparsers.add_parser("ledger-status", help="Show the read-only accepted-event ledger scaffold without writing state.")
     orchestration_ledger_status.add_argument("--json", action="store_true", help="Emit structured ledger scaffold status as JSON.")
+    orchestration_validate_ledger = orchestration_subparsers.add_parser("validate-ledger", help="Validate the accepted-event ledger contract without creating or writing the ledger.")
+    orchestration_validate_ledger.add_argument("--json", action="store_true", help="Emit structured ledger validation result as JSON.")
     orchestration_accept_event = orchestration_subparsers.add_parser("accept-event", help="Dry-run accepted-event promotion without writing accepted state.")
     orchestration_accept_event.add_argument("paths", nargs="*", help="Accepted-event JSON files. Defaults to committed examples.")
     orchestration_accept_event.add_argument("--dry-run", action="store_true", help="Preview acceptance only; required because ledger writes are out of scope.")
