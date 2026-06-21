@@ -33,6 +33,10 @@ SOURCE_MUTATION_PROFILE_WAIT_SECONDS = float(os.getenv("PROMPTBRANCH_SOURCE_MUTA
 SOURCE_MUTATION_BUSY_RETRY_MIN_SECONDS = 0.25
 SOURCE_MUTATION_BUSY_RETRY_MAX_SECONDS = 5.0
 SOURCE_MUTATION_OPERATIONS = {"add_project_source", "remove_project_source"}
+SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS = float(os.getenv(
+    "PROMPTBRANCH_SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS",
+    os.getenv("CHATGPT_SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS", "900.0"),
+))
 
 CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "mcp_smoke",
@@ -338,6 +342,9 @@ class DockerServiceAdapter:
             timeout=self.timeout_seconds,
         )
 
+    def _source_mutation_timeout_seconds(self) -> float:
+        return max(float(self.timeout_seconds), float(SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS))
+
     @staticmethod
     def _browser_busy_payload(exc: Exception) -> dict[str, Any] | None:
         response = getattr(exc, "response", None)
@@ -609,6 +616,17 @@ class DockerServiceAdapter:
                 profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
             )
 
+    async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list_project_sources_sync, keep_open)
+
+    def _list_project_sources_sync(self, keep_open: bool) -> dict[str, Any]:
+        with self._client() as client:
+            return client.list_project_sources(
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
+
+
     async def list_project_chats(
         self,
         *,
@@ -749,6 +767,59 @@ async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seco
             )
         )
         raise
+
+
+async def _attach_project_source_failure_diagnostic(
+    steps: list[StepResult],
+    project_service: Any,
+    failure_payload: Any,
+    *,
+    diagnostic_step_name: str,
+    keep_open: bool,
+) -> None:
+    """Attach a retained-project source-list diagnostic to a failed source mutation.
+
+    When Project Source add observes a durable save commit but cannot verify
+    refreshed source-surface persistence, the release gate must remain
+    fail-closed.  The operator still needs the current source list before
+    retrying so a late-visible source is not accidentally overwritten or
+    removed.
+    """
+
+    if not isinstance(failure_payload, dict) or failure_payload.get("ok") is not False:
+        return
+    status = str(failure_payload.get("status") or "")
+    transaction_status = str(failure_payload.get("transaction_status") or "")
+    if status != "post_commit_source_surface_not_refreshed" and transaction_status != "commit_seen_with_stale_inflight_not_verified_present":
+        return
+
+    command = "pb src list --json"
+    try:
+        source_list = await project_service.list_project_sources(keep_open=keep_open)
+        diagnostic = {
+            "ok": not (isinstance(source_list, dict) and source_list.get("ok") is False),
+            "action": "project_source_post_failure_diagnostic",
+            "command": command,
+            "source_list": source_list,
+        }
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        diagnostic = {
+            "ok": False,
+            "action": "project_source_post_failure_diagnostic",
+            "command": command,
+            "status": "source_list_diagnostic_failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+
+    failure_payload["post_failure_source_list_diagnostic"] = diagnostic
+    failure_payload["post_failure_source_list_command"] = command
+    _record_step(
+        steps,
+        diagnostic_step_name,
+        ok=bool(diagnostic.get("ok")),
+        details=diagnostic,
+    )
 
 
 async def _post_ask_cooldown(steps: list[StepResult], *, seconds: float, reason: str) -> None:
@@ -2160,6 +2231,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 step_delay_seconds=args.step_delay_seconds,
             )
+            if isinstance(text_add, dict) and text_add.get("ok") is False:
+                await _attach_project_source_failure_diagnostic(
+                    steps,
+                    project_service,
+                    text_add,
+                    diagnostic_step_name="project_source_list_after_add_text_failure",
+                    keep_open=args.keep_open,
+                )
             _require(text_add.get("ok") is True, f"text source add failed: {text_add}")
             text_source_match = str(text_add.get("source_match") or text_source_name)
 

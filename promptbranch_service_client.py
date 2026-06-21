@@ -396,6 +396,7 @@ class ChatGPTServiceClient:
         overwrite_existing: bool = True,
         project_url: Optional[str] = None,
         profile_lock_wait_seconds: Optional[float] = None,
+        request_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         normalized_display_name = Path(display_name).name if display_name else None
         data = {
@@ -414,6 +415,10 @@ class ChatGPTServiceClient:
         if profile_lock_wait_seconds is not None:
             data["profile_lock_wait_seconds"] = str(float(profile_lock_wait_seconds))
 
+        request_timeout = self._timeout
+        if request_timeout_seconds is not None:
+            request_timeout = max(1.0, float(request_timeout_seconds))
+
         if file_path:
             path = Path(file_path)
             with path.open("rb") as handle:
@@ -421,9 +426,10 @@ class ChatGPTServiceClient:
                     "/v1/project-sources",
                     data=data,
                     files={"file": (path.name, handle, "application/octet-stream")},
+                    timeout=request_timeout,
                 )
         else:
-            response = self._client.post("/v1/project-sources", data=data)
+            response = self._client.post("/v1/project-sources", data=data, timeout=request_timeout)
         return self._json(response)
 
     def remove_project_source(
