@@ -198,3 +198,45 @@ def test_accepted_event_module_resolves_repo_docs_when_module_root_is_not_repo(m
 
     assert payload["ok"] is True
     assert payload["validated_count"] == 7
+
+
+def test_accept_event_dry_run_previews_validated_fixtures_without_writing_state() -> None:
+    import promptbranch_orchestration as module
+
+    payload = module.dry_run_accept_event_paths(module.accepted_event_example_paths())
+
+    assert payload["ok"] is True
+    assert payload["action"] == "orchestration_accept_event_dry_run"
+    assert payload["status"] == "accepted_event_dry_run_ready"
+    assert payload["dry_run"] is True
+    assert payload["would_accept"] is True
+    assert payload["validated_count"] == 7
+    assert len(payload["accepted_event_preview"]) == 7
+    assert payload["accepted_event_preview"][0]["baseline"]["artifact_ref"] == "chatgpt_claudecode_workflow-2_v0.1.79.zip"
+    assert payload["accepted_state_written"] is False
+    assert payload["runtime_state_mutation_allowed"] is False
+    assert payload["source_mutation_allowed"] is False
+    assert payload["artifact_adoption_allowed"] is False
+    assert payload["deployment_allowed"] is False
+    assert payload["model_may_execute"] is False
+
+
+def test_accept_event_dry_run_rejects_invalid_accepted_event() -> None:
+    import copy
+    import tempfile
+    import promptbranch_orchestration as module
+
+    example_path = module.accepted_event_example_paths()[0]
+    candidate = copy.deepcopy(module.read_json(example_path))
+    candidate["constraints"]["artifact_adoption_allowed"] = True
+    with tempfile.TemporaryDirectory() as tmp:
+        bad = Path(tmp) / "bad.accepted_event.json"
+        bad.write_text(json.dumps(candidate), encoding="utf-8")
+        payload = module.dry_run_accept_event_paths([bad])
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_event_dry_run_rejected"
+    assert payload["would_accept"] is False
+    assert payload["accepted_event_preview"] == []
+    assert payload["accepted_state_written"] is False
+    assert any("artifact_adoption_allowed" in reason for reason in payload["rejection_reasons"])

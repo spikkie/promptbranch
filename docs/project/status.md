@@ -267,3 +267,25 @@ chatgpt_claudecode_workflow-2_v0.1.79.zip
 `v0.1.80` adds the accepted-event validation foundation after the `v0.1.79` proposal/event-intake layer. The slice exposes `pb orchestration validate-accepted-event`, validates the committed G0-G6 accepted-event fixtures, requires explicit baseline/source binding, and remains read-only. It does not write an accepted-event ledger, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions.
 
 Candidate validation is focused/local in this workspace only until operator release-control proves the ZIP. Do not call `v0.1.80` accepted/current until `pb artifact current --json` verifies runtime, state artifact, state source, registry current, and consistency alignment.
+
+## v0.1.81 focused working candidate status
+
+Accepted/current baseline remains:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.79.zip
+```
+
+Working candidate chain:
+
+```text
+v0.1.80 focused-validated candidate -> v0.1.81 focused working candidate
+```
+
+`v0.1.81` adds an accepted-event dry-run promotion foundation through:
+
+```text
+pb orchestration accept-event --dry-run --json
+```
+
+The command previews whether validated accepted-event fixtures would be acceptable for a future ledger write, but it does not write accepted state, mutate Project Sources, adopt artifacts, deploy, or execute model-proposed actions. Full all-tests and adoption/current promotion are intentionally deferred under the focused-slice validation model.
