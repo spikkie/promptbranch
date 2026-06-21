@@ -327,3 +327,11 @@ No user data, Project Source content, artifact-current registry, prompt-file tra
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/repair-v0.1.78.2.20.8.5.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.6.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.5 fixed cleanup-policy evidence wording; v0.1.78.2.20.8.6 repairs joined-repo state authority consistency only and does not advance a normal slice. |
+
+## v0.1.78.2.20.8.7 migration note
+
+No user data, Project Source content, artifact-current registry, prompt-file transport, response completion semantics, or normal release slice migration is performed. This repair only initializes the plain-text response wait diagnostic breakdown before deadline/debug bookkeeping writes to it.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/repair-v0.1.78.2.20.8.6.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.7.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.6 fixed joined-repo state authority; v0.1.78.2.20.8.7 repairs the plain-text response wait debug/deadline `NameError` only and does not advance a normal slice. |

@@ -19900,6 +19900,17 @@ class ChatGPTBrowserClient:
         )
         start = asyncio.get_running_loop().time()
         deadline = start + (self.config.response_timeout_ms / 1000)
+        wait_started_monotonic = time.monotonic()
+        if isinstance(response_context, dict):
+            wait_started_monotonic = float(
+                response_context.get("response_wait_started_at_monotonic")
+                or wait_started_monotonic
+            )
+            breakdown = response_context.setdefault("response_wait_breakdown", {})
+        else:
+            breakdown = {}
+        breakdown["response_wait_started_at_monotonic"] = wait_started_monotonic
+        breakdown.setdefault("response_debug_artifact_skipped_due_to_deadline", False)
         attempt = 0
         last_diagnostic_dump = -30.0
         last_probe_summary = ""

@@ -232,3 +232,7 @@ Repair candidate `v0.1.78.2.20.8.2` fixes the same-run ephemeral project cleanup
 ## v0.1.78.2.20.8.6 repair status
 
 Operator logs proved that `pb task use` wrote the selected Kubernetes conversation into the project-scoped profile while plain `promptbranch state` read the stale repo-local `.pb_profile/.promptbranch_state.json`. `v0.1.78.2.20.8.6` repairs that state-authority split by making backend state reads use the same project-aware state-store resolver as task/source/artifact writes. Browser profile resolution remains unchanged, and explicit `--profile-dir` continues to override project-scoped state. No Project deletion path is re-enabled and no normal slice advances.
+
+## v0.1.78.2.20.8.7 repair status
+
+`v0.1.78.2.20.8.6` exposed a plain-text response wait diagnostic bug: the requested sentinel answer was already visible, but the completion loop remained blocked by stop-button/composer-idle predicates, and the debug/deadline branch attempted to write `response_debug_artifact_skipped_due_to_deadline` through an undefined local `breakdown`. `v0.1.78.2.20.8.7` initializes `response_wait_breakdown` in `_wait_and_get_response()` before the loop can enter diagnostic bookkeeping. This repair does not change response completion semantics, Project Source behavior, artifact adoption/current state, or the immutable Project deletion freeze.
