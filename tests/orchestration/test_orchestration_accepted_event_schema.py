@@ -174,3 +174,27 @@ def test_accepted_event_rejects_external_source_grill_path() -> None:
     errors = module.validate_accepted_event(candidate)
 
     assert any("source_grill.path must be a repo-relative path" in error for error in errors)
+
+def test_accepted_event_installed_module_validator_does_not_depend_on_repo_script_path() -> None:
+    import promptbranch_orchestration as module
+
+    assert not hasattr(module, "ACCEPTED_EVENT_VALIDATOR_PATH")
+    paths = module.accepted_event_example_paths()
+    payload = module.validate_accepted_event_paths(paths)
+
+    assert payload["ok"] is True
+    assert payload["validated_count"] == 7
+    assert payload["accepted_state_written"] is False
+    assert payload["artifact_adoption_allowed"] is False
+
+
+def test_accepted_event_module_resolves_repo_docs_when_module_root_is_not_repo(monkeypatch, tmp_path) -> None:
+    import promptbranch_orchestration as module
+
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+
+    paths = module.accepted_event_example_paths()
+    payload = module.validate_accepted_event_paths(paths)
+
+    assert payload["ok"] is True
+    assert payload["validated_count"] == 7

@@ -17,11 +17,12 @@ chatgpt_claudecode_workflow-2_v0.1.79.zip
 Implemented:
 
 - `pb orchestration validate-accepted-event --json`;
+- installed-module accepted-event validation in `promptbranch_orchestration.py` so pipx/runtime CLI does not depend on repo-local `scripts/orchestration/validate_accepted_event.py`;
 - no-arg validation of committed G0-G6 accepted-event fixtures;
 - explicit-path accepted-event validation;
 - accepted-event fixture baseline binding to the accepted/current `v0.1.79` artifact/source;
 - fail-closed zero-default behavior;
-- tests for mutation boundaries, baseline binding, stale hashes, bad transitions, and unsafe paths.
+- tests for mutation boundaries, baseline binding, stale hashes, bad transitions, unsafe paths, and installed-module runtime validation independent of the repo-local accepted-event script path.
 
 ## Non-mutating guarantees
 
@@ -50,7 +51,7 @@ model_may_execute=false
 
 Focused local validation only:
 
-- accepted-event validator CLI smoke;
+- accepted-event validator CLI smoke from installed-module code;
 - event-intake validator CLI smoke;
 - orchestration accepted-event tests;
 - orchestration event-intake/grill/example tests;

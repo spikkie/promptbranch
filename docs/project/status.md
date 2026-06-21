@@ -37,9 +37,9 @@ release status: v0.1.80 candidate extends the JSON orchestration MVP authority m
 
 ## Current blockers
 
-- v0.1.78.2.4 must pass focused live-test default alignment, release-control all-tests shell validation, and release-control from ZIP.
-- v0.1.78.2.4 must not be adopted/current without `pb artifact current --all --json` alignment evidence.
-- Existing leaked `itest-promptbranch-*` projects from pre-fix runs remain manual cleanup until a secure delete protocol exists.
+- `v0.1.80` remains candidate-only until the installed runtime proves `pb orchestration validate-accepted-event --json` returns `ok=true` with `validated_count=7`.
+- `v0.1.80` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run all tests, then adopt only after all tests pass.
+- No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, or artifact adoption behavior change is allowed in this slice.
 
 ## Current unknowns
 
@@ -50,13 +50,13 @@ release status: v0.1.80 candidate extends the JSON orchestration MVP authority m
 ## Next safe action
 
 ```text
-Package chatgpt_claudecode_workflow-2_v0.1.78.2.3.zip from v0.1.78.2.2 as a repair-only artifact, run focused release-control quarantine-project validation, then run release-control before adoption.
+Install the corrected chatgpt_claudecode_workflow-2_v0.1.80.zip candidate, run the dedicated installed-runtime accepted-event validator command first, then run dedicated pytest for the changed code before broad/full release-control gates.
 ```
 
 ## Last updated
 
 ```text
-v0.1.78.2.3 repair candidate build
+v0.1.80 corrected candidate build
 ```
 
 
