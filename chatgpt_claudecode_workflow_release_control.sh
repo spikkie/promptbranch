@@ -42,9 +42,10 @@ service_base_url="http://localhost:${service_port}"
 test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
 localhost_base_url="${PROMPTBRANCH_LOCALHOST_BASE_URL:-http://127.0.0.1:${service_port}}"
 # ChatGPT Project deletion is frozen. Release-control live tests must therefore
-# reuse one retained quarantine project instead of creating a unique throwaway
-# project that cannot be safely deleted afterwards.
-release_test_project_name="${PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME:-itest-promptbranch-retained-delete-frozen}"
+# keep created projects, but each release-control invocation should use a fresh
+# run-scoped project name so browser/project history does not accumulate in one
+# reused quarantine project.
+release_test_project_name="${PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME:-}"
 export COMPOSE_PROJECT_NAME="${compose_project_name}"
 export PROMPTBRANCH_SERVICE_PORT="${service_port}"
 export CHATGPT_SERVICE_BASE_URL="${service_base_url}"
@@ -658,6 +659,11 @@ fi
 
 ver="$(normalize_version "${version_arg}")" || fail "version must be a v-prefixed or bare dotted numeric version with at least three numeric segments, or an artifact ZIP ending in such a version; got '${version_arg}'"
 ver_plain="${ver#v}"
+if [[ -z "${release_test_project_name}" ]]; then
+  release_test_project_version="${ver//[^A-Za-z0-9]/-}"
+  release_test_project_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  release_test_project_name="itest-promptbranch-${release_test_project_version}-${release_test_project_stamp}"
+fi
 if [[ ${install_from_zip} -eq 1 ]]; then
   [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"
   [[ -f "${install_zip}" ]] || fail "install ZIP not found: ${install_zip}"
@@ -1014,7 +1020,7 @@ printf 'run_failing_tests:  %s\n' "${run_failing_tests}"
 printf 'run_all_strict_source_kind_matrix: %s\n' "${run_all_strict_source_kind_matrix}"
 printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
-printf 'test_cleanup:   retained_project_delete_frozen\n'
+printf 'test_cleanup:   unique_project_delete_frozen_retained\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf 'adopt_after_validation: %s\n' "${adopt_after_validation}"
@@ -2239,7 +2245,7 @@ run_full_test_transport() {
 
   echo "== pb test transport: ${label} =="
   echo "release_test_project_name: ${release_test_project_name}"
-  echo "cleanup_policy: retained_project_delete_frozen"
+  echo "cleanup_policy: unique_project_delete_frozen_retained"
   if [[ ${run_failing_tests} -eq 1 ]]; then
     echo "focused_failing_tests: text_source_add_compatibility"
   elif [[ ${run_all_tests} -eq 1 && "${run_all_strict_source_kind_matrix}" != "1" ]]; then
@@ -2424,7 +2430,7 @@ summary = {
     "version": version,
     "artifact": artifact,
     "test_project": project_name,
-    "cleanup_policy": "retained_project_delete_frozen",
+    "cleanup_policy": "unique_project_delete_frozen_retained",
     "test_transport": test_transport,
     "continue_on_failure": True,
     "step_count": len(steps),
@@ -2560,7 +2566,7 @@ run_all_live_validation_steps() {
   echo "== pb test all: live/artifact/import/guard steps =="
   echo "continue_on_failure: true"
   echo "release_test_project_name: ${release_test_project_name}"
-  echo "cleanup_policy: retained_project_delete_frozen"
+  echo "cleanup_policy: unique_project_delete_frozen_retained"
 
   if run_all_live_profile_preflight; then
     run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
@@ -2768,7 +2774,7 @@ run_failing_tests: ${run_failing_tests}
 run_all_strict_source_kind_matrix: ${run_all_strict_source_kind_matrix}
 all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")
 test_project:   ${release_test_project_name}
-test_cleanup:   retained_project_delete_frozen
+test_cleanup:   unique_project_delete_frozen_retained
 localhost_base: ${localhost_base_url}
 direct_log: $(summary_value "${tests_summary_active}" "${direct_full_log}")
 localhost_log: $(summary_value "${tests_summary_active}" "${localhost_full_log}")

@@ -410,3 +410,8 @@ No user data, Project Source content, artifact-current registry, browser profile
 ## v0.1.84 candidate hygiene note
 
 The `v0.1.84` candidate restores the required repo-root `.gitignore` after Artifact Guardian reported it missing from the focused working chain. The restored ignore file covers generated/cache/local profile outputs, including `.pb_profile_local_debug_pools/`. No accepted-event ledger write, Project Source mutation, artifact adoption/current mutation, deployment, or model execution migration is performed.
+
+
+## Repair migration note — v0.1.84.1
+
+`v0.1.84.1` supersedes the old retained-quarantine live-test default from `v0.1.78.2.3`/`v0.1.78.2.4` for new validation runs. Project deletion remains frozen, but release-control and live-test profiles now use a fresh run-scoped Project name by default to avoid accumulating browser/project history in one retained Project. Existing retained/leaked test Projects are not deleted by this repair. No ledger/write scope advanced.

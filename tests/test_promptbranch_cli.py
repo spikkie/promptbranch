@@ -2247,7 +2247,7 @@ def test_canonical_test_profile_shortcut_dispatches_to_runner(monkeypatch, capsy
 
 
 
-def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_project(monkeypatch, capsys) -> None:
+def test_ask_live_profile_runs_visible_operator_steps_in_unique_delete_frozen_project(monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
     events: list[str] = []
     project_id = "g-p-6a1af3fe64a481919a2cc7de3cff0487"
@@ -2296,8 +2296,8 @@ def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_
     assert payload["service_transport_used"] is False
     assert payload["uses_temporary_project"] is True
     assert payload["test_project_created"] is True
-    assert payload["uses_retained_delete_frozen_project"] is True
-    assert payload["cleanup_policy"] == "retained_project_delete_frozen"
+    assert payload["uses_retained_delete_frozen_project"] is False
+    assert payload["cleanup_policy"] == "unique_project_delete_frozen_retained"
     assert payload["test_project_removed"] is False
     assert payload["test_project_url"] == test_project_url
     assert payload["selected_steps"] == ["plain", "prompt_file"]
@@ -2310,7 +2310,7 @@ def test_ask_live_profile_runs_visible_operator_steps_in_retained_delete_frozen_
     assert all(step["in_expected_project"] is True for step in payload["steps"])
     assert all(step["expected_project_id"] == project_id for step in payload["steps"])
     assert all(step["response_project_id"] == project_id for step in payload["steps"])
-    assert events == ["ensure:itest-promptbranch-retained-delete-frozen:project-only"]
+    assert events == ["ensure:itest-promptbranch-ask-live-UNIT:project-only"]
 
 
 
@@ -2466,8 +2466,8 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
     assert payload["expected_output_filename"] == "pb_visual_artifact_roundtrip_UNIT.zip"
     assert payload["uses_temporary_project"] is True
     assert payload["test_project_created"] is True
-    assert payload["uses_retained_delete_frozen_project"] is True
-    assert payload["cleanup_policy"] == "retained_project_delete_frozen"
+    assert payload["uses_retained_delete_frozen_project"] is False
+    assert payload["cleanup_policy"] == "unique_project_delete_frozen_retained"
     assert payload["test_project_removed"] is False
     assert payload["test_project_kept"] is True
     assert payload["in_expected_project"] is True

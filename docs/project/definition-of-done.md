@@ -214,3 +214,6 @@ Acceptance criteria:
 - The command works from installed-runtime/worktree path resolution and does not rely on `site-packages/docs/...`.
 - The actual append-only ledger write remains out of scope.
 | DOD-087 | Accepted-event ledger validation command validates the pre-write ledger scaffold read-only, treats absent ledger as valid when scaffold exists, fails closed for malformed existing JSONL, and introduces no ledger write or mutation authority | focused | `promptbranch_orchestration.py`, `pb orchestration validate-ledger --json`, `tests/orchestration/test_orchestration_accepted_event_schema.py`, `tests/test_cli_parser.py` | v0.1.84 |
+
+
+| DOD-088 | Delete-frozen live/browser tests use a fresh run-scoped ChatGPT Project by default for each validation run while still enforcing keep-project and preserving the project-deletion freeze | focused | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, focused parser/CLI/release-control shell tests, `docs/repair-v0.1.84.1.md` | v0.1.84.1 |

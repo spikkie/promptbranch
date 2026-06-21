@@ -114,7 +114,7 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     assert "service_start: skipped" in result.stdout
     assert "service_pid:   skipped" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert "pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
     assert f"pb test report {log_dir / 'pb_test.full.v9.9.9.log'} --json" in call_text
     assert "promptbranch src add" not in call_text
 
@@ -182,7 +182,7 @@ def test_release_control_test_transport_localhost_sets_service_base_url_and_writ
     assert "test_transport: localhost" in result.stdout
     assert f"localhost_log: {localhost_log}" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert "pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8123" in call_text
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8123", call_text)
     assert f"pb test report {localhost_log} --json CHATGPT_SERVICE_BASE_URL=" in call_text
 
 
@@ -236,7 +236,7 @@ def test_release_control_test_transport_both_runs_direct_and_localhost(tmp_path:
     assert (log_dir / "pb_test.full.localhost.v9.9.9.log").is_file()
     assert (log_dir / "pb_test.full.localhost.v9.9.9.report.json").is_file()
     call_text = calls.read_text(encoding="utf-8")
-    assert call_text.count("pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json") == 2
+    assert len(re.findall(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)) == 2
     assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
 
 def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version: str = "v9.9.9") -> None:
@@ -1503,7 +1503,7 @@ def test_release_control_accepts_multi_segment_repair_versions(tmp_path: Path):
     assert (log_dir / "pb_test.full.v0.1.78.2.1.log").is_file()
     assert (log_dir / "pb_test.full.v0.1.78.2.1.report.json").is_file()
     call_text = calls.read_text(encoding="utf-8")
-    assert "pb test full --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
     assert "promptbranch src add" not in call_text
 
 
@@ -1581,9 +1581,9 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert call_text.count("pb test full") == 2
     assert "--skip source_add_text,source_remove_text" in call_text
     assert "pb --profile-dir ./.pb_profile_local_debug login-check" in call_text
-    assert "pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
-    assert "pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
-    assert "pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir ./.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-retained-delete-frozen --keep-project --json" in call_text
+    assert re.search(r"pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
+    assert re.search(r"pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
+    assert re.search(r"pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
     assert "pb test import-smoke --json" in call_text
     assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text
 

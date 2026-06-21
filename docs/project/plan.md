@@ -1048,3 +1048,16 @@ Out of scope:
 - Deployment or model execution.
 
 DoD target: DOD-087.
+
+
+## v0.1.84.1 repair plan — fresh live-test Project per run
+
+Scope: repair validation-run Project isolation only.
+
+- Generate a fresh release-control test Project name per invocation unless `PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME` is explicitly set.
+- Default `ask-live`, `visual-artifact-roundtrip`, and `release-live` to run-scoped Project prefixes.
+- Keep whole-project deletion frozen and continue forcing `--keep-project`.
+- Preserve explicit `--conversation-url` and `--project-name` overrides.
+- Do not add ledger writes or accepted-state mutation.
+
+Expected validation: focused parser/CLI/release-control shell tests, compileall, bash syntax, Artifact Guardian, followed by operator install and a small live command when needed.
