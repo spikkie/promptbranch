@@ -377,3 +377,12 @@ No user data, Project Source content, artifact-current registry, browser profile
 |---|---|---|---|---|
 | `pb orchestration validate-accepted-event` | read-only accepted-event validation command | `pb orchestration accept-event --dry-run --json` | extended | Dry-run promotion reuses validation and returns previews without writing accepted state. |
 | `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | dry-run accepted-event previews | reused | Fixtures remain data-only and no ledger write path is introduced. |
+
+## v0.1.82 migration note
+
+No user data, Project Source content, artifact-current registry, browser profile, deployment, or accepted-event ledger migration is performed. `v0.1.82` is a focused working slice on top of the `v0.1.81` working candidate context. It adds only explicit repo-local accepted-event input support for dry-run previews and preserves the accepted/current baseline as `chatgpt_claudecode_workflow-2_v0.1.79.zip` until a later full promotion/adoption gate.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `pb orchestration accept-event --dry-run --json` | committed-fixture dry-run preview command | explicit input dry-run preview | extended | Explicit accepted-event files may be supplied only when they resolve inside the repository root. Unsafe, missing, or invalid input fails closed. |
+| `docs/design/orchestration/examples/accepted_events/*.json` | committed accepted-event fixtures | explicit input examples and regression tests | reused | Fixtures remain data-only and no ledger write path is introduced. |

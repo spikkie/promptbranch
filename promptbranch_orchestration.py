@@ -619,10 +619,50 @@ def validate_accepted_event(
     return errors
 
 
+def _accepted_event_input_mode(paths: list[Path], *, default_count: int | None = None) -> str:
+    if not paths:
+        return "none"
+    if default_count is not None and len(paths) == default_count:
+        default_names = {path.name for path in accepted_event_example_paths()}
+        path_names = {path.name for path in paths}
+        if default_names and path_names == default_names:
+            return "committed_default_examples"
+    return "explicit_paths"
+
+
+def _resolve_accepted_event_input_paths(
+    paths: list[Path],
+    *,
+    root: Path,
+) -> tuple[list[Path], list[str]]:
+    resolved: list[Path] = []
+    errors: list[str] = []
+    repo_root = root.resolve()
+    for original in paths:
+        if ".." in original.parts:
+            errors.append(f"{original}: accepted-event input path must not contain '..'")
+            continue
+        candidate = original if original.is_absolute() else repo_root / original
+        try:
+            resolved_candidate = candidate.resolve(strict=False)
+        except OSError as exc:
+            errors.append(f"{original}: failed to resolve accepted-event input path: {exc}")
+            continue
+        try:
+            resolved_candidate.relative_to(repo_root)
+        except ValueError:
+            errors.append(f"{original}: accepted-event input path must resolve inside the repository root")
+            continue
+        resolved.append(resolved_candidate)
+    return resolved, errors
+
+
 def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
     repo_root = discover_repo_root(root)
-    resolved_paths = list(paths)
-    if not resolved_paths:
+    raw_paths = list(paths)
+    input_mode = _accepted_event_input_mode(raw_paths, default_count=len(accepted_event_example_paths(repo_root)))
+    resolved_paths, path_errors = _resolve_accepted_event_input_paths(raw_paths, root=repo_root)
+    if not raw_paths:
         return {
             "ok": False,
             "action": "orchestration_validate_accepted_event",
@@ -632,6 +672,7 @@ def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None
             "validated_count": 0,
             "validated_paths": [],
             "errors": ["no accepted-event examples were found; pass explicit paths or restore committed examples"],
+            "input_mode": input_mode,
             "fixture_only": True,
             "accepted_state_written": False,
             "runtime_state_mutation_allowed": False,
@@ -641,7 +682,7 @@ def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None
             "model_may_execute": False,
             "operator_action": "restore_accepted_event_examples_or_pass_explicit_paths",
         }
-    errors: list[str] = []
+    errors: list[str] = list(path_errors)
     try:
         state_machine = load_accepted_event_state_machine(repo_root)
     except Exception as exc:  # noqa: BLE001 - collect deterministic setup error.
@@ -672,6 +713,7 @@ def validate_accepted_event_paths(paths: list[Path], *, root: Path | None = None
         "validated_paths": validated,
         "errors": errors,
         "state_machine": display_path_for_root(accepted_event_state_machine_path(repo_root), root=repo_root),
+        "input_mode": input_mode,
         "fixture_only": True,
         "accepted_state_written": False,
         "runtime_state_mutation_allowed": False,
@@ -710,8 +752,9 @@ def _accepted_event_preview(path: Path, value: dict[str, Any], *, root: Path) ->
 
 def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -> dict[str, Any]:
     repo_root = discover_repo_root(root)
-    resolved_paths = list(paths)
-    validation_payload = validate_accepted_event_paths(resolved_paths, root=repo_root)
+    raw_paths = list(paths)
+    resolved_paths, path_errors = _resolve_accepted_event_input_paths(raw_paths, root=repo_root)
+    validation_payload = validate_accepted_event_paths(raw_paths, root=repo_root)
     base_payload: dict[str, Any] = {
         "action": "orchestration_accept_event_dry_run",
         "schema": ACCEPTED_EVENT_SCHEMA_ID,
@@ -733,6 +776,7 @@ def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -
             "validated_count": 0,
             "validated_paths": [],
             "accepted_event_preview": [],
+            "input_mode": validation_payload.get("input_mode", "none"),
             "missing_evidence": [],
             "rejection_reasons": list(validation_payload.get("errors") or []),
             "validation": validation_payload,
@@ -756,6 +800,7 @@ def dry_run_accept_event_paths(paths: list[Path], *, root: Path | None = None) -
         "validated_count": validation_payload.get("validated_count", 0),
         "validated_paths": list(validation_payload.get("validated_paths") or []),
         "accepted_event_preview": previews,
+        "input_mode": validation_payload.get("input_mode", "none"),
         "missing_evidence": missing_evidence,
         "rejection_reasons": [] if ok else missing_evidence,
         "validation": validation_payload,

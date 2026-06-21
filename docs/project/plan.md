@@ -969,3 +969,31 @@ Out of scope:
 - Artifact adoption/current mutation beyond later release-control adoption.
 
 DoD target: DOD-084.
+
+## Slice definition — v0.1.82 focused working slice
+
+Release: v0.1.82
+
+Name: Accepted-event dry-run explicit input support
+
+Baseline context: `v0.1.81` focused working candidate built on the `v0.1.80` focused candidate chain. Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.79.zip` until a later full promotion/adoption gate.
+
+Scope:
+
+- Support `pb orchestration accept-event --dry-run --json <accepted-event-file>` as a first-class explicit input path.
+- Return a single accepted-event preview for a valid explicit file.
+- Report `input_mode=explicit_paths` for explicit accepted-event inputs.
+- Fail closed for missing, invalid, parent-relative, and repository-external explicit input paths.
+- Preserve no-mutation authority: no accepted state write, no Project Source mutation, no artifact adoption, no deployment, and no model execution.
+
+Out of scope:
+
+- Accepted-event ledger write path.
+- `accept-event --write`.
+- Proposal/event-intake promotion into accepted-event JSON.
+- Runtime orchestration engine.
+- k8s-game implementation/deployment.
+- Project Source mutation changes.
+- Artifact adoption/current mutation beyond later release-control adoption.
+
+DoD target: DOD-085.
