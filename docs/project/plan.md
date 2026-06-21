@@ -885,3 +885,30 @@ Out of scope:
 - Secure delete protocol design or implementation.
 - Artifact adoption/current changes.
 - Normal `v0.1.79` scope.
+
+## Slice definition — v0.1.79 normal MVP release
+
+Release: v0.1.79
+
+Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.78.2.20.8.8.zip`.
+
+Goal: resume the normal JSON orchestration MVP line with a small event-intake foundation that lets Promptbranch validate proposal-only orchestration JSON before any workflow state can be trusted.
+
+In scope:
+
+- Add `promptbranch.orchestration.event_intake` schema and one committed proposal fixture.
+- Add a read-only validator for event-intake JSON.
+- Expose the validator as `pb orchestration validate-event`.
+- Keep event intake proposal-only: no runtime state write, no Project Source mutation, no artifact adoption, no deployment, and no model execution.
+- Add focused tests for valid examples, mutating authority rejection, repo-relative path rejection, and baseline/target sanity.
+- Update project control-surface docs.
+
+Out of scope:
+
+- k8s-game implementation or deployment.
+- Generic orchestration engine/runtime.
+- Accepted-event ledger mutation.
+- Autonomous repository edits.
+- Project Source overwrite/remove behavior.
+- Artifact adoption/current mutation.
+- Project deletion behavior or secure delete protocol.

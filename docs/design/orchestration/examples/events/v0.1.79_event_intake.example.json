@@ -1,0 +1,42 @@
+{
+  "schema": "promptbranch.orchestration.event_intake",
+  "schema_version": "1.0",
+  "event_id": "event-v0.1.79-json-orchestration-intake-foundation",
+  "event_type": "slice_proposal",
+  "repo": {
+    "id": "chatgpt_claudecode_workflow-2",
+    "path": "."
+  },
+  "release": {
+    "baseline_version": "v0.1.78.2.20.8.8",
+    "target_version": "v0.1.79",
+    "slice_type": "normal"
+  },
+  "authority": {
+    "proposal_only": true,
+    "runtime_state_mutation_allowed": false,
+    "source_mutation_allowed": false,
+    "artifact_adoption_allowed": false,
+    "deployment_allowed": false,
+    "model_may_execute": false,
+    "promptbranch_must_validate": true
+  },
+  "proposed_action": {
+    "kind": "validate_event",
+    "summary": "Validate a proposal-only JSON orchestration event before any state, source, artifact, or deployment mutation can occur.",
+    "writes": [
+      "docs/design/orchestration/examples/events/v0.1.79_event_intake.example.json"
+    ]
+  },
+  "evidence": {
+    "validation_status": "proposal_validated_read_only",
+    "validated_by": [
+      "scripts/orchestration/validate_event_intake.py",
+      "pb orchestration validate-event"
+    ],
+    "notes": [
+      "This is a committed proposal fixture only.",
+      "The validator does not write accepted state, mutate Project Sources, adopt artifacts, or deploy anything."
+    ]
+  }
+}

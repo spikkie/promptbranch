@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.orchestration.event_intake.schema.json",
+  "title": "Promptbranch Orchestration Event Intake Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "event_id",
+    "event_type",
+    "repo",
+    "release",
+    "authority",
+    "proposed_action",
+    "evidence"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.orchestration.event_intake"},
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"},
+    "event_type": {"type": "string", "enum": ["slice_proposal", "validation_proposal", "release_proposal"]},
+    "repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_version", "target_version", "slice_type"],
+      "properties": {
+        "baseline_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$"},
+        "target_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$"},
+        "slice_type": {"type": "string", "enum": ["normal", "repair"]}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposal_only",
+        "runtime_state_mutation_allowed",
+        "source_mutation_allowed",
+        "artifact_adoption_allowed",
+        "deployment_allowed",
+        "model_may_execute",
+        "promptbranch_must_validate"
+      ],
+      "properties": {
+        "proposal_only": {"const": true},
+        "runtime_state_mutation_allowed": {"const": false},
+        "source_mutation_allowed": {"const": false},
+        "artifact_adoption_allowed": {"const": false},
+        "deployment_allowed": {"const": false},
+        "model_may_execute": {"const": false},
+        "promptbranch_must_validate": {"const": true}
+      }
+    },
+    "proposed_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summary", "writes"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["define_schema", "validate_event", "record_proposal_fixture", "plan_next_slice", "release_candidate_request"]},
+        "summary": {"type": "string", "minLength": 1},
+        "writes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validation_status", "validated_by", "notes"],
+      "properties": {
+        "validation_status": {"const": "proposal_validated_read_only"},
+        "validated_by": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "notes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

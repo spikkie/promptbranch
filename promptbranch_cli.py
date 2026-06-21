@@ -68,6 +68,7 @@ from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smoke, run_test_suite_async
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
+from promptbranch_orchestration import render_text as render_orchestration_validation_text, validate_paths as validate_orchestration_event_paths
 
 DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME = "itest-promptbranch-retained-delete-frozen"
 DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY = "retained_project_delete_frozen"
@@ -447,6 +448,7 @@ COMMANDS = {
     "task",
     "src",
     "artifact",
+    "orchestration",
     "agent",
     "mcp",
     "skill",
@@ -21613,6 +21615,22 @@ async def cmd_queue(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 2
 
 
+async def cmd_orchestration(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.orchestration_command == "validate-event":
+        paths = [Path(p) for p in args.paths] if args.paths else []
+        if not paths:
+            from promptbranch_orchestration import example_paths
+
+            paths = example_paths()
+        payload = validate_orchestration_event_paths(paths)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_orchestration_validation_text(payload))
+        return 0 if payload.get("ok") else 1
+    raise RuntimeError(f"Unknown orchestration command: {args.orchestration_command}")
+
+
 async def cmd_agent(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
     if args.agent_command == "inspect":
@@ -22377,6 +22395,12 @@ def make_parser() -> argparse.ArgumentParser:
     browser_wait_idle.add_argument("--timeout", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS, help=f"Maximum seconds to wait. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS}.")
     browser_wait_idle.add_argument("--poll-seconds", type=float, default=DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS, help=f"Polling interval. Defaults to {DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS}.")
     browser_wait_idle.add_argument("--json", action="store_true", help="Emit wait result as JSON.")
+
+    orchestration = subparsers.add_parser("orchestration", help="Read-only JSON orchestration event intake commands.")
+    orchestration_subparsers = orchestration.add_subparsers(dest="orchestration_command", required=True)
+    orchestration_validate_event = orchestration_subparsers.add_parser("validate-event", help="Validate proposal-only JSON orchestration event-intake files without mutating state.")
+    orchestration_validate_event.add_argument("paths", nargs="*", help="Event-intake JSON files. Defaults to committed examples.")
+    orchestration_validate_event.add_argument("--json", action="store_true", help="Emit structured validation result as JSON.")
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
@@ -23247,7 +23271,7 @@ def _json_output_requested(args: argparse.Namespace) -> bool:
 
 def _command_action_name(args: argparse.Namespace) -> str:
     command = str(getattr(args, "command", "command") or "command")
-    for attr in ("src_command", "task_command", "parallel_command", "parallel_task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "queue_command", "test_command", "agent_command", "skill_command", "mcp_command"):
+    for attr in ("src_command", "task_command", "parallel_command", "parallel_task_command", "ws_command", "artifact_command", "release_command", "debug_command", "browser_command", "queue_command", "test_command", "agent_command", "skill_command", "mcp_command", "orchestration_command"):
         value = getattr(args, attr, None)
         if value:
             return f"{command}_{value}".replace("-", "_")
@@ -23402,6 +23426,8 @@ async def _async_main(args: argparse.Namespace) -> int:
             return await cmd_repo(backend, args)
         if args.command == "artifact":
             return await cmd_artifact(backend, args)
+        if args.command == "orchestration":
+            return await cmd_orchestration(backend, args)
         if args.command == "ask-release":
             return await cmd_ask_release(backend, args)
         if args.command == "release":
