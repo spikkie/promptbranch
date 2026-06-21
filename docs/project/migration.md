@@ -343,3 +343,11 @@ No user data, Project Source content, artifact-current registry, prompt-file tra
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/repair-v0.1.78.2.20.8.7.md` | base repair evidence | `docs/repair-v0.1.78.2.20.8.8.md`, `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | updated | v0.1.78.2.20.8.7 fixed plain-text response-wait diagnostics; live run-all evidence then isolated the remaining blocker to localhost source-add timeout masking a structured stale-inflight fail-closed result. |
+
+## v0.1.79 migration note
+
+No user data, Project Source content, artifact-current registry, browser profile, or deployment migration is performed. `v0.1.79` resumes the normal MVP line from accepted/current `v0.1.78.2.20.8.8` and adds only a read-only JSON orchestration event-intake proposal surface.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/design/orchestration/docs/current_status.md` | historical orchestration line status | `docs/project/status.md`, `docs/project/plan.md`, `docs/design/orchestration/docs/event_intake_foundation.md` | summarized | Earlier orchestration documents are preserved. `v0.1.79` narrows the next normal slice to proposal-only event intake rather than broad k8s-game runtime work. |

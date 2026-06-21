@@ -40,9 +40,12 @@ def test_orchestration_foundation_files_exist() -> None:
         "docs/design/orchestration/schemas/context.schema.json",
         "docs/design/orchestration/schemas/decision.schema.json",
         "docs/design/orchestration/schemas/evidence.schema.json",
+        "docs/design/orchestration/schemas/event_intake.schema.json",
         "docs/design/orchestration/examples/k8s_game_context.example.json",
         "docs/design/orchestration/examples/k8s_game_decision.example.json",
         "docs/design/orchestration/examples/k8s_game_evidence.example.json",
+        "docs/design/orchestration/examples/events/v0.1.79_event_intake.example.json",
+        "scripts/orchestration/validate_event_intake.py",
         "docs/design/orchestration/state_machines/k8s_game_mvp.state_machine.json",
         "docs/release-v0.1.0.md",
     ]

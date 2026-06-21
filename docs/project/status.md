@@ -242,3 +242,17 @@ Operator logs proved that `pb task use` wrote the selected Kubernetes conversati
 `v0.1.78.2.20.8.7` cleared the live-profile/headed browser path under `--run-all-tests`, but adoption still failed in the localhost full transport at `project_source_add_text`. The service-side browser flow continued after the CLI client timed out and eventually produced the structured fail-closed diagnostic `post_commit_source_surface_not_refreshed` with `transaction_status=commit_seen_with_stale_inflight_not_verified_present`.
 
 `v0.1.78.2.20.8.8` keeps that failure release-blocking, but aligns the localhost source-mutation client timeout with the service-side post-commit persistence/recovery window so the CLI receives structured diagnostics instead of a generic `ReadTimeout`. The full-integration harness also attaches a `pb src list --json` diagnostic after the specific stale-inflight post-commit source-add failure so retained-project operators can inspect whether the source later appears before retrying. No Project Source success semantics, Project deletion behavior, prompt-file transport, artifact-current state, or normal `v0.1.79` scope advances.
+
+## v0.1.79 candidate status
+
+Accepted/current baseline used for this normal release slice:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.78.2.20.8.8.zip
+```
+
+`v0.1.79` resumes the normal JSON orchestration MVP line after the `.8.x` repair chain. This slice adds a proposal-only event-intake schema, committed example, read-only validator, and `pb orchestration validate-event` command. The validator is intentionally non-mutating: it does not write accepted state, mutate ChatGPT Project Sources, adopt artifacts, deploy, or execute model-proposed actions.
+
+## Next safe action
+
+Run focused validation and then full release-control from the candidate ZIP. Do not call `v0.1.79` accepted/current until `pb artifact current --json` verifies runtime, state artifact, state source, registry current, and consistency alignment.

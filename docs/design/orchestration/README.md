@@ -27,7 +27,7 @@ v0.1.0 was intentionally documentation/data-surface first. v0.1.40 reconciles th
 ```text
 docs/design/orchestration/docs/            Human-readable architecture and operating docs
 docs/design/orchestration/schemas/         JSON schema contracts for context, decision, evidence, grill
-docs/design/orchestration/examples/        Small fixture examples for future validation, including G0-G6 grill examples
+docs/design/orchestration/examples/        Small fixture examples for future validation, including G0-G6 grill examples and proposal-only event-intake examples
 docs/design/orchestration/state_machines/  First project-specific state machine, k8s-game-mvp
 ```
 
@@ -40,3 +40,13 @@ State machine orchestrates.
 Tools produce evidence.
 Artifact Intake adopts only verified release artifacts.
 ```
+
+## v0.1.79 event intake foundation
+
+`v0.1.79` adds `promptbranch.orchestration.event_intake` as a read-only proposal intake surface. Validate it with:
+
+```bash
+pb orchestration validate-event --json
+```
+
+A valid event-intake proposal is not accepted state. It does not mutate runtime state, Project Sources, artifact current/adoption, deployment state, or execute model-proposed actions.

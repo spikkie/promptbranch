@@ -1,6 +1,6 @@
-# JSON Orchestration State MVP — Current Status after v0.1.66
+# JSON Orchestration State MVP — Current Status after v0.1.79
 
-Updated for release: v0.1.66
+Updated for release: v0.1.79
 
 ## Purpose
 
@@ -18,8 +18,8 @@ Artifacts still go through Final Artifact Intake.
 ## Current state
 
 ```text
-latest accepted baseline:          v0.1.61
-current development release:       v0.1.66
+latest accepted baseline:          v0.1.78.2.20.8.8
+current development release:       v0.1.79
 orchestration goal:                still active
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
@@ -51,6 +51,8 @@ v0.1.63  Extends docs_site with repo-local link-integrity validation for MkDocs 
 v0.1.64  Extends docs_site with build-readiness validation for docs/site.md, preview/build commands, and generated site output exclusion.
 v0.1.65  Adds a read-only release lifecycle config contract guard for .promptbranch-release.yml and pb release config --json.
 v0.1.66  Makes pb release doctor consume .promptbranch-release.yml for read-only candidate ZIP prechecks, filename/config matching, VERSION consistency, ZIP hygiene, and accepted-baseline continuity.
+v0.1.67-v0.1.78.2.20.8.8  Hardened project control surface, artifact adoption/current consistency, Project Source transaction diagnostics, live retained-project tests, and immutable Project deletion freeze.
+v0.1.79  Resumes the normal JSON orchestration MVP line with a proposal-only event-intake schema, read-only validator, CLI command, and fail-closed tests.
 ```
 
 ## Drift assessment
