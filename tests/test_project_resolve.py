@@ -1443,6 +1443,64 @@ def test_rate_limit_modal_clear_can_skip_history_cooldown_for_non_history_operat
     assert any(event.get("kind") == "cooldown_wait_skipped" for event in telemetry["service_rate_limit_events"])
 
 
+
+
+def test_rate_limit_modal_ack_waits_one_minute_and_consumes_cooldown(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.conversation_history_rate_limit_cooldown_seconds = 180.0
+    client.config.rate_limit_modal_ack_wait_seconds = 60.0
+    monkeypatch.setattr(client_module.time, "time", lambda: 1_000.0)
+
+    class Page:
+        url = "https://chatgpt.com/g/g-p-123/project"
+
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    modal_remaining = {"count": 1}
+    ack = object()
+    clicked: list[str] = []
+    slept: list[float] = []
+
+    async def fake_find_visible_locator(_page, _selectors, *, label: str):
+        if label.endswith("-rate-limit-modal"):
+            if modal_remaining["count"] > 0:
+                modal_remaining["count"] -= 1
+                return object()
+            return None
+        if label.endswith("-rate-limit-ack"):
+            return ack
+        return None
+
+    async def fake_click_locator_with_fallback(_locator, *, label: str, **_kwargs) -> None:
+        clicked.append(label)
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    client._find_visible_locator = fake_find_visible_locator  # type: ignore[method-assign]
+    client._click_locator_with_fallback = fake_click_locator_with_fallback  # type: ignore[method-assign]
+    monkeypatch.setattr(client_module.asyncio, "sleep", fake_sleep)
+
+    saw_modal = asyncio.run(
+        client._wait_for_rate_limit_modal_to_clear(
+            Page(),
+            label="ask-live-rate-limit-proof",
+            timeout_ms=5_000,
+        )
+    )
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    events = telemetry["service_rate_limit_events"]
+    assert saw_modal is True
+    assert clicked == ["ask-live-rate-limit-proof-rate-limit-ack"]
+    assert slept == [60.0]
+    assert float(client._rate_limit_cooldown_path.read_text(encoding="utf-8")) == pytest.approx(1_000.0)
+    assert any(event.get("kind") == "modal_acknowledged" for event in events)
+    assert any(event.get("kind") == "modal_ack_wait" for event in events)
+    assert any(event.get("kind") == "cooldown_wait_satisfied_by_modal_ack_wait" for event in events)
+
+
 class _FakeInteractiveStdin:
     def isatty(self) -> bool:
         return True

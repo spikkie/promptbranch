@@ -1061,3 +1061,8 @@ Scope: repair validation-run Project isolation only.
 - Do not add ledger writes or accepted-state mutation.
 
 Expected validation: focused parser/CLI/release-control shell tests, compileall, bash syntax, Artifact Guardian, followed by operator install and a small live command when needed.
+
+
+## v0.1.84.2 repair note
+
+`v0.1.84.2` is a repair-only candidate on top of focused `v0.1.84.1`. It changes live/browser 429 modal handling so history-sensitive operations click `Got it`, wait the configured acknowledgement cooldown, and continue polling instead of failing on a short modal timeout. It does not advance ledger/write/orchestration scope and does not re-enable ChatGPT Project deletion. Accepted/current remains `v0.1.79` until later adoption/current evidence exists.

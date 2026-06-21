@@ -152,3 +152,8 @@ For installed `pb` commands, explicit repo-relative orchestration input must res
 Artifact Guardian continues to require a repo-root `.gitignore` in Promptbranch release ZIPs. Focused working slices may move quickly, but release candidates must still carry the root hygiene surface so generated files, local browser profiles, and `.pb_profile_local_debug_pools/` are excluded from future packaging.
 
 | ADR-PROJ-088 | 2026-06-21 | Delete-frozen validation runs use a fresh Project name by default | Reusing one retained delete-frozen Project caused browser/project history to accumulate and slowed Promptbranch browser traversal | Release-control and live-test profiles now generate run-scoped `itest-promptbranch-*` Project names by default while still forcing keep-project because deletion remains frozen; explicit `--project-name` and `--conversation-url` remain operator overrides |
+
+
+## v0.1.84.2 repair note
+
+`v0.1.84.2` is a repair-only candidate on top of focused `v0.1.84.1`. It changes live/browser 429 modal handling so history-sensitive operations click `Got it`, wait the configured acknowledgement cooldown, and continue polling instead of failing on a short modal timeout. It does not advance ledger/write/orchestration scope and does not re-enable ChatGPT Project deletion. Accepted/current remains `v0.1.79` until later adoption/current evidence exists.
