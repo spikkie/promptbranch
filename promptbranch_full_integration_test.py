@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
+import re
 import tempfile
 import time
 from io import StringIO
@@ -1536,6 +1538,18 @@ def _generated_run_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
 
 
+def _bounded_generated_project_name(prefix: object, run_id: object, *, max_length: int = 50) -> str:
+    safe_prefix = re.sub(r"[^A-Za-z0-9_-]+", "-", str(prefix or "itest-promptbranch")).strip("-_") or "itest-promptbranch"
+    safe_run = re.sub(r"[^A-Za-z0-9_-]+", "-", str(run_id or "run")).strip("-_") or "run"
+    raw = f"{safe_prefix}-{safe_run}"
+    if len(raw) <= max_length:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    head_length = max(1, max_length - len(digest) - 1)
+    head = raw[:head_length].rstrip("-_") or raw[:head_length]
+    return f"{head}-{digest}"
+
+
 
 def _extract_project_id(url: Optional[str]) -> Optional[str]:
     if not url:
@@ -1965,7 +1979,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     steps: list[StepResult] = []
     cleanup_steps: list[StepResult] = []
     run_id = args.run_id or _generated_run_id()
-    project_name = args.project_name or f"{args.project_name_prefix}-{run_id}"
+    project_name = args.project_name or _bounded_generated_project_name(args.project_name_prefix, run_id)
     base_service = build_service(args, project_url=args.project_url)
     project_url: Optional[str] = None
     project_id: Optional[str] = None

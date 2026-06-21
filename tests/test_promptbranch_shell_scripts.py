@@ -48,6 +48,16 @@ def test_promptbranch_aliases_contains_expected_shortcuts():
 
 
 
+
+
+def test_release_control_generated_project_name_is_capped_to_chatgpt_limit():
+    script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    script_text = script_path.read_text(encoding="utf-8")
+    assert "chatgpt_project_name_max_length=50" in script_text
+    assert "shorten_chatgpt_project_name" in script_text
+    assert 'release_test_project_name="$(shorten_chatgpt_project_name "itest-promptbranch-${release_test_project_version}-${release_test_project_stamp}")"' in script_text
+    assert "PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME exceeds ChatGPT project-name limit" in script_text
+
 def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()

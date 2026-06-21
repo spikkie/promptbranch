@@ -18,7 +18,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CHATGPT_CLI_CONFIG", str(tmp_path / "missing-cli-config.json"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_current, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_current, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload, _bounded_generated_chatgpt_project_name, CHATGPT_PROJECT_NAME_MAX_LENGTH
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_version import PACKAGE_VERSION as _TEST_PACKAGE_VERSION
@@ -2246,6 +2246,23 @@ def test_canonical_test_profile_shortcut_dispatches_to_runner(monkeypatch, capsy
     assert payload['profile'] == 'agent'
 
 
+
+
+
+def test_generated_live_project_names_are_capped_to_chatgpt_limit() -> None:
+    long_name = _bounded_generated_chatgpt_project_name(
+        "itest-promptbranch-visual-artifact-roundtrip",
+        "PROJECT_CREATE_RECOVERY_PROOF_WITH_EXTRA_LONG_SUFFIX",
+    )
+    assert len(long_name) <= CHATGPT_PROJECT_NAME_MAX_LENGTH
+    assert long_name.startswith("itest-promptbranch-visual-artifact")
+    assert re.search(r"-[0-9a-f]{8}$", long_name)
+    other = _bounded_generated_chatgpt_project_name(
+        "itest-promptbranch-visual-artifact-roundtrip",
+        "PROJECT_CREATE_RECOVERY_PROOF_WITH_EXTRA_LONG_SUFFIX_2",
+    )
+    assert other != long_name
+    assert len(other) <= CHATGPT_PROJECT_NAME_MAX_LENGTH
 
 def test_ask_live_profile_runs_visible_operator_steps_in_unique_delete_frozen_project(monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
