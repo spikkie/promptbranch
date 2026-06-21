@@ -83,7 +83,11 @@ from promptbranch_orchestration import (
 )
 
 DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME = "itest-promptbranch-retained-delete-frozen"
-DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY = "retained_project_delete_frozen"
+DELETE_FROZEN_TEST_PROJECT_PREFIX = "itest-promptbranch"
+ASK_LIVE_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-ask-live"
+VISUAL_ARTIFACT_ROUNDTRIP_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-visual-artifact-roundtrip"
+RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX = "itest-promptbranch-release-live"
+DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY = "unique_project_delete_frozen_retained"
 
 from promptbranch_parallel import OPERATION_CLASSES, parallel_architecture_payload
 from promptbranch_task_fanout import (
@@ -20576,29 +20580,44 @@ def _restore_ask_live_state(backend: Any, snapshot: dict[str, Any]) -> None:
 
 
 
-def _apply_delete_frozen_live_test_defaults(args: argparse.Namespace, *, profile: str) -> None:
-    """Apply safe retained-project defaults for live browser test profiles.
+def _default_live_test_project_prefix(profile: str) -> str:
+    profile_key = str(profile or "").strip().lower()
+    if profile_key == "ask-live":
+        return ASK_LIVE_DELETE_FROZEN_PROJECT_PREFIX
+    if profile_key == "release-live":
+        return RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX
+    if profile_key == "visual-artifact-roundtrip":
+        return VISUAL_ARTIFACT_ROUNDTRIP_DELETE_FROZEN_PROJECT_PREFIX
+    return DELETE_FROZEN_TEST_PROJECT_PREFIX
 
-    Whole ChatGPT Project deletion is frozen.  Therefore live tests must reuse
-    one retained quarantine project unless the operator explicitly supplies a
-    conversation URL.  ``--keep-project`` is forced on because deletion is not
-    a valid cleanup action in this release line.
+
+def _apply_delete_frozen_live_test_defaults(args: argparse.Namespace, *, profile: str) -> None:
+    """Apply delete-frozen live-test defaults.
+
+    Whole ChatGPT Project deletion is frozen, so release/live tests must still
+    keep any project they create.  To avoid browser history and Project data
+    accumulating in one long-lived test Project, the default is now a fresh
+    run-scoped project name derived from the profile prefix and run id.  An
+    explicit ``--project-name`` or ``--conversation-url`` remains authoritative.
     """
 
     if not getattr(args, "conversation_url", None) and not getattr(args, "project_name", None):
-        setattr(args, "project_name", DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME)
+        current_prefix = str(getattr(args, "project_name_prefix", "") or "")
+        if not current_prefix or current_prefix == DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME:
+            setattr(args, "project_name_prefix", _default_live_test_project_prefix(profile))
     setattr(args, "keep_project", True)
     setattr(args, "cleanup_policy", DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY)
-    setattr(args, "retained_project_default", not bool(getattr(args, "conversation_url", None)))
+    setattr(args, "retained_project_default", False)
     setattr(args, "live_test_profile", profile)
 
 
 def _delete_frozen_live_test_operator_note(profile: str) -> str:
     return (
-        f"{profile} uses/reuses the retained delete-frozen ChatGPT Project "
-        f"{DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME!r} by default. "
-        "Whole-project deletion is disabled until a separately designed secure "
-        "delete protocol exists; --keep-project is therefore enforced."
+        f"{profile} creates or reuses a run-scoped delete-frozen ChatGPT Project "
+        "by default. Whole-project deletion is disabled until a separately "
+        "designed secure delete protocol exists; --keep-project is therefore "
+        "enforced. Operators may still provide --conversation-url or "
+        "--project-name explicitly."
     )
 
 
@@ -20611,10 +20630,10 @@ def _delete_frozen_uses_retained_project(args: argparse.Namespace) -> bool:
 async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Run a visible/local operator ask workflow smoke profile.
 
-    This profile exercises the repaired ask path in a retained delete-frozen
-    ChatGPT Project by default.  ChatGPT Project deletion is disabled, so live
-    test profiles must never create a unique throwaway project that requires
-    automated cleanup.
+    This profile exercises the repaired ask path in a run-scoped delete-frozen
+    ChatGPT Project by default.  ChatGPT Project deletion is disabled, so the
+    created Project is retained, but every default run uses a fresh name to
+    avoid accumulating browser/project history in one reused Project.
     """
 
     try:
@@ -20983,7 +21002,7 @@ async def cmd_test_artifact_roundtrip(args: argparse.Namespace) -> int:
 async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Visible local ZIP send/retrieve proof.
 
-    The live browser-backed test runs in the retained delete-frozen ChatGPT
+    The live browser-backed test runs in a run-scoped delete-frozen ChatGPT
     Project by default.  The project-scoped conversation URL is important:
     ChatGPT artifact links are conversation/project scoped, and the
     browser-assisted downloader cannot reliably retrieve a generated ZIP from
@@ -21349,7 +21368,7 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.test_command == "release-live":
         args.result_profile = "release-live"
         if not getattr(args, "project_name_prefix", None):
-            args.project_name_prefix = DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME
+            args.project_name_prefix = RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX
         _apply_delete_frozen_live_test_defaults(args, profile="release-live")
         return await cmd_test_visual_artifact_roundtrip(backend, args)
     if args.test_command == "visual-artifact-roundtrip":
@@ -22164,14 +22183,14 @@ def _add_task_profile_pool_options(parser: argparse.ArgumentParser) -> None:
     _add_profile_pool_options(parser, default_pool=None)
 
 
-def _add_visual_artifact_roundtrip_options(parser: argparse.ArgumentParser, *, default_profile_pool: str | None = None, default_project_name_prefix: str = DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME) -> None:
+def _add_visual_artifact_roundtrip_options(parser: argparse.ArgumentParser, *, default_profile_pool: str | None = None, default_project_name_prefix: str = VISUAL_ARTIFACT_ROUNDTRIP_DELETE_FROZEN_PROJECT_PREFIX) -> None:
     parser.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")
     parser.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
     parser.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after the ask/download steps.")
-    parser.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen and the retained test project is always kept.")
-    parser.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of creating a temporary project.")
-    parser.add_argument("--project-name", help=f"Explicit retained ChatGPT Project name. Defaults to {DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME} while project deletion is frozen.")
-    parser.add_argument("--project-name-prefix", default=default_project_name_prefix, help="Legacy fallback prefix; retained project default is used while project deletion is frozen.")
+    parser.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen and live-test projects are always kept.")
+    parser.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of creating a run-scoped test project.")
+    parser.add_argument("--project-name", help="Explicit ChatGPT Project name. Defaults to a run-scoped generated name while project deletion is frozen.")
+    parser.add_argument("--project-name-prefix", default=default_project_name_prefix, help="Prefix for generated run-scoped live-test project names while project deletion is frozen.")
     parser.add_argument("--project-icon", help="Optional temporary project icon passed to project creation.")
     parser.add_argument("--project-color", help="Optional temporary project color passed to project creation.")
     parser.add_argument("--memory-mode", default="project-only", help="Temporary project memory mode. Defaults to project-only.")
@@ -22996,16 +23015,16 @@ def make_parser() -> argparse.ArgumentParser:
     test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
     _add_test_suite_profile_options(test_full)
 
-    test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile in the retained delete-frozen test project.")
+    test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile in a run-scoped delete-frozen test project.")
     test_ask_live.add_argument("--json", action="store_true", help="Emit the ask-live result as JSON.")
     test_ask_live.add_argument("--run-id", help="Optional run identifier used in sentinels. Defaults to a UTC timestamp.")
-    test_ask_live.add_argument("--conversation-url", help="Optional existing conversation/project URL override. When omitted, ask-live uses the retained delete-frozen test project.")
-    test_ask_live.add_argument("--project-name", help=f"Optional retained test project name. Defaults to {DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME} while project deletion is frozen.")
-    test_ask_live.add_argument("--project-name-prefix", default=DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME, help="Legacy fallback prefix; retained project default is used while project deletion is frozen.")
+    test_ask_live.add_argument("--conversation-url", help="Optional existing conversation/project URL override. When omitted, ask-live uses a run-scoped delete-frozen test project.")
+    test_ask_live.add_argument("--project-name", help="Optional test project name. Defaults to a run-scoped generated name while project deletion is frozen.")
+    test_ask_live.add_argument("--project-name-prefix", default=ASK_LIVE_DELETE_FROZEN_PROJECT_PREFIX, help="Prefix for generated run-scoped ask-live project names while project deletion is frozen.")
     test_ask_live.add_argument("--memory-mode", choices=["default", "project-only"], default="project-only", help="Memory mode for the temporary test project.")
     test_ask_live.add_argument("--project-icon", help="Optional icon for the temporary test project.")
     test_ask_live.add_argument("--project-color", help="Optional color for the temporary test project.")
-    test_ask_live.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen and the retained test project is always kept.")
+    test_ask_live.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen and live-test projects are always kept.")
     test_ask_live.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after each ask step.")
     test_ask_live.add_argument("--retries", type=int, help="Retry count passed to each ask step.")
     test_ask_live.add_argument("--only", action="append", default=[], help="Comma-separated ask-live step selectors to run.")
@@ -23023,9 +23042,9 @@ def make_parser() -> argparse.ArgumentParser:
     test_visual_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
     test_visual_artifact_roundtrip.add_argument("--keep-open", action="store_true", help="Keep the local headed browser open after the ask/download steps.")
     test_visual_artifact_roundtrip.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen and the retained test project is always kept.")
-    test_visual_artifact_roundtrip.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of the retained delete-frozen test project.")
-    test_visual_artifact_roundtrip.add_argument("--project-name", help=f"Explicit retained ChatGPT Project name. Defaults to {DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME} while project deletion is frozen.")
-    test_visual_artifact_roundtrip.add_argument("--project-name-prefix", default=DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME, help="Legacy fallback prefix; retained project default is used while project deletion is frozen.")
+    test_visual_artifact_roundtrip.add_argument("--conversation-url", help="Use an explicit existing project conversation or project URL instead of a run-scoped delete-frozen test project.")
+    test_visual_artifact_roundtrip.add_argument("--project-name", help="Explicit ChatGPT Project name. Defaults to a run-scoped generated name while project deletion is frozen.")
+    test_visual_artifact_roundtrip.add_argument("--project-name-prefix", default=VISUAL_ARTIFACT_ROUNDTRIP_DELETE_FROZEN_PROJECT_PREFIX, help="Prefix for generated run-scoped visual-artifact-roundtrip project names while project deletion is frozen.")
     test_visual_artifact_roundtrip.add_argument("--project-icon", help="Optional temporary project icon passed to project creation.")
     test_visual_artifact_roundtrip.add_argument("--project-color", help="Optional temporary project color passed to project creation.")
     test_visual_artifact_roundtrip.add_argument("--memory-mode", default="project-only", help="Temporary project memory mode. Defaults to project-only.")
@@ -23043,7 +23062,7 @@ def make_parser() -> argparse.ArgumentParser:
     _add_visual_artifact_roundtrip_options(
         test_release_live,
         default_profile_pool="release-live",
-        default_project_name_prefix=DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME,
+        default_project_name_prefix=RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX,
     )
 
     test_report = test_subparsers.add_parser("report", help="Summarize a pb test-suite / pb test full JSON log.")

@@ -320,7 +320,7 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert ask_live.json is True
     assert ask_live.run_id == 'UNIT'
     assert ask_live.only == ['plain,prompt_file']
-    assert ask_live.project_name_prefix == 'itest-promptbranch-retained-delete-frozen'
+    assert ask_live.project_name_prefix == 'itest-promptbranch-ask-live'
     assert ask_live.memory_mode == 'project-only'
     assert ask_live.keep_project is False
     assert ask_live.debug_browser is True
@@ -340,7 +340,7 @@ def test_parser_accepts_canonical_test_profile_shortcuts() -> None:
     assert roundtrip.debug_browser is True
     assert roundtrip.keep_project is False  # parser flag remains false; command dispatch enforces keep-project while delete is frozen
     assert roundtrip.conversation_url is None
-    assert roundtrip.project_name_prefix == 'itest-promptbranch-retained-delete-frozen'
+    assert roundtrip.project_name_prefix == 'itest-promptbranch-visual-artifact-roundtrip'
     assert roundtrip.memory_mode == 'project-only'
 
     roundtrip_explicit = parser.parse_args([
@@ -1187,7 +1187,7 @@ def test_parser_accepts_release_live_profile_pool_defaults() -> None:
     assert args.test_command == "release-live"
     assert args.profile_pool == "release-live"
     assert args.profile_pool_size == 2
-    assert args.project_name_prefix == "itest-promptbranch-retained-delete-frozen"
+    assert args.project_name_prefix == "itest-promptbranch-release-live"
     assert args.debug_browser is True
 
 
@@ -1199,7 +1199,7 @@ def test_parser_accepts_ask_live_profile_pool_when_requested() -> None:
     assert args.test_command == "ask-live"
     assert args.profile_pool == "release-live"
     assert args.profile_pool_size == 2
-    assert args.project_name_prefix == "itest-promptbranch-retained-delete-frozen"
+    assert args.project_name_prefix == "itest-promptbranch-ask-live"
     assert args.debug_browser is True
 
 def test_parser_accepts_debug_rate_limit_command() -> None:

@@ -341,3 +341,16 @@ The command validates the future ledger scaffold and, for this pre-write slice, 
 ### v0.1.84 candidate hygiene note
 
 During local Artifact Guardian validation, the candidate exposed a required root `.gitignore` omission inherited from the focused working chain. The `v0.1.84` candidate restores a repo-root `.gitignore` that excludes generated/cache/local profile artifacts, including `.pb_profile_local_debug_pools/`. This is candidate hygiene only and does not advance ledger write scope.
+
+
+## v0.1.84.1 repair candidate status
+
+Accepted/current baseline remains:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.79.zip
+```
+
+`v0.1.84.1` is a repair-only focused candidate on top of the `v0.1.84` working candidate. It changes live/browser test defaults so each validation run uses a fresh run-scoped ChatGPT Project name instead of reusing one retained delete-frozen Project. This avoids accumulating browser/project history in a single test Project. Project deletion remains frozen, so `--keep-project` is still enforced and created Projects are retained until a separate secure delete protocol exists.
+
+The repair does not advance accepted-event ledger functionality, does not add ledger writes, does not mutate Project Sources, does not adopt artifacts, deploy, or execute model-proposed actions.
