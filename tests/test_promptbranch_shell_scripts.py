@@ -1540,7 +1540,7 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
-        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
@@ -1593,8 +1593,8 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert call_text.count("pb test full") == 2
     assert "--skip source_add_text,source_remove_text" in call_text
     assert "pb --profile-dir ./.pb_profile_local_debug login-check" in call_text
-    "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
-    assert "pb --profile-dir ./.pb_profile_local_debug project ensure" in call_text
+    "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+    assert "pb --profile-dir ./.pb_profile_local_debug project-ensure" in call_text
     assert re.search(r"pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
     assert re.search(r"pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
     assert re.search(r"pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
@@ -1625,7 +1625,9 @@ def test_release_control_run_all_reuses_one_shared_live_project_url() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     assert "run_all_ensure_shared_live_project" in script
     assert "one_run_scoped_project_for_all_test_all_live_steps" in script
-    assert 'pb --profile-dir "${live_profile_seed_dir}" project ensure "${release_test_project_name}"' in script
+    assert 'pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}"' in script
+    assert 'pb --profile-dir "${live_profile_seed_dir}" project ensure "${release_test_project_name}"' not in script
+    assert '--keep-open --json 2>&1 | tee -a ${run_all_project_ensure_log}' not in script
     assert "pb test ask-live --profile-pool release-live" in script
     assert '--conversation-url "${run_all_shared_project_url}"' in script
     assert '--project-name "${release_test_project_name}" --keep-project --json' not in script.split("run_all_live_validation_steps", 1)[1]
@@ -1733,7 +1735,7 @@ def test_release_control_run_all_retries_unrecovered_rate_limited_step_once(tmp_
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
-        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.10\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test ask-live\" ]]; then n=$(cat \"$PB_FAKE_ASK_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_ASK_COUNTER\"; if [[ $n -eq 1 ]]; then echo 'Too many requests status=429 cooldown_seconds=0'; exit 42; fi; echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
@@ -1808,7 +1810,7 @@ def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
-        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.11\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         f"if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{recovered_payload}'; exit 42; fi\n"

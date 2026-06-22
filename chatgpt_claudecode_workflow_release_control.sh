@@ -2771,8 +2771,8 @@ run_all_ensure_shared_live_project() {
   echo "release_test_project_name: ${release_test_project_name}"
   echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
   : > "${run_all_project_ensure_log}"
-  echo "+ pb --profile-dir ${live_profile_seed_dir} project ensure ${release_test_project_name} --memory-mode project-only --keep-open --json 2>&1 | tee -a ${run_all_project_ensure_log}"
-  pb --profile-dir "${live_profile_seed_dir}" project ensure "${release_test_project_name}" --memory-mode project-only --keep-open --json 2>&1 | tee -a "${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_seed_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
+  pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
   rc=${PIPESTATUS[0]}
   if [[ ${rc} -eq 0 ]]; then
     if run_all_shared_project_url="$(run_all_extract_project_url_from_log "${run_all_project_ensure_log}")"; then
