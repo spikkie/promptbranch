@@ -1540,6 +1540,7 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.9\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
@@ -1579,6 +1580,7 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
         "full_direct",
         "full_localhost",
         "live_profile_preflight",
+        "live_project_ensure",
         "ask_live",
         "visual_artifact_roundtrip",
         "release_live",
@@ -1591,9 +1593,11 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert call_text.count("pb test full") == 2
     assert "--skip source_add_text,source_remove_text" in call_text
     assert "pb --profile-dir ./.pb_profile_local_debug login-check" in call_text
-    assert re.search(r"pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
-    assert re.search(r"pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
-    assert re.search(r"pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
+    "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+    assert "pb --profile-dir ./.pb_profile_local_debug project ensure" in call_text
+    assert re.search(r"pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
+    assert re.search(r"pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
+    assert re.search(r"pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir \.\/\.pb_profile_local_debug --profile-pool-refresh --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json", call_text)
     assert "pb test import-smoke --json" in call_text
     assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text
 
@@ -1615,6 +1619,16 @@ def test_docker_build_context_version_guard_declared():
     assert "docker_image_content" in script
     assert "docker_container_content" in script
 
+
+
+def test_release_control_run_all_reuses_one_shared_live_project_url() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "run_all_ensure_shared_live_project" in script
+    assert "one_run_scoped_project_for_all_test_all_live_steps" in script
+    assert 'pb --profile-dir "${live_profile_seed_dir}" project ensure "${release_test_project_name}"' in script
+    assert "pb test ask-live --profile-pool release-live" in script
+    assert '--conversation-url "${run_all_shared_project_url}"' in script
+    assert '--project-name "${release_test_project_name}" --keep-project --json' not in script.split("run_all_live_validation_steps", 1)[1]
 
 
 def test_release_control_docker_probe_json_writers_have_valid_python_newline_literals():
@@ -1695,7 +1709,7 @@ def test_release_control_rate_limit_detection_is_strict_not_generic():
     assert '"conversation_history_429_seen"\\s*:\\s*true' in script
     assert '"backend_api_guardrail_seen"\\s*:\\s*true' in script
 
-def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
+def test_release_control_run_all_retries_unrecovered_rate_limited_step_once(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / ".pb_profile_local_debug").mkdir()
@@ -1719,6 +1733,7 @@ def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
         "#!/usr/bin/env bash\n"
         "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
         "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.10\"}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
         "if [[ \"$1 $2\" == \"test ask-live\" ]]; then n=$(cat \"$PB_FAKE_ASK_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_ASK_COUNTER\"; if [[ $n -eq 1 ]]; then echo 'Too many requests status=429 cooldown_seconds=0'; exit 42; fi; echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
@@ -1757,6 +1772,87 @@ def test_release_control_run_all_retries_rate_limited_step_once(tmp_path: Path):
     assert ask_counter.read_text(encoding="utf-8").strip() == "2"
     assert "retry after rate-limit cooldown" in (log_dir / "pb_test.ask_live.v9.9.10.log").read_text(encoding="utf-8")
     assert "rate-limit evidence detected for ask_live" in result.stdout
+
+
+def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.11\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    recovered_payload = (
+        '{"ok": false, "action": "test_ask_live", "profile": "ask-live", '
+        '"status": "rate_limited_contaminated", "failure_count": 1, '
+        '"functional_failure_count": 0, '
+        '"steps": [{"name": "plain", "ok": false, "status": "rate_limited_contaminated", '
+        '"functional_status": "verified", "contains_expected_sentinel": true}], '
+        '"rate_limit_telemetry": {"service_rate_limit_events": ['
+        '{"kind": "modal_acknowledged"}, '
+        '{"kind": "modal_ack_wait_satisfied_cooldown"}, '
+        '{"kind": "cooldown_wait_satisfied_by_modal_ack_wait"}]}}'
+    )
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3 $4\" == \"--profile-dir ./.pb_profile_local_debug project ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.11\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        f"if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{recovered_payload}'; exit 42; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-run-all-recovered-rate-limit.log"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.11"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.11"
+    summary = json.loads((log_dir / "pb_test.all.v9.9.11.summary.json").read_text(encoding="utf-8"))
+    ask_log = (log_dir / "pb_test.ask_live.v9.9.11.log").read_text(encoding="utf-8")
+    calls_text = calls.read_text(encoding="utf-8")
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    ask_step = next(step for step in summary["steps"] if step["name"] == "ask_live")
+    assert ask_step["ok"] is True
+    assert ask_step["status"] == "verified_with_recovered_rate_limit"
+    assert ask_step["recovered_rate_limit_success"] is True
+    assert "recovered rate-limit evidence detected for ask_live" in ask_log
+    assert "retry after rate-limit cooldown" not in ask_log
+    assert calls_text.count("pb test ask-live") == 1
+    assert "WARN: rate-limit evidence detected for ask_live" not in result.stdout
 
 
 def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():

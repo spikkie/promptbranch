@@ -387,3 +387,12 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.4 repair candidate status
 
 `v0.1.84.5.4` repairs recovered ChatGPT 429 live-test classification only. Functionally verified `ask-live` and `visual-artifact-roundtrip` runs with acknowledged/waited 429 telemetry now return `verified_with_recovered_rate_limit` and `ok=true`, so release-control can continue the same browser operation instead of retrying the whole step. Unrecovered 429 telemetry still fails closed. No project deletion, ledger/write, Project Source, artifact adoption/current, deployment, or model-execution scope advances.
+
+
+## v0.1.84.5.5 repair status
+
+`v0.1.84.5.5` is a repair-only candidate on top of the `v0.1.84.5.4` recovered-rate-limit policy candidate. The repair suppresses release-control whole-step retries when a run-all step proves recovered-rate-limit success: functional verification passed, ChatGPT's rate-limit modal was acknowledged, cooldown was satisfied, and the same browser operation continued. Unrecovered 429 evidence remains retryable/failing. Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.84.5.zip` until adoption/current evidence proves a later repair.
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.

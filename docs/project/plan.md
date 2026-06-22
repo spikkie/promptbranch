@@ -1099,3 +1099,12 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.4 repair plan
 
 Repair-only: change recovered 429 telemetry from a retry-triggering failure to a warning status after functional verification succeeds. Preserve fail-closed behavior for unrecovered rate-limit evidence.
+
+
+## v0.1.84.5.5 repair plan entry
+
+Repair only: suppress release-control retries for recovered 429 telemetry after functional verification succeeds. Preserve retry/fail behavior for unrecovered 429, timeout, missing sentinel, failed artifact verification, wrong project, or any other functional failure. Do not advance ledger/write/orchestration scope.
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.

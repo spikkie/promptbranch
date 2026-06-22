@@ -258,3 +258,12 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.4 repair DoD note
 
 `v0.1.84.5.4` adds the recovered-rate-limit continuation invariant: when ChatGPT 429 telemetry is acknowledged and cooldown-waited inside the live browser operation and the sentinel/artifact verification succeeds, the test reports `verified_with_recovered_rate_limit` with `ok=true`; unrecovered 429 evidence remains non-clean.
+
+
+## DOD-092 — Recovered 429 does not replay whole release-control step
+
+A run-all step that functionally passes after ChatGPT rate-limit modal acknowledgement and cooldown wait is treated as `verified_with_recovered_rate_limit` by release-control and is not replayed solely because 429 telemetry remains in the log. Unrecovered 429 evidence remains retryable/failing.
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.

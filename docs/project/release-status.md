@@ -187,3 +187,10 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 
 
 | v0.1.84.5.4 | repair | Recovered 429 live-test continuation policy | candidate | focused rate-limit/visual/ask-live tests, version/control-surface tests, compileall, shell syntax, artifact guard before operator install | no slice advanced | pending adoption evidence |
+
+
+| v0.1.84.5.5 | repair | Release-control recovered-rate-limit retry suppression | candidate | focused shell-policy tests, version/control-surface tests, compileall, shell syntax, validate-ledger, artifact guard before operator install | no slice advanced | pending adoption evidence |
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.

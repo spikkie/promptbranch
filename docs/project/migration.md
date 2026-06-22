@@ -453,3 +453,12 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.4 migration note
 
 No user data migration is required. Operators should install the candidate and rerun the previously rate-limit-contaminated focused live test. The change only affects recovered 429 classification after functional live-test success; it does not change project deletion, Project Source, artifact adoption/current, ledger/write, deployment, or model-execution behavior.
+
+
+## v0.1.84.5.5 migration note
+
+No migration is required. The repair changes release-control classification/retry policy only. Existing logs and artifact registries are unchanged.
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.
