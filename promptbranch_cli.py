@@ -20663,6 +20663,36 @@ def _rate_limit_telemetry_from_result(result: Any) -> dict[str, Any]:
     return {}
 
 
+def _rate_limit_event_fingerprint(event: Any) -> str:
+    if not isinstance(event, dict):
+        return repr(event)
+    try:
+        return json.dumps(event, sort_keys=True, separators=(",", ":"), default=str)
+    except TypeError:
+        return repr(sorted(event.items()))
+
+
+def _rate_limit_telemetry_fingerprint(telemetry: dict[str, Any]) -> str | None:
+    """Return a stable fingerprint for event-backed telemetry snapshots.
+
+    Browser download telemetry can appear twice in visual roundtrip output: once
+    in the direct download result and once in the smoke-verification result that
+    carries the download payload forward.  Those are the same observation window,
+    not two independent cooldown waits.  Only event-backed snapshots are
+    fingerprinted so independent eventless counters, such as no-op navigation
+    skips from separate operations, can still be accumulated.
+    """
+
+    events = telemetry.get("service_rate_limit_events")
+    if not isinstance(events, list) or not events:
+        return None
+    event_fingerprints = [_rate_limit_event_fingerprint(event) for event in events]
+    try:
+        return json.dumps(event_fingerprints, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        return repr(event_fingerprints)
+
+
 def _merge_rate_limit_telemetry(*items: Any) -> dict[str, Any]:
     merged: dict[str, Any] = {
         "rate_limit_modal_detected": False,
@@ -20677,6 +20707,8 @@ def _merge_rate_limit_telemetry(*items: Any) -> dict[str, Any]:
         "service_rate_limit_events": [],
     }
     seen = False
+    seen_snapshot_fingerprints: set[str] = set()
+    seen_event_fingerprints: set[str] = set()
     for item in items:
         telemetry = _rate_limit_telemetry_from_result(item) if not (isinstance(item, dict) and any(key in item for key in RATE_LIMIT_CONTAMINATION_KEYS)) else dict(item)
         if not telemetry:
@@ -20684,23 +20716,36 @@ def _merge_rate_limit_telemetry(*items: Any) -> dict[str, Any]:
         seen = True
         for key in RATE_LIMIT_CONTAMINATION_KEYS:
             merged[key] = bool(merged.get(key)) or bool(telemetry.get(key))
-        for key in (
-            "cooldown_wait_seconds_total",
-            "cooldown_wait_count",
-            "conversation_history_fetch_attempt_count",
-            "conversation_history_fetch_skipped_count",
-            "conversation_history_cooldown_skip_count",
-            "navigation_noop_skip_count",
-        ):
-            value = telemetry.get(key)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                if key.endswith("seconds_total"):
-                    merged[key] = round(float(merged.get(key, 0.0)) + float(value), 3)
-                else:
-                    merged[key] = int(merged.get(key, 0)) + int(value)
+
+        snapshot_fingerprint = _rate_limit_telemetry_fingerprint(telemetry)
+        duplicate_snapshot = bool(snapshot_fingerprint and snapshot_fingerprint in seen_snapshot_fingerprints)
+        if snapshot_fingerprint:
+            seen_snapshot_fingerprints.add(snapshot_fingerprint)
+
+        if not duplicate_snapshot:
+            for key in (
+                "cooldown_wait_seconds_total",
+                "cooldown_wait_count",
+                "conversation_history_fetch_attempt_count",
+                "conversation_history_fetch_skipped_count",
+                "conversation_history_cooldown_skip_count",
+                "navigation_noop_skip_count",
+            ):
+                value = telemetry.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    if key.endswith("seconds_total"):
+                        merged[key] = round(float(merged.get(key, 0.0)) + float(value), 3)
+                    else:
+                        merged[key] = int(merged.get(key, 0)) + int(value)
+
         events = telemetry.get("service_rate_limit_events")
         if isinstance(events, list):
-            merged["service_rate_limit_events"].extend(events)
+            for event in events:
+                event_fingerprint = _rate_limit_event_fingerprint(event)
+                if event_fingerprint in seen_event_fingerprints:
+                    continue
+                seen_event_fingerprints.add(event_fingerprint)
+                merged["service_rate_limit_events"].append(event)
     if not seen:
         return {}
     reasons = [key for key in RATE_LIMIT_CONTAMINATION_KEYS if bool(merged.get(key))]

@@ -219,6 +219,7 @@ Acceptance criteria:
 | DOD-088 | Delete-frozen live/browser tests use a fresh run-scoped ChatGPT Project by default for each validation run while still enforcing keep-project and preserving the project-deletion freeze | focused | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, focused parser/CLI/release-control shell tests, `docs/repair-v0.1.84.1.md` | v0.1.84.1 |
 | DOD-089 | Mutation-capable delete-frozen live tests create fresh Projects directly and do not resolve target Projects by non-unique display name | focused | `promptbranch_cli.py`, `tests/test_promptbranch_cli.py`, `docs/repair-v0.1.84.5.1.md` | v0.1.84.5.1 |
 | DOD-090 | Live-test backend/history `429` and rate-limit modal telemetry is propagated through `/v1/ask` and classified as non-clean validation for ask-live and visual artifact roundtrip | focused | `promptbranch_container_api.py`, `promptbranch_cli.py`, `tests/test_promptbranch_container_api.py`, `tests/test_promptbranch_cli.py`, `docs/repair-v0.1.84.5.2.md` | v0.1.84.5.2 |
+| DOD-091 | Live-test rate-limit telemetry aggregation deduplicates carried browser download snapshots without weakening non-clean 429 classification | focused | `promptbranch_cli.py`, `tests/test_promptbranch_cli.py`, `docs/repair-v0.1.84.5.3.md` | v0.1.84.5.3 |
 
 
 ## v0.1.84.2 repair note
@@ -247,3 +248,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.2 repair status
 
 `v0.1.84.5.2` repairs live-test 429 telemetry propagation and non-clean validation classification only. `/v1/ask` now preserves browser-service `rate_limit_telemetry`; `pb test ask-live --json` and `pb test visual-artifact-roundtrip --json` surface rate-limit telemetry; otherwise functional live-test runs that observe backend/history `429` or ChatGPT rate-limit modal telemetry now report `status=rate_limited_contaminated` and `ok=false` instead of clean `verified`. Functional artifact evidence remains visible through `functional_status`, `verification_status`, and artifact-intake details. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
+
+
+## v0.1.84.5.3 repair status
+
+`v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. It deduplicates event-backed telemetry snapshots so browser download telemetry carried into smoke-verification results is not counted twice. The `rate_limited_contaminated` non-clean classification from `v0.1.84.5.2` is preserved.

@@ -177,3 +177,10 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.2 repair status
 
 `v0.1.84.5.2` repairs live-test 429 telemetry propagation and non-clean validation classification only. `/v1/ask` now preserves browser-service `rate_limit_telemetry`; `pb test ask-live --json` and `pb test visual-artifact-roundtrip --json` surface rate-limit telemetry; otherwise functional live-test runs that observe backend/history `429` or ChatGPT rate-limit modal telemetry now report `status=rate_limited_contaminated` and `ok=false` instead of clean `verified`. Functional artifact evidence remains visible through `functional_status`, `verification_status`, and artifact-intake details. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
+
+
+## v0.1.84.5.3 repair status
+
+`v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. `v0.1.84.5.2` remains functionally correct for downgrade behavior; this repair deduplicates repeated event-backed telemetry snapshots from visual artifact download/smoke-verification result carrying so top-level wait/event totals are reliable. It does not change Project deletion, Project creation identity, `/v1/ask` telemetry propagation, non-clean 429 classification, Project Source, artifact adoption/current, ledger/write/orchestration, deployment, or model-execution scope.
+
+| v0.1.84.5.3 | repair | Rate-limit telemetry aggregation deduplication | candidate | focused helper/CLI tests, py_compile, project-control/version tests, artifact guard before operator install | DOD-091 focused; v0.1.84.5.2 downgrade semantics preserved | pending adoption evidence |
