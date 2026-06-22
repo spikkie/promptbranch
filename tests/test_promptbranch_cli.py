@@ -13678,3 +13678,21 @@ def test_current_adopted_candidate_fallback_reads_repo_loop_payload() -> None:
     assert fallback["artifact_version"] == "v0.1.76"
     assert fallback["status"] == "candidate_already_accepted"
     assert fallback["proof_source"] == "adopted_current"
+
+
+def test_visual_artifact_roundtrip_prompt_uses_simple_validation_strings() -> None:
+    from promptbranch_cli import _visual_artifact_roundtrip_prompt
+
+    prompt = _visual_artifact_roundtrip_prompt(
+        run_id="UNITPROMPT",
+        input_entry="input.txt",
+        input_content="INPUT_OK",
+        output_filename="pb_visual_artifact_roundtrip_UNITPROMPT.zip",
+        output_entry="output.txt",
+        output_content="OUTPUT_OK",
+    )
+
+    assert "Keep validation.claimed and validation.not_claimed strings simple" in prompt
+    assert "do not include JSON arrays" in prompt
+    assert "zip_created, output_entry_present, and output_content_verified" in prompt
+    assert 'entry list was exactly ["output.txt"]' not in prompt

@@ -421,6 +421,63 @@ def classify_artifact_candidates(
         "adoption_performed": False,
     }
 
+def _parse_reply_json_block(block_text: str) -> tuple[Any | None, dict[str, Any] | None]:
+    """Parse a reply JSON block, tolerating only safe trailing marker fragments.
+
+    ChatGPT sometimes emits a balanced JSON object followed by a truncated copy of
+    the Promptbranch end marker, for example ``END_PROMPTBRANCH_REPLY_JSO_``.  In
+    that case the protocol object is already complete and should be parsed.  This
+    helper intentionally does not repair malformed JSON strings, embedded raw
+    quotes, missing commas, or any non-marker trailing prose.
+    """
+
+    source = str(block_text or "").strip()
+    try:
+        return json.loads(source), None
+    except json.JSONDecodeError as exc:
+        primary_exc = exc
+
+    decoder = json.JSONDecoder()
+    try:
+        parsed, consumed = decoder.raw_decode(source)
+    except json.JSONDecodeError as exc:
+        line_start = max(0, int(getattr(primary_exc, "pos", 0)) - 240)
+        line_end = min(len(source), int(getattr(primary_exc, "pos", 0)) + 240)
+        return None, {
+            "json_error": str(primary_exc),
+            "json_error_lineno": getattr(primary_exc, "lineno", None),
+            "json_error_colno": getattr(primary_exc, "colno", None),
+            "json_error_pos": getattr(primary_exc, "pos", None),
+            "json_error_context": source[line_start:line_end],
+            "json_recovery_attempted": True,
+            "json_recovery_status": "no_balanced_json_object",
+            "json_recovery_error": str(exc),
+        }
+
+    trailing = source[consumed:].strip()
+    normalized = re.sub(r"\s+", "", trailing)
+    marker_prefix = END_REPLY_MARKER
+    if trailing and not (marker_prefix.startswith(normalized) or marker_prefix.startswith(normalized.rstrip("_"))):
+        line_start = max(0, int(getattr(primary_exc, "pos", 0)) - 240)
+        line_end = min(len(source), int(getattr(primary_exc, "pos", 0)) + 240)
+        return None, {
+            "json_error": str(primary_exc),
+            "json_error_lineno": getattr(primary_exc, "lineno", None),
+            "json_error_colno": getattr(primary_exc, "colno", None),
+            "json_error_pos": getattr(primary_exc, "pos", None),
+            "json_error_context": source[line_start:line_end],
+            "json_recovery_attempted": True,
+            "json_recovery_status": "trailing_text_not_marker_fragment",
+            "json_trailing_fragment": trailing[:160],
+        }
+
+    return parsed, {
+        "json_recovery_attempted": True,
+        "json_recovery_status": "truncated_end_marker_after_balanced_json",
+        "json_trailing_fragment": trailing[:160],
+    }
+
+
 def parse_promptbranch_reply(text: str) -> dict[str, Any]:
     """Parse and validate one Promptbranch reply envelope from assistant text.
 
@@ -443,20 +500,13 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
             block_count=len(blocks),
         )
     block = blocks[0]
-    try:
-        parsed = json.loads(block.text)
-    except json.JSONDecodeError as exc:
-        line_start = max(0, int(getattr(exc, "pos", 0)) - 240)
-        line_end = min(len(block.text), int(getattr(exc, "pos", 0)) + 240)
+    parsed, parse_meta = _parse_reply_json_block(block.text)
+    if parsed is None:
         return _error_payload(
             "reply_schema_invalid",
             detail="reply block is not valid JSON",
             block_count=1,
-            json_error=str(exc),
-            json_error_lineno=getattr(exc, "lineno", None),
-            json_error_colno=getattr(exc, "colno", None),
-            json_error_pos=getattr(exc, "pos", None),
-            json_error_context=block.text[line_start:line_end],
+            **(parse_meta or {}),
         )
     if not isinstance(parsed, dict):
         return _error_payload(
@@ -468,7 +518,7 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
     artifacts = parsed.get("artifacts") if isinstance(parsed.get("artifacts"), list) else []
     artifact_candidates = [_normalize_artifact_candidate(item, index=i + 1) for i, item in enumerate(artifacts)]
     if validation_errors:
-        return {
+        payload = {
             "ok": False,
             "action": "promptbranch_reply_parse",
             "status": "reply_schema_invalid",
@@ -480,7 +530,10 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
             "artifact_candidate_count": len(artifact_candidates),
             "artifact_candidates": artifact_candidates,
         }
-    return {
+        if isinstance(parse_meta, dict):
+            payload.update(parse_meta)
+        return payload
+    payload = {
         "ok": True,
         "action": "promptbranch_reply_parse",
         "status": "valid",
@@ -500,3 +553,6 @@ def parse_promptbranch_reply(text: str) -> dict[str, Any]:
         "artifact_candidate_count": len(artifact_candidates),
         "artifact_candidates": artifact_candidates,
     }
+    if isinstance(parse_meta, dict):
+        payload.update(parse_meta)
+    return payload

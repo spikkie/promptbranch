@@ -212,3 +212,53 @@ END_PROMPTBRANCH_REPLY_JSON'''
     assert payload["json_error_lineno"] is not None
     assert payload["json_error_colno"] is not None
     assert "sandbox:/mnt/data/x.zip" in payload["json_error_context"]
+
+
+def test_parse_promptbranch_reply_accepts_balanced_json_before_truncated_end_marker() -> None:
+    reply = json.loads(Path("promptbranch_protocol/examples/ask.release.reply.example.json").read_text())
+    text = f"{BEGIN_REPLY_MARKER}\n{json.dumps(reply)}\nEND_PROMPTBRANCH_REPLY_JSO_"
+
+    payload = parse_promptbranch_reply(text)
+
+    assert payload["ok"] is True
+    assert payload["status"] == "valid"
+    assert payload["json_recovery_status"] == "truncated_end_marker_after_balanced_json"
+    assert payload["artifact_candidate_count"] == 1
+
+
+def test_parse_promptbranch_reply_rejects_raw_nested_quotes_without_repair() -> None:
+    text = '''BEGIN_PROMPTBRANCH_REPLY_JSON
+{
+  "schema": "promptbranch.ask.reply",
+  "schema_version": "1.0",
+  "request_id": "visual-artifact-roundtrip-bad-quotes",
+  "correlation_id": "visual-artifact-roundtrip-bad-quotes",
+  "status": "completed",
+  "result_type": "test_report",
+  "summary": "Output ZIP entry list was exactly ["output.txt"].",
+  "baseline": {},
+  "changes": [],
+  "artifacts": [],
+  "validation": {},
+  "next_step": {"operator_action": "none", "recommended_command": "none"},
+  "confidence": "low"
+}
+END_PROMPTBRANCH_REPLY_JSON'''
+
+    payload = parse_promptbranch_reply(text)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "reply_schema_invalid"
+    assert payload["json_recovery_status"] == "no_balanced_json_object"
+    assert "output.txt" in payload["json_error_context"]
+
+
+def test_parse_promptbranch_reply_rejects_non_marker_trailing_text_after_json() -> None:
+    reply = json.loads(Path("promptbranch_protocol/examples/ask.release.reply.example.json").read_text())
+    text = f"{BEGIN_REPLY_MARKER}\n{json.dumps(reply)}\nthis is trailing prose, not an end-marker fragment"
+
+    payload = parse_promptbranch_reply(text)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "reply_schema_invalid"
+    assert payload["json_recovery_status"] == "trailing_text_not_marker_fragment"

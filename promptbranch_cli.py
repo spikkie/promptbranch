@@ -20952,7 +20952,7 @@ Hard execution rules:
 3. The ZIP must contain exactly one file at the ZIP root: {output_entry}
 4. {output_entry} must contain exactly this UTF-8 text, with no extra characters:
 {output_content}
-5. Reopen the ZIP after creating it and verify the entry list and file content before claiming success.
+5. Reopen the ZIP after creating it and verify that the ZIP contains exactly the requested output file and requested text before claiming success.
 6. First line of the final response must be a Markdown download link to the actual created ZIP. The link target must be copied from the real downloadable artifact link exposed by the environment.
 7. Do not put only a guessed local path in the JSON. A download candidate is valid only when the first-line Markdown link can be used to retrieve the file.
 
@@ -20971,6 +20971,8 @@ Reply envelope rules:
 - artifacts[0].download.url must be a JSON string containing exactly the same raw downloadable URL/path used as the first-line Markdown link target.
 - Do not put Markdown link syntax in artifacts[0].download.url. Bad: [name](sandbox:/mnt/data/name.zip). Good JSON value form: "sandbox:/mnt/data/name.zip".
 - Every JSON string value must use double quotes with any inner quotes escaped; do not use Python None/True/False, comments, trailing commas, or unquoted paths.
+- Keep validation.claimed and validation.not_claimed strings simple: do not include JSON arrays, bracketed lists, raw double quotes, or Markdown links inside those string values.
+- Prefer simple validation strings such as zip_created, output_entry_present, and output_content_verified.
 - Before returning, verify that the text between BEGIN_PROMPTBRANCH_REPLY_JSON and END_PROMPTBRANCH_REPLY_JSON would parse with Python json.loads.
 - The baseline object must use input_artifact null, input_version null, output_artifact {output_filename!r}, output_version null, release_type "visual_artifact_roundtrip".
 - The changes array must include one added path: {output_entry!r}.

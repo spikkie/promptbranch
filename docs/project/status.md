@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
 accepted version: v0.1.79
-active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.4.zip
+active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.5.zip
 next normal target: deferred until focused-candidate promotion gate
 ```
 
@@ -16,15 +16,15 @@ MVP status: active
 DoD status: in_progress
 last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
 active plan slice: v0.1.84 — Accepted-event ledger validation command
-active repair: v0.1.84.4 — cap generated test Project names at 50 characters
+active repair: v0.1.84.5 — visual artifact reply envelope hardening
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.4.zip repair candidate once packaged
-release status: v0.1.80-v0.1.84.4 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.5.zip repair candidate once packaged
+release status: v0.1.80-v0.1.84.5 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
 ```
 
 ## Current risks
@@ -37,8 +37,8 @@ release status: v0.1.80-v0.1.84.4 are focused/repair candidates only; accepted/c
 
 ## Current blockers
 
-- `v0.1.84.4` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
-- `v0.1.84.4` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
+- `v0.1.84.5` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
+- `v0.1.84.5` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
 - No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, artifact adoption behavior change, or ChatGPT Project deletion behavior change is allowed in this repair.
 
 ## Current unknowns
@@ -50,13 +50,13 @@ release status: v0.1.80-v0.1.84.4 are focused/repair candidates only; accepted/c
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.84.4.zip, then run a single project-ensure/ask-live proof that exercises project creation after 429/cooldown before any broad/full release-control gate.
+Install chatgpt_claudecode_workflow-2_v0.1.84.5.zip, then rerun only `pb test visual-artifact-roundtrip --json` before another full all-tests/adoption gate.
 ```
 
 ## Last updated
 
 ```text
-v0.1.84.4 repair candidate build
+v0.1.84.5 repair candidate build
 ```
 
 
@@ -364,3 +364,8 @@ Uploaded `release_control.v0.1.84.2.run_all_tests.log` ended after the release-c
 ## v0.1.84.4 repair status
 
 ChatGPT Project names are limited to 50 characters. `v0.1.84.4` repairs generated test Project naming only: release-control and live-test generated names are capped at 50 characters while preserving run-scoped uniqueness through a stable hash suffix when truncation is required. Explicit `PROMPTBRANCH_RELEASE_TEST_PROJECT_NAME` values longer than 50 characters now fail fast. Project deletion remains frozen; ledger/write/orchestration scope does not advance.
+
+
+## v0.1.84.5 repair status
+
+The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifact_roundtrip` failed with `artifact_candidate_not_selected`: the ChatGPT reply envelope was near-complete but invalid JSON in one attempt due raw nested quotes inside a validation string, and another attempt had a balanced JSON object followed by a truncated `END_PROMPTBRANCH_REPLY_JSON` marker fragment. `v0.1.84.5` repairs only the visual artifact reply-envelope surface: the prompt now asks for simple validation strings without arrays/raw quotes/Markdown links, and the reply parser accepts a balanced JSON object followed only by a truncated end-marker fragment while still rejecting genuinely malformed JSON. Project deletion, ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
