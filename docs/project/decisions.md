@@ -203,3 +203,7 @@ If browser automation acknowledges ChatGPT's rate-limit modal, satisfies cooldow
 ## v0.1.84.5.7 repair note
 
 `v0.1.84.5.7` repairs the shared live Project ensure command introduced in `v0.1.84.5.6`. Release-control `--run-all-tests` now uses the supported top-level `pb project-ensure` command to create or resolve one run-scoped ChatGPT Project, extracts the returned Project URL, and passes that exact URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This preserves the one-Project-per-full-test-run policy without calling the unsupported nested `pb project ensure` surface. No project deletion, ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.
+
+## Decision — browser ReadTimeout requires bounded service recovery before next browser phase
+
+A client-side timeout from a browser-backed Promptbranch service command can leave the underlying browser operation still running after the CLI exits. During release-control `--run-all-tests`, strict `ReadTimeout` or `service_client_read_timeout` evidence must trigger bounded service recovery before the workflow sends the next browser-backed command. Recovery may make later phases possible, but it must not convert the original failed full-test step into a pass.
