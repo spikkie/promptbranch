@@ -61,16 +61,9 @@ pytest -q tests/test_promptbranch_cli.py::test_ask_live_profile_runs_visible_ope
   tests/test_promptbranch_version.py \
   tests/test_project_control_surface.py
 python -m compileall -q .
-python - <<'PY'
-from promptbranch_artifact_guardian import guard_zip_artifact
-payload = guard_zip_artifact(repo='.', zip_path='/mnt/data/chatgpt_claudecode_workflow-2_v0.1.84.5.1.zip', version='v0.1.84.5.1')
-assert payload['ok'] is True
-assert payload['failure_count'] == 0
-assert payload['release_ready'] is True
-PY
 ```
 
-Focused result: `13 passed`; Artifact Guardian passed with `failure_count=0` and `release_ready=true`. Full release-control/all-tests and live browser validation were not run in this artifact build environment.
+Focused result: `13 passed`. Full release-control/all-tests and live browser validation were not run in this artifact build environment.
 
 ## No-scope-advance confirmation
 

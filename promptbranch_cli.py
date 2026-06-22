@@ -20526,13 +20526,18 @@ async def _run_ask_live_step(
         expected_project_home_url=expected_home,
         response_project_home_url=response_project_home_url,
     )
-    ok = bool(response_ok and contains_expected and not forbidden_present and in_expected_project)
+    rate_limit_telemetry = _rate_limit_telemetry_from_result(response)
+    rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
+    functionally_ok = bool(response_ok and contains_expected and not forbidden_present and in_expected_project)
+    ok = bool(functionally_ok and not rate_limit_contaminated)
     if not response_ok:
         status = "ask_failed"
     elif not in_expected_project:
         status = "wrong_project"
     elif not contains_expected or forbidden_present:
         status = "failed"
+    elif rate_limit_contaminated:
+        status = "rate_limited_contaminated"
     else:
         status = "verified"
     submit_evidence = response.get("submit_evidence") if isinstance(response, dict) and isinstance(response.get("submit_evidence"), dict) else None
@@ -20551,6 +20556,9 @@ async def _run_ask_live_step(
         "expected_project_id": expected_project_id,
         "response_project_id": response_project_id,
         "in_expected_project": in_expected_project,
+        "rate_limit_telemetry": rate_limit_telemetry,
+        "rate_limit_contaminated": rate_limit_contaminated,
+        "functional_status": "verified" if functionally_ok else status,
         "prefer_button_submit": submit_evidence.get("prefer_button_submit") if isinstance(submit_evidence, dict) else None,
         "submit_method": submit_evidence.get("submit_method") if isinstance(submit_evidence, dict) else None,
         "submit_confirmed": submit_evidence.get("submit_confirmed") if isinstance(submit_evidence, dict) else None,
@@ -20625,6 +20633,94 @@ def _phase_timings_with_total(phase_timings: dict[str, Any], started_at: float) 
     payload = dict(phase_timings)
     payload["total_seconds"] = _elapsed_seconds_since(started_at)
     return payload
+
+
+RATE_LIMIT_CONTAMINATION_KEYS: tuple[str, ...] = (
+    "rate_limit_modal_detected",
+    "conversation_history_429_seen",
+    "backend_api_guardrail_seen",
+)
+
+
+def _rate_limit_telemetry_from_result(result: Any) -> dict[str, Any]:
+    """Return rate-limit telemetry carried by a browser/service result.
+
+    Browser operations attach telemetry at the top level. Artifact intake wraps
+    browser download results under ``download_transport.browser_result``; keep
+    that path visible to live-test classification too.
+    """
+
+    if not isinstance(result, dict):
+        return {}
+    telemetry = result.get("rate_limit_telemetry")
+    if isinstance(telemetry, dict):
+        return dict(telemetry)
+    transport = result.get("download_transport")
+    if isinstance(transport, dict):
+        browser_result = transport.get("browser_result")
+        if isinstance(browser_result, dict) and isinstance(browser_result.get("rate_limit_telemetry"), dict):
+            return dict(browser_result["rate_limit_telemetry"])
+    return {}
+
+
+def _merge_rate_limit_telemetry(*items: Any) -> dict[str, Any]:
+    merged: dict[str, Any] = {
+        "rate_limit_modal_detected": False,
+        "conversation_history_429_seen": False,
+        "backend_api_guardrail_seen": False,
+        "cooldown_wait_seconds_total": 0.0,
+        "cooldown_wait_count": 0,
+        "conversation_history_fetch_attempt_count": 0,
+        "conversation_history_fetch_skipped_count": 0,
+        "conversation_history_cooldown_skip_count": 0,
+        "navigation_noop_skip_count": 0,
+        "service_rate_limit_events": [],
+    }
+    seen = False
+    for item in items:
+        telemetry = _rate_limit_telemetry_from_result(item) if not (isinstance(item, dict) and any(key in item for key in RATE_LIMIT_CONTAMINATION_KEYS)) else dict(item)
+        if not telemetry:
+            continue
+        seen = True
+        for key in RATE_LIMIT_CONTAMINATION_KEYS:
+            merged[key] = bool(merged.get(key)) or bool(telemetry.get(key))
+        for key in (
+            "cooldown_wait_seconds_total",
+            "cooldown_wait_count",
+            "conversation_history_fetch_attempt_count",
+            "conversation_history_fetch_skipped_count",
+            "conversation_history_cooldown_skip_count",
+            "navigation_noop_skip_count",
+        ):
+            value = telemetry.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if key.endswith("seconds_total"):
+                    merged[key] = round(float(merged.get(key, 0.0)) + float(value), 3)
+                else:
+                    merged[key] = int(merged.get(key, 0)) + int(value)
+        events = telemetry.get("service_rate_limit_events")
+        if isinstance(events, list):
+            merged["service_rate_limit_events"].extend(events)
+    if not seen:
+        return {}
+    reasons = [key for key in RATE_LIMIT_CONTAMINATION_KEYS if bool(merged.get(key))]
+    merged["rate_limit_contaminated"] = bool(reasons)
+    merged["contamination_reasons"] = reasons
+    return merged
+
+
+def _rate_limit_telemetry_contaminated(telemetry: Any) -> bool:
+    if not isinstance(telemetry, dict):
+        return False
+    return any(bool(telemetry.get(key)) for key in RATE_LIMIT_CONTAMINATION_KEYS)
+
+
+def _rate_limit_contamination_status(base_status: str, *, contaminated: bool) -> str:
+    if not contaminated:
+        return base_status
+    if base_status in {"verified", "smoke_zip_verified", "downloaded", "completed"}:
+        return "rate_limited_contaminated"
+    return base_status
 
 
 def _live_test_project_setup_strategy(args: argparse.Namespace) -> str:
@@ -20873,15 +20969,20 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
         if explicit_conversation_url:
             setattr(args, "conversation_url", explicit_conversation_url)
 
+    rate_limit_telemetry = _merge_rate_limit_telemetry(setup_result, *(step.get("rate_limit_telemetry") for step in steps), cleanup_result)
+    rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
     ask_steps_ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
+    functional_steps_ok = bool(steps) and all(str(step.get("status")) in {"verified", "rate_limited_contaminated"} for step in steps)
     cleanup_ok = True
     if test_project_created and not bool(getattr(args, "keep_project", False)):
         cleanup_ok = bool(test_project_removed)
-    ok = bool(ask_steps_ok and cleanup_ok)
-    if not ask_steps_ok:
+    ok = bool(ask_steps_ok and cleanup_ok and not rate_limit_contaminated)
+    if not functional_steps_ok:
         status = "failed"
     elif not cleanup_ok:
         status = "cleanup_failed"
+    elif rate_limit_contaminated:
+        status = "rate_limited_contaminated"
     else:
         status = "verified"
     payload = {
@@ -20912,6 +21013,10 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
         "selected_steps": selected_steps,
         "step_count": len(steps),
         "failure_count": len([step for step in steps if not step.get("ok")]),
+        "functional_failure_count": len([step for step in steps if str(step.get("status")) not in {"verified", "rate_limited_contaminated"}]),
+        "rate_limit_telemetry": rate_limit_telemetry,
+        "rate_limit_contaminated": rate_limit_contaminated,
+        "rate_limit_policy": "ask-live marks otherwise functional runs non-clean when backend/history 429 or Too many requests modal telemetry is present",
         "steps": steps,
         "operator_note": _delete_frozen_live_test_operator_note("ask-live"),
     }
@@ -21147,11 +21252,16 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         cleanup_ok = True
         if test_project_created and not bool(getattr(args, "keep_project", False)):
             cleanup_ok = bool(test_project_removed)
+        failure_rate_limit_telemetry = _merge_rate_limit_telemetry(setup_result, ask_result, download, verified, cleanup_result)
+        failure_rate_limit_contaminated = _rate_limit_telemetry_contaminated(failure_rate_limit_telemetry)
+        emitted_status = status if cleanup_ok else "cleanup_failed"
+        if failure_rate_limit_contaminated and emitted_status in {"verified", "smoke_zip_verified", "downloaded", "completed"}:
+            emitted_status = "rate_limited_contaminated"
         payload = {
             "ok": False,
             "action": "test_visual_artifact_roundtrip",
             "profile": getattr(args, "result_profile", None) or "visual-artifact-roundtrip",
-            "status": status if cleanup_ok else "cleanup_failed",
+            "status": emitted_status,
             "version": f"v{CLI_VERSION}",
             "run_id": run_id,
             "debug_browser": True,
@@ -21193,6 +21303,9 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
                 "type": ask_result.__class__.__name__ if ask_result is not None else None,
                 "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
             },
+            "rate_limit_telemetry": failure_rate_limit_telemetry,
+            "rate_limit_contaminated": failure_rate_limit_contaminated,
+            "rate_limit_policy": "visual-artifact-roundtrip never reports a clean validation success when backend/history 429 or Too many requests modal telemetry is present",
             "operator_note": _delete_frozen_live_test_operator_note(str(getattr(args, "result_profile", None) or "visual-artifact-roundtrip")),
         }
         if isinstance(extra, dict):
@@ -21349,9 +21462,14 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     cleanup_ok = True
     if test_project_created and not bool(getattr(args, "keep_project", False)):
         cleanup_ok = bool(test_project_removed)
-    ok = bool(verified and verified.get("ok") and cleanup_ok)
+    rate_limit_telemetry = _merge_rate_limit_telemetry(setup_result, ask_result, download, verified, cleanup_result)
+    rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
+    functional_ok = bool(verified and verified.get("ok") and cleanup_ok)
+    ok = bool(functional_ok and not rate_limit_contaminated)
     if not cleanup_ok:
         status = "cleanup_failed"
+    elif verified and verified.get("ok") and rate_limit_contaminated:
+        status = "rate_limited_contaminated"
     elif verified and verified.get("ok"):
         status = "verified"
     else:
@@ -21401,6 +21519,10 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "artifact_candidate_status": (intake or {}).get("status"),
         "download_status": (download or {}).get("status"),
         "verification_status": (verified or {}).get("status"),
+        "functional_status": "verified" if functional_ok else ((verified or {}).get("status") or "failed"),
+        "rate_limit_telemetry": rate_limit_telemetry,
+        "rate_limit_contaminated": rate_limit_contaminated,
+        "rate_limit_policy": "visual-artifact-roundtrip never reports a clean validation success when backend/history 429 or Too many requests modal telemetry is present",
         "download_performed": bool((verified or {}).get("download_performed")),
         "verification_performed": bool((verified or {}).get("smoke_verification_performed") or (verified or {}).get("verification_performed")),
         "download": (verified or {}).get("download"),

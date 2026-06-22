@@ -113,6 +113,7 @@ class AskResponse(BaseModel):
     debug_artifacts: Optional[list[str]] = None
     backend_answer_diagnostics: Optional[dict] = None
     ask_phase_timings: Optional[dict] = None
+    rate_limit_telemetry: Optional[dict] = None
     service_timeout_seconds: Optional[float] = None
     service_internal_timeout_seconds: Optional[float] = None
     progress_status: Optional[str] = None
@@ -539,6 +540,7 @@ async def ask(
                     "conversation_url": progress.get("conversation_url"),
                     "submit_evidence": submit_evidence,
                     "ask_phase_timings": ask_phase_timings,
+                    "rate_limit_telemetry": progress.get("rate_limit_telemetry") if isinstance(progress.get("rate_limit_telemetry"), dict) else None,
                     "progress_status": progress.get("status"),
                     "progress_updated_at_monotonic": progress.get("updated_at_monotonic"),
                 }
@@ -558,6 +560,7 @@ async def ask(
             debug_artifacts=result.get("debug_artifacts") if isinstance(result, dict) and isinstance(result.get("debug_artifacts"), list) else None,
             backend_answer_diagnostics=result.get("backend_answer_diagnostics") if isinstance(result, dict) and isinstance(result.get("backend_answer_diagnostics"), dict) else None,
             ask_phase_timings=result.get("ask_phase_timings") if isinstance(result, dict) and isinstance(result.get("ask_phase_timings"), dict) else None,
+            rate_limit_telemetry=result.get("rate_limit_telemetry") if isinstance(result, dict) and isinstance(result.get("rate_limit_telemetry"), dict) else None,
             service_timeout_seconds=result.get("service_timeout_seconds") if isinstance(result, dict) else None,
             service_internal_timeout_seconds=result.get("service_internal_timeout_seconds") if isinstance(result, dict) else None,
             progress_status=result.get("progress_status") if isinstance(result, dict) else None,

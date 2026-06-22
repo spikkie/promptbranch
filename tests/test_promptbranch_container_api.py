@@ -432,3 +432,33 @@ def test_browser_context_unavailable_payload_is_returned_from_service_ask(tmp_pa
     assert payload["answer"] is None
     assert payload["browser_driver"] == "patchright"
     assert payload["ask_phase_timings"]["submit_method"] is None
+
+
+def test_ask_response_preserves_rate_limit_telemetry(monkeypatch) -> None:
+    telemetry = {
+        "rate_limit_modal_detected": True,
+        "conversation_history_429_seen": True,
+        "backend_api_guardrail_seen": True,
+        "cooldown_wait_seconds_total": 60.0,
+        "cooldown_wait_count": 1,
+        "service_rate_limit_events": [{"kind": "backend_api_guardrail", "status": 429}],
+    }
+
+    class FakeService:
+        async def ask_question_result(self, **kwargs):
+            return {
+                "ok": True,
+                "answer": "ready",
+                "conversation_url": "https://chatgpt.com/g/demo/c/rl",
+                "status": "completed",
+                "rate_limit_telemetry": telemetry,
+            }
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.post("/v1/ask", data={"prompt": "hello"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "ready"
+    assert payload["rate_limit_telemetry"] == telemetry

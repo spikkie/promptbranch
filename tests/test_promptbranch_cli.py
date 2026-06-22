@@ -13802,3 +13802,148 @@ def test_visual_artifact_roundtrip_prompt_uses_simple_validation_strings() -> No
     assert "do not include JSON arrays" in prompt
     assert "zip_created, output_entry_present, and output_content_verified" in prompt
     assert 'entry list was exactly ["output.txt"]' not in prompt
+
+
+def test_ask_live_downgrades_rate_limited_response(monkeypatch, capsys, tmp_path) -> None:
+    project_url = "https://chatgpt.com/g/g-p-55555555555555555555555555555555-ask-live/project"
+    conversation_url = "https://chatgpt.com/g/g-p-55555555555555555555555555555555-ask-live/c/plain"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+            return {"ok": True, "project_url": project_url, "name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("ask-live must not resolve by display name")
+
+        async def remove_project(self, *, keep_open=False):
+            raise AssertionError("delete-frozen ask-live should keep the created project")
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            assert conversation_url == project_url
+            token = re.search(r"ASK_LIVE_PLAIN_[A-Za-z0-9_]+", prompt).group(0)
+            return {
+                "ok": True,
+                "answer": token,
+                "conversation_url": conversation_url,
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": False,
+                    "conversation_history_429_seen": True,
+                    "backend_api_guardrail_seen": True,
+                    "cooldown_wait_seconds_total": 0.0,
+                    "cooldown_wait_count": 0,
+                    "service_rate_limit_events": [{"kind": "backend_api_guardrail", "status": 429}],
+                },
+            }
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "ask-live",
+        "--json",
+        "--run-id", "RL",
+        "--only", "plain",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "rate_limited_contaminated"
+    assert payload["rate_limit_contaminated"] is True
+    assert payload["functional_failure_count"] == 0
+    assert payload["steps"][0]["status"] == "rate_limited_contaminated"
+    assert payload["steps"][0]["contains_expected_sentinel"] is True
+    assert payload["rate_limit_telemetry"]["conversation_history_429_seen"] is True
+
+
+def test_visual_artifact_roundtrip_downgrades_rate_limit_contaminated_success(monkeypatch, capsys, tmp_path) -> None:
+    output_zip = tmp_path / "pb_visual_artifact_roundtrip_RL.zip"
+    with zipfile.ZipFile(output_zip, "w") as zf:
+        zf.writestr("output.txt", "ZIP_OK")
+
+    project_url = "https://chatgpt.com/g/g-p-66666666666666666666666666666666-visual-rate-limit/project"
+    conversation_url = "https://chatgpt.com/g/g-p-66666666666666666666666666666666-visual-rate-limit/c/roundtrip-rl"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+            return {"ok": True, "project_url": project_url, "name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("visual roundtrip must not resolve by display name")
+
+        async def remove_project(self, *, keep_open=False):
+            raise AssertionError("delete-frozen visual test should keep the created project")
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            assert conversation_url == project_url
+            envelope = {
+                "schema": "promptbranch.ask.reply",
+                "schema_version": "1.0",
+                "request_id": "visual-artifact-roundtrip-RL",
+                "correlation_id": "visual-artifact-roundtrip-RL",
+                "status": "completed",
+                "result_type": "test_report",
+                "summary": "Created roundtrip ZIP.",
+                "baseline": {
+                    "input_artifact": None,
+                    "input_version": None,
+                    "output_artifact": "pb_visual_artifact_roundtrip_RL.zip",
+                    "output_version": None,
+                    "release_type": "visual_artifact_roundtrip",
+                },
+                "changes": [{"path": "output.txt", "kind": "added", "summary": "Smoke output."}],
+                "artifacts": [{
+                    "kind": "zip",
+                    "filename": "pb_visual_artifact_roundtrip_RL.zip",
+                    "version": None,
+                    "role": "visual_artifact_roundtrip_output",
+                    "download": {"available": True, "link_text": "pb_visual_artifact_roundtrip_RL.zip", "url": output_zip.as_uri()},
+                }],
+                "validation": {"claimed": ["zip_created"], "not_claimed": ["release_validation"]},
+                "next_step": {"operator_action": "artifact_intake_download_verify_smoke_zip"},
+                "confidence": "medium",
+            }
+            return {
+                "ok": True,
+                "answer": "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(envelope) + "\nEND_PROMPTBRANCH_REPLY_JSON",
+                "conversation_url": conversation_url,
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": True,
+                    "conversation_history_429_seen": True,
+                    "backend_api_guardrail_seen": True,
+                    "cooldown_wait_seconds_total": 60.0,
+                    "cooldown_wait_count": 1,
+                    "service_rate_limit_events": [{"kind": "modal_detected"}, {"kind": "backend_api_guardrail", "status": 429}],
+                },
+            }
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "visual-artifact-roundtrip",
+        "--json",
+        "--run-id", "RL",
+        "--output-filename", "pb_visual_artifact_roundtrip_RL.zip",
+        "--expect-entry", "output.txt",
+        "--expect-content", "ZIP_OK",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "rate_limited_contaminated"
+    assert payload["functional_status"] == "verified"
+    assert payload["verification_status"] == "smoke_zip_verified"
+    assert payload["download_performed"] is True
+    assert payload["verification_performed"] is True
+    assert payload["rate_limit_contaminated"] is True
+    assert payload["rate_limit_telemetry"]["rate_limit_modal_detected"] is True
+    assert payload["rate_limit_telemetry"]["conversation_history_429_seen"] is True
+    assert payload["artifact_intake"]["ok"] is True
