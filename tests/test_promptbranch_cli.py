@@ -2279,9 +2279,12 @@ def test_ask_live_profile_runs_visible_operator_steps_in_unique_delete_frozen_pr
                 "project_name": "Original",
             }
 
-        async def ensure_project(self, *, name: str, icon=None, color=None, memory_mode="default", keep_open=False):
-            events.append(f"ensure:{name}:{memory_mode}")
+        async def create_project(self, *, name: str, icon=None, color=None, memory_mode="default", keep_open=False):
+            events.append(f"create:{name}:{memory_mode}")
             return {"ok": True, "project_url": test_project_url, "project_name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("ask-live test project setup must create a fresh project, not resolve by non-unique display name")
 
         async def remove_project(self, *, keep_open=False):
             events.append("remove")
@@ -2327,7 +2330,9 @@ def test_ask_live_profile_runs_visible_operator_steps_in_unique_delete_frozen_pr
     assert all(step["in_expected_project"] is True for step in payload["steps"])
     assert all(step["expected_project_id"] == project_id for step in payload["steps"])
     assert all(step["response_project_id"] == project_id for step in payload["steps"])
-    assert events == ["ensure:itest-promptbranch-ask-live-UNIT:project-only"]
+    assert payload["test_project_setup_strategy"] == "direct_create_project"
+    assert payload["test_project_identity_source"] == "created_project_url"
+    assert events == ["create:itest-promptbranch-ask-live-UNIT:project-only"]
 
 
 
@@ -2374,13 +2379,16 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
                 "project_name": "original",
             }
 
-        async def ensure_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
             calls.append({
-                "ensure_project_name": name,
-                "ensure_project_memory_mode": memory_mode,
-                "ensure_project_keep_open": keep_open,
+                "create_project_name": name,
+                "create_project_memory_mode": memory_mode,
+                "create_project_keep_open": keep_open,
             })
             return {"ok": True, "project_url": self.project_url, "name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("visual roundtrip must create a fresh project, not resolve by non-unique display name")
 
         async def remove_project(self, *, keep_open=False):
             self.removed = True
@@ -2497,8 +2505,92 @@ def test_visual_artifact_roundtrip_wraps_ask_and_artifact_intake(monkeypatch, ca
     assert len(ask_calls) == 1
     assert ask_calls[0]["expect_json"] is False
     assert ask_calls[0]["conversation_url"] == fake_backend.project_url
-    assert any("ensure_project_name" in call for call in calls)
+    assert payload["test_project_setup_strategy"] == "direct_create_project"
+    assert payload["test_project_identity_source"] == "created_project_url"
+    assert "phase_timings" in payload
+    assert set(["input_zip_seconds", "project_setup_seconds", "ask_seconds", "reply_parse_seconds", "artifact_download_seconds", "smoke_verify_seconds", "total_seconds"]).issubset(payload["phase_timings"].keys())
+    assert all(isinstance(payload["phase_timings"][key], (int, float)) for key in payload["phase_timings"])
+    assert any("create_project_name" in call for call in calls)
+    assert not any("ensure_project_name" in call for call in calls)
     assert not any("remove_project_keep_open" in call for call in calls)
+
+
+
+def test_visual_artifact_roundtrip_explicit_project_name_is_creation_label_not_lookup(monkeypatch, capsys, tmp_path) -> None:
+    output_zip = tmp_path / "pb_visual_artifact_roundtrip_DUP.zip"
+    with zipfile.ZipFile(output_zip, "w") as zf:
+        zf.writestr("output.txt", "ZIP_OK")
+
+    calls: list[dict[str, object]] = []
+    project_url = "https://chatgpt.com/g/g-p-44444444444444444444444444444444-duplicate-label/project"
+    conversation_url = "https://chatgpt.com/g/g-p-44444444444444444444444444444444-duplicate-label/c/roundtrip-dup"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+            calls.append({"create_project_name": name, "memory_mode": memory_mode, "keep_open": keep_open})
+            return {"ok": True, "project_url": project_url, "project_name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("explicit --project-name is a creation label only; it must not resolve by non-unique display name")
+
+        async def remove_project(self, *, keep_open=False):
+            raise AssertionError("delete-frozen visual test should keep the created project")
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            assert conversation_url == project_url
+            envelope = {
+                "schema": "promptbranch.ask.reply",
+                "schema_version": "1.0",
+                "request_id": "visual-artifact-roundtrip-DUP",
+                "correlation_id": "visual-artifact-roundtrip-DUP",
+                "status": "completed",
+                "result_type": "test_report",
+                "summary": "Created roundtrip ZIP.",
+                "baseline": {
+                    "input_artifact": None,
+                    "input_version": None,
+                    "output_artifact": "pb_visual_artifact_roundtrip_DUP.zip",
+                    "output_version": None,
+                    "release_type": "visual_artifact_roundtrip",
+                },
+                "changes": [{"path": "output.txt", "kind": "added", "summary": "Smoke output."}],
+                "artifacts": [{
+                    "kind": "zip",
+                    "filename": "pb_visual_artifact_roundtrip_DUP.zip",
+                    "version": None,
+                    "role": "visual_artifact_roundtrip_output",
+                    "download": {"available": True, "link_text": "pb_visual_artifact_roundtrip_DUP.zip", "url": output_zip.as_uri()},
+                }],
+                "validation": {"claimed": ["zip_created"], "not_claimed": ["release_validation"]},
+                "next_step": {"operator_action": "artifact_intake_download_verify_smoke_zip"},
+                "confidence": "medium",
+            }
+            return {"ok": True, "answer": "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(envelope) + "\nEND_PROMPTBRANCH_REPLY_JSON", "conversation_url": conversation_url}
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "visual-artifact-roundtrip",
+        "--json",
+        "--run-id", "DUP",
+        "--project-name", "duplicate-display-name",
+        "--output-filename", "pb_visual_artifact_roundtrip_DUP.zip",
+        "--expect-entry", "output.txt",
+        "--expect-content", "ZIP_OK",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["test_project_name"] == "duplicate-display-name"
+    assert payload["test_project_url"] == project_url
+    assert payload["test_project_setup_strategy"] == "direct_create_project"
+    assert payload["test_project_identity_source"] == "created_project_url"
+    assert calls == [{"create_project_name": "duplicate-display-name", "memory_mode": "project-only", "keep_open": False}]
 
 
 
@@ -2515,9 +2607,12 @@ def test_visual_artifact_roundtrip_failure_payload_waits_for_temp_project_cleanu
                 "current_conversation_url": "https://chatgpt.com/g/g-p-00000000000000000000000000000000-original/c/original",
             }
 
-        async def ensure_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
-            calls.append({"ensure_project_name": name})
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+            calls.append({"create_project_name": name})
             return {"ok": True, "project_url": self.project_url, "name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("visual roundtrip failure path must not resolve by non-unique display name")
 
         async def remove_project(self, *, keep_open=False):
             calls.append({"remove_project_keep_open": keep_open})
@@ -2549,6 +2644,11 @@ def test_visual_artifact_roundtrip_failure_payload_waits_for_temp_project_cleanu
     assert payload["test_project_created"] is True
     assert payload["test_project_removed"] is False
     assert payload["test_project_cleanup"] is None
+    assert payload["test_project_setup_strategy"] == "direct_create_project"
+    assert payload["test_project_identity_source"] == "created_project_url"
+    assert payload["phase_timings"]["project_setup_seconds"] >= 0
+    assert payload["phase_timings"]["ask_seconds"] >= 0
+    assert not any("ensure_project_name" in call for call in calls)
     assert not any("remove_project_keep_open" in call for call in calls)
 
 def test_visual_artifact_roundtrip_explicit_conversation_url_skips_temp_project(monkeypatch, capsys, tmp_path) -> None:
@@ -2560,8 +2660,11 @@ def test_visual_artifact_roundtrip_explicit_conversation_url_skips_temp_project(
     explicit_url = "https://chatgpt.com/g/g-p-22222222222222222222222222222222-existing-project/c/existing-chat"
 
     class FakeBackend:
-        async def ensure_project(self, *args, **kwargs):
+        async def create_project(self, *args, **kwargs):
             raise AssertionError("explicit conversation URL must not create a temp project")
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("explicit conversation URL must not resolve a temp project")
 
         async def remove_project(self, *args, **kwargs):
             raise AssertionError("explicit conversation URL must not remove a temp project")
@@ -2626,6 +2729,9 @@ def test_visual_artifact_roundtrip_explicit_conversation_url_skips_temp_project(
     assert payload["test_project_created"] is False
     assert payload["test_project_removed"] is False
     assert payload["conversation_url"] == explicit_url
+    assert payload["test_project_setup_strategy"] == "explicit_conversation_url"
+    assert payload["test_project_identity_source"] == "explicit_conversation_url"
+    assert payload["phase_timings"]["project_setup_seconds"] >= 0
     assert calls == [{"conversation_url": explicit_url, "expect_json": False}]
 
 

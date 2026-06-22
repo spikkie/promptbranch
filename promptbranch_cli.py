@@ -20617,6 +20617,22 @@ def _bounded_generated_chatgpt_project_name(prefix: object, run_id: object, *, m
     return f"{head}-{digest}"
 
 
+def _elapsed_seconds_since(started_at: float) -> float:
+    return round(max(0.0, time.monotonic() - started_at), 3)
+
+
+def _phase_timings_with_total(phase_timings: dict[str, Any], started_at: float) -> dict[str, Any]:
+    payload = dict(phase_timings)
+    payload["total_seconds"] = _elapsed_seconds_since(started_at)
+    return payload
+
+
+def _live_test_project_setup_strategy(args: argparse.Namespace) -> str:
+    if getattr(args, "conversation_url", None):
+        return "explicit_conversation_url"
+    return "direct_create_project"
+
+
 def _apply_delete_frozen_live_test_defaults(args: argparse.Namespace, *, profile: str) -> None:
     """Apply delete-frozen live-test defaults.
 
@@ -20639,11 +20655,11 @@ def _apply_delete_frozen_live_test_defaults(args: argparse.Namespace, *, profile
 
 def _delete_frozen_live_test_operator_note(profile: str) -> str:
     return (
-        f"{profile} creates or reuses a run-scoped delete-frozen ChatGPT Project "
+        f"{profile} creates a fresh run-scoped delete-frozen ChatGPT Project "
         "by default. Whole-project deletion is disabled until a separately "
         "designed secure delete protocol exists; --keep-project is therefore "
-        "enforced. Operators may still provide --conversation-url or "
-        "--project-name explicitly."
+        "enforced. Operators may still provide --conversation-url to target an "
+        "exact existing conversation, or --project-name as a creation label only."
     )
 
 
@@ -20686,6 +20702,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
     test_project_name: str | None = None
     setup_result: dict[str, Any] | None = None
     cleanup_result: dict[str, Any] | None = None
+    project_setup_strategy = _live_test_project_setup_strategy(args)
     steps: list[dict[str, Any]] = []
 
     try:
@@ -20698,7 +20715,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                 getattr(args, "project_name", None)
                 or _bounded_generated_chatgpt_project_name(prefix, run_id)
             )
-            setup_result = await backend.ensure_project(
+            setup_result = await backend.create_project(
                 name=test_project_name,
                 icon=getattr(args, "project_icon", None),
                 color=getattr(args, "project_color", None),
@@ -20720,6 +20737,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     "debug_browser": True,
                     "service_transport_used": False,
                     "test_project_name": test_project_name,
+                    "test_project_setup_strategy": project_setup_strategy,
+                    "test_project_identity_source": "created_project_url",
                     "test_project_setup": setup_result,
                     "operator_note": _delete_frozen_live_test_operator_note("ask-live"),
                 }
@@ -20739,6 +20758,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     "version": f"v{CLI_VERSION}",
                     "run_id": run_id,
                     "test_project_name": test_project_name,
+                    "test_project_setup_strategy": project_setup_strategy,
+                    "test_project_identity_source": "created_project_url",
                     "test_project_setup": setup_result,
                 }
                 if args.json:
@@ -20881,6 +20902,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
             "cleanup_policy": getattr(args, "cleanup_policy", DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY),
         "test_project_name": test_project_name,
         "test_project_url": test_project_url,
+        "test_project_setup_strategy": project_setup_strategy,
+        "test_project_identity_source": "explicit_conversation_url" if explicit_conversation_url else "created_project_url",
         "test_project_created": test_project_created,
         "test_project_removed": test_project_removed,
         "test_project_kept": bool(getattr(args, "keep_project", False)),
@@ -21039,6 +21062,9 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     a plain chatgpt.com task.
     """
 
+    total_started_at = time.monotonic()
+    phase_timings: dict[str, Any] = {}
+
     run_id = _visual_artifact_roundtrip_run_id(getattr(args, "run_id", None))
     input_entry = Path(str(getattr(args, "input_entry", "input.txt") or "input.txt")).name or "input.txt"
     output_entry = Path(str(getattr(args, "expect_entry", "output.txt") or "output.txt")).name or "output.txt"
@@ -21048,6 +21074,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     if not output_filename.endswith(".zip"):
         output_filename += ".zip"
 
+    input_zip_started_at = time.monotonic()
     temp_root = Path(tempfile.mkdtemp(prefix="promptbranch_visual_artifact_roundtrip_"))
     input_zip = _create_visual_roundtrip_input_zip(
         run_id=run_id,
@@ -21055,6 +21082,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         input_content=input_content,
         work_dir=temp_root,
     )
+    phase_timings["input_zip_seconds"] = _elapsed_seconds_since(input_zip_started_at)
     prompt = _visual_artifact_roundtrip_prompt(
         run_id=run_id,
         input_entry=input_entry,
@@ -21074,6 +21102,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     test_project_name: str | None = None
     setup_result: dict[str, Any] | None = None
     cleanup_result: dict[str, Any] | None = None
+    project_setup_strategy = _live_test_project_setup_strategy(args)
     ask_result: Any = None
     answer_text: str | None = None
     conversation_url: str | None = None
@@ -21102,9 +21131,11 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     async def emit_failure(status: str, *, error: str | None = None, error_type: str | None = None, extra: dict[str, Any] | None = None) -> int:
         nonlocal cleanup_result, test_project_removed
         if test_project_created and not bool(getattr(args, "keep_project", False)) and not test_project_removed:
+            cleanup_started_at = time.monotonic()
             try:
                 cleanup_result = await backend.remove_project(keep_open=False)
                 test_project_removed = bool(cleanup_result.get("ok", True))
+                phase_timings["cleanup_seconds"] = _elapsed_seconds_since(cleanup_started_at)
             except Exception as exc:  # noqa: BLE001 - cleanup failure must be included in the emitted failure payload
                 cleanup_result = {
                     "ok": False,
@@ -21130,6 +21161,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
         "profile_lease": getattr(args, "profile_lease", None),
             "input_zip": str(input_zip),
+            "phase_timings": _phase_timings_with_total(phase_timings, total_started_at),
             "input_entry": input_entry,
             "input_content": input_content,
             "expected_output_filename": output_filename,
@@ -21146,6 +21178,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "cleanup_policy": getattr(args, "cleanup_policy", DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY),
             "test_project_name": test_project_name,
             "test_project_url": test_project_url,
+            "test_project_setup_strategy": project_setup_strategy,
+            "test_project_identity_source": "explicit_conversation_url" if explicit_conversation_url else "created_project_url",
             "test_project_created": test_project_created,
             "test_project_removed": test_project_removed,
             "test_project_kept": bool(getattr(args, "keep_project", False)),
@@ -21172,17 +21206,19 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         return 1
 
     try:
+        project_setup_started_at = time.monotonic()
         if explicit_conversation_url:
             test_project_url = project_home_url_from_url(explicit_conversation_url) or explicit_conversation_url
             test_project_name = "explicit-conversation-url"
             setattr(args, "conversation_url", explicit_conversation_url)
+            phase_timings["project_setup_seconds"] = _elapsed_seconds_since(project_setup_started_at)
         else:
             prefix = str(getattr(args, "project_name_prefix", None) or "visual-artifact-roundtrip-temp")
             test_project_name = str(
                 getattr(args, "project_name", None)
                 or _bounded_generated_chatgpt_project_name(prefix, run_id)
             )
-            setup_result = await backend.ensure_project(
+            setup_result = await backend.create_project(
                 name=test_project_name,
                 icon=getattr(args, "project_icon", None),
                 color=getattr(args, "project_color", None),
@@ -21190,6 +21226,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
                 keep_open=False,
             )
             if not setup_result.get("ok"):
+                phase_timings["project_setup_seconds"] = _elapsed_seconds_since(project_setup_started_at)
                 return await emit_failure(
                     "test_project_setup_failed",
                     error=str(setup_result.get("error") or setup_result.get("status") or "test project setup failed"),
@@ -21198,13 +21235,16 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             test_project_created = True
             test_project_url = setup_result.get("project_url") if isinstance(setup_result.get("project_url"), str) else None
             if not test_project_url:
+                phase_timings["project_setup_seconds"] = _elapsed_seconds_since(project_setup_started_at)
                 return await emit_failure(
                     "test_project_url_missing",
                     error="temporary project setup did not return project_url",
                     error_type="ProjectUrlMissing",
                 )
             setattr(args, "conversation_url", test_project_url)
+            phase_timings["project_setup_seconds"] = _elapsed_seconds_since(project_setup_started_at)
 
+        ask_started_at = time.monotonic()
         ask_result = await backend.ask(
             prompt=prompt,
             attachment_paths=[str(input_zip)],
@@ -21214,6 +21254,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             retries=getattr(args, "retries", None),
         )
         answer_text, conversation_url = _split_ask_response(ask_result)
+        phase_timings["ask_seconds"] = _elapsed_seconds_since(ask_started_at)
         if isinstance(ask_result, dict) and ask_result.get("ok") is False and not conversation_url:
             return await emit_failure(
                 "ask_failed",
@@ -21243,8 +21284,10 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
                 extra={"answer_text_length": len(str(answer_text or ""))},
             )
 
+        parse_started_at = time.monotonic()
         parsed = parse_promptbranch_reply(str(answer_text or ""))
         intake = _artifact_intake_from_parsed_answer(parsed, expected_filename=output_filename)
+        phase_timings["reply_parse_seconds"] = _elapsed_seconds_since(parse_started_at)
         conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
         answer_id = parsed.get("answer_id") or "answer_unknown"
         intake.update({
@@ -21256,6 +21299,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "source": "visual_artifact_roundtrip_ask_answer",
         })
 
+        download_started_at = time.monotonic()
         download = await _download_selected_artifact_candidate_via_browser(
             backend,
             intake,
@@ -21265,6 +21309,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
             keep_open=bool(getattr(args, "keep_open", False)),
         )
+        phase_timings["artifact_download_seconds"] = _elapsed_seconds_since(download_started_at)
+        verification_started_at = time.monotonic()
         verified = _verify_intake_smoke_zip_candidate(
             download,
             profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
@@ -21274,6 +21320,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             expected_content=output_content,
         )
         verified = _artifact_intake_no_state_mutation_flags(verified)
+        phase_timings["smoke_verify_seconds"] = _elapsed_seconds_since(verification_started_at)
     except Exception as exc:  # noqa: BLE001 - live browser test must report structured failures
         return await emit_failure(
             "ask_or_intake_failed",
@@ -21282,9 +21329,11 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         )
     finally:
         if test_project_created and not bool(getattr(args, "keep_project", False)) and not test_project_removed:
+            cleanup_started_at = time.monotonic()
             try:
                 cleanup_result = await backend.remove_project(keep_open=False)
                 test_project_removed = bool(cleanup_result.get("ok", True))
+                phase_timings["cleanup_seconds"] = _elapsed_seconds_since(cleanup_started_at)
             except Exception as exc:  # noqa: BLE001 - cleanup failure must be reported, not raised
                 cleanup_result = {
                     "ok": False,
@@ -21292,6 +21341,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
                     "error": str(exc),
                     "error_type": exc.__class__.__name__,
                 }
+                phase_timings["cleanup_seconds"] = _elapsed_seconds_since(cleanup_started_at)
         _restore_ask_live_state(backend, original_snapshot if isinstance(original_snapshot, dict) else {})
         if explicit_conversation_url:
             setattr(args, "conversation_url", explicit_conversation_url)
@@ -21321,6 +21371,7 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
         "profile_lease": getattr(args, "profile_lease", None),
         "input_zip": str(input_zip),
+        "phase_timings": _phase_timings_with_total(phase_timings, total_started_at),
         "input_entry": input_entry,
         "input_content": input_content,
         "expected_output_filename": output_filename,
@@ -21338,6 +21389,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "cleanup_policy": getattr(args, "cleanup_policy", DELETE_FROZEN_LIVE_TEST_CLEANUP_POLICY),
         "test_project_name": test_project_name,
         "test_project_url": test_project_url,
+        "test_project_setup_strategy": project_setup_strategy,
+        "test_project_identity_source": "explicit_conversation_url" if explicit_conversation_url else "created_project_url",
         "test_project_created": test_project_created,
         "test_project_removed": test_project_removed,
         "test_project_kept": bool(getattr(args, "keep_project", False)),
