@@ -13947,3 +13947,41 @@ def test_visual_artifact_roundtrip_downgrades_rate_limit_contaminated_success(mo
     assert payload["rate_limit_telemetry"]["rate_limit_modal_detected"] is True
     assert payload["rate_limit_telemetry"]["conversation_history_429_seen"] is True
     assert payload["artifact_intake"]["ok"] is True
+
+
+def test_merge_rate_limit_telemetry_deduplicates_carried_download_snapshot() -> None:
+    from promptbranch_cli import _merge_rate_limit_telemetry
+
+    browser_telemetry = {
+        "rate_limit_modal_detected": True,
+        "conversation_history_429_seen": True,
+        "backend_api_guardrail_seen": True,
+        "cooldown_wait_seconds_total": 120.0,
+        "cooldown_wait_count": 2,
+        "conversation_history_fetch_attempt_count": 0,
+        "conversation_history_fetch_skipped_count": 0,
+        "conversation_history_cooldown_skip_count": 0,
+        "navigation_noop_skip_count": 0,
+        "service_rate_limit_events": [
+            {"kind": "modal_ack_wait", "label": "initial-auth-check", "wait_seconds": 60.0},
+            {"kind": "modal_ack_wait", "label": "artifact-download-chat", "wait_seconds": 60.0},
+        ],
+    }
+    download_result = {
+        "status": "downloaded",
+        "download_transport": {
+            "browser_result": {"rate_limit_telemetry": browser_telemetry},
+        },
+    }
+    verified_result = {
+        **download_result,
+        "status": "smoke_zip_verified",
+        "ok": True,
+    }
+
+    merged = _merge_rate_limit_telemetry(download_result, verified_result)
+
+    assert merged["rate_limit_contaminated"] is True
+    assert merged["cooldown_wait_seconds_total"] == 120.0
+    assert merged["cooldown_wait_count"] == 2
+    assert len(merged["service_rate_limit_events"]) == 2
