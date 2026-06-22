@@ -13859,7 +13859,68 @@ def test_ask_live_downgrades_rate_limited_response(monkeypatch, capsys, tmp_path
     assert payload["rate_limit_telemetry"]["conversation_history_429_seen"] is True
 
 
-def test_visual_artifact_roundtrip_downgrades_rate_limit_contaminated_success(monkeypatch, capsys, tmp_path) -> None:
+
+def test_ask_live_marks_recovered_rate_limit_success(monkeypatch, capsys, tmp_path) -> None:
+    project_url = "https://chatgpt.com/g/g-p-55555555555555555555555555555555-ask-live-recovered/project"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, *, name, icon=None, color=None, memory_mode="project-only", keep_open=False):
+            return {"ok": True, "project_url": project_url, "name": name}
+
+        async def ensure_project(self, *args, **kwargs):
+            raise AssertionError("ask-live must not resolve by display name")
+
+        async def remove_project(self, *, keep_open=False):
+            raise AssertionError("delete-frozen ask-live should keep the created project")
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            assert conversation_url == project_url
+            token = re.search(r"ASK_LIVE_PLAIN_[A-Za-z0-9_]+", prompt).group(0)
+            return {
+                "ok": True,
+                "answer": token,
+                "conversation_url": conversation_url,
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": True,
+                    "conversation_history_429_seen": True,
+                    "backend_api_guardrail_seen": True,
+                    "cooldown_wait_seconds_total": 60.0,
+                    "cooldown_wait_count": 1,
+                    "service_rate_limit_events": [
+                        {"kind": "modal_detected", "status": 429},
+                        {"kind": "modal_acknowledged"},
+                        {"kind": "modal_ack_wait_satisfied_cooldown"},
+                    ],
+                },
+            }
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "ask-live",
+        "--json",
+        "--run-id", "RLRECOVERED",
+        "--only", "plain",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "verified_with_recovered_rate_limit"
+    assert payload["rate_limit_contaminated"] is True
+    assert payload["rate_limit_recovered"] is True
+    assert payload["failure_count"] == 0
+    assert payload["functional_failure_count"] == 0
+    assert payload["steps"][0]["status"] == "verified_with_recovered_rate_limit"
+    assert payload["steps"][0]["ok"] is True
+    assert payload["steps"][0]["contains_expected_sentinel"] is True
+
+
+def test_visual_artifact_roundtrip_marks_recovered_rate_limit_success(monkeypatch, capsys, tmp_path) -> None:
     output_zip = tmp_path / "pb_visual_artifact_roundtrip_RL.zip"
     with zipfile.ZipFile(output_zip, "w") as zf:
         zf.writestr("output.txt", "ZIP_OK")
@@ -13936,14 +13997,15 @@ def test_visual_artifact_roundtrip_downgrades_rate_limit_contaminated_success(mo
     ])
 
     payload = json.loads(capsys.readouterr().out)
-    assert rc == 1
-    assert payload["ok"] is False
-    assert payload["status"] == "rate_limited_contaminated"
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "verified_with_recovered_rate_limit"
     assert payload["functional_status"] == "verified"
     assert payload["verification_status"] == "smoke_zip_verified"
     assert payload["download_performed"] is True
     assert payload["verification_performed"] is True
     assert payload["rate_limit_contaminated"] is True
+    assert payload["rate_limit_recovered"] is True
     assert payload["rate_limit_telemetry"]["rate_limit_modal_detected"] is True
     assert payload["rate_limit_telemetry"]["conversation_history_429_seen"] is True
     assert payload["artifact_intake"]["ok"] is True
@@ -13985,3 +14047,33 @@ def test_merge_rate_limit_telemetry_deduplicates_carried_download_snapshot() -> 
     assert merged["cooldown_wait_seconds_total"] == 120.0
     assert merged["cooldown_wait_count"] == 2
     assert len(merged["service_rate_limit_events"]) == 2
+
+
+def test_rate_limit_recovery_requires_cooldown_or_ack_wait_satisfaction() -> None:
+    from promptbranch_cli import _rate_limit_telemetry_recovered
+
+    unrecovered = {
+        "rate_limit_modal_detected": True,
+        "conversation_history_429_seen": True,
+        "backend_api_guardrail_seen": True,
+        "cooldown_wait_seconds_total": 0.0,
+        "cooldown_wait_count": 0,
+        "service_rate_limit_events": [{"kind": "modal_detected"}],
+    }
+    assert _rate_limit_telemetry_recovered(unrecovered) is False
+
+    recovered_by_cooldown = {
+        **unrecovered,
+        "cooldown_wait_seconds_total": 60.0,
+        "cooldown_wait_count": 1,
+    }
+    assert _rate_limit_telemetry_recovered(recovered_by_cooldown) is True
+
+    recovered_by_modal_ack = {
+        **unrecovered,
+        "service_rate_limit_events": [
+            {"kind": "modal_acknowledged"},
+            {"kind": "modal_ack_wait_satisfied_cooldown"},
+        ],
+    }
+    assert _rate_limit_telemetry_recovered(recovered_by_modal_ack) is True

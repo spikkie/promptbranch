@@ -253,3 +253,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.3 repair status
 
 `v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. It deduplicates event-backed telemetry snapshots so browser download telemetry carried into smoke-verification results is not counted twice. The `rate_limited_contaminated` non-clean classification from `v0.1.84.5.2` is preserved.
+
+
+## v0.1.84.5.4 repair DoD note
+
+`v0.1.84.5.4` adds the recovered-rate-limit continuation invariant: when ChatGPT 429 telemetry is acknowledged and cooldown-waited inside the live browser operation and the sentinel/artifact verification succeeds, the test reports `verified_with_recovered_rate_limit` with `ok=true`; unrecovered 429 evidence remains non-clean.

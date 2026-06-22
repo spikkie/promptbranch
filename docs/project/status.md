@@ -382,3 +382,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.3 repair status
 
 `v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. `v0.1.84.5.2` already made otherwise functional 429-contaminated live-test runs non-clean; this repair keeps that classification unchanged while deduplicating repeated browser download telemetry carried through both the download result and smoke-verification artifact-intake result. Top-level `cooldown_wait_seconds_total`, `cooldown_wait_count`, and `service_rate_limit_events` now represent unique event-backed telemetry snapshots instead of double-counting carried payloads. Project deletion, direct-create test Project identity, `/v1/ask` telemetry propagation, Project Source, artifact adoption/current, ledger/write/orchestration, deployment, and model-execution scope do not advance.
+
+
+## v0.1.84.5.4 repair candidate status
+
+`v0.1.84.5.4` repairs recovered ChatGPT 429 live-test classification only. Functionally verified `ask-live` and `visual-artifact-roundtrip` runs with acknowledged/waited 429 telemetry now return `verified_with_recovered_rate_limit` and `ok=true`, so release-control can continue the same browser operation instead of retrying the whole step. Unrecovered 429 telemetry still fails closed. No project deletion, ledger/write, Project Source, artifact adoption/current, deployment, or model-execution scope advances.
