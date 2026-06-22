@@ -185,3 +185,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.3 repair status
 
 `v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. `v0.1.84.5.2` remains functionally correct for downgrade behavior; this repair deduplicates repeated event-backed telemetry snapshots from visual artifact download/smoke-verification result carrying so top-level wait/event totals are reliable. It does not change Project deletion, Project creation identity, `/v1/ask` telemetry propagation, non-clean 429 classification, Project Source, artifact adoption/current, ledger/write/orchestration, deployment, or model-execution scope.
+
+
+## v0.1.84.5.4 decision — recovered 429 is warning, not retry failure
+
+A ChatGPT 429 modal or history 429 observed during live tests is release-blocking only if it is unrecovered or functional verification fails. If Promptbranch clicks `Got it`, waits/consumes cooldown, keeps the browser operation alive, and the sentinel/artifact proof passes, the live test reports `verified_with_recovered_rate_limit` and returns success while preserving telemetry.

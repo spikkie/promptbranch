@@ -184,3 +184,6 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 `v0.1.84.5.3` repairs rate-limit telemetry aggregation evidence only. `v0.1.84.5.2` remains functionally correct for downgrade behavior; this repair deduplicates repeated event-backed telemetry snapshots from visual artifact download/smoke-verification result carrying so top-level wait/event totals are reliable. It does not change Project deletion, Project creation identity, `/v1/ask` telemetry propagation, non-clean 429 classification, Project Source, artifact adoption/current, ledger/write/orchestration, deployment, or model-execution scope.
 
 | v0.1.84.5.3 | repair | Rate-limit telemetry aggregation deduplication | candidate | focused helper/CLI tests, py_compile, project-control/version tests, artifact guard before operator install | DOD-091 focused; v0.1.84.5.2 downgrade semantics preserved | pending adoption evidence |
+
+
+| v0.1.84.5.4 | repair | Recovered 429 live-test continuation policy | candidate | focused rate-limit/visual/ask-live tests, version/control-surface tests, compileall, shell syntax, artifact guard before operator install | no slice advanced | pending adoption evidence |
