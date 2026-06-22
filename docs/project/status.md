@@ -5,7 +5,7 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
 accepted version: v0.1.79
-active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.5.1.zip
+active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.5.2.zip
 next normal target: deferred until focused-candidate promotion gate
 ```
 
@@ -16,15 +16,15 @@ MVP status: active
 DoD status: in_progress
 last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
 active plan slice: v0.1.84 — Accepted-event ledger validation command
-active repair: v0.1.84.5.1 — live-test Project identity and visual timing
+active repair: v0.1.84.5.2 — live-test 429 telemetry propagation and contamination classification
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.5.1.zip repair candidate once packaged
-release status: v0.1.80-v0.1.84.5.1 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.5.2.zip repair candidate once packaged
+release status: v0.1.80-v0.1.84.5.2 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
 ```
 
 ## Current risks
@@ -37,8 +37,8 @@ release status: v0.1.80-v0.1.84.5.1 are focused/repair candidates only; accepted
 
 ## Current blockers
 
-- `v0.1.84.5.1` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
-- `v0.1.84.5.1` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
+- `v0.1.84.5.2` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
+- `v0.1.84.5.2` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
 - No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, artifact adoption behavior change, or ChatGPT Project deletion behavior change is allowed in this repair.
 
 ## Current unknowns
@@ -50,13 +50,13 @@ release status: v0.1.80-v0.1.84.5.1 are focused/repair candidates only; accepted
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.84.5.1.zip, then rerun `pb test ask-live --json --only plain,prompt_file` and `pb test visual-artifact-roundtrip --json` before another full all-tests/adoption gate.
+Install chatgpt_claudecode_workflow-2_v0.1.84.5.2.zip, then rerun `pb test ask-live --json --only plain,prompt_file` and `pb test visual-artifact-roundtrip --json` to verify rate-limit telemetry classification before another full all-tests/adoption gate.
 ```
 
 ## Last updated
 
 ```text
-v0.1.84.5.1 repair candidate build
+v0.1.84.5.2 repair candidate build
 ```
 
 
@@ -373,3 +373,7 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.1 repair status
 
 `v0.1.84.5.1` repairs live-test Project identity and visual-roundtrip timing evidence only. `ask-live`, `visual-artifact-roundtrip`, and `release-live` now create a fresh Project with `create_project()` for mutation-capable default/`--project-name` test setup and carry the returned Project URL/id forward; they do not resolve by non-unique ChatGPT Project display name. `--conversation-url` remains the exact existing-target bypass. `pb test visual-artifact-roundtrip --json` now includes `phase_timings` for input ZIP creation, Project setup, ask, reply parse, artifact download, smoke verification, cleanup when applicable, and total elapsed time. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
+
+## v0.1.84.5.2 repair status
+
+`v0.1.84.5.2` repairs live-test 429 telemetry propagation and non-clean validation classification only. `/v1/ask` now preserves browser-service `rate_limit_telemetry`; `pb test ask-live --json` and `pb test visual-artifact-roundtrip --json` surface rate-limit telemetry; otherwise functional live-test runs that observe backend/history `429` or ChatGPT rate-limit modal telemetry now report `status=rate_limited_contaminated` and `ok=false` instead of clean `verified`. Functional artifact evidence remains visible through `functional_status`, `verification_status`, and artifact-intake details. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.

@@ -218,6 +218,7 @@ Acceptance criteria:
 
 | DOD-088 | Delete-frozen live/browser tests use a fresh run-scoped ChatGPT Project by default for each validation run while still enforcing keep-project and preserving the project-deletion freeze | focused | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, focused parser/CLI/release-control shell tests, `docs/repair-v0.1.84.1.md` | v0.1.84.1 |
 | DOD-089 | Mutation-capable delete-frozen live tests create fresh Projects directly and do not resolve target Projects by non-unique display name | focused | `promptbranch_cli.py`, `tests/test_promptbranch_cli.py`, `docs/repair-v0.1.84.5.1.md` | v0.1.84.5.1 |
+| DOD-090 | Live-test backend/history `429` and rate-limit modal telemetry is propagated through `/v1/ask` and classified as non-clean validation for ask-live and visual artifact roundtrip | focused | `promptbranch_container_api.py`, `promptbranch_cli.py`, `tests/test_promptbranch_container_api.py`, `tests/test_promptbranch_cli.py`, `docs/repair-v0.1.84.5.2.md` | v0.1.84.5.2 |
 
 
 ## v0.1.84.2 repair note
@@ -242,3 +243,7 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.1 repair status
 
 `v0.1.84.5.1` repairs live-test Project identity and visual-roundtrip timing evidence only. `ask-live`, `visual-artifact-roundtrip`, and `release-live` now create a fresh Project with `create_project()` for mutation-capable default/`--project-name` test setup and carry the returned Project URL/id forward; they do not resolve by non-unique ChatGPT Project display name. `--conversation-url` remains the exact existing-target bypass. `pb test visual-artifact-roundtrip --json` now includes `phase_timings` for input ZIP creation, Project setup, ask, reply parse, artifact download, smoke verification, cleanup when applicable, and total elapsed time. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
+
+## v0.1.84.5.2 repair status
+
+`v0.1.84.5.2` repairs live-test 429 telemetry propagation and non-clean validation classification only. `/v1/ask` now preserves browser-service `rate_limit_telemetry`; `pb test ask-live --json` and `pb test visual-artifact-roundtrip --json` surface rate-limit telemetry; otherwise functional live-test runs that observe backend/history `429` or ChatGPT rate-limit modal telemetry now report `status=rate_limited_contaminated` and `ok=false` instead of clean `verified`. Functional artifact evidence remains visible through `functional_status`, `verification_status`, and artifact-intake details. Project deletion remains frozen; ledger/write/orchestration, Project Source, artifact adoption/current, deployment, and model-execution scope do not advance.
