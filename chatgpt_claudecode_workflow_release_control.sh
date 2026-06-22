@@ -758,6 +758,8 @@ live_profile_preflight_json="${release_log_dir}/pb_test.live_profile_preflight.$
 live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_preflight.${ver}.log"
 run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver}.log"
 run_all_shared_project_url=""
+run_all_browser_service_recovery_count=0
+run_all_live_preflight_retried_after_service_recovery=0
 ask_live_log="${release_log_dir}/pb_test.ask_live.${ver}.log"
 visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundtrip.${ver}.log"
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
@@ -2310,6 +2312,61 @@ raise SystemExit(1)
 INNERPY
 }
 
+
+run_all_log_has_browser_read_timeout() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import re
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+patterns = [
+    r"\bReadTimeout\b",
+    r"service_client_read_timeout",
+    r"The browser service may still finish after the CLI timed out",
+]
+raise SystemExit(0 if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns) else 1)
+INNERPY
+}
+
+run_all_recover_service_after_browser_read_timeout() {
+  local context="$1"
+  local log_path="$2"
+  [[ ${run_all_tests} -eq 1 ]] || return 0
+  run_all_log_has_browser_read_timeout "${log_path}" || return 0
+
+  echo "WARN: browser ReadTimeout detected for ${context}; release-control will recover the Promptbranch service before the next browser-backed phase." >&2
+  echo "recovery_reason: browser_read_timeout" >> "${log_path}"
+  echo "recovery_context: ${context}" >> "${log_path}"
+
+  if [[ ${skip_service} -eq 1 ]]; then
+    echo "WARN: service recovery skipped for ${context} because --skip-service/tests-only is active." >&2
+    echo "service_recovery: skipped_skip_service" >> "${log_path}"
+    return 0
+  fi
+  if [[ "${service_mode}" != "detached" ]]; then
+    echo "WARN: service recovery skipped for ${context} because service_mode=${service_mode}; detached mode is required for bounded automatic restart." >&2
+    echo "service_recovery: skipped_non_detached_service_mode" >> "${log_path}"
+    return 0
+  fi
+
+  run_all_browser_service_recovery_count=$((run_all_browser_service_recovery_count + 1))
+  echo "== Promptbranch service recovery after browser ReadTimeout: ${context} ==" | tee -a "${service_start_log}"
+  echo "recovery_count: ${run_all_browser_service_recovery_count}" | tee -a "${service_start_log}"
+  echo "source_log: ${log_path}" | tee -a "${service_start_log}"
+  if deploy_promptbranch_service_detached; then
+    echo "service_recovery: restarted_after_browser_read_timeout" >> "${log_path}"
+    return 0
+  fi
+  echo "ERROR: service recovery failed after browser ReadTimeout for ${context}." >&2
+  echo "service_recovery: failed" >> "${log_path}"
+  workflow_rc=1
+  return 1
+}
+
 run_all_rate_limit_cooldown_sleep() {
   local step_name="$1"
   local log_path="$2"
@@ -2429,6 +2486,9 @@ run_full_test_transport() {
   write_structured_full_test_summary "${selected_summary_json}" "${selected_report_json}" "${selected_full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
   if [[ ${run_all_tests} -eq 1 ]]; then
     record_all_test_step "full_${label}" "${selected_summary_json}" "${test_rc}"
+    if [[ ${test_rc} -ne 0 ]]; then
+      run_all_recover_service_after_browser_read_timeout "full_${label}" "${selected_full_log}" || true
+    fi
   fi
 
   if [[ ${adopt_if_green} -eq 1 ]]; then
@@ -2719,6 +2779,15 @@ run_all_live_profile_preflight() {
   echo "+ pb --profile-dir ${live_profile_seed_dir} login-check 2>&1 | tee ${live_profile_preflight_raw_log}"
   pb --profile-dir "${live_profile_seed_dir}" login-check 2>&1 | tee "${live_profile_preflight_raw_log}"
   rc=${PIPESTATUS[0]}
+  if [[ ${rc} -ne 0 && ${run_all_live_preflight_retried_after_service_recovery} -eq 0 ]] && run_all_log_has_browser_read_timeout "${live_profile_preflight_raw_log}"; then
+    run_all_live_preflight_retried_after_service_recovery=1
+    if run_all_recover_service_after_browser_read_timeout "live_profile_preflight" "${live_profile_preflight_raw_log}"; then
+      echo "== pb test-all step: live_profile_preflight retry after service recovery ==" | tee -a "${live_profile_preflight_raw_log}"
+      echo "+ pb --profile-dir ${live_profile_seed_dir} login-check 2>&1 | tee -a ${live_profile_preflight_raw_log}"
+      pb --profile-dir "${live_profile_seed_dir}" login-check 2>&1 | tee -a "${live_profile_preflight_raw_log}"
+      rc=${PIPESTATUS[0]}
+    fi
+  fi
   if [[ ${rc} -eq 0 ]]; then
     write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified" "true" "0" "${live_profile_preflight_raw_log}"
   else

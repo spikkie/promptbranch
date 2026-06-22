@@ -1112,3 +1112,7 @@ Repair only: suppress release-control retries for recovered 429 telemetry after 
 ## v0.1.84.5.7 repair note
 
 `v0.1.84.5.7` repairs the shared live Project ensure command introduced in `v0.1.84.5.6`. Release-control `--run-all-tests` now uses the supported top-level `pb project-ensure` command to create or resolve one run-scoped ChatGPT Project, extracts the returned Project URL, and passes that exact URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This preserves the one-Project-per-full-test-run policy without calling the unsupported nested `pb project ensure` surface. No project deletion, ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.
+
+## v0.1.84.5.8 repair plan entry
+
+Repair only: add bounded Promptbranch service recovery after browser-backed `ReadTimeout` evidence during `--run-all-tests`, before continuing to the next browser-backed release-control phase. Preserve original full-test failures, retry `live_profile_preflight` at most once after recovery, and keep project deletion, ledger writes, Project Source mutation, adoption/current semantics, deployment, and model execution out of scope.

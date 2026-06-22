@@ -466,3 +466,7 @@ No migration is required. The repair changes release-control classification/retr
 ## v0.1.84.5.7 repair note
 
 `v0.1.84.5.7` repairs the shared live Project ensure command introduced in `v0.1.84.5.6`. Release-control `--run-all-tests` now uses the supported top-level `pb project-ensure` command to create or resolve one run-scoped ChatGPT Project, extracts the returned Project URL, and passes that exact URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This preserves the one-Project-per-full-test-run policy without calling the unsupported nested `pb project ensure` surface. No project deletion, ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.
+
+## v0.1.84.5.8 migration note
+
+No user data migration is required. Operators should rerun release-control with `v0.1.84.5.8` when validating the `v0.1.84.5.x` repair line. The repair adds bounded service recovery after browser-backed `ReadTimeout` evidence in run-all logs before continuing to later browser-backed phases. Project deletion remains frozen, and no ledger, Project Source, artifact adoption/current, deployment, or model-execution migration is performed.

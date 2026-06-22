@@ -1857,6 +1857,155 @@ def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_
     assert "WARN: rate-limit evidence detected for ask_live" not in result.stdout
 
 
+def test_release_control_declares_browser_read_timeout_service_recovery() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "run_all_log_has_browser_read_timeout" in script
+    assert "run_all_recover_service_after_browser_read_timeout" in script
+    assert "service_client_read_timeout" in script
+    assert "The browser service may still finish after the CLI timed out" in script
+    assert "release-control will recover the Promptbranch service before the next browser-backed phase" in script
+    assert "live_profile_preflight retry after service recovery" in script
+
+
+def test_release_control_retries_live_preflight_once_after_browser_read_timeout(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.12\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    login_counter = tmp_path / "login_counter"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then n=$(cat \"$PB_FAKE_LOGIN_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_LOGIN_COUNTER\"; if [[ $n -eq 1 ]]; then echo 'service_client_read_timeout: timed out'; echo 'The browser service may still finish after the CLI timed out.'; exit 42; fi; echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.12\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PB_FAKE_LOGIN_COUNTER"] = str(login_counter)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-live-preflight-recovery.log"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.12"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.12"
+    summary = json.loads((log_dir / "pb_test.all.v9.9.12.summary.json").read_text(encoding="utf-8"))
+    preflight_log = (log_dir / "pb_test.live_profile_preflight.v9.9.12.log").read_text(encoding="utf-8")
+    calls_text = calls.read_text(encoding="utf-8")
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    preflight_step = next(step for step in summary["steps"] if step["name"] == "live_profile_preflight")
+    assert preflight_step["ok"] is True
+    assert preflight_step["status"] == "verified"
+    assert login_counter.read_text(encoding="utf-8").strip() == "2"
+    assert "live_profile_preflight retry after service recovery" in preflight_log
+    assert "service_recovery: skipped_skip_service" in preflight_log
+    assert calls_text.count("pb --profile-dir ./.pb_profile_local_debug login-check") == 2
+    assert "browser ReadTimeout detected for live_profile_preflight" in result.stdout + result.stderr
+
+
+def test_release_control_marks_full_transport_read_timeout_for_service_recovery(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.13\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    full_counter = tmp_path / "full_counter"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then n=$(cat \"$PB_FAKE_FULL_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_FULL_COUNTER\"; if [[ $n -eq 1 ]]; then echo '{\"ok\": false, \"section\": \"browser\", \"name\": \"ask_question\", \"status\": \"ReadTimeout\", \"diagnostic\": \"timed out\"}'; exit 42; fi; echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.13\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PB_FAKE_FULL_COUNTER"] = str(full_counter)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-full-timeout-recovery.log"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.13"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.13"
+    summary = json.loads((log_dir / "pb_test.all.v9.9.13.summary.json").read_text(encoding="utf-8"))
+    direct_log = (log_dir / "pb_test.full.direct.v9.9.13.log").read_text(encoding="utf-8")
+    assert summary["ok"] is False
+    assert summary["final_verdict"] == "FIX"
+    direct_step = next(step for step in summary["steps"] if step["name"] == "full_direct")
+    assert direct_step["ok"] is False
+    assert "recovery_reason: browser_read_timeout" in direct_log
+    assert "service_recovery: skipped_skip_service" in direct_log
+    assert "browser ReadTimeout detected for full_direct" in result.stdout + result.stderr
+    assert calls.read_text(encoding="utf-8").count("pb test full") == 2
+
 def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "smoke-pb-ask-prompt-file.sh"
