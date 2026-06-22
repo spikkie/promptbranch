@@ -756,6 +756,8 @@ service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid
 all_tests_summary_json="${release_log_dir}/pb_test.all.${ver}.summary.json"
 live_profile_preflight_json="${release_log_dir}/pb_test.live_profile_preflight.${ver}.json"
 live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_preflight.${ver}.log"
+run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver}.log"
+run_all_shared_project_url=""
 ask_live_log="${release_log_dir}/pb_test.ask_live.${ver}.log"
 visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundtrip.${ver}.log"
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
@@ -2150,6 +2152,7 @@ path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
 
 # Strict evidence only. Do not match generic diagnostic prose such as
+# literal status=429 evidence remains retryable unless recovered in-place.
 # "No ChatGPT rate-limit evidence observed" or variable names by themselves.
 strict_patterns = [
     r"Too many requests",
@@ -2194,6 +2197,114 @@ for idx, char in enumerate(text):
             raise SystemExit(0)
         nested_events = summary.get("service_rate_limit_events")
         if isinstance(nested_events, list) and nested_events:
+            raise SystemExit(0)
+raise SystemExit(1)
+INNERPY
+}
+
+
+run_all_log_has_recovered_rate_limit_success() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+
+def iter_json_objects(raw: str):
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(raw[idx:])
+        except Exception:
+            continue
+        if isinstance(value, dict):
+            yield value
+
+def walk_dicts(value):
+    if isinstance(value, dict):
+        yield value
+        for item in value.values():
+            yield from walk_dicts(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from walk_dicts(item)
+
+def telemetry_has_acknowledged_cooldown(telemetry: dict) -> bool:
+    events = telemetry.get("service_rate_limit_events")
+    if not isinstance(events, list):
+        events = []
+    kinds = {str(event.get("kind") or "") for event in events if isinstance(event, dict)}
+    if {"modal_acknowledged", "modal_ack_wait_satisfied_cooldown"}.issubset(kinds):
+        return True
+    if {"modal_acknowledged", "cooldown_wait_satisfied_by_modal_ack_wait"}.issubset(kinds):
+        return True
+    if telemetry.get("modal_acknowledged") is True and float(telemetry.get("cooldown_wait_seconds_total") or 0.0) > 0:
+        return True
+    return False
+
+def has_recovered_rate_limit_payload(payload: dict) -> bool:
+    # New clean policy: command itself marks recovered 429 as successful.
+    if payload.get("ok") is True and payload.get("status") == "verified_with_recovered_rate_limit":
+        return True
+
+    status = str(payload.get("status") or "")
+    functional_status = str(payload.get("functional_status") or "")
+    if status not in {"rate_limited_contaminated", "verified_with_recovered_rate_limit"}:
+        return False
+    if functional_status and functional_status != "verified":
+        return False
+
+    # ask-live aggregate in older candidates: each child step is functionally verified,
+    # but ok=false/failure_count>0 only because rate-limit contamination was still
+    # release-blocking.
+    if payload.get("action") == "test_ask_live":
+        try:
+            functional_failure_count = int(payload.get("functional_failure_count") or 0)
+        except Exception:
+            functional_failure_count = 999
+        if functional_failure_count != 0:
+            return False
+        steps = payload.get("steps")
+        if isinstance(steps, list) and steps:
+            for step in steps:
+                if not isinstance(step, dict):
+                    return False
+                if str(step.get("functional_status") or "") != "verified":
+                    return False
+                if step.get("contains_expected_sentinel") is not True:
+                    return False
+        else:
+            return False
+    elif payload.get("action") == "test_visual_artifact_roundtrip":
+        if functional_status != "verified":
+            return False
+        if payload.get("verification_status") != "smoke_zip_verified":
+            return False
+        if payload.get("download_status") not in {"downloaded", "already_downloaded"}:
+            return False
+    elif payload.get("action") == "test_release_live":
+        if functional_status and functional_status != "verified":
+            return False
+    else:
+        return False
+
+    telemetry = payload.get("rate_limit_telemetry")
+    return isinstance(telemetry, dict) and telemetry_has_acknowledged_cooldown(telemetry)
+
+for obj in iter_json_objects(text):
+    if has_recovered_rate_limit_payload(obj):
+        raise SystemExit(0)
+    for nested in walk_dicts(obj):
+        if nested is obj:
+            continue
+        if has_recovered_rate_limit_payload(nested):
             raise SystemExit(0)
 raise SystemExit(1)
 INNERPY
@@ -2289,7 +2400,10 @@ run_full_test_transport() {
 ' "${selected_full_log}"
   CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
-  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
+  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_recovered_rate_limit_success "${selected_full_log}"; then
+    echo "WARN: recovered rate-limit evidence detected for full_${label}; functional verification passed, so release-control will not retry the whole step." | tee -a "${selected_full_log}" >&2
+    test_rc=0
+  elif [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
     run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"
     echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
     printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
@@ -2348,6 +2462,10 @@ run_all_json_step() {
   echo "+ $* 2>&1 | tee -a ${step_log}"
   "$@" 2>&1 | tee -a "${step_log}"
   step_rc=${PIPESTATUS[0]}
+  if [[ ${step_rc} -ne 0 ]] && run_all_log_has_recovered_rate_limit_success "${step_log}"; then
+    echo "WARN: recovered rate-limit evidence detected for ${step_name}; functional verification passed, so release-control will not retry the whole step." | tee -a "${step_log}" >&2
+    step_rc=0
+  fi
   while [[ ${step_rc} -ne 0 && ${attempt} -lt ${run_all_rate_limit_retries} ]] && run_all_log_has_rate_limit_evidence "${step_log}"; do
     attempt=$((attempt + 1))
     run_all_rate_limit_cooldown_sleep "${step_name}" "${step_log}"
@@ -2355,6 +2473,11 @@ run_all_json_step() {
     echo "+ $* 2>&1 | tee -a ${step_log}"
     "$@" 2>&1 | tee -a "${step_log}"
     step_rc=${PIPESTATUS[0]}
+    if [[ ${step_rc} -ne 0 ]] && run_all_log_has_recovered_rate_limit_success "${step_log}"; then
+      echo "WARN: recovered rate-limit evidence detected for ${step_name}; functional verification passed after attempt=${attempt}, so release-control will not retry again." | tee -a "${step_log}" >&2
+      step_rc=0
+      break
+    fi
   done
   if [[ ${step_rc} -ne 0 ]]; then
     echo "WARN: test-all step ${step_name} exited with ${step_rc}; continuing." >&2
@@ -2418,6 +2541,33 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
         return candidates[-1], None
     return {}, f"no top-level Promptbranch JSON object found in {path}"
 
+def payload_recovered_rate_limit_success(payload: dict) -> bool:
+    if payload.get("ok") is True and payload.get("status") == "verified_with_recovered_rate_limit":
+        return True
+    status = payload.get("status")
+    if status != "rate_limited_contaminated":
+        return False
+    telemetry = payload.get("rate_limit_telemetry") if isinstance(payload.get("rate_limit_telemetry"), dict) else {}
+    events = telemetry.get("service_rate_limit_events") if isinstance(telemetry.get("service_rate_limit_events"), list) else []
+    kinds = {str(event.get("kind") or "") for event in events if isinstance(event, dict)}
+    recovered = "modal_acknowledged" in kinds and ("modal_ack_wait_satisfied_cooldown" in kinds or "cooldown_wait_satisfied_by_modal_ack_wait" in kinds)
+    if not recovered:
+        return False
+    if payload.get("action") == "test_ask_live":
+        try:
+            if int(payload.get("functional_failure_count") or 0) != 0:
+                return False
+        except Exception:
+            return False
+        steps = payload.get("steps")
+        return isinstance(steps, list) and bool(steps) and all(
+            isinstance(step, dict) and step.get("functional_status") == "verified" and step.get("contains_expected_sentinel") is True
+            for step in steps
+        )
+    if payload.get("action") == "test_visual_artifact_roundtrip":
+        return payload.get("functional_status") == "verified" and payload.get("verification_status") == "smoke_zip_verified"
+    return False
+
 steps = []
 for item in raw_steps:
     name, log, rc_text = item.split("|", 2)
@@ -2427,8 +2577,11 @@ for item in raw_steps:
         rc = int(rc_text)
     except Exception:
         rc = 99
-    ok = rc == 0 and payload.get("ok") is True and error is None
+    recovered_rate_limit_success = payload_recovered_rate_limit_success(payload)
+    ok = ((rc == 0 and payload.get("ok") is True) or recovered_rate_limit_success) and error is None
     status = payload.get("status") or ("passed" if ok else "failed")
+    if recovered_rate_limit_success and status == "rate_limited_contaminated":
+        status = "verified_with_recovered_rate_limit"
     if name == "artifact_guard":
         ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
         status = payload.get("status") or status
@@ -2442,6 +2595,7 @@ for item in raw_steps:
         "action": payload.get("action"),
         "profile": payload.get("profile"),
         "failure_count": payload.get("failure_count"),
+        "recovered_rate_limit_success": recovered_rate_limit_success,
         "download_status": payload.get("download_status"),
         "verification_status": payload.get("verification_status"),
     })
@@ -2583,6 +2737,59 @@ record_all_test_skipped_step() {
   workflow_rc=78
 }
 
+run_all_extract_project_url_from_log() {
+  local log_path="$1"
+  python3 - "$log_path" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+raw = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+decoder = json.JSONDecoder()
+last = None
+for idx, char in enumerate(raw):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(raw[idx:])
+    except Exception:
+        continue
+    if isinstance(value, dict):
+        last = value
+if not isinstance(last, dict) or last.get("ok") is not True:
+    raise SystemExit(1)
+url = last.get("project_url") or last.get("resolved_project_home_url") or last.get("project_home_url")
+if not isinstance(url, str) or not url:
+    raise SystemExit(2)
+print(url)
+INNERPY
+}
+
+run_all_ensure_shared_live_project() {
+  local rc=0
+  echo "== pb test-all step: live_project_ensure =="
+  echo "release_test_project_name: ${release_test_project_name}"
+  echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
+  : > "${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_seed_dir} project ensure ${release_test_project_name} --memory-mode project-only --keep-open --json 2>&1 | tee -a ${run_all_project_ensure_log}"
+  pb --profile-dir "${live_profile_seed_dir}" project ensure "${release_test_project_name}" --memory-mode project-only --keep-open --json 2>&1 | tee -a "${run_all_project_ensure_log}"
+  rc=${PIPESTATUS[0]}
+  if [[ ${rc} -eq 0 ]]; then
+    if run_all_shared_project_url="$(run_all_extract_project_url_from_log "${run_all_project_ensure_log}")"; then
+      echo "shared_live_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
+    else
+      echo "WARN: live_project_ensure did not return a project URL." | tee -a "${run_all_project_ensure_log}" >&2
+      rc=1
+    fi
+  fi
+  if [[ ${rc} -ne 0 ]]; then
+    echo "WARN: live_project_ensure failed with ${rc}; live browser steps will be skipped." >&2
+    workflow_rc=${rc}
+  fi
+  record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" "${rc}"
+  return ${rc}
+}
+
 run_all_finalize_summary() {
   run_all_finalize_summary
 }
@@ -2599,10 +2806,17 @@ run_all_live_validation_steps() {
   echo "cleanup_policy: unique_project_delete_frozen_retained"
 
   if run_all_live_profile_preflight; then
-    run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
-    run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
-    run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --project-name "${release_test_project_name}" --keep-project --json
+    if run_all_ensure_shared_live_project; then
+      run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
+    else
+      record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
+      record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"
+      record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
+    fi
   else
+    record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
     record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
     record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
     record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"

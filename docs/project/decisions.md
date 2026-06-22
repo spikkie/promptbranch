@@ -190,3 +190,12 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.4 decision — recovered 429 is warning, not retry failure
 
 A ChatGPT 429 modal or history 429 observed during live tests is release-blocking only if it is unrecovered or functional verification fails. If Promptbranch clicks `Got it`, waits/consumes cooldown, keeps the browser operation alive, and the sentinel/artifact proof passes, the live test reports `verified_with_recovered_rate_limit` and returns success while preserving telemetry.
+
+
+## Decision — recovered 429 is a warning, not a replay trigger
+
+If browser automation acknowledges ChatGPT's rate-limit modal, satisfies cooldown, continues in the same browser operation, and the functional assertion passes, release-control must preserve telemetry but must not retry the entire step solely because the log still contains 429 evidence.
+
+## v0.1.84.5.6 repair note
+
+`v0.1.84.5.6` repairs release-control `--run-all-tests` live Project reuse on top of `v0.1.84.5.5`. The run-all live phase now ensures one run-scoped ChatGPT Project once after live profile preflight and passes the returned Project URL to `ask-live`, `visual-artifact-roundtrip`, and `release-live` with `--conversation-url`. This prevents every live subtest from creating a separate retained Project while preserving delete-frozen safety, 50-character Project name caps, project-create recovery, recovered 429 retry suppression, and visual artifact reply-envelope hardening. No ledger/write/orchestration, Project Source mutation, artifact adoption/current, deployment, or model-execution scope advances.
