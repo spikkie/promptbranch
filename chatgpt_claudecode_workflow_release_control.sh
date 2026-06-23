@@ -2698,17 +2698,31 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
     return {}, f"no top-level Promptbranch JSON object found in {path}"
 
 def payload_recovered_rate_limit_success(payload: dict) -> bool:
-    if payload.get("ok") is True and payload.get("status") == "verified_with_recovered_rate_limit":
-        return True
-    status = payload.get("status")
-    if status != "rate_limited_contaminated":
+    def telemetry_has_acknowledged_cooldown(telemetry: dict) -> bool:
+        events = telemetry.get("service_rate_limit_events")
+        if not isinstance(events, list):
+            events = []
+        kinds = {str(event.get("kind") or "") for event in events if isinstance(event, dict)}
+        if {"modal_acknowledged", "modal_ack_wait_satisfied_cooldown"}.issubset(kinds):
+            return True
+        if {"modal_acknowledged", "cooldown_wait_satisfied_by_modal_ack_wait"}.issubset(kinds):
+            return True
+        if telemetry.get("modal_acknowledged") is True and float(telemetry.get("cooldown_wait_seconds_total") or 0.0) > 0:
+            return True
         return False
+
+    status = str(payload.get("status") or "")
+    if status not in {"rate_limited_contaminated", "verified_with_recovered_rate_limit"}:
+        return False
+
     telemetry = payload.get("rate_limit_telemetry") if isinstance(payload.get("rate_limit_telemetry"), dict) else {}
-    events = telemetry.get("service_rate_limit_events") if isinstance(telemetry.get("service_rate_limit_events"), list) else []
-    kinds = {str(event.get("kind") or "") for event in events if isinstance(event, dict)}
-    recovered = "modal_acknowledged" in kinds and ("modal_ack_wait_satisfied_cooldown" in kinds or "cooldown_wait_satisfied_by_modal_ack_wait" in kinds)
-    if not recovered:
+    if not telemetry_has_acknowledged_cooldown(telemetry):
         return False
+
+    # New clean policy: command itself may mark a recovered 429 as successful.
+    if payload.get("ok") is True and status == "verified_with_recovered_rate_limit":
+        return True
+
     if payload.get("action") == "test_ask_live":
         try:
             if int(payload.get("functional_failure_count") or 0) != 0:
@@ -2717,11 +2731,17 @@ def payload_recovered_rate_limit_success(payload: dict) -> bool:
             return False
         steps = payload.get("steps")
         return isinstance(steps, list) and bool(steps) and all(
-            isinstance(step, dict) and step.get("functional_status") == "verified" and step.get("contains_expected_sentinel") is True
+            isinstance(step, dict)
+            and step.get("functional_status") == "verified"
+            and step.get("contains_expected_sentinel") is True
             for step in steps
         )
     if payload.get("action") == "test_visual_artifact_roundtrip":
-        return payload.get("functional_status") == "verified" and payload.get("verification_status") == "smoke_zip_verified"
+        return (
+            payload.get("functional_status") == "verified"
+            and payload.get("verification_status") == "smoke_zip_verified"
+            and payload.get("download_status") in {"downloaded", "already_downloaded"}
+        )
     return False
 
 steps = []

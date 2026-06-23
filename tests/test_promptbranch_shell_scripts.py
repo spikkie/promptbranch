@@ -1900,6 +1900,158 @@ def test_release_control_all_tests_summary_prefers_top_level_recovered_ask_live_
     assert ask_step["action"] == "test_ask_live"
     assert ask_step["recovered_rate_limit_success"] is True
 
+
+def _run_release_control_with_fake_ask_live_payload(tmp_path: Path, *, version: str, payload: dict, ask_exit_code: int) -> tuple[subprocess.CompletedProcess[str], dict, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+
+    ask_payload = json.dumps(payload, separators=(",", ":"))
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then cat <<'ASKPAYLOAD'\n"
+        + ask_payload
+        + "\nASKPAYLOAD\nexit " + str(ask_exit_code) + "\nfi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = f"release-control-run-all-{version}.log"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES"] = "0"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", version],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    log_dir = repo / ".pb_profile" / "release_logs" / version
+    summary = json.loads((log_dir / f"pb_test.all.{version}.summary.json").read_text(encoding="utf-8"))
+    return result, summary, calls.read_text(encoding="utf-8")
+
+
+def test_release_control_all_tests_summary_accepts_ok_false_verified_recovered_ask_live_payload(tmp_path: Path):
+    payload = {
+        "ok": False,
+        "action": "test_ask_live",
+        "profile": "ask-live",
+        "status": "verified_with_recovered_rate_limit",
+        "failure_count": 1,
+        "functional_failure_count": 0,
+        "steps": [
+            {
+                "name": "plain",
+                "ok": False,
+                "status": "verified_with_recovered_rate_limit",
+                "functional_status": "verified",
+                "contains_expected_sentinel": True,
+            }
+        ],
+        "rate_limit_telemetry": {
+            "service_rate_limit_events": [
+                {"kind": "modal_acknowledged"},
+                {"kind": "modal_ack_wait_satisfied_cooldown"},
+            ]
+        },
+    }
+
+    result, summary, calls_text = _run_release_control_with_fake_ask_live_payload(
+        tmp_path,
+        version="v9.9.16",
+        payload=payload,
+        ask_exit_code=42,
+    )
+
+    assert result.returncode == 0
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    ask_step = next(step for step in summary["steps"] if step["name"] == "ask_live")
+    assert ask_step["ok"] is True
+    assert ask_step["status"] == "verified_with_recovered_rate_limit"
+    assert ask_step["action"] == "test_ask_live"
+    assert ask_step["failure_count"] == 1
+    assert ask_step["recovered_rate_limit_success"] is True
+    assert calls_text.count("pb test ask-live") == 1
+    assert "retry after rate-limit cooldown" not in result.stdout
+
+
+def test_release_control_all_tests_summary_rejects_verified_recovered_ask_live_with_functional_failure(tmp_path: Path):
+    payload = {
+        "ok": False,
+        "action": "test_ask_live",
+        "profile": "ask-live",
+        "status": "verified_with_recovered_rate_limit",
+        "failure_count": 1,
+        "functional_failure_count": 1,
+        "steps": [
+            {
+                "name": "plain",
+                "ok": False,
+                "status": "verified_with_recovered_rate_limit",
+                "functional_status": "failed",
+                "contains_expected_sentinel": False,
+            }
+        ],
+        "rate_limit_telemetry": {
+            "service_rate_limit_events": [
+                {"kind": "modal_acknowledged"},
+                {"kind": "modal_ack_wait_satisfied_cooldown"},
+            ]
+        },
+    }
+
+    result, summary, calls_text = _run_release_control_with_fake_ask_live_payload(
+        tmp_path,
+        version="v9.9.17",
+        payload=payload,
+        ask_exit_code=42,
+    )
+
+    assert result.returncode != 0
+    assert summary["ok"] is False
+    assert summary["final_verdict"] == "FIX"
+    ask_step = next(step for step in summary["steps"] if step["name"] == "ask_live")
+    assert ask_step["ok"] is False
+    assert ask_step["status"] == "verified_with_recovered_rate_limit"
+    assert ask_step["recovered_rate_limit_success"] is False
+    assert "ask_live" in {step["name"] for step in summary["failed_steps"]}
+    assert calls_text.count("pb test ask-live") >= 1
+
+
 def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
