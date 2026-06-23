@@ -108,6 +108,8 @@ class AskResponse(BaseModel):
     error: Optional[str] = None
     error_type: Optional[str] = None
     timeout_layer: Optional[str] = None
+    recovery_hint: Optional[str] = None
+    composer_ready_evidence: Optional[dict] = None
     partial_result: bool = False
     response_timeout_ms: Optional[int] = None
     debug_artifacts: Optional[list[str]] = None
@@ -555,6 +557,8 @@ async def ask(
             error=result.get("error") if isinstance(result, dict) else None,
             error_type=result.get("error_type") if isinstance(result, dict) else None,
             timeout_layer=result.get("timeout_layer") if isinstance(result, dict) else None,
+            recovery_hint=result.get("recovery_hint") if isinstance(result, dict) else None,
+            composer_ready_evidence=result.get("composer_ready_evidence") if isinstance(result, dict) and isinstance(result.get("composer_ready_evidence"), dict) else None,
             partial_result=bool(result.get("partial_result", False)) if isinstance(result, dict) else False,
             response_timeout_ms=result.get("response_timeout_ms") if isinstance(result, dict) else None,
             debug_artifacts=result.get("debug_artifacts") if isinstance(result, dict) and isinstance(result.get("debug_artifacts"), list) else None,

@@ -432,3 +432,13 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 The slice adds live validation diagnostics and Project Source add timeout observability to release-control summaries. The all-tests summary now records per-step transport class, browser ReadTimeout evidence, source-add evidence, source-add timeout detection, rate-limit evidence, retry-denial state, likely failure phase, and recommended next action. The full transport post-release summary also carries `promptbranch.release_control.full_transport_diagnostics`, so `full_direct` and `full_localhost` failures remain visible and diagnosable without treating them as green.
 
 This is observability only. It does not change ChatGPT Project deletion policy, does not mask source-add failures, does not mutate Project Sources, and does not adopt artifacts.
+
+## v0.1.84.5.12 normal release candidate status
+
+`v0.1.84.5.12` opens the next normal Promptbranch slice from the user-declared accepted/current `chatgpt_claudecode_workflow-2_v0.1.84.5.11.zip` baseline.
+
+The candidate adds explicit `pb ask --new-task` / `--new-conversation` support. Default `pb ask` still continues the remembered conversation. New-task mode uses the remembered Project home, does not pass the remembered conversation URL, fails closed when no Project home is known, and updates remembered task state only after successful returned-conversation/submission evidence.
+
+Busy remembered conversations that expose stop/thinking/interrupted composer blockers are now classified as `target_conversation_busy` with a recovery hint while preserving no-fill safety and lower-level composer diagnostics.
+
+Out of scope remains unchanged: no Project Source mutation, no artifact adoption/current behavior change, no project deletion, no release-control broad rewrite, and no interpretation of literal prompt text as a CLI command.
