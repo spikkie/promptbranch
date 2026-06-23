@@ -231,3 +231,7 @@ Release logs may contain nested JSON helper objects such as `profile_lease` and 
 ## Decision — v0.1.84.5.10.3 ask-live recovered summary boundary
 
 Recovered live-step classification may override top-level `ok=false` only when the command payload itself proves `status=verified_with_recovered_rate_limit`, acknowledged cooldown telemetry is present, `functional_failure_count=0`, and every ask-live child step confirms the expected sentinel. A recovered-rate-limit label without functional proof remains release-blocking. This decision does not apply to `full_direct` or `full_localhost` source-add timeout/rate-limit failures.
+
+## Decision — v0.1.84.5.11 release-control diagnostics are observability-only
+
+Release-control diagnostics may classify and explain live validation failures, but they must not convert `full_direct`, `full_localhost`, source-add ReadTimeout, unrecovered 429, missing sentinel, malformed artifact, or ChatGPT Project deletion failures into green results. Diagnostics are evidence for operator action, not acceptance authority.

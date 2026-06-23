@@ -2459,3 +2459,176 @@ def test_release_control_rejects_adopt_after_validation_without_tests(tmp_path: 
 
     assert result.returncode != 0
     assert "--adopt-after-validation requires --run-tests or --run-all-tests" in result.stderr
+
+
+def _run_release_control_with_fake_full_payloads(
+    tmp_path: Path,
+    *,
+    version: str,
+    direct_payload: dict,
+    direct_exit_code: int,
+    localhost_payload: dict,
+    localhost_exit_code: int,
+) -> tuple[subprocess.CompletedProcess[str], dict, str, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+
+    direct_json = json.dumps(direct_payload, separators=(",", ":"))
+    localhost_json = json.dumps(localhost_payload, separators=(",", ":"))
+    report_json = json.dumps(
+        {
+            "ok": True,
+            "action": "test_report",
+            "status": "verified",
+            "failure_count": 0,
+            "suite": {
+                "release_validation_groups": {
+                    "ok": True,
+                    "missing_required_groups": [],
+                    "groups": {
+                        "artifact_json_contracts": {"ok": True},
+                        "browser_scheduler_source_lifecycle": {"ok": True},
+                        "project_control_surface": {"ok": True},
+                    },
+                }
+            },
+        },
+        separators=(",", ":"),
+    )
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then\n"
+        "  if [[ \"${CHATGPT_SERVICE_BASE_URL:-}\" == \"http://127.0.0.1:8000\" ]]; then cat <<'LOCALHOSTPAYLOAD'\n"
+        + localhost_json
+        + "\nLOCALHOSTPAYLOAD\n  exit "
+        + str(localhost_exit_code)
+        + "\n  fi\n  cat <<'DIRECTPAYLOAD'\n"
+        + direct_json
+        + "\nDIRECTPAYLOAD\n  exit "
+        + str(direct_exit_code)
+        + "\nfi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then cat <<'REPORTJSON'\n"
+        + report_json
+        + "\nREPORTJSON\nexit 0\nfi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"action\": \"test_ask_live\", \"profile\": \"ask-live\", \"status\": \"verified\", \"failure_count\": 0}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = f"release-control-run-all-{version}.log"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--strict-source-kind-matrix", "--version", version],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    log_dir = repo / ".pb_profile" / "release_logs" / version
+    summary = json.loads((log_dir / f"pb_test.all.{version}.summary.json").read_text(encoding="utf-8"))
+    return result, summary, calls.read_text(encoding="utf-8"), log_dir
+
+
+def test_release_control_all_tests_summary_diagnoses_source_add_readtimeout_by_transport(tmp_path: Path):
+    result, summary, _calls_text, log_dir = _run_release_control_with_fake_full_payloads(
+        tmp_path,
+        version="v9.9.18",
+        direct_payload={
+            "ok": False,
+            "action": "test_suite",
+            "status": "failed",
+            "section": "browser",
+            "name": "project_source_add_text",
+            "diagnostic": "ReadTimeout timed out while waiting for Project Source persistence",
+            "failures": [
+                {
+                    "section": "browser",
+                    "name": "project_source_add_text",
+                    "status": "ReadTimeout",
+                    "diagnostic": "timed out",
+                }
+            ],
+        },
+        direct_exit_code=42,
+        localhost_payload={"ok": True, "action": "test_suite", "status": "verified", "version": "v9.9.18"},
+        localhost_exit_code=0,
+    )
+
+    assert result.returncode != 0
+    assert summary["final_verdict"] == "FIX"
+    direct_step = next(step for step in summary["steps"] if step["name"] == "full_direct")
+    direct_diag = direct_step["diagnostics"]
+    assert direct_diag["transport_class"] == "direct_browser_service"
+    assert direct_diag["browser_read_timeout_detected"] is True
+    assert direct_diag["source_add_timeout_detected"] is True
+    assert direct_diag["likely_failure_phase"] == "project_source_add_read_timeout"
+    assert direct_diag["next_action"] == "inspect_source_add_timing_and_browser_service_log"
+    assert "full_direct" in summary["diagnostics"]["source_add_timeout_steps"]
+
+    full_summary = json.loads((log_dir / "post_release_validation.direct.v9.9.18.summary.json").read_text(encoding="utf-8"))
+    assert full_summary["diagnostics"]["source_add_timeout_detected"] is True
+    assert full_summary["diagnostics"]["likely_failure_phase"] == "project_source_add_read_timeout"
+
+
+def test_release_control_all_tests_summary_diagnoses_localhost_rate_limit_retry_denial(tmp_path: Path):
+    result, summary, _calls_text, _log_dir = _run_release_control_with_fake_full_payloads(
+        tmp_path,
+        version="v9.9.19",
+        direct_payload={"ok": True, "action": "test_suite", "status": "verified", "version": "v9.9.19"},
+        direct_exit_code=0,
+        localhost_payload={
+            "ok": False,
+            "action": "test_suite",
+            "status": "rate_limited_failed",
+            "rate_limit_summary": {
+                "status": "rate_limited_failed",
+                "blocking": True,
+                "rate_limit_modal_detected": True,
+                "conversation_history_429_seen": True,
+            },
+        },
+        localhost_exit_code=42,
+    )
+
+    assert result.returncode != 0
+    assert "waiting 190s before retry" not in result.stdout + result.stderr
+    localhost_step = next(step for step in summary["steps"] if step["name"] == "full_localhost")
+    localhost_diag = localhost_step["diagnostics"]
+    assert localhost_diag["transport_class"] == "localhost"
+    assert localhost_diag["rate_limit_evidence_detected"] is True
+    assert localhost_diag["rate_limit_retry_allowed"] is False
+    assert localhost_diag["rate_limit_retry_denied"] is True
+    assert localhost_diag["likely_failure_phase"] == "rate_limit_blocking_or_contaminated"
+    assert "full_localhost" in summary["diagnostics"]["rate_limit_retry_denied_steps"]

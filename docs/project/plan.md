@@ -1144,3 +1144,18 @@ No normal release slice advances in this repair.
 ## v0.1.84.5.10.3 repair plan entry
 
 Repair-only continuation from `v0.1.84.5.10.2`: patch all-tests summary classification so recovered `ask_live` payloads with complete functional sentinel proof are green even when the top-level payload has `ok=false` due to rate-limit contamination bookkeeping. Add small fake-command run-all regression tests proving the recovered case is green and a functional-failure case remains red. Preserve `full_localhost` cooldown denial and keep `full_direct` outside the localhost/offline denylist.
+
+## v0.1.84.5.11 — live validation diagnostics and source-add timeout observability
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.84.5.10.3.zip`.
+
+Goal: make release-control run-all failures explain themselves quickly before the operator reruns a full live gate.
+
+Planned work:
+
+1. Add per-step all-tests diagnostics for transport class, browser ReadTimeout, source-add timeout, rate-limit evidence, retry policy, and likely failure phase.
+2. Add full transport diagnostics to `post_release_validation.*.summary.json`.
+3. Add fast fixture tests that reproduce source-add ReadTimeout and localhost rate-limit retry-denial classification without browser or Project Source mutation.
+4. Preserve fail-closed behavior for real source-add failures, unrecovered 429, missing sentinels, malformed artifacts, and ChatGPT Project deletion.
+
+Exit criteria: focused diagnostics tests, version tests, project-control tests, shell syntax, Artifact Guardian, and then the operator full `--run-all-tests --strict-source-kind-matrix --adopt-after-validation` gate.

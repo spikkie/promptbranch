@@ -1398,6 +1398,49 @@ report, report_error = read_json_object(report_path)
 service_health, service_health_error = ({}, None)
 if service_health_path:
     service_health, service_health_error = read_json_object(service_health_path)
+full_log_text = full_log_path.read_text(encoding="utf-8", errors="replace") if full_log_path.is_file() else ""
+
+def _lowered_full_evidence() -> str:
+    try:
+        return (json.dumps(report, sort_keys=True, ensure_ascii=False) + "\n" + full_log_text).lower()
+    except Exception:
+        return (str(report) + "\n" + full_log_text).lower()
+
+def full_evidence_has_browser_read_timeout() -> bool:
+    evidence = _lowered_full_evidence()
+    return (
+        "readtimeout" in evidence
+        or "service_client_read_timeout" in evidence
+        or "the browser service may still finish after the cli timed out" in evidence
+    )
+
+def full_evidence_has_source_add() -> bool:
+    evidence = _lowered_full_evidence()
+    return any(term in evidence for term in (
+        "project_source_add_text",
+        "source_add_text",
+        "source_add",
+        "project_source_add_file",
+        "source_add_file",
+        "source add",
+        "project source add",
+        "persistence_not_verified",
+    ))
+
+def full_evidence_has_rate_limit() -> bool:
+    evidence = _lowered_full_evidence()
+    return (
+        "too many requests" in evidence
+        or "temporarily limited access" in evidence
+        or "status=429" in evidence
+        or '"status": 429' in evidence
+        or '"status":429' in evidence
+        or '"rate_limit_modal_detected": true' in evidence
+        or '"rate_limit_modal_detected":true' in evidence
+        or '"conversation_history_429_seen": true' in evidence
+        or '"conversation_history_429_seen":true' in evidence
+        or '"status": "rate_limited_failed"' in evidence
+    )
 
 try:
     failure_count = int(report.get("failure_count") or 0)
@@ -1420,6 +1463,22 @@ if not classification:
     }
 primary_failure_category = report.get("primary_failure_category") or classification.get("primary_category") or ("none" if full_test_green else "full_test_or_report_failure")
 blocking_failure_categories = report.get("blocking_failure_categories") or classification.get("blocking_categories") or ([] if full_test_green else [primary_failure_category])
+browser_read_timeout_detected = full_evidence_has_browser_read_timeout()
+source_add_evidence_detected = full_evidence_has_source_add()
+rate_limit_evidence_detected = full_evidence_has_rate_limit()
+rate_limit_retry_denied_detected = "rate_limit_retry_denied_for_offline_step" in full_log_text
+if source_add_evidence_detected and browser_read_timeout_detected:
+    likely_failure_phase = "project_source_add_read_timeout"
+elif source_add_evidence_detected and not full_test_green:
+    likely_failure_phase = "project_source_add"
+elif browser_read_timeout_detected:
+    likely_failure_phase = "browser_read_timeout"
+elif rate_limit_evidence_detected and not full_test_green:
+    likely_failure_phase = "rate_limit_blocking_or_contaminated"
+elif full_test_green:
+    likely_failure_phase = "none"
+else:
+    likely_failure_phase = "unclassified_full_test_failure"
 
 summary = {
     "schema": "promptbranch.post_release_validation.summary",
@@ -1465,6 +1524,26 @@ summary = {
         "ok": service_health.get("ok"),
         "version": service_health.get("version"),
         "error": service_health_error,
+    },
+    "diagnostics": {
+        "schema": "promptbranch.release_control.full_transport_diagnostics",
+        "schema_version": "1.0",
+        "browser_read_timeout_detected": browser_read_timeout_detected,
+        "source_add_evidence_detected": source_add_evidence_detected,
+        "source_add_timeout_detected": bool(source_add_evidence_detected and browser_read_timeout_detected),
+        "rate_limit_evidence_detected": rate_limit_evidence_detected,
+        "rate_limit_retry_denied": rate_limit_retry_denied_detected,
+        "likely_failure_phase": likely_failure_phase,
+        "full_log": str(full_log_path),
+        "report_json": str(report_path),
+        "next_action": (
+            "inspect_source_add_timing_and_browser_service_log" if likely_failure_phase == "project_source_add_read_timeout"
+            else "inspect_project_source_add_persistence_verification" if likely_failure_phase == "project_source_add"
+            else "inspect_browser_service_recovery_and_timeout_window" if likely_failure_phase == "browser_read_timeout"
+            else "rerun_later_or_reduce_history_enumeration" if likely_failure_phase == "rate_limit_blocking_or_contaminated"
+            else "none" if likely_failure_phase == "none"
+            else "inspect_full_test_log"
+        ),
     },
     "limitations": [],
 }
@@ -2697,6 +2776,169 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
         return ranked[-1][2], None
     return {}, f"no top-level Promptbranch JSON object found in {path}"
 
+def step_transport_class(name: str) -> str:
+    if name in {"full_localhost", "localhost"} or name.endswith("_localhost"):
+        return "localhost"
+    if name in {"full_offline", "offline", "full_release_validation_groups", "release_validation_groups"}:
+        return "offline"
+    if name in {"full_direct", "direct"}:
+        return "direct_browser_service"
+    if name in {"live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}:
+        return "live_browser"
+    if name in {"import_smoke", "artifact_guard"}:
+        return "local_static_validation"
+    return "unknown"
+
+def browser_rate_limit_retry_allowed_for_step(name: str) -> bool | None:
+    transport_class = step_transport_class(name)
+    if transport_class in {"localhost", "offline"}:
+        return False
+    if transport_class in {"direct_browser_service", "live_browser"}:
+        return True
+    return None
+
+def nested_values(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield item
+            yield from nested_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield item
+            yield from nested_values(item)
+
+def payload_text(payload: dict) -> str:
+    try:
+        return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return str(payload)
+
+def telemetry_event_kinds(payload: dict) -> list[str]:
+    kinds: list[str] = []
+    containers = []
+    for key in ("rate_limit_telemetry", "rate_limit_summary"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            containers.append(value)
+    for container in containers:
+        events = container.get("service_rate_limit_events")
+        if isinstance(events, list):
+            for event in events:
+                if isinstance(event, dict) and event.get("kind") is not None:
+                    kinds.append(str(event.get("kind")))
+    return kinds
+
+def payload_has_rate_limit_evidence(payload: dict, raw: str) -> bool:
+    if payload.get("status") in {"rate_limited_failed", "rate_limited_contaminated", "verified_with_recovered_rate_limit"}:
+        return True
+    for key in ("rate_limit_telemetry", "rate_limit_summary"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            if value.get("rate_limit_modal_detected") is True:
+                return True
+            if value.get("conversation_history_429_seen") is True:
+                return True
+            if value.get("backend_api_guardrail_seen") is True:
+                return True
+            events = value.get("service_rate_limit_events")
+            if isinstance(events, list) and events:
+                return True
+    lowered = raw.lower()
+    return (
+        "too many requests" in lowered
+        or "temporarily limited access" in lowered
+        or "status=429" in lowered
+        or '"status": 429' in lowered
+        or '"status":429' in lowered
+        or '"rate_limit_modal_detected": true' in lowered
+        or '"rate_limit_modal_detected":true' in lowered
+        or '"conversation_history_429_seen": true' in lowered
+        or '"conversation_history_429_seen":true' in lowered
+    )
+
+def payload_has_browser_read_timeout(payload: dict, raw: str) -> bool:
+    combined = (payload_text(payload) + "\n" + raw).lower()
+    return (
+        "readtimeout" in combined
+        or "read_timeout" in combined
+        or "service_client_read_timeout" in combined
+        or "the browser service may still finish after the cli timed out" in combined
+    )
+
+def payload_has_source_add_evidence(payload: dict, raw: str) -> bool:
+    combined = (payload_text(payload) + "\n" + raw).lower()
+    source_add_terms = (
+        "project_source_add_text",
+        "source_add_text",
+        "source_add",
+        "project_source_add_file",
+        "source_add_file",
+        "source add",
+        "project source add",
+        "persistence_not_verified",
+    )
+    return any(term in combined for term in source_add_terms)
+
+def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recovered_rate_limit_success: bool, step_ok: bool) -> dict:
+    existing_diagnostics = payload.get("diagnostics") if isinstance(payload.get("diagnostics"), dict) else {}
+    if existing_diagnostics:
+        rate_limit_evidence = existing_diagnostics.get("rate_limit_evidence_detected") is True
+        browser_read_timeout = existing_diagnostics.get("browser_read_timeout_detected") is True
+        source_add_evidence = existing_diagnostics.get("source_add_evidence_detected") is True
+    else:
+        rate_limit_evidence = payload_has_rate_limit_evidence(payload, raw)
+        browser_read_timeout = payload_has_browser_read_timeout(payload, raw)
+        source_add_evidence = payload_has_source_add_evidence(payload, raw)
+    retry_allowed = browser_rate_limit_retry_allowed_for_step(name)
+    retry_denied = existing_diagnostics.get("rate_limit_retry_denied") is True or "rate_limit_retry_denied_for_offline_step" in raw
+    transport_class = step_transport_class(name)
+    existing_phase = str(existing_diagnostics.get("likely_failure_phase") or "")
+    if existing_phase and existing_phase != "none":
+        likely_failure_phase = existing_phase
+    elif source_add_evidence and browser_read_timeout:
+        likely_failure_phase = "project_source_add_read_timeout"
+    elif source_add_evidence and not step_ok:
+        likely_failure_phase = "project_source_add"
+    elif browser_read_timeout:
+        likely_failure_phase = "browser_read_timeout"
+    elif recovered_rate_limit_success:
+        likely_failure_phase = "recovered_rate_limit"
+    elif rate_limit_evidence and not step_ok:
+        likely_failure_phase = "rate_limit_blocking_or_contaminated"
+    elif step_ok:
+        likely_failure_phase = "none"
+    else:
+        likely_failure_phase = "unclassified_validation_failure"
+
+    next_action = "none"
+    if likely_failure_phase == "project_source_add_read_timeout":
+        next_action = "inspect_source_add_timing_and_browser_service_log"
+    elif likely_failure_phase == "project_source_add":
+        next_action = "inspect_project_source_add_persistence_verification"
+    elif likely_failure_phase == "browser_read_timeout":
+        next_action = "inspect_browser_service_recovery_and_timeout_window"
+    elif likely_failure_phase == "rate_limit_blocking_or_contaminated":
+        next_action = "rerun_later_or_reduce_history_enumeration"
+    elif likely_failure_phase == "recovered_rate_limit":
+        next_action = "continue_no_manual_action"
+    elif not step_ok:
+        next_action = "inspect_step_log"
+
+    return {
+        "transport_class": transport_class,
+        "rate_limit_evidence_detected": rate_limit_evidence,
+        "rate_limit_retry_allowed": retry_allowed,
+        "rate_limit_retry_denied": retry_denied,
+        "browser_read_timeout_detected": browser_read_timeout,
+        "source_add_evidence_detected": source_add_evidence,
+        "source_add_timeout_detected": bool(source_add_evidence and browser_read_timeout),
+        "recovered_rate_limit_success": recovered_rate_limit_success,
+        "likely_failure_phase": likely_failure_phase,
+        "next_action": next_action,
+        "telemetry_event_kinds": telemetry_event_kinds(payload),
+        "exit_code": rc,
+    }
+
 def payload_recovered_rate_limit_success(payload: dict) -> bool:
     def telemetry_has_acknowledged_cooldown(telemetry: dict) -> bool:
         events = telemetry.get("service_rate_limit_events")
@@ -2761,6 +3003,8 @@ for item in raw_steps:
     if name == "artifact_guard":
         ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
         status = payload.get("status") or status
+    raw_log_text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    diagnostics = classify_step_diagnostics(name, payload, raw_log_text, rc, recovered_rate_limit_success, ok)
     steps.append({
         "name": name,
         "ok": ok,
@@ -2774,10 +3018,21 @@ for item in raw_steps:
         "recovered_rate_limit_success": recovered_rate_limit_success,
         "download_status": payload.get("download_status"),
         "verification_status": payload.get("verification_status"),
+        "diagnostics": diagnostics,
     })
 
 ok = bool(steps) and all(step["ok"] for step in steps)
 failed = [step for step in steps if not step["ok"]]
+diagnostics_summary = {
+    "schema": "promptbranch.release_control.live_validation_diagnostics",
+    "schema_version": "1.0",
+    "transport_classes": sorted({str(step.get("diagnostics", {}).get("transport_class") or "unknown") for step in steps}),
+    "source_add_timeout_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("source_add_timeout_detected") is True],
+    "browser_read_timeout_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("browser_read_timeout_detected") is True],
+    "rate_limit_evidence_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_evidence_detected") is True],
+    "rate_limit_retry_denied_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_retry_denied") is True],
+    "likely_failure_phases": {step["name"]: step.get("diagnostics", {}).get("likely_failure_phase") for step in failed},
+}
 summary = {
     "schema": "promptbranch.release_control.all_tests_summary",
     "schema_version": "1.0",
@@ -2796,6 +3051,7 @@ summary = {
     "step_count": len(steps),
     "failure_count": len(failed),
     "service_health_json": service_health_json,
+    "diagnostics": diagnostics_summary,
     "steps": steps,
     "failed_steps": failed,
 }

@@ -424,3 +424,11 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 ## v0.1.84.5.10.3 repair note
 
 `v0.1.84.5.10.3` repairs only the remaining ask-live recovered-success all-tests summary classification from `v0.1.84.5.10.2`. `full_localhost` remains denied from browser cooldown retry, `full_direct` remains outside the localhost/offline denylist, and `test_ask_live` payloads with `status=verified_with_recovered_rate_limit`, acknowledged cooldown telemetry, `functional_failure_count=0`, and verified expected-sentinel child steps are summarized as recovered success. Functional ask-live failures remain release-blocking, and `full_direct` / `full_localhost` source-add timeout or rate-limit failures remain visible. No Project Source mutation, artifact adoption/current, deployment, ChatGPT Project deletion, ledger/write, or model-execution scope advances.
+
+## v0.1.84.5.11 normal release candidate status
+
+`v0.1.84.5.11` opens the next normal Promptbranch slice from accepted/current repair baseline `chatgpt_claudecode_workflow-2_v0.1.84.5.10.3.zip`.
+
+The slice adds live validation diagnostics and Project Source add timeout observability to release-control summaries. The all-tests summary now records per-step transport class, browser ReadTimeout evidence, source-add evidence, source-add timeout detection, rate-limit evidence, retry-denial state, likely failure phase, and recommended next action. The full transport post-release summary also carries `promptbranch.release_control.full_transport_diagnostics`, so `full_direct` and `full_localhost` failures remain visible and diagnosable without treating them as green.
+
+This is observability only. It does not change ChatGPT Project deletion policy, does not mask source-add failures, does not mutate Project Sources, and does not adopt artifacts.
