@@ -1116,3 +1116,7 @@ Repair only: suppress release-control retries for recovered 429 telemetry after 
 ## v0.1.84.5.8 repair plan entry
 
 Repair only: add bounded Promptbranch service recovery after browser-backed `ReadTimeout` evidence during `--run-all-tests`, before continuing to the next browser-backed release-control phase. Preserve original full-test failures, retry `live_profile_preflight` at most once after recovery, and keep project deletion, ledger writes, Project Source mutation, adoption/current semantics, deployment, and model execution out of scope.
+
+## v0.1.84.5.9 repair plan position
+
+Repair-only candidate on top of `v0.1.84.5.8`. The active repair fixes `live_project_ensure` parsing and recovered 429 handling so the shared live Project URL returned by `pb project-ensure` is exported and downstream live steps are not skipped when the Project ensure operation succeeded functionally. No normal accepted-event ledger scope advances.

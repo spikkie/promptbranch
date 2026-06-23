@@ -207,3 +207,7 @@ If browser automation acknowledges ChatGPT's rate-limit modal, satisfies cooldow
 ## Decision — browser ReadTimeout requires bounded service recovery before next browser phase
 
 A client-side timeout from a browser-backed Promptbranch service command can leave the underlying browser operation still running after the CLI exits. During release-control `--run-all-tests`, strict `ReadTimeout` or `service_client_read_timeout` evidence must trigger bounded service recovery before the workflow sends the next browser-backed command. Recovery may make later phases possible, but it must not convert the original failed full-test step into a pass.
+
+## Decision — shared live Project URL extraction must select the successful Project ensure payload
+
+Release-control must not use the last JSON object in a browser log as the Project ensure result. Browser/rate-limit telemetry can append nested JSON after a successful `pb project-ensure` payload. The shared live Project URL must be extracted from an `ok=true` `ensure_project` / `project_ensure` payload with `project_url`, `resolved_project_home_url`, or `project_home_url`. If recovered 429 telemetry is present but the Project ensure payload is functionally successful and contains a URL, release-control may continue with warning semantics; missing or invalid Project URL remains fail-closed.
