@@ -470,3 +470,7 @@ No migration is required. The repair changes release-control classification/retr
 ## v0.1.84.5.8 migration note
 
 No user data migration is required. Operators should rerun release-control with `v0.1.84.5.8` when validating the `v0.1.84.5.x` repair line. The repair adds bounded service recovery after browser-backed `ReadTimeout` evidence in run-all logs before continuing to later browser-backed phases. Project deletion remains frozen, and no ledger, Project Source, artifact adoption/current, deployment, or model-execution migration is performed.
+
+## v0.1.84.5.9 migration note
+
+No user data migration is required. Operators should rerun release-control with the `v0.1.84.5.9` candidate after `v0.1.84.5.8` proved the browser ReadTimeout cascade was repaired but exposed brittle `live_project_ensure` URL extraction. This repair changes release-control parsing/status handling only and does not mutate Project Sources, artifact current state, ledger state, deployment, or ChatGPT Project deletion behavior.

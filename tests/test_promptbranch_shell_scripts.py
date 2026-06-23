@@ -1857,6 +1857,86 @@ def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_
     assert "WARN: rate-limit evidence detected for ask_live" not in result.stdout
 
 
+
+def test_release_control_live_project_ensure_accepts_recovered_rate_limit_with_project_url(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.14\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    project_payload = (
+        '{"ok": true, "action": "ensure_project", "status": "verified", '
+        '"project_name": "shared-test-project", '
+        '"project_url": "https://chatgpt.com/g/g-p-shared/project", '
+        '"rate_limit_summary": {"conversation_history_429_seen": true, '
+        '"service_rate_limit_events": [{"kind": "modal_acknowledged"}, '
+        '{"kind": "modal_ack_wait_satisfied_cooldown"}]}}'
+    )
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        f"if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{project_payload}'; echo '{{\"kind\": \"modal_acknowledged\"}}'; exit 42; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.14\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-live-project-ensure-recovered-rate-limit.log"
+    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
+
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.14"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.14"
+    summary = json.loads((log_dir / "pb_test.all.v9.9.14.summary.json").read_text(encoding="utf-8"))
+    ensure_log = (log_dir / "pb_test.live_project_ensure.v9.9.14.log").read_text(encoding="utf-8")
+    calls_text = calls.read_text(encoding="utf-8")
+
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    ensure_step = next(step for step in summary["steps"] if step["name"] == "live_project_ensure")
+    assert ensure_step["ok"] is True
+    assert ensure_step["exit_code"] == 0
+    assert "shared_live_project_url: https://chatgpt.com/g/g-p-shared/project" in ensure_log
+    assert "verified_with_recovered_rate_limit" in ensure_log
+    assert "project_url was verified" in ensure_log
+    assert "live_project_ensure failed" not in result.stderr
+    assert calls_text.count("pb test ask-live") == 1
+    assert "--conversation-url https://chatgpt.com/g/g-p-shared/project" in calls_text
+
 def test_release_control_declares_browser_read_timeout_service_recovery() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     assert "run_all_log_has_browser_read_timeout" in script

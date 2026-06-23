@@ -2813,9 +2813,10 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import sys
+
 raw = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
 decoder = json.JSONDecoder()
-last = None
+candidates: list[dict] = []
 for idx, char in enumerate(raw):
     if char != "{":
         continue
@@ -2823,34 +2824,61 @@ for idx, char in enumerate(raw):
         value, _end = decoder.raw_decode(raw[idx:])
     except Exception:
         continue
-    if isinstance(value, dict):
-        last = value
-if not isinstance(last, dict) or last.get("ok") is not True:
+    if not isinstance(value, dict):
+        continue
+    url = value.get("project_url") or value.get("resolved_project_home_url") or value.get("project_home_url")
+    if value.get("ok") is True and isinstance(url, str) and url.strip():
+        # Prefer the intended project-ensure payload when present.  Do not use
+        # the last JSON object blindly because browser telemetry may contain
+        # nested objects after the successful project-ensure payload.
+        action = str(value.get("action") or "")
+        if action in {"ensure_project", "project_ensure"}:
+            candidates.append(value)
+        elif not candidates:
+            candidates.append(value)
+if not candidates:
     raise SystemExit(1)
+last = candidates[-1]
 url = last.get("project_url") or last.get("resolved_project_home_url") or last.get("project_home_url")
-if not isinstance(url, str) or not url:
+if not isinstance(url, str) or not url.strip():
     raise SystemExit(2)
-print(url)
+print(url.strip())
 INNERPY
 }
 
 run_all_ensure_shared_live_project() {
   local rc=0
+  local command_rc=0
+  local extracted_url=""
   echo "== pb test-all step: live_project_ensure =="
   echo "release_test_project_name: ${release_test_project_name}"
   echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
   : > "${run_all_project_ensure_log}"
   echo "+ pb --profile-dir ${live_profile_seed_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
   pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
-  rc=${PIPESTATUS[0]}
-  if [[ ${rc} -eq 0 ]]; then
-    if run_all_shared_project_url="$(run_all_extract_project_url_from_log "${run_all_project_ensure_log}")"; then
-      echo "shared_live_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
-    else
-      echo "WARN: live_project_ensure did not return a project URL." | tee -a "${run_all_project_ensure_log}" >&2
+  command_rc=${PIPESTATUS[0]}
+  rc=${command_rc}
+
+  if extracted_url="$(run_all_extract_project_url_from_log "${run_all_project_ensure_log}")"; then
+    run_all_shared_project_url="${extracted_url}"
+    echo "shared_live_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
+    if [[ ${command_rc} -ne 0 ]]; then
+      if run_all_log_has_rate_limit_evidence "${run_all_project_ensure_log}"; then
+        echo "WARN: recovered rate-limit evidence detected for live_project_ensure; project_url was verified, so release-control will continue without blocking the live phase." | tee -a "${run_all_project_ensure_log}" >&2
+        echo "live_project_ensure_status: verified_with_recovered_rate_limit" | tee -a "${run_all_project_ensure_log}"
+        rc=0
+      else
+        echo "WARN: live_project_ensure returned project_url but command exited with ${command_rc}; treating as failed because no recovered rate-limit evidence was found." | tee -a "${run_all_project_ensure_log}" >&2
+        rc=${command_rc}
+      fi
+    fi
+  else
+    echo "WARN: live_project_ensure did not return a project URL." | tee -a "${run_all_project_ensure_log}" >&2
+    if [[ ${rc} -eq 0 ]]; then
       rc=1
     fi
   fi
+
   if [[ ${rc} -ne 0 ]]; then
     echo "WARN: live_project_ensure failed with ${rc}; live browser steps will be skipped." >&2
     workflow_rc=${rc}
