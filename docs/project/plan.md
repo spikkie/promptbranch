@@ -1159,3 +1159,21 @@ Planned work:
 4. Preserve fail-closed behavior for real source-add failures, unrecovered 429, missing sentinels, malformed artifacts, and ChatGPT Project deletion.
 
 Exit criteria: focused diagnostics tests, version tests, project-control tests, shell syntax, Artifact Guardian, and then the operator full `--run-all-tests --strict-source-kind-matrix --adopt-after-validation` gate.
+
+## v0.1.84.5.12 — Explicit new-task ask mode
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.84.5.11.zip`.
+
+Goal: let operators intentionally start a fresh ChatGPT Project task when the remembered conversation is stale, busy, interrupted, or otherwise unsuitable, without weakening composer safety.
+
+Planned work:
+
+1. Add `pb ask --new-task` / `--new-conversation` parser and help support.
+2. Keep default `pb ask` routed through remembered conversation state.
+3. Route `--new-task` through the remembered Project home and pass no explicit conversation URL to the browser/service layer.
+4. Fail closed for `--new-task --conversation-url` and missing Project-home state.
+5. Preserve no-fill safety and classify busy remembered conversations as `target_conversation_busy` with recovery guidance.
+6. Update remembered conversation state only after successful fresh-task binding evidence.
+7. Add focused parser/backend/browser/state tests.
+
+Exit criteria: focused new-task tests, busy-conversation classification tests, existing service/direct ask regressions, compileall, help-text grep, project-control test, Artifact Guardian, ZIP hygiene. Full release-control/adoption remains an external operator gate.

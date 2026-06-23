@@ -235,3 +235,7 @@ Recovered live-step classification may override top-level `ok=false` only when t
 ## Decision — v0.1.84.5.11 release-control diagnostics are observability-only
 
 Release-control diagnostics may classify and explain live validation failures, but they must not convert `full_direct`, `full_localhost`, source-add ReadTimeout, unrecovered 429, missing sentinel, malformed artifact, or ChatGPT Project deletion failures into green results. Diagnostics are evidence for operator action, not acceptance authority.
+
+## Decision — v0.1.84.5.12 `pb ask` conversation target selection is explicit
+
+`pb ask` must distinguish between continuing a remembered task conversation and starting a fresh Project task. Default `pb ask` continues the remembered conversation when it is idle. `pb ask --new-task` / `--new-conversation` is the only CLI-controlled path that ignores the remembered `conversation_url` and starts from the remembered `project_home_url`. Literal prompt text such as `new task` is never interpreted as a command. `--new-task` and `--conversation-url` are mutually exclusive.

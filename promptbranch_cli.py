@@ -528,6 +528,84 @@ def _split_ask_response(response: Any) -> tuple[Any, Optional[str]]:
     return response, None
 
 
+def _project_identity_from_url(url: Optional[str]) -> Optional[str]:
+    home_url = project_home_url_from_url(url) or url
+    if not home_url:
+        return None
+    parsed = urllib.parse.urlparse(str(home_url))
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2 or parts[0] != "g":
+        return None
+    slug = parts[1]
+    match = re.match(r"^(g-p-[0-9a-fA-F]{32})(?:-|$)", slug)
+    return match.group(1).lower() if match else slug or None
+
+
+def _same_project_url_identity(left: Optional[str], right: Optional[str]) -> bool:
+    left_identity = _project_identity_from_url(left)
+    right_identity = _project_identity_from_url(right)
+    if left_identity and right_identity:
+        return left_identity == right_identity
+    left_home = project_home_url_from_url(left) or left
+    right_home = project_home_url_from_url(right) or right
+    return bool(left_home and right_home and str(left_home).rstrip("/") == str(right_home).rstrip("/"))
+
+
+def _ask_result_has_submission_evidence(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    submit_evidence = result.get("submit_evidence") if isinstance(result.get("submit_evidence"), dict) else {}
+    evidence_sources = [result, submit_evidence]
+    strong_fields = {
+        "submit_causality_confirmed",
+        "submit_backend_commit_confirmed",
+        "submit_backend_commit_confirmed_direct",
+    }
+    for source in evidence_sources:
+        if any(bool(source.get(field)) for field in strong_fields):
+            return True
+    return False
+
+
+def _should_remember_ask_conversation(
+    result: Any,
+    *,
+    conversation_url: Optional[str],
+    expected_project_home_url: Optional[str],
+    new_task: bool,
+) -> bool:
+    if not conversation_url:
+        return False
+    if not new_task:
+        return True
+    if not isinstance(result, dict) or result.get("ok") is False:
+        return False
+    if expected_project_home_url and not _same_project_url_identity(conversation_url, expected_project_home_url):
+        return False
+    return _ask_result_has_submission_evidence(result)
+
+
+def _new_task_project_home_missing_payload() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "action": "ask",
+        "status": "project_home_url_missing",
+        "error_type": "project_home_url_missing",
+        "error": "--new-task requires a remembered or explicit ChatGPT project_home_url",
+        "recovery_hint": "Select a ChatGPT Project first with pb ws use/project use, pass --project-url for a Project home, or run without --new-task to use the default target.",
+    }
+
+
+def _new_task_conversation_url_conflict_payload() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "action": "ask",
+        "status": "invalid_arguments",
+        "error_type": "mutually_exclusive_conversation_target",
+        "error": "--new-task cannot be combined with --conversation-url",
+    }
+
+
 def _canonical_answer_text(answer: Any) -> str:
     """Return the complete printable answer text for service ask responses.
 
@@ -1059,16 +1137,30 @@ class DirectBackend:
         file_path: Optional[str] = None,
         attachment_paths: Optional[list[str]] = None,
         conversation_url: Optional[str] = None,
+        new_task: bool = False,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
         prefer_button_submit: bool = False,
     ) -> Any:
-        effective_project_url = conversation_url or (
-            self._conversation_state.resolve(self._project_url)
-            if self._conversation_state is not None
-            else self._project_url
-        )
+        if new_task and conversation_url:
+            return _new_task_conversation_url_conflict_payload()
+        if new_task:
+            effective_project_url = (
+                self._conversation_state.project_url_for_operations(self._project_url)
+                if self._conversation_state is not None
+                else (project_home_url_from_url(self._project_url) or self._project_url)
+            )
+            if not project_home_url_from_url(effective_project_url):
+                return _new_task_project_home_missing_payload()
+            target_conversation_url: Optional[str] = None
+        else:
+            effective_project_url = conversation_url or (
+                self._conversation_state.resolve(self._project_url)
+                if self._conversation_state is not None
+                else self._project_url
+            )
+            target_conversation_url = conversation_url
         original_project_url = self._service.settings.project_url
         try:
             self._service.settings.project_url = effective_project_url or original_project_url
@@ -1076,7 +1168,7 @@ class DirectBackend:
                 prompt=prompt,
                 file_path=file_path,
                 attachment_paths=attachment_paths,
-                conversation_url=conversation_url,
+                conversation_url=target_conversation_url,
                 expect_json=expect_json,
                 keep_open=keep_open,
                 retries=retries,
@@ -1085,9 +1177,14 @@ class DirectBackend:
         finally:
             self._service.settings.project_url = original_project_url
 
-        _, conversation_url = _split_ask_response(result)
-        if self._conversation_state is not None:
-            self._conversation_state.remember(self._project_url, conversation_url)
+        _, returned_conversation_url = _split_ask_response(result)
+        if self._conversation_state is not None and _should_remember_ask_conversation(
+            result,
+            conversation_url=returned_conversation_url,
+            expected_project_home_url=effective_project_url,
+            new_task=new_task,
+        ):
+            self._conversation_state.remember(self._project_url, returned_conversation_url)
         return result
 
     def state_snapshot(self) -> dict[str, Any]:
@@ -1345,18 +1442,28 @@ class ServiceBackend:
         file_path: Optional[str] = None,
         attachment_paths: Optional[list[str]] = None,
         conversation_url: Optional[str] = None,
+        new_task: bool = False,
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
         prefer_button_submit: bool = False,
     ) -> Any:
-        effective_project_url = conversation_url or self._conversation_state.resolve(self._project_url)
+        if new_task and conversation_url:
+            return _new_task_conversation_url_conflict_payload()
+        if new_task:
+            effective_project_url = self._conversation_state.project_url_for_operations(self._project_url)
+            if not project_home_url_from_url(effective_project_url):
+                return _new_task_project_home_missing_payload()
+            target_conversation_url: Optional[str] = None
+        else:
+            effective_project_url = conversation_url or self._conversation_state.resolve(self._project_url)
+            target_conversation_url = conversation_url
         result = await self._call(
             self._client.ask_result,
             prompt,
             file_path=file_path,
             attachment_paths=attachment_paths,
-            conversation_url=conversation_url,
+            conversation_url=target_conversation_url,
             expect_json=expect_json,
             keep_open=keep_open,
             retries=retries,
@@ -1364,8 +1471,14 @@ class ServiceBackend:
             service_timeout_seconds=self._service_timeout_seconds,
             prefer_button_submit=prefer_button_submit,
         )
-        _, conversation_url = _split_ask_response(result)
-        self._conversation_state.remember(self._project_url, conversation_url)
+        _, returned_conversation_url = _split_ask_response(result)
+        if _should_remember_ask_conversation(
+            result,
+            conversation_url=returned_conversation_url,
+            expected_project_home_url=effective_project_url,
+            new_task=new_task,
+        ):
+            self._conversation_state.remember(self._project_url, returned_conversation_url)
         return result
 
     def state_snapshot(self) -> dict[str, Any]:
@@ -7234,6 +7347,9 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
     return _emit_protocol_result(args, result)
 
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if getattr(args, "new_task", False) and getattr(args, "conversation_url", None):
+        print(json.dumps(_new_task_conversation_url_conflict_payload(), indent=2, ensure_ascii=False))
+        return 2
     attachment_paths = _collect_ask_attachment_paths(args)
     try:
         prompt, attachment_paths, prompt_file_transport = _prepare_prompt_file_transport(
@@ -7280,18 +7396,21 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     protocol_parse = bool(getattr(args, "parse_reply", False))
     pre_ask_marker = await _capture_pre_ask_protocol_marker(backend, args) if protocol_parse else None
     try:
-        response = await backend.ask(
-            prompt=prompt,
-            file_path=legacy_single_file,
-            attachment_paths=repeatable_attachments,
-            conversation_url=args.conversation_url,
+        ask_kwargs = {
+            "prompt": prompt,
+            "file_path": legacy_single_file,
+            "attachment_paths": repeatable_attachments,
+            "conversation_url": args.conversation_url,
             # Protocol replies are envelope text, not raw JSON. Let the ask
             # operation return first, then parse/validate deterministically.
-            expect_json=False if protocol_parse else args.json,
-            keep_open=args.keep_open,
-            retries=args.retries,
-            prefer_button_submit=bool(getattr(args, "prompt_file", None)),
-        )
+            "expect_json": False if protocol_parse else args.json,
+            "keep_open": args.keep_open,
+            "retries": args.retries,
+            "prefer_button_submit": bool(getattr(args, "prompt_file", None)),
+        }
+        if getattr(args, "new_task", False):
+            ask_kwargs["new_task"] = True
+        response = await backend.ask(**ask_kwargs)
     except Exception as exc:
         if protocol_parse and envelope is not None:
             lowered = f"{exc.__class__.__name__}: {exc}".lower()
@@ -7441,7 +7560,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
         "completion": [],
         "version": [],
-        "ask": ["--file", "--attach", "--attachment", "--prompt-file-mode", "--prompt-file-attach-threshold-bytes", "--json", "--expect-json", "--text", "--conversation-url", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
+        "ask": ["--file", "--attach", "--attachment", "--prompt-file-mode", "--prompt-file-attach-threshold-bytes", "--json", "--expect-json", "--text", "--conversation-url", "--new-task", "--new-conversation", "--keep-open", "--retries", "--protocol", "--from-current-baseline", "--target-version", "--release-type", "--request-id", "--correlation-id", "--intent-kind", "--print-request-json", "--parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "ask-release": ["--file", "--attach", "--json", "--conversation-url", "--keep-open", "--retries", "--target-version", "--release-type", "--baseline-artifact", "--baseline-version", "--expect-artifact", "--expect-version", "--expect-repo", "--request-id", "--correlation-id", "--print-request-json", "--no-parse-reply", "--protocol-timeout-seconds", "--protocol-fresh-turn-timeout-seconds", "--protocol-fresh-turn-poll-seconds", "--answer-index", "--answer-id"],
         "shell": ["--file", "--json", "--keep-open", "--retries"],
         "test-suite": ["--json", "--profile", "--path", "--package-zip", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback", "--task-list-visible-timeout-seconds", "--task-list-visible-max-attempts"],
@@ -23663,6 +23782,13 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--json", "--expect-json", dest="json", action="store_true", help="Request strict assistant JSON. Structured JSON result output is the default.")
     ask.add_argument("--text", action="store_true", help="Print only the canonical answer text on success. Failures still exit non-zero and print an error to stderr.")
     ask.add_argument("--conversation-url", help="Continue a specific ChatGPT conversation URL instead of the project home or remembered conversation.")
+    ask.add_argument(
+        "--new-task",
+        "--new-conversation",
+        dest="new_task",
+        action="store_true",
+        help="Start a fresh ChatGPT project conversation from the remembered project_home_url instead of continuing the remembered conversation_url.",
+    )
     ask.add_argument("--protocol", action="store_true", help="Wrap the prompt in a Promptbranch ask.request envelope.")
     ask.add_argument("--from-current-baseline", action="store_true", help="Build protocol artifact fields from pb artifact current. Currently implied by --protocol.")
     ask.add_argument("--target-version", help="Target output version to include in the protocol request envelope.")

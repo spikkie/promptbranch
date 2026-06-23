@@ -2358,18 +2358,29 @@ class ChatGPTBrowserClient:
         phase_timings["composer_ready_before_fill_stop_visible"] = composer_ready_evidence.get("stop_visible")
         if composer_ready_evidence.get("status") != "composer_ready":
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            blockers = set(composer_ready_evidence.get("blockers") or [])
+            busy_blockers = {"stop_button_visible", "thinking_visible", "interrupted_answer_state"}
+            target_conversation_busy = bool(self._is_conversation_url(target_url) and blockers.intersection(busy_blockers))
+            status = "target_conversation_busy" if target_conversation_busy else "composer_not_ready_before_fill"
+            error = (
+                "target conversation is busy; refusing to type into a running or interrupted composer"
+                if target_conversation_busy
+                else "composer was not ready before fill; refusing to type into a running or interrupted composer"
+            )
             result = {
                 "ok": False,
                 "action": "ask",
-                "status": "composer_not_ready_before_fill",
-                "error": "composer was not ready before fill; refusing to type into a running or interrupted composer",
-                "error_type": "composer_not_ready_before_fill",
+                "status": status,
+                "error": error,
+                "error_type": status,
                 "timeout_layer": "composer_ready_before_fill",
                 "conversation_url": target_url if self._is_conversation_url(target_url) else None,
                 "composer_ready_evidence": composer_ready_evidence,
                 "partial_result": True,
                 "ask_phase_timings": phase_timings,
             }
+            if target_conversation_busy:
+                result["recovery_hint"] = "Wait for the current conversation to finish, stop it manually, or rerun with --new-task."
             self._record_ask_progress(**result)
             return result
 
