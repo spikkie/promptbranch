@@ -227,3 +227,7 @@ Browser/backend 429 telemetry can be real while still being outside the authorit
 ## Decision — all-tests summary must prefer command result payloads over nested metadata
 
 Release logs may contain nested JSON helper objects such as `profile_lease` and `profile_lease.metadata` inside a top-level command result. Raw brace scanning must rank the real command result payload above nested helper/metadata objects so recovered live-test statuses such as `verified_with_recovered_rate_limit` are not misclassified in `all_tests_failed_steps`.
+
+## Decision — v0.1.84.5.10.3 ask-live recovered summary boundary
+
+Recovered live-step classification may override top-level `ok=false` only when the command payload itself proves `status=verified_with_recovered_rate_limit`, acknowledged cooldown telemetry is present, `functional_failure_count=0`, and every ask-live child step confirms the expected sentinel. A recovered-rate-limit label without functional proof remains release-blocking. This decision does not apply to `full_direct` or `full_localhost` source-add timeout/rate-limit failures.

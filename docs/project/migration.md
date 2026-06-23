@@ -486,3 +486,7 @@ No user data, Project Source, artifact-current, deployment, or ChatGPT Project d
 ## v0.1.84.5.10.2 migration note
 
 No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate after `v0.1.84.5.10.1` because it narrows the localhost/offline cooldown denylist back to `full_localhost`/offline groups and fixes all-tests summary selection for recovered live-test command result payloads.
+
+## v0.1.84.5.10.3 migration note
+
+No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate after `v0.1.84.5.10.2` when validating the repair line because it fixes ask-live recovered-success all-tests summary classification while preserving localhost/offline cooldown denial and live source-add failure visibility.

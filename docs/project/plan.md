@@ -1140,3 +1140,7 @@ Repair-only continuation from `v0.1.84.5.10.1`:
 5. Preserve fail-closed behavior for unrecovered 429 evidence.
 
 No normal release slice advances in this repair.
+
+## v0.1.84.5.10.3 repair plan entry
+
+Repair-only continuation from `v0.1.84.5.10.2`: patch all-tests summary classification so recovered `ask_live` payloads with complete functional sentinel proof are green even when the top-level payload has `ok=false` due to rate-limit contamination bookkeeping. Add small fake-command run-all regression tests proving the recovered case is green and a functional-failure case remains red. Preserve `full_localhost` cooldown denial and keep `full_direct` outside the localhost/offline denylist.
