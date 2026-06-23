@@ -215,3 +215,7 @@ Release-control must not use the last JSON object in a browser log as the Projec
 ## Decision — v0.1.84.5.10 localhost validation and ask-live streaming timeout
 
 In run-all release validation, offline release-validation groups are primary local proof and must not inherit browser-service transport state from a localhost browser leg. Once the primary direct leg has proven the release-validation groups, later transports may report those groups as duplicate-skipped instead of rerunning identical local pytest commands. Also, selector-probe lines with `visible=False` are diagnostics, not rate-limit evidence. ask-live may treat a timeout with a visible expected sentinel as functionally verified only inside the bounded ask-live sentinel smoke contract; missing sentinel, wrong Project, stale sentinel, and unrecovered 429 stay fail-closed.
+
+## Decision — localhost/offline validation must never sleep for browser cooldown telemetry
+
+Browser/backend 429 telemetry can be real while still being outside the authority of localhost/offline release-validation groups. Release-control may apply browser cooldown retry only to live browser steps. If `full_localhost` or another localhost/offline validation step sees rate-limit evidence, release-control must deny the cooldown path before parsing cooldown seconds or printing the generic waiting warning, record the denial, and preserve the failed validation result for operator diagnosis.

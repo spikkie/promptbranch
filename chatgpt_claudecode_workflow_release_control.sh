@@ -2396,10 +2396,28 @@ run_all_recover_service_after_browser_read_timeout() {
   return 1
 }
 
+run_all_step_disallows_browser_rate_limit_retry() {
+  local step_name="$1"
+  case "${step_name}" in
+    full_direct|full_localhost|localhost|full_offline|offline|full_release_validation_groups|release_validation_groups)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 run_all_rate_limit_cooldown_sleep() {
   local step_name="$1"
   local log_path="$2"
   local wait_seconds="${run_all_rate_limit_cooldown_seconds}"
+  if run_all_step_disallows_browser_rate_limit_retry "${step_name}"; then
+    echo "ERROR: browser rate-limit cooldown retry denied for ${step_name}; localhost/offline validation groups must not sleep or retry on live-browser telemetry." >&2
+    echo "rate_limit_retry_denied_for_offline_step: ${step_name}" >> "${log_path}"
+    echo "rate_limit_retry_denial_reason: browser_telemetry_contamination_or_stale_shared_service_log" >> "${log_path}"
+    return 1
+  fi
   if [[ -f "${log_path}" ]]; then
     local parsed_wait
     parsed_wait="$(python3 - "${log_path}" "${run_all_rate_limit_cooldown_seconds}" <<'INNERPY'
@@ -2495,14 +2513,17 @@ run_full_test_transport() {
     echo "WARN: recovered rate-limit evidence detected for full_${label}; functional verification passed, so release-control will not retry the whole step." | tee -a "${selected_full_log}" >&2
     test_rc=0
   elif [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
-    run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"
-    echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
-    printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
-    print_command_line "${full_test_cmd[@]}"
-    printf ' 2>&1 | tee -a %q
+    if run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"; then
+      echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
+      printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
+      print_command_line "${full_test_cmd[@]}"
+      printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-    CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
-    test_rc=${PIPESTATUS[0]}
+      CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+      test_rc=${PIPESTATUS[0]}
+    else
+      echo "WARN: suppressing rate-limit retry for full_${label}; browser cooldown retry is forbidden for localhost/offline validation groups." | tee -a "${selected_full_log}" >&2
+    fi
   fi
   if [[ ${test_rc} -ne 0 ]]; then
     echo "WARN: pb test full exited with ${test_rc}; continuing to test report." >&2
@@ -2566,7 +2587,10 @@ run_all_json_step() {
   fi
   while [[ ${step_rc} -ne 0 && ${attempt} -lt ${run_all_rate_limit_retries} ]] && run_all_log_has_rate_limit_evidence "${step_log}"; do
     attempt=$((attempt + 1))
-    run_all_rate_limit_cooldown_sleep "${step_name}" "${step_log}"
+    if ! run_all_rate_limit_cooldown_sleep "${step_name}" "${step_log}"; then
+      echo "WARN: suppressing rate-limit retry for ${step_name}; browser cooldown retry is forbidden for localhost/offline validation groups." | tee -a "${step_log}" >&2
+      break
+    fi
     echo "== pb test-all step retry after rate-limit cooldown: ${step_name} attempt=${attempt} ==" | tee -a "${step_log}"
     echo "+ $* 2>&1 | tee -a ${step_log}"
     "$@" 2>&1 | tee -a "${step_log}"
