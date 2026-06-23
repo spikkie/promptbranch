@@ -219,3 +219,11 @@ In run-all release validation, offline release-validation groups are primary loc
 ## Decision — localhost/offline validation must never sleep for browser cooldown telemetry
 
 Browser/backend 429 telemetry can be real while still being outside the authority of localhost/offline release-validation groups. Release-control may apply browser cooldown retry only to live browser steps. If `full_localhost` or another localhost/offline validation step sees rate-limit evidence, release-control must deny the cooldown path before parsing cooldown seconds or printing the generic waiting warning, record the denial, and preserve the failed validation result for operator diagnosis.
+
+## Decision — direct transport is not a localhost/offline cooldown-deny target
+
+`full_direct` / `direct` must not be included in the localhost/offline browser-cooldown retry denylist unless a future change explicitly classifies them as offline-only. The hard denial is reserved for `full_localhost` and explicit localhost/offline validation groups.
+
+## Decision — all-tests summary must prefer command result payloads over nested metadata
+
+Release logs may contain nested JSON helper objects such as `profile_lease` and `profile_lease.metadata` inside a top-level command result. Raw brace scanning must rank the real command result payload above nested helper/metadata objects so recovered live-test statuses such as `verified_with_recovered_rate_limit` are not misclassified in `all_tests_failed_steps`.

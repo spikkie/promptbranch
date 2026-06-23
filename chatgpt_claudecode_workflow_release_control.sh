@@ -2399,7 +2399,7 @@ run_all_recover_service_after_browser_read_timeout() {
 run_all_step_disallows_browser_rate_limit_retry() {
   local step_name="$1"
   case "${step_name}" in
-    full_direct|full_localhost|localhost|full_offline|offline|full_release_validation_groups|release_validation_groups)
+    full_localhost|localhost|full_offline|offline|full_release_validation_groups|release_validation_groups)
       return 0
       ;;
     *)
@@ -2660,7 +2660,41 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
         ):
             candidates.append(value)
     if candidates:
-        return candidates[-1], None
+        def candidate_rank(value: dict) -> int:
+            action = str(value.get("action") or "")
+            status = str(value.get("status") or "")
+            # Prefer real command result payloads over nested helper/metadata objects
+            # discovered by raw JSON scanning from inner braces.  In live ask logs,
+            # a top-level test_ask_live payload may contain nested profile_lease and
+            # metadata objects with their own action fields; those helper objects must
+            # not replace the command result in the all-tests summary.
+            command_actions = {
+                "test_ask_live",
+                "test_visual_artifact_roundtrip",
+                "test_release_live",
+                "test_suite",
+                "test_report",
+                "package_import_smoke",
+            }
+            if action in command_actions and "ok" in value and status:
+                return 100
+            if status == "guard_passed" and "ok" in value:
+                return 95
+            if "final_verdict" in value and "ok" in value:
+                return 90
+            if "source_kind" in value and "ok" in value and status:
+                return 80
+            if "schema" in value and status:
+                return 70
+            if action and "ok" in value and status:
+                return 50
+            if "profile" in value and "ok" in value and status:
+                return 40
+            return 10
+
+        ranked = [(candidate_rank(value), idx, value) for idx, value in enumerate(candidates)]
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        return ranked[-1][2], None
     return {}, f"no top-level Promptbranch JSON object found in {path}"
 
 def payload_recovered_rate_limit_success(payload: dict) -> bool:

@@ -1128,3 +1128,15 @@ Repair-only continuation from `v0.1.84.5.9`: isolate/deduplicate localhost offli
 ## v0.1.84.5.10.1 repair plan entry
 
 Repair-only continuation from `v0.1.84.5.10`: hard-deny browser rate-limit cooldown retry for localhost/offline release-validation step names, especially `full_localhost`, and add a regression test proving the denylist is checked before the generic `waiting ... before retry` path. Preserve live-browser rate-limit retry behavior for live steps and preserve all no-mutation boundaries.
+
+## v0.1.84.5.10.2 repair plan entry
+
+Repair-only continuation from `v0.1.84.5.10.1`:
+
+1. Preserve the hard browser-cooldown retry denial for `full_localhost` and explicit localhost/offline validation groups.
+2. Remove `full_direct` / `direct` from the localhost/offline denylist.
+3. Rank top-level command result JSON above nested helper/metadata JSON in the all-tests summary reader.
+4. Add regression coverage for nested `profile_lease.metadata` not displacing an `ask_live` `verified_with_recovered_rate_limit` command result.
+5. Preserve fail-closed behavior for unrecovered 429 evidence.
+
+No normal release slice advances in this repair.
