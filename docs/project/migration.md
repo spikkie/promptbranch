@@ -490,3 +490,7 @@ No user data, Project Source, artifact-current, deployment, or ChatGPT Project d
 ## v0.1.84.5.10.3 migration note
 
 No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate after `v0.1.84.5.10.2` when validating the repair line because it fixes ask-live recovered-success all-tests summary classification while preserving localhost/offline cooldown denial and live source-add failure visibility.
+
+## v0.1.84.5.11 migration note
+
+No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use the new all-tests and full-transport diagnostics in release-control summaries to identify source-add ReadTimeout, rate-limit, retry-denial, and transport-boundary failures before rerunning full live validation.
