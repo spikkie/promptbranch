@@ -14077,3 +14077,74 @@ def test_rate_limit_recovery_requires_cooldown_or_ack_wait_satisfaction() -> Non
         ],
     }
     assert _rate_limit_telemetry_recovered(recovered_by_modal_ack) is True
+
+
+def test_ask_live_accepts_visible_sentinel_after_streaming_timeout(monkeypatch, capsys) -> None:
+    project_id = "g-p-6a1af3fe64a481919a2cc7de3cff0487"
+    project_url = f"https://chatgpt.com/g/{project_id}/project"
+    conversation_url = f"https://chatgpt.com/g/{project_id}-ask-live-temp-unit/c/00000000-0000-0000-0000-000000000002"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            match = re.search(r"ASK_LIVE_[A-Z_]+_STREAM", prompt)
+            sentinel = match.group(0) if match else "ASK_LIVE_UNKNOWN_STREAM"
+            return {
+                "ok": False,
+                "status": "submit_confirmed_answer_timeout",
+                "answer": {"text": sentinel + "_", "partial": True, "source": "visible_timeout_response"},
+                "conversation_url": conversation_url,
+                "submit_evidence": {"submit_confirmed": True, "submit_method": "keyboard_enter"},
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": False,
+                    "conversation_history_429_seen": False,
+                    "backend_api_guardrail_seen": False,
+                    "service_rate_limit_events": [],
+                },
+            }
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main(["test", "ask-live", "--json", "--run-id", "STREAM", "--only", "plain", "--conversation-url", project_url, "--keep-project"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["status"] == "verified"
+    step = payload["steps"][0]
+    assert step["status"] == "verified_with_streaming_timeout"
+    assert step["streaming_timeout_answer_visible"] is True
+    assert step["contains_expected_sentinel"] is True
+    assert step["functional_status"] == "verified"
+
+
+def test_ask_live_streaming_timeout_still_fails_without_visible_sentinel(monkeypatch, capsys) -> None:
+    project_id = "g-p-6a1af3fe64a481919a2cc7de3cff0487"
+    project_url = f"https://chatgpt.com/g/{project_id}/project"
+    conversation_url = f"https://chatgpt.com/g/{project_id}-ask-live-temp-unit/c/00000000-0000-0000-0000-000000000003"
+
+    class FakeBackend:
+        def state_snapshot(self):
+            return {}
+
+        async def ask(self, **kwargs):
+            return {
+                "ok": False,
+                "status": "submit_confirmed_answer_timeout",
+                "answer": {"text": "still thinking", "partial": True, "source": "visible_timeout_response"},
+                "conversation_url": conversation_url,
+                "submit_evidence": {"submit_confirmed": True, "submit_method": "keyboard_enter"},
+            }
+
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: FakeBackend())
+
+    rc = main(["test", "ask-live", "--json", "--run-id", "STREAM", "--only", "plain", "--conversation-url", project_url, "--keep-project"])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    step = payload["steps"][0]
+    assert step["status"] == "ask_failed"
+    assert step["contains_expected_sentinel"] is False

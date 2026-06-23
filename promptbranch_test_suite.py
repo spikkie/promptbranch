@@ -53,6 +53,7 @@ def utc_now() -> str:
 
 RELEASE_VALIDATION_PYTHON_PLACEHOLDER = "{release_validation_python}"
 RELEASE_VALIDATION_PYTHON_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON"
+RELEASE_VALIDATION_SKIP_DUPLICATE_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE"
 
 
 def release_validation_python() -> str:
@@ -189,6 +190,12 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
         # ambient pytest plugin autoload so locally installed plugins cannot hang
         # or change release-gate behavior after live browser tests have run.
         env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+        # These groups are offline repo validations.  Do not let the surrounding
+        # live/browser transport leak service routing into the pytest process; a
+        # localhost release-control leg must not make local validators talk to the
+        # browser service or inherit its timeout behavior.
+        for key in ("CHATGPT_SERVICE_BASE_URL", "PROMPTBRANCH_SERVICE_BASE_URL"):
+            env.pop(key, None)
         completed = subprocess.run(
             command,
             cwd=str(repo_path),
@@ -234,6 +241,29 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
 
 def run_release_validation_groups(*, repo_path: Path | str = ".") -> dict[str, Any]:
     root = Path(repo_path).expanduser().resolve()
+    if os.environ.get(RELEASE_VALIDATION_SKIP_DUPLICATE_ENV) == "1":
+        groups = {
+            group_name: {
+                "ok": True,
+                "action": "release_validation_group",
+                "status": "skipped_duplicate_already_passed",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": _resolve_release_validation_command(spec.get("command") or []),
+                "skip_reason": "release_validation_groups_already_passed_in_primary_run_all_transport",
+            }
+            for group_name, spec in RELEASE_VALIDATION_GROUPS.items()
+        }
+        return {
+            "ok": True,
+            "action": "release_validation_groups",
+            "status": "skipped_duplicate_already_passed",
+            "required_group_count": len(RELEASE_VALIDATION_GROUPS),
+            "missing_required_groups": [],
+            "duplicate_skip": True,
+            "groups": groups,
+        }
     groups: dict[str, dict[str, Any]] = {}
     for group_name, spec in RELEASE_VALIDATION_GROUPS.items():
         groups[group_name] = _run_release_validation_group(group_name, spec, repo_path=root)

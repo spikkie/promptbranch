@@ -760,6 +760,7 @@ run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver
 run_all_shared_project_url=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
+run_all_release_validation_groups_passed_primary=0
 ask_live_log="${release_log_dir}/pb_test.ask_live.${ver}.log"
 visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundtrip.${ver}.log"
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
@@ -2151,7 +2152,14 @@ import re
 import sys
 
 path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+raw_text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+# Selector probe diagnostics may contain literal modal text inside selectors even
+# when the modal is absent, e.g. selector='[role="dialog"]:has-text("Too many requests")'
+# visible=False.  Those lines are diagnostic probes, not rate-limit evidence.
+text = "\n".join(
+    line for line in raw_text.splitlines()
+    if not ("[selector] selector probe" in line and "visible=False" in line)
+)
 
 # Strict evidence only. Do not match generic diagnostic prose such as
 # literal status=429 evidence remains retryable unless recovered in-place.
@@ -2332,6 +2340,27 @@ raise SystemExit(0 if any(re.search(pattern, text, flags=re.IGNORECASE) for patt
 INNERPY
 }
 
+
+run_all_summary_release_validation_groups_ok() {
+  local summary_path="$1"
+  [[ -f "${summary_path}" ]] || return 1
+  python3 - "${summary_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+except Exception:
+    raise SystemExit(1)
+groups = payload.get("release_validation_groups") if isinstance(payload.get("release_validation_groups"), dict) else {}
+if groups.get("ok") is True and not groups.get("missing_required_groups"):
+    raise SystemExit(0)
+raise SystemExit(1)
+INNERPY
+}
+
 run_all_recover_service_after_browser_read_timeout() {
   local context="$1"
   local log_path="$2"
@@ -2451,11 +2480,16 @@ run_full_test_transport() {
     echo "text_source_compatibility: skipped_by_default_use_--strict-source-kind-matrix"
   fi
   : > "${selected_full_log}"
-  printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
+  local release_validation_duplicate_skip=0
+  if [[ ${run_all_tests} -eq 1 && "${label}" != "direct" && ${run_all_release_validation_groups_passed_primary} -eq 1 ]]; then
+    release_validation_duplicate_skip=1
+    echo "release_validation_groups: skipped_duplicate_already_passed_in_primary_transport" | tee -a "${selected_full_log}"
+  fi
+  printf '+ CHATGPT_SERVICE_BASE_URL=%s PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
   print_command_line "${full_test_cmd[@]}"
   printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_recovered_rate_limit_success "${selected_full_log}"; then
     echo "WARN: recovered rate-limit evidence detected for full_${label}; functional verification passed, so release-control will not retry the whole step." | tee -a "${selected_full_log}" >&2
@@ -2467,7 +2501,7 @@ run_full_test_transport() {
     print_command_line "${full_test_cmd[@]}"
     printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-    CHATGPT_SERVICE_BASE_URL="${base_url}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+    CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
     test_rc=${PIPESTATUS[0]}
   fi
   if [[ ${test_rc} -ne 0 ]]; then
@@ -2484,6 +2518,10 @@ run_full_test_transport() {
   fi
 
   write_structured_full_test_summary "${selected_summary_json}" "${selected_report_json}" "${selected_full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
+  if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" ]] && run_all_summary_release_validation_groups_ok "${selected_summary_json}"; then
+    run_all_release_validation_groups_passed_primary=1
+    echo "release_validation_groups_primary_status: passed" | tee -a "${selected_full_log}"
+  fi
   if [[ ${run_all_tests} -eq 1 ]]; then
     record_all_test_step "full_${label}" "${selected_summary_json}" "${test_rc}"
     if [[ ${test_rc} -ne 0 ]]; then
