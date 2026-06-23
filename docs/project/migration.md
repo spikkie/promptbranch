@@ -474,3 +474,7 @@ No user data migration is required. Operators should rerun release-control with 
 ## v0.1.84.5.9 migration note
 
 No user data migration is required. Operators should rerun release-control with the `v0.1.84.5.9` candidate after `v0.1.84.5.8` proved the browser ReadTimeout cascade was repaired but exposed brittle `live_project_ensure` URL extraction. This repair changes release-control parsing/status handling only and does not mutate Project Sources, artifact current state, ledger state, deployment, or ChatGPT Project deletion behavior.
+
+## v0.1.84.5.10 migration note
+
+No user data, Project Source, artifact-current, or ChatGPT Project deletion migration is performed. Operators should rerun release-control with the `v0.1.84.5.10` candidate. This repair only isolates duplicate offline release-validation groups from localhost browser transport state and hardens ask-live streaming-timeout classification for visibly present sentinels.

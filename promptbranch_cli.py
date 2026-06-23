@@ -20423,6 +20423,28 @@ def _ask_live_sentinel(run_id: str, suffix: str) -> str:
     return f"ASK_LIVE_{suffix.upper()}_{safe}"
 
 
+def _ask_live_sentinel_visible_during_streaming_timeout(answer_text: str, expected_sentinel: str) -> bool:
+    """Accept bounded timeout evidence only when the expected token is visibly present.
+
+    ChatGPT can leave the stop button visible while a short sentinel answer is
+    already rendered.  For ask-live only, that should not be treated as a
+    missing-answer failure.  The acceptance remains fail-closed: the expected
+    token must be present exactly and any remaining visible suffix may contain
+    only streaming/cursor-like marker characters or whitespace.
+    """
+    text = str(answer_text or "").strip()
+    expected = str(expected_sentinel or "").strip()
+    if not text or not expected or expected not in text:
+        return False
+    if text == expected:
+        return True
+    prefix, _match, suffix = text.partition(expected)
+    if prefix.strip():
+        return False
+    suffix = suffix.strip()
+    return bool(suffix) and all(ch in {"_", "▌", "|", "█", "."} for ch in suffix)
+
+
 def _ask_live_answer_text(response: Any) -> str:
     enriched = _enrich_ask_response_with_canonical_text(response)
     answer, _ = _split_ask_response(enriched)
@@ -20515,9 +20537,15 @@ async def _run_ask_live_step(
 
     raw_answer_text = _ask_live_answer_text(response)
     response_ok = not (isinstance(response, dict) and response.get("ok") is False)
-    answer_text = raw_answer_text if response_ok else ""
+    response_status = str(response.get("status") or "") if isinstance(response, dict) else ""
+    streaming_timeout_answer_visible = bool(
+        not response_ok
+        and response_status in {"submit_confirmed_answer_timeout", "assistant_response_timeout"}
+        and _ask_live_sentinel_visible_during_streaming_timeout(raw_answer_text, expected_sentinel)
+    )
+    answer_text = raw_answer_text if (response_ok or streaming_timeout_answer_visible) else ""
     forbidden = list(forbidden_sentinels or [])
-    contains_expected = bool(response_ok and expected_sentinel in answer_text)
+    contains_expected = bool((response_ok or streaming_timeout_answer_visible) and expected_sentinel in answer_text)
     forbidden_present = [item for item in forbidden if item and item in answer_text]
     response_conversation_url = response.get("conversation_url") if isinstance(response, dict) else None
     response_project_home_url = project_home_url_from_url(response_conversation_url)
@@ -20529,9 +20557,13 @@ async def _run_ask_live_step(
     rate_limit_telemetry = _rate_limit_telemetry_from_result(response)
     rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
     rate_limit_recovered = _rate_limit_telemetry_recovered(rate_limit_telemetry)
-    functionally_ok = bool(response_ok and contains_expected and not forbidden_present and in_expected_project)
+    functionally_ok = bool((response_ok or streaming_timeout_answer_visible) and contains_expected and not forbidden_present and in_expected_project)
     ok = bool(functionally_ok and (not rate_limit_contaminated or rate_limit_recovered))
-    if not response_ok:
+    if streaming_timeout_answer_visible and functionally_ok and rate_limit_contaminated and rate_limit_recovered:
+        status = "verified_with_recovered_rate_limit"
+    elif streaming_timeout_answer_visible and functionally_ok:
+        status = "verified_with_streaming_timeout"
+    elif not response_ok:
         status = "ask_failed"
     elif not in_expected_project:
         status = "wrong_project"
@@ -20562,6 +20594,9 @@ async def _run_ask_live_step(
         "rate_limit_telemetry": rate_limit_telemetry,
         "rate_limit_contaminated": rate_limit_contaminated,
         "rate_limit_recovered": rate_limit_recovered,
+        "streaming_timeout_answer_visible": streaming_timeout_answer_visible,
+        "response_status": response_status,
+        "partial_answer_text_preview": raw_answer_text[:240] if streaming_timeout_answer_visible else "",
         "functional_status": "verified" if functionally_ok else status,
         "prefer_button_submit": submit_evidence.get("prefer_button_submit") if isinstance(submit_evidence, dict) else None,
         "submit_method": submit_evidence.get("submit_method") if isinstance(submit_evidence, dict) else None,
@@ -21072,7 +21107,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
     rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
     rate_limit_recovered = _rate_limit_telemetry_recovered(rate_limit_telemetry)
     ask_steps_ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
-    functional_statuses = {"verified", "verified_with_recovered_rate_limit", "rate_limited_contaminated"}
+    functional_statuses = {"verified", "verified_with_recovered_rate_limit", "verified_with_streaming_timeout", "rate_limited_contaminated"}
     functional_steps_ok = bool(steps) and all(str(step.get("status")) in functional_statuses for step in steps)
     cleanup_ok = True
     if test_project_created and not bool(getattr(args, "keep_project", False)):

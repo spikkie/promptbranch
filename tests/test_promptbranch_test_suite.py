@@ -676,3 +676,40 @@ def test_browser_scheduler_release_validation_group_uses_short_timeout() -> None
     group = manifest["browser_scheduler_source_lifecycle"]
 
     assert group["timeout_seconds"] == 300.0
+
+
+def test_release_validation_groups_skip_duplicate_env(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_SKIP_DUPLICATE_ENV, "1")
+
+    result = suite.run_release_validation_groups(repo_path=tmp_path)
+
+    assert result["ok"] is True
+    assert result["status"] == "skipped_duplicate_already_passed"
+    assert result["missing_required_groups"] == []
+    assert result["duplicate_skip"] is True
+    assert result["groups"]
+    assert all(group["status"] == "skipped_duplicate_already_passed" for group in result["groups"].values())
+
+
+def test_release_validation_group_strips_browser_service_env(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return Completed()
+
+    monkeypatch.setenv("CHATGPT_SERVICE_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("PROMPTBRANCH_SERVICE_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    spec = {"required": True, "description": "unit", "command": ["python3", "-c", "pass"]}
+    result = suite._run_release_validation_group("unit", spec, repo_path=tmp_path)
+
+    assert result["ok"] is True
+    assert "CHATGPT_SERVICE_BASE_URL" not in captured["env"]
+    assert "PROMPTBRANCH_SERVICE_BASE_URL" not in captured["env"]

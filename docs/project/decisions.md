@@ -211,3 +211,7 @@ A client-side timeout from a browser-backed Promptbranch service command can lea
 ## Decision — shared live Project URL extraction must select the successful Project ensure payload
 
 Release-control must not use the last JSON object in a browser log as the Project ensure result. Browser/rate-limit telemetry can append nested JSON after a successful `pb project-ensure` payload. The shared live Project URL must be extracted from an `ok=true` `ensure_project` / `project_ensure` payload with `project_url`, `resolved_project_home_url`, or `project_home_url`. If recovered 429 telemetry is present but the Project ensure payload is functionally successful and contains a URL, release-control may continue with warning semantics; missing or invalid Project URL remains fail-closed.
+
+## Decision — v0.1.84.5.10 localhost validation and ask-live streaming timeout
+
+In run-all release validation, offline release-validation groups are primary local proof and must not inherit browser-service transport state from a localhost browser leg. Once the primary direct leg has proven the release-validation groups, later transports may report those groups as duplicate-skipped instead of rerunning identical local pytest commands. Also, selector-probe lines with `visible=False` are diagnostics, not rate-limit evidence. ask-live may treat a timeout with a visible expected sentinel as functionally verified only inside the bounded ask-live sentinel smoke contract; missing sentinel, wrong Project, stale sentinel, and unrecovered 429 stay fail-closed.

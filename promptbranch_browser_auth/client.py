@@ -19566,13 +19566,28 @@ class ChatGPTBrowserClient:
         error_text = str(exc)
         timeout_status = "submit_confirmed_answer_timeout" if "submit_confirmed_answer_timeout" in error_text else "assistant_response_timeout"
         backend_answer_diagnostics = self._backend_answer_timeout_diagnostics(submit_evidence=submit_evidence)
+        visible_answer_text = ""
+        visible_answer_selector = None
+        visible_answer_count = 0
+        try:
+            visible_answer_selector, visible_answer_count, visible_answer_text, _visible_probes = await self._extract_last_text_from_selectors(
+                page,
+                ASSISTANT_MESSAGE_SELECTORS,
+            )
+            visible_answer_text = str(visible_answer_text or "").strip()
+        except Exception as visible_exc:
+            self._log("response", "visible answer extraction failed during timeout fallback", error=str(visible_exc))
+            visible_answer_text = ""
         result = {
             "ok": False,
             "status": timeout_status,
             "error": error_text,
             "error_type": timeout_status if timeout_status != "assistant_response_timeout" else exc.__class__.__name__,
             "timeout_layer": "assistant_response",
-            "answer": None,
+            "answer": {"text": visible_answer_text, "partial": True, "source": "visible_timeout_response"} if visible_answer_text else None,
+            "partial_answer_text": visible_answer_text,
+            "partial_answer_selector": visible_answer_selector,
+            "partial_answer_count": visible_answer_count,
             "conversation_url": conversation_url,
             "current_url": current_url,
             "submit_evidence": submit_evidence,
