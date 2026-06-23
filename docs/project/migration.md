@@ -478,3 +478,7 @@ No user data migration is required. Operators should rerun release-control with 
 ## v0.1.84.5.10 migration note
 
 No user data, Project Source, artifact-current, or ChatGPT Project deletion migration is performed. Operators should rerun release-control with the `v0.1.84.5.10` candidate. This repair only isolates duplicate offline release-validation groups from localhost browser transport state and hardens ask-live streaming-timeout classification for visibly present sentinels.
+
+## v0.1.84.5.10.1 migration note
+
+No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate when validating the `v0.1.84.5.10` line because it prevents localhost/offline validation groups from sleeping or retrying on live-browser rate-limit telemetry.

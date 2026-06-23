@@ -1124,3 +1124,7 @@ Repair-only candidate on top of `v0.1.84.5.8`. The active repair fixes `live_pro
 ## v0.1.84.5.10 repair plan entry
 
 Repair-only continuation from `v0.1.84.5.9`: isolate/deduplicate localhost offline release-validation groups and harden ask-live completion when a sentinel is visibly present but the UI remains in a stop/running state until timeout. Preserve project-deletion freeze, shared live Project reuse, recovered-429 retry suppression, service ReadTimeout recovery, Project Source/adoption/current semantics, and ledger no-write boundaries. Full all-tests/adoption remain the next external validation step.
+
+## v0.1.84.5.10.1 repair plan entry
+
+Repair-only continuation from `v0.1.84.5.10`: hard-deny browser rate-limit cooldown retry for localhost/offline release-validation step names, especially `full_localhost`, and add a regression test proving the denylist is checked before the generic `waiting ... before retry` path. Preserve live-browser rate-limit retry behavior for live steps and preserve all no-mutation boundaries.

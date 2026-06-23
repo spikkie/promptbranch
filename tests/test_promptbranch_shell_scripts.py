@@ -1776,6 +1776,25 @@ def test_release_control_run_all_retries_unrecovered_rate_limited_step_once(tmp_
     assert "rate-limit evidence detected for ask_live" in result.stdout
 
 
+def test_release_control_full_localhost_rate_limit_retry_is_denylisted_before_sleep():
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_step_disallows_browser_rate_limit_retry" in script
+    assert "full_localhost|localhost|full_offline|offline" in script
+    assert "browser rate-limit cooldown retry denied for ${step_name}" in script
+    assert "rate_limit_retry_denied_for_offline_step: ${step_name}" in script
+
+    sleep_body = script.split("run_all_rate_limit_cooldown_sleep() {", 1)[1].split("build_run_all_full_test_args()", 1)[0]
+    deny_index = sleep_body.index("run_all_step_disallows_browser_rate_limit_retry")
+    generic_warn_index = sleep_body.index("WARN: rate-limit evidence detected for ${step_name}")
+    assert deny_index < generic_warn_index
+
+    assert 'if run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"; then' in script
+    assert 'run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"\n    echo "== pb test transport retry after rate-limit cooldown: ${label} =="' not in script
+    assert "suppressing rate-limit retry for full_${label}" in script
+
+
+
 def test_release_control_run_all_does_not_retry_recovered_rate_limited_step(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
