@@ -509,3 +509,16 @@ No user data, Project Source, artifact-current, deployment, or ChatGPT Project d
 No user data migration is required. Operators should update short `pb ask --new-task` proofs and shell snippets to read `.current.conversation_url` from `.pb_profile/.promptbranch_state.json`. The top-level `.conversation_url` path is a stale schema-v1 assumption and is not authoritative for Promptbranch schema-v2 state.
 
 Use `pb state --proof` or `scripts/smoke-pb-ask-new-task.sh` for a read-only proof contract and short live smoke respectively. No Project Source, artifact adoption/current, backend API, MkDocs, or Project deletion behavior is changed by this slice.
+
+## v0.1.86 migration note
+
+No user data, Project Source, artifact-current, accepted-event ledger, Docker, Kubernetes, Helm, or ChatGPT Project migration is performed.
+
+This release reconciles existing planning/status documents to accepted/current `chatgpt_claudecode_workflow-2_v0.1.85.zip` before any k8s-game implementation starts.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/design/orchestration/docs/current_status.md` | stale orchestration status | same file plus `docs/project/status.md` | updated | Rebased current status from v0.1.79-era wording to v0.1.85 accepted baseline. |
+| `docs/design/orchestration/docs/global_mvp_plan.md` | orchestration plan | same file plus `docs/project/plan.md` | updated | Clarifies v0.1.86 reconciliation, v0.1.87 static-source-only candidate direction, and v0.1.88 deploy-gate direction. |
+| `docs/design/orchestration/docs/detailed_mvp_setup_plan.md` | detailed handoff plan | same file plus `docs/project/plan.md` | updated | Adds v0.1.86 handoff and validation checklist. |
+| `docs/design/orchestration/docs/k8s_game_mvp_contract.md` | k8s-game contract | same file plus `docs/project/decisions.md` | updated | Confirms no implementation/deploy in v0.1.86 and requires a later deploy evidence gate. |

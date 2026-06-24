@@ -463,3 +463,29 @@ No normal slice advanced. `v0.1.84.5.12 — Explicit new-task ask mode` remains 
 The slice addresses the operational confusion found during the `v0.1.84.5.12.2` short verification: the authoritative schema-v2 conversation path is `.current.conversation_url`, not top-level `.conversation_url`.
 
 Current candidate work adds `pb state` schema/current observability, `pb state --proof`, and `scripts/smoke-pb-ask-new-task.sh`. Candidate status remains not accepted/current until full release-control/adoption/current proof is provided.
+
+## v0.1.86 status — k8s-game orchestration plan reconciliation
+
+Accepted/current baseline with adoption evidence:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.85.zip
+```
+
+Active candidate:
+
+```text
+v0.1.86 — K8s-game orchestration plan reconciliation
+```
+
+Current finding:
+
+```text
+The Kubernetes game plan remains strategically on track, but the documentation/control surface needed reconciliation after the accepted baseline advanced to v0.1.85.
+```
+
+This slice is documentation/control-surface only. It does not implement the game, add deployment files, apply Kubernetes manifests, mutate Project Source, adopt artifacts, write accepted-event ledger state, or change runtime/browser behavior.
+
+## v0.1.86 next safe action
+
+Install the `v0.1.86` candidate, run focused project-control/orchestration documentation validation, then run full release-control/adopt only if the focused checks pass.

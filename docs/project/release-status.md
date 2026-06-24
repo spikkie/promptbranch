@@ -212,3 +212,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.84.5.12.2 | repair | Deterministic browser_scheduler_source_lifecycle release-validation nodeids and accepted explicit new-task ask line | accepted_current | operator-provided full release-control/adoption/current evidence; all_tests_final_verdict=GO; Artifact Guardian passed; `pb artifact current --json` aligned runtime/source/artifact/registry | Completes v0.1.84.5.12 explicit new-task ask mode line | 1f6aca626d8993c1a1a953ecd2fd5a426bb28c24c5e0615be90a6628a570e44e |
 
 | v0.1.85 | normal | Ask state observability and new-task proof hardening | candidate | focused tests and candidate ZIP validation pending full release-control/adoption | Adds schema-v2 state proof observability; no browser/adoption behavior change | pending |
+
+| v0.1.86 | normal | K8s-game orchestration plan reconciliation | candidate | focused project-control/orchestration-doc tests before full release-control | DOD-104 focused | pending |

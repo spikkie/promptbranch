@@ -90,3 +90,38 @@ exposure: ingress or port-forward fallback
 production_allowed: false
 smoke_test_required: true
 ```
+
+## v0.1.86 reconciliation status
+
+This contract remains valid after accepted/current `v0.1.85`, but implementation has not started yet.
+
+`v0.1.86` only reconciles plan/status authority:
+
+```text
+no game implementation
+no Docker image build/publish
+no Kubernetes apply
+no Helm release
+no cluster mutation
+no Project Source mutation
+no artifact adoption/current behavior change
+```
+
+## Next allowed implementation shape
+
+The next allowed game implementation slice, after this reconciliation is accepted, is static-first and repository-local only:
+
+```text
+- static HTML/CSS/JS app scaffold
+- Dockerfile as source only
+- Kubernetes Deployment/Service/Ingress manifests as source only
+- README and local validation notes
+- static smoke/lint tests
+- no kubectl apply
+- no live cluster namespace creation
+- no production exposure
+```
+
+## Deployment gate requirement
+
+A later release must define an explicit Kubernetes dry-run/deploy evidence gate before any cluster mutation is allowed. Until that gate exists and is accepted/current, Kubernetes manifests are design/source artifacts only.

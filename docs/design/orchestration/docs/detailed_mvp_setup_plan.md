@@ -172,3 +172,50 @@ no Ollama/local_llm provider approval
 ## Next handoff after v0.1.40
 
 The next orchestration slice should map valid grill stages to allowed k8s-game state-machine transitions, still read-only.
+
+## v0.1.86 detailed handoff
+
+`v0.1.86` is a reconciliation-only slice from accepted/current `chatgpt_claudecode_workflow-2_v0.1.85.zip`.
+
+Planned files updated by this slice:
+
+```text
+docs/project/mvp.md
+docs/project/definition-of-done.md
+docs/project/plan.md
+docs/project/status.md
+docs/project/release-status.md
+docs/project/decisions.md
+docs/project/migration.md
+docs/design/orchestration/docs/current_status.md
+docs/design/orchestration/docs/global_mvp_plan.md
+docs/design/orchestration/docs/detailed_mvp_setup_plan.md
+docs/design/orchestration/docs/k8s_game_mvp_contract.md
+docs/release-v0.1.86.md
+```
+
+Validation checklist:
+
+```bash
+python3 -m pytest -q tests/test_project_control_surface.py tests/orchestration/test_orchestration_examples.py tests/test_promptbranch_version.py
+python3 -m compileall -q promptbranch_cli.py promptbranch_state.py promptbranch_orchestration.py
+python3 promptbranch_cli.py artifact guard --zip chatgpt_claudecode_workflow-2_v0.1.86.zip --version v0.1.86 --json
+python3 promptbranch_cli.py artifact verify chatgpt_claudecode_workflow-2_v0.1.86.zip --json
+```
+
+Scope boundary:
+
+```text
+read-only documentation/control-surface reconciliation only
+no game implementation
+no Docker build or image publication
+no Kubernetes manifest application
+no kubectl/Helm cluster mutation
+no accepted-event ledger write
+no Project Source mutation
+no artifact adoption/current behavior change
+```
+
+## Next handoff after v0.1.86
+
+The next game-related slice may create a static-app scaffold as repository files only. It must not deploy to Kubernetes until a later accepted dry-run/deploy evidence gate exists.

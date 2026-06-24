@@ -250,3 +250,11 @@ The `browser_scheduler_source_lifecycle` release-validation group is a required 
 `pb ask --new-task` proof and operator smoke commands must use `.current.conversation_url` as the authoritative remembered task path. The stale top-level `.conversation_url` shape is not a valid proof source for schema-v2 Promptbranch state.
 
 `pb state --proof` is read-only and may expose proof metadata, but it must not run a live ask, mutate Project Source, adopt artifacts, or alter ChatGPT Project state.
+
+## Decision — v0.1.86 reconcile k8s-game plan before implementation
+
+The next Kubernetes game work must not begin with implementation. The accepted Promptbranch baseline is `chatgpt_claudecode_workflow-2_v0.1.85.zip`, and orchestration docs must first be reconciled to that baseline.
+
+The k8s-game remains a controlled test vehicle for JSON orchestration state. It is not a product goal and not a deployment target in `v0.1.86`.
+
+A later implementation slice may add static app and manifest source files only. Any actual Kubernetes mutation requires a separate, explicit dry-run/deploy evidence gate accepted in a later release.

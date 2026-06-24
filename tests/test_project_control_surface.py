@@ -63,8 +63,8 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.79.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.79.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.85.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.85.zip" in text
 
 
 def test_validation_matrix_declares_required_release_groups() -> None:
@@ -82,3 +82,22 @@ def test_validation_matrix_declares_required_release_groups() -> None:
     ]:
         assert group in text
     assert "missing_required_groups" in text
+
+
+
+def test_k8s_game_plan_reconciled_before_implementation() -> None:
+    status = read_doc("status.md")
+    plan = read_doc("plan.md")
+    decisions = read_doc("decisions.md")
+    migration = read_doc("migration.md")
+    orchestration_status = (ROOT / "docs" / "design" / "orchestration" / "docs" / "current_status.md").read_text(encoding="utf-8")
+    k8s_contract = (ROOT / "docs" / "design" / "orchestration" / "docs" / "k8s_game_mvp_contract.md").read_text(encoding="utf-8")
+
+    combined = "\n".join([status, plan, decisions, migration, orchestration_status, k8s_contract])
+    assert "v0.1.86 — K8s-game orchestration plan reconciliation" in plan
+    assert "chatgpt_claudecode_workflow-2_v0.1.85.zip" in combined
+    assert "no game implementation" in combined
+    assert "no Kubernetes apply" in combined
+    assert "dry-run/deploy evidence gate" in combined
+    assert "current reconciliation release:    v0.1.86" in orchestration_status
+    assert "v0.1.87 candidate direction" in orchestration_status
