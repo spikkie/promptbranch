@@ -63,8 +63,8 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.85.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.85.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.86.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.87.zip" in text
 
 
 def test_validation_matrix_declares_required_release_groups() -> None:
@@ -101,3 +101,20 @@ def test_k8s_game_plan_reconciled_before_implementation() -> None:
     assert "dry-run/deploy evidence gate" in combined
     assert "current reconciliation release:    v0.1.86" in orchestration_status
     assert "v0.1.87 candidate direction" in orchestration_status
+
+
+def test_loop_target_schema_and_dry_run_planner_control_surface() -> None:
+    status = read_doc("status.md")
+    plan = read_doc("plan.md")
+    decisions = read_doc("decisions.md")
+    migration = read_doc("migration.md")
+    dod = read_doc("definition-of-done.md")
+    loop_contract = (ROOT / "docs" / "design" / "orchestration" / "docs" / "loop_target_schema_contract.md").read_text(encoding="utf-8")
+
+    combined = "\n".join([status, plan, decisions, migration, dod, loop_contract])
+    assert "v0.1.87 — Loop target schema and dry-run planner" in combined
+    assert "chatgpt_claudecode_workflow-2_v0.1.86.zip" in combined
+    assert "promptbranch.loop.target" in combined
+    assert "side-effect free" in combined or "side-effect-free" in combined
+    assert "no Kubernetes" in combined or "kubernetes_mutation_performed=false" in combined
+    assert "DOD-105" in combined

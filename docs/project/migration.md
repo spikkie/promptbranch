@@ -522,3 +522,15 @@ This release reconciles existing planning/status documents to accepted/current `
 | `docs/design/orchestration/docs/global_mvp_plan.md` | orchestration plan | same file plus `docs/project/plan.md` | updated | Clarifies v0.1.86 reconciliation, v0.1.87 static-source-only candidate direction, and v0.1.88 deploy-gate direction. |
 | `docs/design/orchestration/docs/detailed_mvp_setup_plan.md` | detailed handoff plan | same file plus `docs/project/plan.md` | updated | Adds v0.1.86 handoff and validation checklist. |
 | `docs/design/orchestration/docs/k8s_game_mvp_contract.md` | k8s-game contract | same file plus `docs/project/decisions.md` | updated | Confirms no implementation/deploy in v0.1.86 and requires a later deploy evidence gate. |
+
+## v0.1.87 migration note
+
+No user data, Project Source, artifact-current, accepted-event ledger, Docker, Kubernetes, Helm, or ChatGPT Project migration is performed.
+
+This release adds a new loop target schema and dry-run planner. Existing k8s-game planning documents are preserved; the static game becomes a future target fixture for the loop engine instead of the primary product goal.
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/design/orchestration/docs/k8s_game_mvp_contract.md` | k8s-game planning contract | future loop target fixture plus `examples/loop-targets/static-game-dry-run-target.json` | preserved | No game source or deployment is added. |
+| `docs/project/plan.md` | release plan | same file | updated | Adds `v0.1.87` loop target schema and dry-run planner slice. |
+| `docs/project/status.md` | current status | same file | updated | Records accepted/current `v0.1.86` baseline and `v0.1.87` candidate safety posture. |

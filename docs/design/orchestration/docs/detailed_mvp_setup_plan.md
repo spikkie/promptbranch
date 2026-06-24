@@ -219,3 +219,12 @@ no artifact adoption/current behavior change
 ## Next handoff after v0.1.86
 
 The next game-related slice may create a static-app scaffold as repository files only. It must not deploy to Kubernetes until a later accepted dry-run/deploy evidence gate exists.
+
+## v0.1.87 detailed handoff — loop target schema and dry-run planner
+
+1. Install the candidate ZIP.
+2. Validate the static game target fixture with `pb loop validate`.
+3. Generate a dry-run plan with `pb loop plan`.
+4. Run stubbed loop control flow with `pb loop run --dry-run`.
+5. Confirm all safety flags remain false.
+6. Do not implement, deploy, mutate Project Sources, or adopt artifacts from loop output.

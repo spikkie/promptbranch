@@ -214,3 +214,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.85 | normal | Ask state observability and new-task proof hardening | candidate | focused tests and candidate ZIP validation pending full release-control/adoption | Adds schema-v2 state proof observability; no browser/adoption behavior change | pending |
 
 | v0.1.86 | normal | K8s-game orchestration plan reconciliation | candidate | focused project-control/orchestration-doc tests before full release-control | DOD-104 focused | pending |
+| v0.1.86 | normal | Loop skeleton/K8s-game planning transition baseline | accepted_current | operator-provided `--run-tests --adopt-after-validation` evidence; not full run-all-tests green | DOD-104 accepted via direct validation | c1f298608f8fd70effb42d418ae6970c20abc45d21f16115188ff36eb8dce3ad |
+| v0.1.87 | normal | Loop target schema and dry-run planner | candidate | focused loop/schema/CLI tests before release-control | DOD-105 focused | pending |
