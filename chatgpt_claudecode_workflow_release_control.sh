@@ -766,6 +766,8 @@ visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundt
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
 import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
 artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
+validation_evidence_dir="${release_log_dir}/validation_evidence"
+full_direct_validation_evidence_json="${validation_evidence_dir}/full_direct.${ver}.json"
 live_profile_seed_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR:-./.pb_profile_local_debug}"
 live_profile_seed_display="${live_profile_seed_dir}"
 
@@ -2531,6 +2533,208 @@ INNERPY
   sleep "${wait_seconds}"
 }
 
+
+release_validation_artifact_sha256() {
+  local candidate=""
+  if [[ -n "${download_zip:-}" && -f "${download_zip}" ]]; then
+    candidate="${download_zip}"
+  elif [[ -f "${artifact_zip}" ]]; then
+    candidate="${artifact_zip}"
+  fi
+  if [[ -z "${candidate}" ]]; then
+    printf 'missing'
+    return 0
+  fi
+  sha256sum "${candidate}" | awk '{print $1}'
+}
+
+release_validation_full_test_command_signature() {
+  local duplicate_skip="${1:-0}"
+  local source_kind_mode="default"
+  if [[ "${run_all_strict_source_kind_matrix}" == "1" ]]; then
+    source_kind_mode="strict"
+  elif [[ ${run_all_tests} -eq 1 ]]; then
+    source_kind_mode="release_blocking_file_paths_only"
+  fi
+  printf 'pb test full --keep-project --json --source-kind-matrix=%s --run-failing-tests=%s --duplicate-release-validation-groups-skip=%s' "${source_kind_mode}" "${run_failing_tests}" "${duplicate_skip}"
+}
+
+write_release_validation_evidence() {
+  local evidence_path="$1"
+  local group_id="$2"
+  local transport="$3"
+  local base_url="$4"
+  local command_signature="$5"
+  local test_rc="$6"
+  local report_rc="$7"
+  local summary_json="$8"
+  local full_log_path="$9"
+  local report_json_path="${10}"
+  local release_validation_groups_ok="${11}"
+  mkdir -p "$(dirname "${evidence_path}")"
+  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${test_rc}" "${report_rc}" "${summary_json}" "${full_log_path}" "${report_json_path}" "${release_validation_groups_ok}" "${ver}" "${artifact_zip}" "$(release_validation_artifact_sha256)" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+(
+    evidence_path,
+    group_id,
+    transport,
+    base_url,
+    command_signature,
+    test_rc,
+    report_rc,
+    summary_json,
+    full_log_path,
+    report_json_path,
+    release_validation_groups_ok,
+    version,
+    artifact,
+    artifact_sha256,
+    runtime_mode,
+    strict_source_kind_matrix,
+) = sys.argv[1:17]
+payload = {
+    "schema": "promptbranch.release_control.validation_evidence",
+    "schema_version": "1.0",
+    "source_kind": "release_control_validation_evidence",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": int(test_rc) == 0 and int(report_rc) == 0,
+    "status": "passed" if int(test_rc) == 0 and int(report_rc) == 0 else "failed",
+    "version": version,
+    "artifact": artifact,
+    "artifact_sha256": artifact_sha256,
+    "test_group_id": group_id,
+    "transport": transport,
+    "service_base": base_url,
+    "runtime_mode": runtime_mode,
+    "strict_source_kind_matrix": strict_source_kind_matrix == "1",
+    "command_signature": command_signature,
+    "test_exit_code": int(test_rc),
+    "report_exit_code": int(report_rc),
+    "release_validation_groups_ok": release_validation_groups_ok == "1",
+    "summary_json": summary_json,
+    "full_log": full_log_path,
+    "report_json": report_json_path,
+}
+Path(evidence_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
+}
+
+validate_release_validation_reuse_evidence() {
+  local evidence_path="$1"
+  local group_id="$2"
+  local transport="$3"
+  local base_url="$4"
+  local command_signature="$5"
+  local current_sha
+  current_sha="$(release_validation_artifact_sha256)"
+  [[ -f "${evidence_path}" ]] || return 1
+  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${ver}" "${artifact_zip}" "${current_sha}" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+(
+    evidence_path,
+    group_id,
+    transport,
+    base_url,
+    command_signature,
+    version,
+    artifact,
+    artifact_sha256,
+    runtime_mode,
+    strict_source_kind_matrix,
+) = sys.argv[1:11]
+try:
+    payload = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+checks = [
+    payload.get("schema") == "promptbranch.release_control.validation_evidence",
+    payload.get("schema_version") == "1.0",
+    payload.get("ok") is True,
+    payload.get("status") == "passed",
+    payload.get("version") == version,
+    payload.get("artifact") == artifact,
+    payload.get("artifact_sha256") == artifact_sha256,
+    payload.get("test_group_id") == group_id,
+    payload.get("transport") == transport,
+    payload.get("service_base") == base_url,
+    payload.get("runtime_mode") == runtime_mode,
+    payload.get("strict_source_kind_matrix") is (strict_source_kind_matrix == "1"),
+    payload.get("command_signature") == command_signature,
+    int(payload.get("test_exit_code", 99)) == 0,
+    int(payload.get("report_exit_code", 99)) == 0,
+]
+raise SystemExit(0 if all(checks) else 1)
+INNERPY
+}
+
+write_reused_full_test_summary() {
+  local output_path="$1"
+  local evidence_path="$2"
+  local full_log_path="$3"
+  local group_name="$4"
+  python3 - "${output_path}" "${evidence_path}" "${full_log_path}" "${group_name}" "${service_health_json}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+output_path, evidence_path, full_log_path, group_name, service_health_json = sys.argv[1:6]
+evidence = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
+payload = {
+    "schema": "promptbranch.release_control.full_test_summary",
+    "schema_version": "1.0",
+    "source_kind": "release_control_full_test_summary",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": True,
+    "status": "reused_validation_evidence",
+    "version": evidence.get("version"),
+    "artifact": evidence.get("artifact"),
+    "test_rc": 0,
+    "report_rc": 0,
+    "failure_count": 0,
+    "full_test_evidence": {
+        "full_test_green": True,
+        "reused": True,
+        "reused_from": evidence_path,
+        "artifact_sha256": evidence.get("artifact_sha256"),
+        "test_group_id": evidence.get("test_group_id"),
+        "transport": evidence.get("transport"),
+        "command_signature": evidence.get("command_signature"),
+        "source_summary_json": evidence.get("summary_json"),
+        "source_full_log": evidence.get("full_log"),
+        "source_report_json": evidence.get("report_json"),
+    },
+    "suite": {
+        "release_validation_groups": {
+            "ok": bool(evidence.get("release_validation_groups_ok")),
+            "reused": True,
+            "groups": {},
+            "missing_required_groups": [],
+        }
+    },
+    "service_health_json": service_health_json,
+}
+Path(output_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+Path(full_log_path).write_text(
+    "release_validation_evidence_reused: true\n"
+    f"group: {group_name}\n"
+    f"evidence: {evidence_path}\n"
+    f"artifact_sha256: {evidence.get('artifact_sha256')}\n"
+    "side_effect: pb test full not rerun for this identical validation group\n",
+    encoding="utf-8",
+)
+INNERPY
+}
+
 build_run_all_full_test_args() {
   local -n _out_args="$1"
   _out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)
@@ -2584,6 +2788,20 @@ run_full_test_transport() {
     release_validation_duplicate_skip=1
     echo "release_validation_groups: skipped_duplicate_already_passed_in_primary_transport" | tee -a "${selected_full_log}"
   fi
+  local command_signature
+  command_signature="$(release_validation_full_test_command_signature "${release_validation_duplicate_skip}")"
+  if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" ]] && validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${base_url}" "${command_signature}"; then
+    echo "validation_evidence_reuse: reused full_direct from ${full_direct_validation_evidence_json}" | tee -a "${selected_full_log}"
+    write_reused_full_test_summary "${selected_summary_json}" "${full_direct_validation_evidence_json}" "${selected_full_log}" "full_direct"
+    test_rc=0
+    report_rc=0
+    if run_all_summary_release_validation_groups_ok "${selected_summary_json}"; then
+      run_all_release_validation_groups_passed_primary=1
+      echo "release_validation_groups_primary_status: reused_passed" | tee -a "${selected_full_log}"
+    fi
+    record_all_test_step "full_${label}" "${selected_summary_json}" "0"
+    return 0
+  fi
   printf '+ CHATGPT_SERVICE_BASE_URL=%s PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
   print_command_line "${full_test_cmd[@]}"
   printf ' 2>&1 | tee -a %q
@@ -2620,6 +2838,14 @@ run_full_test_transport() {
   fi
 
   write_structured_full_test_summary "${selected_summary_json}" "${selected_report_json}" "${selected_full_log}" "${test_session_log}" "${ver}" "${artifact_zip}" "${test_rc}" "${report_rc}" "${service_health_json}"
+  local release_validation_groups_ok=0
+  if run_all_summary_release_validation_groups_ok "${selected_summary_json}"; then
+    release_validation_groups_ok=1
+  fi
+  if [[ "${label}" == "direct" && ${test_rc} -eq 0 && ${report_rc} -eq 0 ]]; then
+    write_release_validation_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${base_url}" "${command_signature}" "${test_rc}" "${report_rc}" "${selected_summary_json}" "${selected_full_log}" "${selected_report_json}" "${release_validation_groups_ok}"
+    echo "validation_evidence_written: ${full_direct_validation_evidence_json}" | tee -a "${selected_full_log}"
+  fi
   if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" ]] && run_all_summary_release_validation_groups_ok "${selected_summary_json}"; then
     run_all_release_validation_groups_passed_primary=1
     echo "release_validation_groups_primary_status: passed" | tee -a "${selected_full_log}"
@@ -2722,11 +2948,12 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
             pass
     decoder = json.JSONDecoder()
     candidates: list[dict] = []
-    for idx, char in enumerate(raw):
-        if char != "{":
+    for line in raw.splitlines():
+        candidate_text = line.strip()
+        if not candidate_text.startswith("{"):
             continue
         try:
-            value, _end = decoder.raw_decode(raw[idx:])
+            value, _end = decoder.raw_decode(candidate_text)
         except Exception:
             continue
         if not isinstance(value, dict):
@@ -3027,6 +3254,22 @@ for item in raw_steps:
 
 ok = bool(steps) and all(step["ok"] for step in steps)
 failed = [step for step in steps if not step["ok"]]
+reused_groups = [
+    step["name"]
+    for step in steps
+    if step.get("status") == "reused_validation_evidence"
+    or step.get("action") == "reused_validation_evidence"
+]
+executed_groups = [step["name"] for step in steps if step["name"] not in reused_groups]
+validation_reuse_summary = {
+    "schema": "promptbranch.release_control.validation_reuse_summary",
+    "schema_version": "1.0",
+    "enabled": True,
+    "reused_groups": reused_groups,
+    "executed_groups": executed_groups,
+    "invalidated_groups": [],
+    "failed_groups": [step["name"] for step in failed],
+}
 diagnostics_summary = {
     "schema": "promptbranch.release_control.live_validation_diagnostics",
     "schema_version": "1.0",
@@ -3056,6 +3299,7 @@ summary = {
     "failure_count": len(failed),
     "service_health_json": service_health_json,
     "diagnostics": diagnostics_summary,
+    "validation_reuse": validation_reuse_summary,
     "steps": steps,
     "failed_steps": failed,
 }

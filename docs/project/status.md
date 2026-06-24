@@ -519,3 +519,11 @@ Install and validate `chatgpt_claudecode_workflow-2_v0.1.87.zip` with focused lo
 ## v0.1.87.1 repair status — packaged loop module
 
 `v0.1.87.1` is a repair-only candidate for the `v0.1.87` loop target schema and dry-run planner candidate. It fixes the installed CLI import failure where `promptbranch_cli.py` imports `promptbranch_loop`, but `promptbranch_loop.py` was omitted from setuptools `py-modules`. No loop behavior, deployment behavior, Project Source behavior, artifact adoption/current behavior, or ChatGPT Project deletion behavior changes.
+
+## v0.1.88 candidate status — Incremental release validation evidence reuse
+
+`v0.1.88` opens from accepted/current `chatgpt_claudecode_workflow-2_v0.1.87.1.zip`.
+
+The slice adds a conservative evidence-reuse path for release-control: after a successful `--run-tests` direct validation, a later `--run-all-tests` run may reuse the identical `full_direct` evidence only when the artifact SHA256 and validation dimensions match. Missing, failed, malformed, or dimension-mismatched evidence is not trusted; release-control reruns the group.
+
+This candidate does not change Promptbranch loop behavior, live browser behavior, Project Source mutation, artifact adoption/current behavior, Kubernetes/deployment behavior, or ChatGPT Project deletion behavior.

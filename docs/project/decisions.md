@@ -264,3 +264,7 @@ A later implementation slice may add static app and manifest source files only. 
 Promptbranch's loop-based problem-solving MVP starts with target schema validation and deterministic dry-run planning. The loop planner may classify targets, list states, and emit safety flags, but it must not execute validation commands, mutate files, deploy to Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.
 
 Kubernetes game work is a future target fixture. It is not implemented or deployed by `v0.1.87`.
+
+## Decision — v0.1.88 validation evidence reuse is artifact-hash and dimension bound
+
+Release-control may reuse already-passed validation evidence only when the artifact SHA256 and validation dimensions match exactly. Version strings and filenames alone are not sufficient. The initial scope is direct `pb test full` evidence from `--run-tests` reused by `--run-all-tests`; live/browser, localhost, deployment, Project Source, and adoption behavior are not reused by this slice.
