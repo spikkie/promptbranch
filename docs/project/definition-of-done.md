@@ -296,3 +296,5 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 | DOD-105 | Loop target schema and dry-run planner validate bounded problem definitions without side effects | focused | `promptbranch_loop.py`, `pb loop validate`, `pb loop plan`, `pb loop run --dry-run`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `examples/loop-targets/static-game-dry-run-target.json` | v0.1.87 |
 
 | DOD-106 | Installed Promptbranch CLI can import the loop module after package installation, so `pb loop` does not fail with `ModuleNotFoundError: No module named 'promptbranch_loop'` | focused | `pyproject.toml`, `promptbranch_loop.py`, `tests/test_promptbranch_loop_packaging.py`, isolated pip install smoke | v0.1.87.1 |
+
+| DOD-107 | Release-control run-all can reuse already-passed identical direct run-tests evidence only when artifact hash and validation dimensions match, and otherwise fails closed by rerunning | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py` static fail-closed contract tests | v0.1.88 |

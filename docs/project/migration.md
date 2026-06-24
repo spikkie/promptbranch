@@ -538,3 +538,7 @@ This release adds a new loop target schema and dry-run planner. Existing k8s-gam
 ## v0.1.87.1 migration note
 
 No user data, Project Source, artifact-current, accepted-event ledger, Docker, Kubernetes, Helm, or ChatGPT Project migration is performed. This repair updates packaging metadata only so the installed CLI includes the `promptbranch_loop` top-level module required by `promptbranch_cli.py`.
+
+## v0.1.88 migration note
+
+The release-control validation model now records direct full-test evidence under the release log validation-evidence directory and may reuse it during `--run-all-tests` only when the evidence is still valid for the current artifact SHA and validation dimensions. Existing release logs without this evidence are treated as missing evidence and therefore cause a rerun, not reuse.

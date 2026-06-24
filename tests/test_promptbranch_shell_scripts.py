@@ -2699,3 +2699,32 @@ def test_new_task_smoke_script_uses_schema_v2_current_conversation_path():
     assert '[[ -n "$after" && "$before" != "$after" ]]' in text
     assert "sentinel_ok=1" in text
     assert "new_task_state_ok=1" in text
+
+
+
+def test_release_control_declares_validation_evidence_reuse_fail_closed_contract():
+    script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script_path.read_text(encoding="utf-8")
+    assert "promptbranch.release_control.validation_evidence" in text
+    assert "validation_evidence_dir=" in text
+    assert "full_direct_validation_evidence_json=" in text
+    assert "validate_release_validation_reuse_evidence" in text
+    assert "artifact_sha256" in text
+    assert "command_signature" in text
+    assert "strict_source_kind_matrix" in text
+    assert "runtime_mode" in text
+    assert "service_base" in text
+    assert "validation_evidence_reuse: reused full_direct" in text
+    assert "write_reused_full_test_summary" in text
+    assert "reused_validation_evidence" in text
+
+
+def test_release_control_all_tests_summary_reports_validation_reuse_groups():
+    script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script_path.read_text(encoding="utf-8")
+    assert "promptbranch.release_control.validation_reuse_summary" in text
+    assert '"reused_groups": reused_groups' in text
+    assert '"executed_groups": executed_groups' in text
+    assert '"invalidated_groups": []' in text
+    assert '"failed_groups": [step["name"] for step in failed]' in text
+    assert '"validation_reuse": validation_reuse_summary' in text

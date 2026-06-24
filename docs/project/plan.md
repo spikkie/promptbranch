@@ -1250,3 +1250,19 @@ Planned work:
 Out of scope: real implementation actions, test command execution, file mutation by the loop, Docker/Kubernetes/Helm deployment, Project Source mutation, artifact adoption/current behavior change, and ChatGPT Project deletion behavior changes.
 
 Exit criteria: focused loop target/schema tests, CLI loop tests, project-control tests, version tests, compileall, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.
+
+## v0.1.88 — Incremental release validation evidence reuse
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.87.1.zip`.
+
+Goal: reduce duplicate validation work by allowing `--run-all-tests` to reuse prior successful `--run-tests` evidence for the same artifact and validation dimensions.
+
+Planned work:
+
+1. Write structured validation evidence for successful direct `pb test full` runs.
+2. Include artifact SHA256 and validation dimensions in the evidence.
+3. Let `--run-all-tests` reuse only matching `full_direct` evidence.
+4. Keep localhost, live browser, import-smoke, and artifact-guard groups executed unless separately proven later.
+5. Report `validation_reuse.reused_groups`, `executed_groups`, `invalidated_groups`, and `failed_groups` in the all-tests summary.
+
+Out of scope: live/browser reuse, localhost reuse, adoption behavior changes, Project Source behavior changes, deployment/Kubernetes behavior, and loop-engine behavior changes.
