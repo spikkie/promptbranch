@@ -534,3 +534,7 @@ This release adds a new loop target schema and dry-run planner. Existing k8s-gam
 | `docs/design/orchestration/docs/k8s_game_mvp_contract.md` | k8s-game planning contract | future loop target fixture plus `examples/loop-targets/static-game-dry-run-target.json` | preserved | No game source or deployment is added. |
 | `docs/project/plan.md` | release plan | same file | updated | Adds `v0.1.87` loop target schema and dry-run planner slice. |
 | `docs/project/status.md` | current status | same file | updated | Records accepted/current `v0.1.86` baseline and `v0.1.87` candidate safety posture. |
+
+## v0.1.87.1 migration note
+
+No user data, Project Source, artifact-current, accepted-event ledger, Docker, Kubernetes, Helm, or ChatGPT Project migration is performed. This repair updates packaging metadata only so the installed CLI includes the `promptbranch_loop` top-level module required by `promptbranch_cli.py`.
