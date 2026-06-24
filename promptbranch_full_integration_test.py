@@ -585,17 +585,44 @@ class DockerServiceAdapter:
         keep_open: bool,
         overwrite_existing: bool,
     ) -> dict[str, Any]:
+        request_timeout = self._source_mutation_timeout_seconds()
         with self._client() as client:
-            return client.add_project_source(
-                source_kind=source_kind,
-                value=value,
-                file_path=file_path,
-                display_name=display_name,
-                keep_open=keep_open,
-                overwrite_existing=overwrite_existing,
-                project_url=self.project_url,
-                profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
-            )
+            try:
+                return client.add_project_source(
+                    source_kind=source_kind,
+                    value=value,
+                    file_path=file_path,
+                    display_name=display_name,
+                    keep_open=keep_open,
+                    overwrite_existing=overwrite_existing,
+                    project_url=self.project_url,
+                    profile_lock_wait_seconds=SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
+                    request_timeout_seconds=request_timeout,
+                )
+            except Exception as exc:
+                if type(exc).__name__ != "ReadTimeout":
+                    raise
+                return {
+                    "ok": False,
+                    "action": "add",
+                    "status": "source_mutation_request_timeout",
+                    "source_kind": source_kind,
+                    "project_url": self.project_url,
+                    "source_match_requested": display_name,
+                    "persistence_verified": False,
+                    "release_blocking": True,
+                    "request_timeout_seconds": request_timeout,
+                    "general_service_timeout_seconds": self.timeout_seconds,
+                    "profile_lock_wait_seconds": SOURCE_MUTATION_PROFILE_WAIT_SECONDS,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "operator_review_required": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` to inspect whether the source became visible after the client timeout.",
+                        "If the source is visible, treat this as a late UI/service response and avoid adding a duplicate source.",
+                        "If the source is absent, retry the source add after the Project Sources surface is stable.",
+                    ],
+                }
 
     async def remove_project_source(
         self,
@@ -792,7 +819,11 @@ async def _attach_project_source_failure_diagnostic(
         return
     status = str(failure_payload.get("status") or "")
     transaction_status = str(failure_payload.get("transaction_status") or "")
-    if status != "post_commit_source_surface_not_refreshed" and transaction_status != "commit_seen_with_stale_inflight_not_verified_present":
+    diagnostic_statuses = {
+        "post_commit_source_surface_not_refreshed",
+        "source_mutation_request_timeout",
+    }
+    if status not in diagnostic_statuses and transaction_status != "commit_seen_with_stale_inflight_not_verified_present":
         return
 
     command = "pb src list --json"

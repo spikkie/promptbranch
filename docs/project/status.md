@@ -527,3 +527,11 @@ Install and validate `chatgpt_claudecode_workflow-2_v0.1.87.zip` with focused lo
 The slice adds a conservative evidence-reuse path for release-control: after a successful `--run-tests` direct validation, a later `--run-all-tests` run may reuse the identical `full_direct` evidence only when the artifact SHA256 and validation dimensions match. Missing, failed, malformed, or dimension-mismatched evidence is not trusted; release-control reruns the group.
 
 This candidate does not change Promptbranch loop behavior, live browser behavior, Project Source mutation, artifact adoption/current behavior, Kubernetes/deployment behavior, or ChatGPT Project deletion behavior.
+
+## v0.1.88.1 repair status — Project-source-add-text timeout diagnostics/recovery
+
+`v0.1.88.1` is a repair-only candidate on top of the unaccepted `v0.1.88` evidence-reuse candidate. It addresses the reproduced `project_source_add_text` `ReadTimeout` from the `v0.1.88` adoption gate and existing-Project focused retry.
+
+The repair keeps the evidence-reuse slice intact but does not advance it. Docker-service source add requests now use the extended source-mutation timeout budget, and any remaining client-side source-add timeout is converted into a structured, release-blocking diagnostic payload with post-failure `pb src list --json` evidence collection where possible.
+
+Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.87.1.zip` until `v0.1.88.1` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.

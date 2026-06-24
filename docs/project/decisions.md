@@ -268,3 +268,7 @@ Kubernetes game work is a future target fixture. It is not implemented or deploy
 ## Decision — v0.1.88 validation evidence reuse is artifact-hash and dimension bound
 
 Release-control may reuse already-passed validation evidence only when the artifact SHA256 and validation dimensions match exactly. Version strings and filenames alone are not sufficient. The initial scope is direct `pb test full` evidence from `--run-tests` reused by `--run-all-tests`; live/browser, localhost, deployment, Project Source, and adoption behavior are not reused by this slice.
+
+## Decision — v0.1.88.1 source-mutation timeouts are longer and diagnostic, not green
+
+Project Source mutation calls through the Docker service may need a larger timeout than the general full-integration HTTP client timeout. Release validation must pass the extended source-mutation timeout to source-add requests. If the request still times out, Promptbranch must fail closed with structured diagnostics and a post-failure source-list probe where possible; it must not convert a text-source timeout into a successful source add.
