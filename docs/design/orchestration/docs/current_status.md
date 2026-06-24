@@ -99,3 +99,11 @@ v0.1.88 candidate direction
 ## Do not start yet
 
 Do not implement or deploy the game in `v0.1.86`. This slice only reconciles planning authority and release baseline continuity.
+
+## v0.1.87 current status — loop target schema and dry-run planner
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.86.zip`.
+
+Current candidate direction: `v0.1.87 — Loop target schema and dry-run planner`.
+
+The candidate is side-effect free. It validates target definitions and emits dry-run loop plans only. K8s-game work is represented as a future target fixture, not as implementation or deployment.

@@ -1,0 +1,26 @@
+{
+  "schema": "promptbranch.loop.target",
+  "schema_version": "1.0",
+  "target_id": "missing-validation-demo",
+  "goal": "Demonstrate requirements-missing classification without executing any action.",
+  "allowed_paths": [
+    "examples/demo/**"
+  ],
+  "forbidden_actions": [
+    "project_delete",
+    "project_source_mutation",
+    "artifact_adoption",
+    "kubernetes_apply"
+  ],
+  "validation": {
+    "commands": []
+  },
+  "human_required_when": [
+    "validation_commands_missing"
+  ],
+  "deployment": {
+    "requested": false,
+    "allowed": false
+  },
+  "max_iterations": 1
+}

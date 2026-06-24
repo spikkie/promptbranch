@@ -258,3 +258,9 @@ The next Kubernetes game work must not begin with implementation. The accepted P
 The k8s-game remains a controlled test vehicle for JSON orchestration state. It is not a product goal and not a deployment target in `v0.1.86`.
 
 A later implementation slice may add static app and manifest source files only. Any actual Kubernetes mutation requires a separate, explicit dry-run/deploy evidence gate accepted in a later release.
+
+## Decision — v0.1.87 loop planner is dry-run and side-effect free
+
+Promptbranch's loop-based problem-solving MVP starts with target schema validation and deterministic dry-run planning. The loop planner may classify targets, list states, and emit safety flags, but it must not execute validation commands, mutate files, deploy to Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.
+
+Kubernetes game work is a future target fixture. It is not implemented or deployed by `v0.1.87`.

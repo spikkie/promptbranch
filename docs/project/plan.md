@@ -1231,3 +1231,22 @@ no accepted-event ledger write
 ```
 
 Exit criteria: focused project-control and orchestration-doc tests, version tests, compileall, Artifact Guardian, ZIP hygiene, then operator full release-control/adoption.
+
+## v0.1.87 — Loop target schema and dry-run planner
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.86.zip`.
+
+Goal: add the first deterministic loop target schema and dry-run planner so Promptbranch can reason over bounded problem definitions before any real action is implemented.
+
+Planned work:
+
+1. Define a JSON target schema for loop-based problem-solving MVP targets.
+2. Add `pb loop validate --target <file>` to validate target definitions without side effects.
+3. Add `pb loop plan --target <file>` to emit a deterministic dry-run loop plan.
+4. Add `pb loop run --target <file> --dry-run` as stubbed control-flow output only, with no real action execution.
+5. Add a static game target fixture only as a future problem target, not as game implementation.
+6. Preserve no-deploy, no-mutation, no Project Source mutation, no artifact adoption, and no Project deletion boundaries.
+
+Out of scope: real implementation actions, test command execution, file mutation by the loop, Docker/Kubernetes/Helm deployment, Project Source mutation, artifact adoption/current behavior change, and ChatGPT Project deletion behavior changes.
+
+Exit criteria: focused loop target/schema tests, CLI loop tests, project-control tests, version tests, compileall, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.

@@ -489,3 +489,29 @@ This slice is documentation/control-surface only. It does not implement the game
 ## v0.1.86 next safe action
 
 Install the `v0.1.86` candidate, run focused project-control/orchestration documentation validation, then run full release-control/adopt only if the focused checks pass.
+
+## v0.1.87 status — Loop target schema and dry-run planner
+
+Accepted/current baseline with adoption evidence:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.86.zip
+```
+
+`v0.1.87` is a normal candidate slice for the loop-based problem-solving MVP. It adds a target schema and dry-run planner only. The loop does not yet execute actions, tests, corrections, deployments, Project Source mutation, or artifact adoption.
+
+Current safety posture:
+
+```text
+side_effects_performed=false
+commands_executed=false
+deployment_performed=false
+kubernetes_mutation_performed=false
+project_source_mutation_performed=false
+artifact_adoption_performed=false
+chatgpt_project_deletion_performed=false
+```
+
+## Next safe action
+
+Install and validate `chatgpt_claudecode_workflow-2_v0.1.87.zip` with focused loop tests before any release-control/adoption run.

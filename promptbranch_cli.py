@@ -81,6 +81,13 @@ from promptbranch_orchestration import (
     validate_accepted_event_paths,
     validate_paths as validate_orchestration_event_paths,
 )
+from promptbranch_loop import (
+    plan_loop_target_file,
+    render_loop_plan_text,
+    render_loop_validation_text,
+    validate_loop_target_file,
+)
+
 
 DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME = "itest-promptbranch-retained-delete-frozen"
 DELETE_FROZEN_TEST_PROJECT_PREFIX = "itest-promptbranch"
@@ -461,6 +468,7 @@ COMMANDS = {
     "ask",
     "ask-release",
     "shell",
+    "loop",
     "ws",
     "task",
     "src",
@@ -7555,6 +7563,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json", "--proof"],
+        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8013,6 +8022,40 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
     if args.json or True:
         print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if summary.get('ok') else 1
+
+
+
+async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
+    del backend
+    target = getattr(args, "target", None)
+    if not target:
+        print("error: --target is required", file=sys.stderr)
+        return 2
+    loop_command = getattr(args, "loop_command", None)
+    if loop_command == "validate":
+        payload = validate_loop_target_file(target)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_loop_validation_text(payload), end="")
+        return 0 if payload.get("ok") else 1
+    if loop_command == "plan":
+        payload = plan_loop_target_file(target, execute_stubbed=False)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_loop_plan_text(payload), end="")
+        return 0 if payload.get("ok") else 1
+    if loop_command == "run":
+        # v0.1.87 intentionally supports dry-run/stubbed control flow only.
+        payload = plan_loop_target_file(target, execute_stubbed=True)
+        payload["dry_run"] = True
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_loop_plan_text(payload), end="")
+        return 0 if payload.get("ok") else 1
+    raise RuntimeError(f"Unknown loop command: {loop_command}")
 
 
 async def cmd_state(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -23729,6 +23772,22 @@ def make_parser() -> argparse.ArgumentParser:
     chat_summarize.add_argument("--keep-open", action="store_true")
     chat_summarize.add_argument("--retries", type=int)
 
+    loop = subparsers.add_parser("loop", help="Loop-based problem-solving commands for target definitions and dry-run planners.")
+    loop_subparsers = loop.add_subparsers(dest="loop_command", required=True)
+
+    loop_validate = loop_subparsers.add_parser("validate", help="Validate a loop target definition without executing actions.")
+    loop_validate.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
+    loop_validate.add_argument("--json", action="store_true", help="Emit validation result as JSON.")
+
+    loop_plan = loop_subparsers.add_parser("plan", help="Build a dry-run plan for a loop target without executing actions.")
+    loop_plan.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
+    loop_plan.add_argument("--json", action="store_true", help="Emit dry-run plan as JSON.")
+
+    loop_run = loop_subparsers.add_parser("run", help="Run the stubbed loop control flow. v0.1.87 is dry-run only.")
+    loop_run.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
+    loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. v0.1.87 always runs as dry-run/stubbed only.")
+    loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
+
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")
     state.add_argument("--json", action="store_true", help="Emit state as JSON.")
     state.add_argument("--proof", action="store_true", help="Show schema-v2 state paths and new-task smoke proof fields without mutating state.")
@@ -24080,6 +24139,8 @@ async def _async_main(args: argparse.Namespace) -> int:
             return await cmd_chat_show(backend, args)
         if args.command in {"chat-summarize", "summarize"}:
             return await cmd_chat_summarize(backend, args)
+        if args.command == "loop":
+            return await cmd_loop(backend, args)
         if args.command == "state":
             return await cmd_state(backend, args)
         if args.command == "prompt":

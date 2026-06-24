@@ -166,3 +166,9 @@ v0.1.88 candidate direction
 ```
 
 The k8s-game remains the lifecycle test vehicle for orchestration state. The orchestration model is still the product.
+
+## v0.1.87 loop-first MVP update
+
+The MVP direction is now loop-first: Promptbranch should solve bounded problems through controlled loops. The Kubernetes game remains the first future target fixture, but the immediate work is to define target schemas and dry-run plans before any implementation or deployment.
+
+`v0.1.87` adds target schema validation and a side-effect-free dry-run planner. No target commands are executed.

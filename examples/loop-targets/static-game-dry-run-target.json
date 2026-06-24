@@ -1,0 +1,38 @@
+{
+  "schema": "promptbranch.loop.target",
+  "schema_version": "1.0",
+  "target_id": "k8s-game-static-dry-run",
+  "goal": "Plan a static HTML/CSS/JS Kubernetes game scaffold as a future target fixture without executing implementation, tests, deployment, Project Source mutation, or artifact adoption.",
+  "allowed_paths": [
+    "examples/k8s-game/**",
+    "tests/test_k8s_game_static.py",
+    "docs/design/orchestration/docs/k8s_game_mvp_contract.md"
+  ],
+  "forbidden_actions": [
+    "project_delete",
+    "project_source_mutation",
+    "artifact_adoption",
+    "kubernetes_apply",
+    "docker_push",
+    "helm_release",
+    "destructive_filesystem_change"
+  ],
+  "validation": {
+    "commands": [
+      "pytest -q tests/test_k8s_game_static.py",
+      "python3 promptbranch_cli.py artifact guard --zip <candidate.zip> --version <version> --json"
+    ]
+  },
+  "human_required_when": [
+    "requirements_conflict",
+    "validation_fails_twice",
+    "deployment_requested",
+    "destructive_action_requested",
+    "outside_allowed_paths"
+  ],
+  "deployment": {
+    "requested": false,
+    "allowed": false
+  },
+  "max_iterations": 1
+}
