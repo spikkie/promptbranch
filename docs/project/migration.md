@@ -503,3 +503,9 @@ No historical documents are replaced or deleted. This release adds an explicit a
 
 No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate after `v0.1.84.5.12.1` because it narrows the offline scheduler/source release-validation group to explicit deterministic pytest nodeids and preserves the active `pb ask --new-task` slice unchanged.
 
+
+## v0.1.85 migration note
+
+No user data migration is required. Operators should update short `pb ask --new-task` proofs and shell snippets to read `.current.conversation_url` from `.pb_profile/.promptbranch_state.json`. The top-level `.conversation_url` path is a stale schema-v1 assumption and is not authoritative for Promptbranch schema-v2 state.
+
+Use `pb state --proof` or `scripts/smoke-pb-ask-new-task.sh` for a read-only proof contract and short live smoke respectively. No Project Source, artifact adoption/current, backend API, MkDocs, or Project deletion behavior is changed by this slice.

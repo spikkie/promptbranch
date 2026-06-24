@@ -223,6 +223,7 @@ class ConversationStateStore:
             project_name = project_name_from_url(resolved_project_home_url)
         current_home = current.get("project_home_url") if isinstance(current, dict) and isinstance(current.get("project_home_url"), str) else None
         current_conversation = current.get("conversation_url") if isinstance(current, dict) and isinstance(current.get("conversation_url"), str) else None
+        current_updated_at = current.get("updated_at") if isinstance(current, dict) and isinstance(current.get("updated_at"), str) else None
         artifacts_by_repo = entry.get("artifacts_by_repo") if isinstance(entry.get("artifacts_by_repo"), dict) else {}
         normalized_repo_id = normalize_repo_id(repo_id)
         repo_entry: dict[str, Any] = {}
@@ -254,6 +255,8 @@ class ConversationStateStore:
             "has_current": bool(current_home),
             "current_project_home_url": current_home,
             "current_conversation_url": current_conversation,
+            "current_conversation_id": conversation_id_from_url(current_conversation),
+            "current_updated_at": current_updated_at,
             "resolved_project_home_url": resolved_project_home_url,
             "project_name": project_name,
             "conversation_url": conversation_url,
@@ -267,6 +270,19 @@ class ConversationStateStore:
             "artifacts_by_repo": artifacts_by_repo,
             "artifact_repo_count": len(artifacts_by_repo),
             "updated_at": updated_at,
+            "state_paths": {
+                "schema_version": ".schema_version",
+                "current_project_home_url": ".current.project_home_url",
+                "current_project_name": ".current.project_name",
+                "current_conversation_url": ".current.conversation_url",
+                "current_updated_at": ".current.updated_at",
+                "project_conversation_url": ".projects[<project_home_url>].conversation_url",
+            },
+            "new_task_proof": {
+                "conversation_url_json_path": ".current.conversation_url",
+                "sentinel_check": 'grep -F "$sentinel" ~/tmp/pb_new_task_smoke.log',
+                "state_check": 'test -n "$after" && test "$before" != "$after"',
+            },
         }
         shell_state = normalize_shell_state_snapshot(snapshot)
         snapshot["workspace"] = shell_state.workspace.__dict__

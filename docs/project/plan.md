@@ -1187,3 +1187,18 @@ Repair-only scope from `v0.1.84.5.12.1`:
 3. Add a regression test that rejects broad `cleanup` selector reintroduction.
 4. Do not change `pb ask --new-task`, Project Source mutation, artifact adoption/current, live browser semantics, or ChatGPT Project deletion behavior.
 
+
+## v0.1.85 — Ask state observability and new-task proof hardening
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.84.5.12.2.zip`.
+
+Goal: make the accepted `pb ask --new-task` behavior easier to prove without operator confusion around schema-v1 versus schema-v2 state paths.
+
+Planned changes:
+
+1. Expose schema-v2 current conversation fields in `pb state`.
+2. Add `pb state --proof` for read-only state proof metadata.
+3. Add a canonical short live smoke script for `pb ask --new-task` using `.current.conversation_url`.
+4. Add focused tests preventing stale top-level `.conversation_url` proof usage.
+
+Out-of-scope: MkDocs integration, backend API investigation, Project Source mutation behavior, artifact adoption behavior, and Project deletion behavior.

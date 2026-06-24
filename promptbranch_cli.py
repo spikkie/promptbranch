@@ -7554,7 +7554,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "show": ["--json", "--keep-open"],
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
-        "state": ["--json"],
+        "state": ["--json", "--proof"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8017,14 +8017,47 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
 
 async def cmd_state(backend: CommandBackend, args: argparse.Namespace) -> int:
     snapshot = backend.state_snapshot()
+    if getattr(args, "proof", False):
+        payload = {
+            "ok": True,
+            "action": "state_proof",
+            "state_file": snapshot.get("state_file"),
+            "schema_version": snapshot.get("schema_version"),
+            "current_project_home_url": snapshot.get("current_project_home_url"),
+            "current_project_name": snapshot.get("project_name"),
+            "current_conversation_url": snapshot.get("current_conversation_url"),
+            "current_conversation_id": snapshot.get("current_conversation_id"),
+            "current_updated_at": snapshot.get("current_updated_at"),
+            "state_paths": snapshot.get("state_paths"),
+            "new_task_proof": snapshot.get("new_task_proof"),
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 0
+        print(f"state_file={payload.get('state_file')}")
+        print(f"schema_version={payload.get('schema_version')}")
+        print(f"current_project_home_url={payload.get('current_project_home_url') or 'none'}")
+        print(f"current_project_name={payload.get('current_project_name') or 'none'}")
+        print(f"current_conversation_url={payload.get('current_conversation_url') or 'none'}")
+        print(f"current_conversation_id={payload.get('current_conversation_id') or 'none'}")
+        print(f"current_updated_at={payload.get('current_updated_at') or 'none'}")
+        print("current_conversation_url_json_path=.current.conversation_url")
+        print("new_task_state_check=test -n \"$after\" && test \"$before\" != \"$after\"")
+        return 0
     if args.json:
         print(json.dumps(snapshot, indent=2, ensure_ascii=False))
         return 0
     print(f"state_file={snapshot.get('state_file')}")
+    print(f"schema_version={snapshot.get('schema_version')}")
     print(f"project={snapshot.get('project_name') or snapshot.get('project_slug') or 'none'}")
     print(f"project_home_url={snapshot.get('resolved_project_home_url') or 'none'}")
     print(f"conversation_url={snapshot.get('conversation_url') or 'none'}")
     print(f"conversation_id={snapshot.get('conversation_id') or 'none'}")
+    print(f"current_project_home_url={snapshot.get('current_project_home_url') or 'none'}")
+    print(f"current_conversation_url={snapshot.get('current_conversation_url') or 'none'}")
+    print(f"current_conversation_id={snapshot.get('current_conversation_id') or 'none'}")
+    print(f"current_updated_at={snapshot.get('current_updated_at') or 'none'}")
+    print("current_conversation_url_json_path=.current.conversation_url")
     return 0
 
 
@@ -23698,6 +23731,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")
     state.add_argument("--json", action="store_true", help="Emit state as JSON.")
+    state.add_argument("--proof", action="store_true", help="Show schema-v2 state paths and new-task smoke proof fields without mutating state.")
 
     prompt = subparsers.add_parser("prompt", help="Emit a compact one-line state string for shell prompts or menu bars.")
     prompt.add_argument("--json", action="store_true", help="Emit prompt and backing state as JSON.")
