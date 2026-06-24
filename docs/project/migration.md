@@ -498,3 +498,8 @@ No user data, Project Source, artifact-current, deployment, or ChatGPT Project d
 ## v0.1.84.5.12 migration note
 
 No historical documents are replaced or deleted. This release adds an explicit ask-target selection rule to the project control surface: default asks continue the remembered task conversation, while `pb ask --new-task` / `--new-conversation` starts from the remembered Project home. Existing state-file semantics are preserved except that fresh-task state replacement is now gated on successful returned conversation binding and submission evidence.
+
+## v0.1.84.5.12.2 migration note
+
+No user data, Project Source, artifact-current, deployment, or ChatGPT Project deletion migration is performed. Operators should use this repair candidate after `v0.1.84.5.12.1` because it narrows the offline scheduler/source release-validation group to explicit deterministic pytest nodeids and preserves the active `pb ask --new-task` slice unchanged.
+

@@ -284,3 +284,8 @@ A run-all step that functionally passes after ChatGPT rate-limit modal acknowled
 | DOD-100 | Release-control all-tests and full-transport summaries expose live validation diagnostics for source-add timeouts, browser ReadTimeouts, rate-limit evidence, retry policy, retry denial, transport class, likely failure phase, and next operator action without masking failures | focused | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/release-v0.1.84.5.11.md` | v0.1.84.5.11 |
 
 | DOD-101 | `pb ask --new-task` / `--new-conversation` starts a fresh Project task from remembered Project home, preserves default remembered-conversation behavior, fails closed for conflicting or missing target state, preserves no-fill composer safety, and guards state updates behind successful fresh-task binding/submission evidence | focused | `promptbranch_cli.py`, `promptbranch_browser_auth/client.py`, `promptbranch_container_api.py`, `tests/test_ask_cli_new_task.py`, `tests/test_ask_busy_conversation.py`, `docs/release-v0.1.84.5.12.md` | v0.1.84.5.12 |
+
+## DOD-102 — deterministic scheduler/source release-validation group
+
+A release candidate satisfies this DoD when the required `browser_scheduler_source_lifecycle` release-validation group uses explicit fast pytest nodeids for scheduler/source lifecycle invariants and does not rely on broad generic selectors such as `cleanup`. Focused validation must include a regression test that rejects reintroduction of the broad selector and proves at least one source-remove and one browser-profile-busy nodeid remain in the group.
+

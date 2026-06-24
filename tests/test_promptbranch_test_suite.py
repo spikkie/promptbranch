@@ -678,6 +678,18 @@ def test_browser_scheduler_release_validation_group_uses_short_timeout() -> None
     assert group["timeout_seconds"] == 300.0
 
 
+def test_browser_scheduler_release_validation_group_uses_explicit_fast_nodeids() -> None:
+    import promptbranch_test_suite as suite
+
+    manifest = suite.release_validation_group_manifest()
+    command = manifest["browser_scheduler_source_lifecycle"]["command"]
+
+    assert "-k" not in command
+    assert "cleanup" not in " ".join(command)
+    assert any("test_source_remove_waits_behind_source_list_with_same_profile" in item for item in command)
+    assert any("test_src_add_promotes_browser_profile_busy_to_top_level_payload" in item for item in command)
+
+
 def test_release_validation_groups_skip_duplicate_env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv(suite.RELEASE_VALIDATION_SKIP_DUPLICATE_ENV, "1")
 

@@ -1177,3 +1177,13 @@ Planned work:
 7. Add focused parser/backend/browser/state tests.
 
 Exit criteria: focused new-task tests, busy-conversation classification tests, existing service/direct ask regressions, compileall, help-text grep, project-control test, Artifact Guardian, ZIP hygiene. Full release-control/adoption remains an external operator gate.
+
+## v0.1.84.5.12.2 repair plan — deterministic scheduler/source release-validation group
+
+Repair-only scope from `v0.1.84.5.12.1`:
+
+1. Replace broad `browser_scheduler_source_lifecycle` pytest `-k` selector with explicit fast nodeids.
+2. Preserve required release-validation group semantics and timeout boundary.
+3. Add a regression test that rejects broad `cleanup` selector reintroduction.
+4. Do not change `pb ask --new-task`, Project Source mutation, artifact adoption/current, live browser semantics, or ChatGPT Project deletion behavior.
+
