@@ -446,3 +446,12 @@ Out of scope remains unchanged: no Project Source mutation, no artifact adoption
 ## v0.1.84.5.12.1 repair status
 
 `v0.1.84.5.12.1` is a repair candidate for `v0.1.84.5.12`. It fixes release-control all-tests summary classification for functionally verified `ask_live` runs that report `status=verified_with_recovered_rate_limit` and top-level `rate_limit_recovered=true` after conversation-history 429 cooldown handling. No slice or line advanced; the active feature slice remains explicit new-task ask mode.
+
+## v0.1.84.5.12.2 repair candidate status
+
+`v0.1.84.5.12.2` repairs the failed `v0.1.84.5.12.1` full release-control run. The prior run no longer failed on ask-live recovered-rate-limit classification; instead, `full_direct` failed because the offline `browser_scheduler_source_lifecycle` release-validation group timed out after 300 seconds.
+
+The repair replaces that group's broad pytest `-k` selector with explicit fast nodeids for scheduler, source queue, browser-profile-busy, source-remove, and release-lifecycle-plan queue invariants. This prevents unrelated cleanup-oriented tests from entering the offline release-validation group while preserving the intended required gate.
+
+No normal slice advanced. `v0.1.84.5.12 — Explicit new-task ask mode` remains the active slice.
+

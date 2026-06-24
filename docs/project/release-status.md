@@ -209,3 +209,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 
 | v0.1.84.5.12 | normal | Explicit new-task ask mode | candidate | focused new-task parser/backend/browser/state tests, ask service/direct regressions, help grep, compileall, project-control, Artifact Guardian, ZIP hygiene | DOD-101 focused; builds from user-declared accepted/current v0.1.84.5.11 | pending full release-control/adoption evidence |
 | v0.1.84.5.12.1 | repair | Recovered ask-live summary classification | candidate | focused shell summary tests, shell syntax, compileall, Artifact Guardian, ZIP hygiene | Repairs v0.1.84.5.12 release-control classification only; no slice/line advanced | pending full release-control/adoption evidence |
+| v0.1.84.5.12.2 | repair | Deterministic browser_scheduler_source_lifecycle release-validation nodeids | candidate | focused release-validation nodeid tests, compileall, Artifact Guardian, ZIP hygiene | Repairs v0.1.84.5.12.1 release-validation timeout only; no slice/line advanced | pending full release-control/adoption evidence |
+

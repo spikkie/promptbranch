@@ -239,3 +239,8 @@ Release-control diagnostics may classify and explain live validation failures, b
 ## Decision — v0.1.84.5.12 `pb ask` conversation target selection is explicit
 
 `pb ask` must distinguish between continuing a remembered task conversation and starting a fresh Project task. Default `pb ask` continues the remembered conversation when it is idle. `pb ask --new-task` / `--new-conversation` is the only CLI-controlled path that ignores the remembered `conversation_url` and starts from the remembered `project_home_url`. Literal prompt text such as `new task` is never interpreted as a command. `--new-task` and `--conversation-url` are mutually exclusive.
+
+## Decision — v0.1.84.5.12.2 release-validation groups must use deterministic nodeids for scheduler/source lifecycle
+
+The `browser_scheduler_source_lifecycle` release-validation group is a required offline release gate for scheduler, source queue, same-profile queueing, browser-profile-busy diagnostics, and release-lifecycle queue invariants. It must use explicit fast pytest nodeids rather than broad selector terms such as `cleanup`, because generic selectors can include unrelated cleanup tests and create nondeterministic release-control timeouts in operator environments.
+
