@@ -515,3 +515,7 @@ chatgpt_project_deletion_performed=false
 ## Next safe action
 
 Install and validate `chatgpt_claudecode_workflow-2_v0.1.87.zip` with focused loop tests before any release-control/adoption run.
+
+## v0.1.87.1 repair status — packaged loop module
+
+`v0.1.87.1` is a repair-only candidate for the `v0.1.87` loop target schema and dry-run planner candidate. It fixes the installed CLI import failure where `promptbranch_cli.py` imports `promptbranch_loop`, but `promptbranch_loop.py` was omitted from setuptools `py-modules`. No loop behavior, deployment behavior, Project Source behavior, artifact adoption/current behavior, or ChatGPT Project deletion behavior changes.

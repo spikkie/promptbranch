@@ -294,3 +294,5 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 | DOD-104 | K8s-game orchestration plan is reconciled to accepted/current v0.1.85 baseline before game implementation starts | focused | `docs/project/*`, `docs/design/orchestration/docs/current_status.md`, `global_mvp_plan.md`, `detailed_mvp_setup_plan.md`, `k8s_game_mvp_contract.md`, `tests/test_project_control_surface.py` | v0.1.86 |
 
 | DOD-105 | Loop target schema and dry-run planner validate bounded problem definitions without side effects | focused | `promptbranch_loop.py`, `pb loop validate`, `pb loop plan`, `pb loop run --dry-run`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `examples/loop-targets/static-game-dry-run-target.json` | v0.1.87 |
+
+| DOD-106 | Installed Promptbranch CLI can import the loop module after package installation, so `pb loop` does not fail with `ModuleNotFoundError: No module named 'promptbranch_loop'` | focused | `pyproject.toml`, `promptbranch_loop.py`, `tests/test_promptbranch_loop_packaging.py`, isolated pip install smoke | v0.1.87.1 |
