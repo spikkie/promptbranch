@@ -2687,3 +2687,15 @@ def test_release_control_all_tests_summary_diagnoses_localhost_rate_limit_retry_
     assert localhost_diag["rate_limit_retry_denied"] is True
     assert localhost_diag["likely_failure_phase"] == "rate_limit_blocking_or_contaminated"
     assert "full_localhost" in summary["diagnostics"]["rate_limit_retry_denied_steps"]
+
+
+def test_new_task_smoke_script_uses_schema_v2_current_conversation_path():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "smoke-pb-ask-new-task.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "pb ask --new-task" in text
+    assert "jq -r '.current.conversation_url // empty'" in text
+    assert "jq -r '.conversation_url // empty'" not in text
+    assert 'test -n "$after"' not in text  # script uses bash [[ ]] form, not stale copied one-liner
+    assert '[[ -n "$after" && "$before" != "$after" ]]' in text
+    assert "sentinel_ok=1" in text
+    assert "new_task_state_ok=1" in text

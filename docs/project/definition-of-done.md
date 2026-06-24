@@ -289,3 +289,4 @@ A run-all step that functionally passes after ChatGPT rate-limit modal acknowled
 
 A release candidate satisfies this DoD when the required `browser_scheduler_source_lifecycle` release-validation group uses explicit fast pytest nodeids for scheduler/source lifecycle invariants and does not rely on broad generic selectors such as `cleanup`. Focused validation must include a regression test that rejects reintroduction of the broad selector and proves at least one source-remove and one browser-profile-busy nodeid remain in the group.
 
+| DOD-103 | Ask state observability exposes schema-v2 `.current.conversation_url` proof path and prevents stale top-level conversation proof assumptions | done | `pb state --proof`, `scripts/smoke-pb-ask-new-task.sh`, `tests/test_cli_state.py`, `tests/test_promptbranch_shell_scripts.py` | v0.1.85 |

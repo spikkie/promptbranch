@@ -389,3 +389,83 @@ def test_legacy_artifact_fields_do_not_override_repo_scoped_state(tmp_path) -> N
 
     assert snapshot["artifact_ref"] == "my_awx_0.0.200.zip"
     assert snapshot["artifact_ref"] != "legacy_global_9.9.9.zip"
+
+
+def test_state_snapshot_exposes_schema_v2_current_paths(tmp_path) -> None:
+    store = ConversationStateStore(str(tmp_path))
+    project_url = "https://chatgpt.com/g/g-p-demo-my-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
+
+    store.remember_project(project_url, project_name="my-project")
+    store.remember(project_url, conversation_url, project_name="my-project")
+
+    snapshot = store.snapshot(project_url)
+
+    assert snapshot["schema_version"] >= 2
+    assert snapshot["current_project_home_url"] == project_url
+    assert snapshot["current_conversation_url"] == conversation_url
+    assert snapshot["current_conversation_id"] == "12345678-1234-1234-1234-1234567890ab"
+    assert snapshot["current_updated_at"]
+    assert snapshot["state_paths"]["current_conversation_url"] == ".current.conversation_url"
+    assert snapshot["new_task_proof"]["conversation_url_json_path"] == ".current.conversation_url"
+
+
+def test_main_state_text_exposes_current_conversation_schema_v2_path(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    project_url = "https://chatgpt.com/g/g-p-demo-my-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember_project(project_url, project_name="my-project")
+    store.remember(project_url, conversation_url, project_name="my-project")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "state",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "schema_version=" in captured.out
+    assert f"current_conversation_url={conversation_url}" in captured.out
+    assert "current_conversation_url_json_path=.current.conversation_url" in captured.out
+    assert "conversation_url_json_path=.conversation_url" not in captured.out
+
+
+def test_main_state_proof_json_reports_new_task_state_check(monkeypatch, capsys, tmp_path) -> None:
+    class FakeServiceClient:
+        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
+            pass
+
+    project_url = "https://chatgpt.com/g/g-p-demo-my-project/project"
+    conversation_url = "https://chatgpt.com/g/g-p-demo-my-project/c/12345678-1234-1234-1234-1234567890ab"
+    store = ConversationStateStore(str(tmp_path))
+    store.remember(project_url, conversation_url, project_name="my-project")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
+
+    exit_code = main([
+        "--service-base-url",
+        "http://localhost:8000",
+        "--profile-dir",
+        str(tmp_path),
+        "state",
+        "--proof",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["action"] == "state_proof"
+    assert payload["current_conversation_url"] == conversation_url
+    assert payload["state_paths"]["current_conversation_url"] == ".current.conversation_url"
+    assert payload["new_task_proof"]["conversation_url_json_path"] == ".current.conversation_url"

@@ -244,3 +244,9 @@ Release-control diagnostics may classify and explain live validation failures, b
 
 The `browser_scheduler_source_lifecycle` release-validation group is a required offline release gate for scheduler, source queue, same-profile queueing, browser-profile-busy diagnostics, and release-lifecycle queue invariants. It must use explicit fast pytest nodeids rather than broad selector terms such as `cleanup`, because generic selectors can include unrelated cleanup tests and create nondeterministic release-control timeouts in operator environments.
 
+
+## v0.1.85 decision — State proof uses schema-v2 current path
+
+`pb ask --new-task` proof and operator smoke commands must use `.current.conversation_url` as the authoritative remembered task path. The stale top-level `.conversation_url` shape is not a valid proof source for schema-v2 Promptbranch state.
+
+`pb state --proof` is read-only and may expose proof metadata, but it must not run a live ask, mutate Project Source, adopt artifacts, or alter ChatGPT Project state.

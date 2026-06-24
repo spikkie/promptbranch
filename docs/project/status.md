@@ -455,3 +455,11 @@ The repair replaces that group's broad pytest `-k` selector with explicit fast n
 
 No normal slice advanced. `v0.1.84.5.12 — Explicit new-task ask mode` remains the active slice.
 
+
+## v0.1.85 candidate status
+
+`v0.1.85` opens from accepted/current `chatgpt_claudecode_workflow-2_v0.1.84.5.12.2.zip` as the next normal slice: Ask state observability and new-task proof hardening.
+
+The slice addresses the operational confusion found during the `v0.1.84.5.12.2` short verification: the authoritative schema-v2 conversation path is `.current.conversation_url`, not top-level `.conversation_url`.
+
+Current candidate work adds `pb state` schema/current observability, `pb state --proof`, and `scripts/smoke-pb-ask-new-task.sh`. Candidate status remains not accepted/current until full release-control/adoption/current proof is provided.
