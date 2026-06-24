@@ -1266,3 +1266,7 @@ Planned work:
 5. Report `validation_reuse.reused_groups`, `executed_groups`, `invalidated_groups`, and `failed_groups` in the all-tests summary.
 
 Out of scope: live/browser reuse, localhost reuse, adoption behavior changes, Project Source behavior changes, deployment/Kubernetes behavior, and loop-engine behavior changes.
+
+### v0.1.88.1 repair note
+
+Repair-only continuation of `v0.1.88`. Fix the release-blocking `project_source_add_text` timeout path by applying the extended source-mutation timeout to Docker-service source-add calls and by returning structured fail-closed diagnostics if a source mutation still times out. Do not expand evidence-reuse scope, do not change adoption semantics, and do not advance to `v0.1.89` until `v0.1.88.1` adoption/current evidence exists.

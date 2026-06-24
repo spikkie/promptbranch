@@ -298,3 +298,5 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 | DOD-106 | Installed Promptbranch CLI can import the loop module after package installation, so `pb loop` does not fail with `ModuleNotFoundError: No module named 'promptbranch_loop'` | focused | `pyproject.toml`, `promptbranch_loop.py`, `tests/test_promptbranch_loop_packaging.py`, isolated pip install smoke | v0.1.87.1 |
 
 | DOD-107 | Release-control run-all can reuse already-passed identical direct run-tests evidence only when artifact hash and validation dimensions match, and otherwise fails closed by rerunning | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py` static fail-closed contract tests | v0.1.88 |
+
+| DOD-108 | Project-source-add-text timeout diagnostics/recovery uses an extended source-mutation timeout and fails closed with source-list diagnostics if the service still times out | focused_candidate | `promptbranch_full_integration_test.py`, `tests/test_full_integration_harness.py`, `docs/repair-v0.1.88.1.md` | v0.1.88.1 |

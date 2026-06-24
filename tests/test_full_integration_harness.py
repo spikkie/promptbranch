@@ -81,6 +81,121 @@ def test_docker_service_adapter_source_mutation_timeout_exceeds_general_client_t
     assert adapter._source_mutation_timeout_seconds() > adapter.timeout_seconds
 
 
+
+
+def test_docker_service_adapter_passes_extended_timeout_to_source_add(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            captured["client_timeout"] = kwargs.get("timeout")
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def add_project_source(self, **kwargs: Any) -> dict[str, Any]:
+            captured["add_kwargs"] = kwargs
+            return {"ok": True}
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+    )
+
+    result = adapter._add_project_source_sync(
+        "text",
+        "hello",
+        None,
+        "integration-note",
+        True,
+        True,
+    )
+
+    assert result == {"ok": True}
+    assert captured["client_timeout"] == 300.0
+    assert captured["add_kwargs"]["request_timeout_seconds"] == adapter._source_mutation_timeout_seconds()
+    assert captured["add_kwargs"]["request_timeout_seconds"] > captured["client_timeout"]
+
+
+
+def test_docker_service_adapter_source_add_timeout_returns_structured_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ReadTimeout(Exception):
+        pass
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def add_project_source(self, **kwargs: Any) -> dict[str, Any]:
+            raise ReadTimeout("timed out")
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+    )
+
+    result = adapter._add_project_source_sync(
+        "text",
+        "hello",
+        None,
+        "integration-note",
+        True,
+        True,
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "source_mutation_request_timeout"
+    assert result["release_blocking"] is True
+    assert result["request_timeout_seconds"] == adapter._source_mutation_timeout_seconds()
+    assert result["request_timeout_seconds"] > result["general_service_timeout_seconds"]
+    assert result["recovery_guidance"]
+
+
+def test_source_add_timeout_failure_diagnostic_lists_sources() -> None:
+    class FakeProjectService:
+        async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+            assert keep_open is True
+            return {"ok": True, "action": "list", "sources": [{"name": "maybe-late-source"}]}
+
+    steps: list[StepResult] = []
+    failure_payload: dict[str, Any] = {
+        "ok": False,
+        "status": "source_mutation_request_timeout",
+        "error_type": "ReadTimeout",
+    }
+
+    asyncio.run(
+        _attach_project_source_failure_diagnostic(
+            steps,
+            FakeProjectService(),
+            failure_payload,
+            diagnostic_step_name="project_source_list_after_add_text_failure",
+            keep_open=True,
+        )
+    )
+
+    assert failure_payload["post_failure_source_list_command"] == "pb src list --json"
+    assert failure_payload["post_failure_source_list_diagnostic"]["ok"] is True
+    assert steps[-1].name == "project_source_list_after_add_text_failure"
+    assert steps[-1].ok is True
+
 def test_post_commit_source_failure_diagnostic_lists_retained_project_sources() -> None:
     class FakeProjectService:
         async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:

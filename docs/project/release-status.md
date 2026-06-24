@@ -220,3 +220,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.87.1 | repair | Package `promptbranch_loop` for installed CLI | candidate | focused packaging/loop/version/project-control tests plus isolated pip install smoke, Artifact Guardian, ZIP hygiene | repairs v0.1.87 packaging only; no slice advanced | pending adoption evidence |
 
 | v0.1.88 | normal | Incremental release validation evidence reuse | candidate | focused shell contract tests, version tests, project-control tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | DOD-107 focused | pending adoption evidence |
+
+| v0.1.88.1 | repair | Project-source-add-text timeout diagnostics/recovery | candidate | focused full-integration harness tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | repairs v0.1.88 source-add timeout gate only; no slice advanced | pending adoption evidence |
