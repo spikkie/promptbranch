@@ -1202,3 +1202,32 @@ Planned changes:
 4. Add focused tests preventing stale top-level `.conversation_url` proof usage.
 
 Out-of-scope: MkDocs integration, backend API investigation, Project Source mutation behavior, artifact adoption behavior, and Project deletion behavior.
+
+## v0.1.86 — K8s-game orchestration plan reconciliation
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.85.zip`.
+
+Goal: reconcile the Kubernetes game orchestration plan to the real accepted/current Promptbranch baseline before starting game implementation work.
+
+Planned work:
+
+1. Update `docs/project/` control-surface files to state that `v0.1.85` is the accepted/current baseline for this line.
+2. Refresh orchestration status and plan docs so they no longer present `v0.1.79` or older candidates as the current orchestration baseline.
+3. Preserve the k8s-game as a controlled test vehicle, not a standalone product.
+4. Define the next implementation path as static-first and repository-local only.
+5. Keep Kubernetes mutation blocked until a later explicit dry-run/deploy evidence gate exists.
+
+Out of scope:
+
+```text
+no game implementation
+no Docker image build/publish
+no Kubernetes apply
+no Helm release
+no cluster mutation
+no Project Source mutation
+no artifact adoption/current behavior change
+no accepted-event ledger write
+```
+
+Exit criteria: focused project-control and orchestration-doc tests, version tests, compileall, Artifact Guardian, ZIP hygiene, then operator full release-control/adoption.

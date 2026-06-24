@@ -144,3 +144,25 @@ Every LLM output remains untrusted until Promptbranch validates it.
 ```text
 LLM proposal != accepted event
 ```
+
+## v0.1.86 global plan reconciliation
+
+The accepted Promptbranch baseline is now `chatgpt_claudecode_workflow-2_v0.1.85.zip`. The global orchestration plan remains valid, but the next Kubernetes game work must be sequenced after a documentation/control-surface reconciliation slice.
+
+Reconciled path:
+
+```text
+v0.1.86
+  Reconcile the k8s-game orchestration plan to the accepted v0.1.85 baseline.
+  No game files, Docker image changes, Kubernetes manifests, kubectl calls, Helm calls, Project Source mutation, artifact adoption/current behavior change, or ledger writes.
+
+v0.1.87 candidate direction
+  Static app artifact scaffold only.
+  Repository files may describe the game and manifests, but they must not deploy anything.
+
+v0.1.88 candidate direction
+  Kubernetes dry-run/deploy evidence gate.
+  Cluster mutation remains blocked until explicit operator-controlled evidence gates exist.
+```
+
+The k8s-game remains the lifecycle test vehicle for orchestration state. The orchestration model is still the product.

@@ -1,10 +1,10 @@
-# JSON Orchestration State MVP — Current Status after v0.1.79
+# JSON Orchestration State MVP — Current Status after v0.1.85
 
-Updated for release: v0.1.79
+Updated for release: v0.1.86 planning reconciliation
 
 ## Purpose
 
-This document reconciles the original `v0.1.x` orchestration objective with the actual accepted release line through accepted `v0.1.65` and the v0.1.66 release doctor candidate ZIP precheck slice.
+This document reconciles the Kubernetes game orchestration plan with the accepted Promptbranch release line through `v0.1.85`.
 
 The project remains on the same strategic goal:
 
@@ -12,97 +12,90 @@ The project remains on the same strategic goal:
 ChatGPT proposes structured JSON.
 Promptbranch validates schema, policy, and state.
 Only accepted events become trusted workflow state.
-Artifacts still go through Final Artifact Intake.
+Artifacts still go through guarded artifact intake and adoption.
+Kubernetes deployment requires explicit Promptbranch-controlled evidence gates.
 ```
 
 ## Current state
 
 ```text
-latest accepted baseline:          v0.1.78.2.20.8.8
-current development release:       v0.1.79
+latest accepted baseline:          chatgpt_claudecode_workflow-2_v0.1.85.zip
+current reconciliation release:    v0.1.86
 orchestration goal:                still active
+k8s-game role:                     controlled test vehicle, not the product
 execution authority:               Promptbranch only
 critical-path provider:            ChatGPT only
 local/Ollama provider:             rejected until new ADR + tests
+Kubernetes mutation authority:     not opened by v0.1.86
 ```
 
 ## What has been completed
 
 ```text
 v0.1.0  Opened the JSON Orchestration State MVP line.
-v0.1.1  Continued orchestration foundation and validation work.
-v0.1.20-v0.1.37  Hardened release-control, task/message, source/artifact, and validation surfaces needed by the shell workflow.
-v0.1.38  Added browser profile lease/pool support so live tests do not collide on the same profile.
-v0.1.39  Added read-only rate-limit diagnostics and backend API surface documentation.
-v0.1.40  Reconciled these detours and added the read-only grill schema foundation.
+v0.1.1-v0.1.39  Hardened shell workflow, browser profile isolation, task/message handling, artifact/source handling, and rate-limit diagnostics.
+v0.1.40  Reconciled early detours and added the read-only grill schema foundation.
 v0.1.41-v0.1.53  Hardened backend diagnostics, source mutation locks, VERSION-driven service metadata, and release adoption verification.
-v0.1.54  Consolidated the orchestration design/control surfaces under docs/design/orchestration and refreshed the living MVP design references.
-v0.1.54.1  Repaired Project Source file persistence verification so file-source matches must be filename-anchored.
-v0.1.55  Connects read-only grill validation to the k8s-game MVP state-machine transition rules.
-v0.1.55.1  Repairs grill validator CLI path-label handling without advancing MVP scope.
-v0.1.56  Adds the first read-only accepted-event fixture and validator that consumes a valid G0 grill recommendation without mutating runtime state.
-v0.1.57  Extends accepted-event fixture coverage to G1-G6 so every committed grill stage has a read-only accepted-event counterpart.
-v0.1.58  Adds PB application design documentation plus activity, data-flow, state-transition, role-component, and release-state draw.io pages.
-v0.1.59  Makes the PB application design surface release-checkable through docs-status and blocks missing role/scope language or missing draw.io pages.
-v0.1.60  Adds accepted-baseline evidence documentation and docs-status guard coverage for candidate/installed/adopted artifact semantics.
-v0.1.61  Integrates living-design HTML overview into repo documentation and adds release-checkable HTML/draw.io/PB-authority-model validation.
-v0.1.62  Adds a Material-for-MkDocs source scaffold and docs_site guard so PB design/release documentation is navigable from one entrypoint without committing rendered site output.
-v0.1.63  Extends docs_site with repo-local link-integrity validation for MkDocs navigation and documentation index links.
-v0.1.64  Extends docs_site with build-readiness validation for docs/site.md, preview/build commands, and generated site output exclusion.
-v0.1.65  Adds a read-only release lifecycle config contract guard for .promptbranch-release.yml and pb release config --json.
-v0.1.66  Makes pb release doctor consume .promptbranch-release.yml for read-only candidate ZIP prechecks, filename/config matching, VERSION consistency, ZIP hygiene, and accepted-baseline continuity.
+v0.1.54  Consolidated orchestration design/control surfaces under docs/design/orchestration.
+v0.1.55  Connected read-only grill validation to the k8s-game MVP state-machine transition rules.
+v0.1.56-v0.1.57  Added read-only accepted-event fixtures and validator coverage for G0-G6.
+v0.1.58-v0.1.66  Added PB application design docs, docs-status guards, MkDocs source scaffold, release config guard, and release-doctor candidate prechecks.
 v0.1.67-v0.1.78.2.20.8.8  Hardened project control surface, artifact adoption/current consistency, Project Source transaction diagnostics, live retained-project tests, and immutable Project deletion freeze.
-v0.1.79  Resumes the normal JSON orchestration MVP line with a proposal-only event-intake schema, read-only validator, CLI command, and fail-closed tests.
+v0.1.79  Resumed the normal JSON orchestration MVP line with proposal-only event-intake schema, read-only validator, CLI command, and fail-closed tests.
+v0.1.80-v0.1.84  Added accepted-event validation, dry-run promotion preview, explicit input validation, ledger-status, and ledger validation while preserving no-write/no-deploy boundaries.
+v0.1.84.1-v0.1.84.5.12.2  Repaired live validation, rate-limit, retained Project, source-add, ask-live, and explicit `pb ask --new-task` operator boundaries.
+v0.1.85  Added schema-v2 ask state observability and canonical new-task proof hardening.
 ```
 
 ## Drift assessment
 
-The releases after the original `v0.1.0` plan are not goal drift by themselves. They are operational hardening needed to make the control plane safer.
+The plan is still strategically on track. The Kubernetes game remains the deliberately small vehicle used to prove the orchestration lifecycle, not a standalone product goal.
 
-The remaining risk is not conceptual drift, but authority drift:
+The current gap is documentation authority, not implementation capability:
 
 ```text
-A ChatGPT grill envelope can recommend a next state.
-Promptbranch must verify that the recommendation is allowed by the state machine.
-The recommendation must remain proposal-only until a later accepted-event path records it.
+The accepted baseline advanced to v0.1.85.
+Several orchestration docs still described the line as if v0.1.79 or older candidates were current.
+The next game work must therefore start with plan reconciliation before any app or cluster files are added.
 ```
-
-v0.1.55 reduced that risk by validating each committed G0-G6 grill fixture against the canonical k8s-game MVP state machine. Invalid transitions, stage/transition mismatches, and project/state-machine mismatches now fail the read-only grill validator.
-
-v0.1.56 added the accepted-event validation boundary: a committed accepted-event fixture must reference a valid grill fixture, preserve the source grill SHA-256, match the source recommendation, and match the canonical k8s-game MVP state machine. v0.1.57 expands that proof from G0 to all committed G0-G6 grill stages. The fixtures remain data-only and cannot record live workflow state.
 
 ## Active safety boundary
 
-The grill layer is still proposal-only:
+The orchestration layer remains proposal-only:
 
 ```text
-- no source mutation
-- no artifact adoption
-- no Kubernetes deployment
+- no source mutation from ChatGPT proposals
+- no artifact adoption from ChatGPT proposals
+- no Kubernetes deployment from ChatGPT proposals
+- no accepted-event ledger write outside explicit Promptbranch CLI authority
 - no local/Ollama critical-path provider
 - no model execution authority
 ```
 
-Promptbranch may validate grill envelopes and accepted-event fixtures. In v0.1.66 accepted events remain committed read-only fixtures only; they do not update Promptbranch runtime state or artifact/source registries. The PB application and baseline evidence, living-design overview, docs-site docs-status guards, release config guard, and release doctor candidate precheck are validation only and do not widen execution authority.
+Promptbranch may validate schemas, fixtures, accepted-event examples, and future dry-run previews. It must not deploy the k8s-game to a cluster until a later release adds an explicit Kubernetes deploy evidence gate.
 
-## Next planned orchestration work
-
-After this release is accepted, the next narrow slice should remain read-only and may be selected from the consolidated living design:
+## Reconciled next orchestration path
 
 ```text
-- add rejected-event fixtures that prove invalid grill recommendations remain non-authoritative
-- extend docs-status so it checks accepted-event fixture coverage and source-grill hash freshness
-- add accepted-event coverage checks for required stage completeness in a dedicated status command
+v0.1.86
+  K8s-game orchestration plan reconciliation:
+  - update docs/project control surface to v0.1.85 baseline reality
+  - refresh orchestration status, global plan, detailed handoff, and k8s-game contract
+  - state that no game implementation or cluster mutation is performed in this slice
+
+v0.1.87 candidate direction
+  K8s-game static app artifact scaffold:
+  - static HTML/CSS/JS files only
+  - Dockerfile and Kubernetes manifest files as repository artifacts only
+  - local/static validation and manifest linting only
+  - no kubectl apply, no Helm install, no cluster mutation
+
+v0.1.88 candidate direction
+  K8s-game Kubernetes dry-run/deploy evidence gate:
+  - add explicit dry-run validation and operator-controlled deploy evidence contract
+  - actual cluster mutation remains blocked until the gate is explicit and accepted
 ```
 
-Do not start game implementation or write-capable orchestration until the design/control surfaces remain stable after the state-machine transition validation slice.
+## Do not start yet
 
-
-## v0.1.65 release-control status
-
-`v0.1.65` remains a read-only config-contract release. It does not widen orchestration authority, execution authority, source mutation, artifact adoption, browser automation, hook execution, Git mutation, or release lifecycle behavior.
-
-
-## v0.1.66 release doctor candidate precheck rule
-
-Release doctor now consumes `.promptbranch-release.yml` when an explicit candidate ZIP is provided. The command remains read-only and reports candidate evidence only; it must not install, upload Project Sources, execute hooks, adopt artifacts, update state, commit, or push.
+Do not implement or deploy the game in `v0.1.86`. This slice only reconciles planning authority and release baseline continuity.

@@ -70,3 +70,9 @@ The operator can continue from the accepted baseline, request a narrow release s
 ```text
 This MVP is complete only when the Definition of Done in docs/project/definition-of-done.md is satisfied with evidence.
 ```
+
+## v0.1.86 k8s-game reconciliation note
+
+The Kubernetes game remains a controlled test vehicle for the JSON orchestration state MVP. It is not yet an implementation target in this release.
+
+`v0.1.86` reconciles the project control surface and orchestration design docs against accepted/current `chatgpt_claudecode_workflow-2_v0.1.85.zip`. Game implementation, Docker image changes, Kubernetes manifest application, Helm use, cluster mutation, Project Source mutation, artifact adoption/current behavior changes, and accepted-event ledger writes are out of scope for this slice.
