@@ -442,3 +442,7 @@ The candidate adds explicit `pb ask --new-task` / `--new-conversation` support. 
 Busy remembered conversations that expose stop/thinking/interrupted composer blockers are now classified as `target_conversation_busy` with a recovery hint while preserving no-fill safety and lower-level composer diagnostics.
 
 Out of scope remains unchanged: no Project Source mutation, no artifact adoption/current behavior change, no project deletion, no release-control broad rewrite, and no interpretation of literal prompt text as a CLI command.
+
+## v0.1.84.5.12.1 repair status
+
+`v0.1.84.5.12.1` is a repair candidate for `v0.1.84.5.12`. It fixes release-control all-tests summary classification for functionally verified `ask_live` runs that report `status=verified_with_recovered_rate_limit` and top-level `rate_limit_recovered=true` after conversation-history 429 cooldown handling. No slice or line advanced; the active feature slice remains explicit new-task ask mode.

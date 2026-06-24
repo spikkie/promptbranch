@@ -2385,7 +2385,9 @@ def has_recovered_rate_limit_payload(payload: dict) -> bool:
         return False
 
     telemetry = payload.get("rate_limit_telemetry")
-    return isinstance(telemetry, dict) and telemetry_has_acknowledged_cooldown(telemetry)
+    telemetry_recovered = isinstance(telemetry, dict) and telemetry_has_acknowledged_cooldown(telemetry)
+    payload_recovered = payload.get("rate_limit_recovered") is True
+    return bool(telemetry_recovered or payload_recovered)
 
 for obj in iter_json_objects(text):
     if has_recovered_rate_limit_payload(obj):
@@ -2958,7 +2960,9 @@ def payload_recovered_rate_limit_success(payload: dict) -> bool:
         return False
 
     telemetry = payload.get("rate_limit_telemetry") if isinstance(payload.get("rate_limit_telemetry"), dict) else {}
-    if not telemetry_has_acknowledged_cooldown(telemetry):
+    telemetry_recovered = telemetry_has_acknowledged_cooldown(telemetry)
+    payload_recovered = payload.get("rate_limit_recovered") is True
+    if not (telemetry_recovered or payload_recovered):
         return False
 
     # New clean policy: command itself may mark a recovered 429 as successful.

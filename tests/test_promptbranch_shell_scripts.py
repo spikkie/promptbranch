@@ -2009,6 +2009,61 @@ def test_release_control_all_tests_summary_accepts_ok_false_verified_recovered_a
     assert "retry after rate-limit cooldown" not in result.stdout
 
 
+
+def test_release_control_all_tests_summary_accepts_top_level_rate_limit_recovered_flag_without_modal_ack(tmp_path: Path):
+    payload = {
+        "ok": False,
+        "action": "test_ask_live",
+        "profile": "ask-live",
+        "status": "verified_with_recovered_rate_limit",
+        "failure_count": 1,
+        "functional_failure_count": 0,
+        "rate_limit_recovered": True,
+        "steps": [
+            {
+                "name": "plain",
+                "ok": False,
+                "status": "rate_limited_contaminated",
+                "functional_status": "verified",
+                "contains_expected_sentinel": True,
+            },
+            {
+                "name": "prompt_file_with_attachment",
+                "ok": False,
+                "status": "verified_with_recovered_rate_limit",
+                "functional_status": "verified",
+                "contains_expected_sentinel": True,
+            },
+        ],
+        "rate_limit_telemetry": {
+            "conversation_history_429_seen": True,
+            "backend_api_guardrail_seen": True,
+            "cooldown_wait_seconds_total": 842.789,
+            "cooldown_wait_count": 5,
+            "service_rate_limit_events": [
+                {"kind": "conversation_history_rate_limit", "status": 429},
+                {"kind": "backend_api_guardrail", "status": 429},
+                {"kind": "cooldown_wait", "wait_seconds": 175.335},
+            ],
+        },
+    }
+
+    result, summary, calls_text = _run_release_control_with_fake_ask_live_payload(
+        tmp_path,
+        version="v9.9.18",
+        payload=payload,
+        ask_exit_code=42,
+    )
+
+    assert result.returncode == 0
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    ask_step = next(step for step in summary["steps"] if step["name"] == "ask_live")
+    assert ask_step["ok"] is True
+    assert ask_step["status"] == "verified_with_recovered_rate_limit"
+    assert ask_step["recovered_rate_limit_success"] is True
+    assert calls_text.count("pb test ask-live") == 1
+
 def test_release_control_all_tests_summary_rejects_verified_recovered_ask_live_with_functional_failure(tmp_path: Path):
     payload = {
         "ok": False,
