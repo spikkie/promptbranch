@@ -226,4 +226,6 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 
 | v0.1.90 | normal | Conversation-history/backend-api 429 pressure reduction | candidate | focused conversation-history request shield tests, test-report shield summary tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | Adds DOD-110 focused; builds from accepted/current v0.1.89 | pending adoption evidence |
 
-| v0.1.90.1 | repair | Project source overwrite stale-inflight post-commit recovery | candidate | focused source-overwrite stale-inflight tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | repairs v0.1.90 overwrite-file verification only; no slice advanced | pending adoption evidence |
+| v0.1.90.1 | repair | Project source overwrite stale-inflight post-commit recovery | accepted_current_by_operator_log | focused source-overwrite stale-inflight tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | repairs v0.1.90 overwrite-file verification only; no slice advanced | pending adoption evidence |
+
+| v0.1.91 | normal | Run-all evidence reuse proof and localhost matrix cooldown audit | candidate | focused shell tests for proof-based reuse and localhost cooldown audit, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | Adds DOD-112 focused; builds from accepted/current v0.1.90.1 | pending adoption evidence |

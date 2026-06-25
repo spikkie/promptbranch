@@ -305,4 +305,6 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 
 | DOD-110 | Live validation shields non-essential global conversation-history auto-requests while preserving explicit Promptbranch history fetches | focused | `promptbranch_browser_auth/client.py`, `promptbranch_browser_auth/config.py`, `promptbranch_automation/automation.py`, `tests/test_project_list_browser_client.py`, `tests/test_promptbranch_test_report.py` | v0.1.90 |
 
-| DOD-111 | File-source uploads/overwrites do not treat stale inflight after commit as quiet, and post-commit recovery distinguishes visible-source false negatives from true absence | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.90.1.md` | v0.1.90.1 |
+| DOD-111 | File-source uploads/overwrites do not treat stale inflight after commit as quiet, and post-commit recovery distinguishes visible-source false negatives from true absence | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.90.1.md` | v0.1.90.1 |
+
+| DOD-112 | Run-all validation exposes proof-based direct evidence reuse and localhost/offline cooldown audit so repeated broad validation does not rerun identical direct groups or hide localhost cooldown policy violations | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/release-v0.1.91.md` | v0.1.91 |

@@ -559,3 +559,7 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 | `docs/release-v0.1.89.md` | accepted observability release evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/decisions.md`, `docs/project/definition-of-done.md` | extended | v0.1.90 follows the v0.1.89 timing/click audit evidence by reducing global conversation-history/backend-api 429 pressure. |
 
 | `docs/repair-v0.1.90.1.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for file-source overwrite stale-inflight post-commit recovery; preserves v0.1.90 conversation-history shield scope and does not advance normal slice scope. |
+
+## v0.1.91 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should run `--run-tests --strict-source-kind-matrix` first, then run `--run-all-tests --strict-source-kind-matrix` for reuse proof. The all-tests summary now includes `validation_reuse` and `localhost_matrix_cooldown_audit` sections for operator review.
