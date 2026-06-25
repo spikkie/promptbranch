@@ -1339,3 +1339,7 @@ Repair-only continuation of `v0.1.91`. Fix the `--run-all-tests` proof failure b
 ### v0.1.91.2 repair note
 
 Repair-only candidate from accepted/current `v0.1.91.1`. Fix only run-all final summary aggregation for noisy logs containing pretty-printed live command JSON. Preserve ask-live retry recovery, evidence reuse, localhost cooldown audit, live command behavior, adoption/current semantics, Project deletion freeze, and Project Source behavior. No normal slice advances.
+
+## v0.1.91.3 repair plan
+
+Repair-only objective: preserve `v0.1.91.1` accepted behavior and `v0.1.91.2` run-all aggregation repair while hardening Docker service recreate/version verification for clean-system bootstrap and stale local Docker states. Do not open `v0.1.92` until the `v0.1.91` run-all proof line is green or explicitly deferred.

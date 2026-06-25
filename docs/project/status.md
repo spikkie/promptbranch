@@ -604,3 +604,7 @@ Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.zip` until `v0.1
 This repair changes only final all-tests summary payload extraction/ranking for noisy logs containing pretty-printed live command JSON. It preserves ask-live retry recovery, evidence reuse, localhost cooldown audit, live command behavior, adoption/current semantics, Project Source behavior, Project deletion freeze, loop behavior, and deployment boundaries.
 
 Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until `v0.1.91.2` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.
+
+## v0.1.91.3 repair candidate status
+
+`v0.1.91.3` is a repair-only candidate on top of the `v0.1.91.2` candidate state while accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until adoption proof. It hardens Docker service recreate/version verification for clean-system and dirty-system cases by adding Docker/Compose preflight diagnostics, resolving the service container by explicit Compose service name, waiting for running/healthy state before content probing, and classifying missing containers separately from version mismatches.
