@@ -1358,3 +1358,8 @@ Required changes:
 6. If missing or stale and service management is enabled, bootstrap the candidate Docker service before source add.
 7. Classify clean-system absence as `pre_source_add_service_unavailable` with diagnostics.
 8. Do not change adoption/current semantics, Project deletion behavior, live/browser behavior, or Project Source mutation semantics.
+
+
+## v0.1.91.5 repair plan
+
+Repair only the final all-tests summary aggregation for `live_project_ensure` payload selection. Preserve ask-live retry, run-all pretty JSON extraction, Docker recreate hardening, pre-source-add service bootstrap, adoption semantics, and Project deletion freeze.

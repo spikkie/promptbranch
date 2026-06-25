@@ -319,3 +319,8 @@ Status: in_progress in `v0.1.91.3` repair candidate.
 The release-control Docker lifecycle must be deterministic from clean, dirty, and broken host states. It must check Docker/Compose availability before build, resolve the running container by explicit Compose service ID, wait for running/healthy state before content-version probing, and emit diagnostics that distinguish missing containers from version mismatches.
 
 | DOD-116 | Release-control does not require a pre-existing Promptbranch service before Project Source add; it installs the candidate CLI, verifies or bootstraps the candidate service, and reports `pre_source_add_service_unavailable` diagnostics if bootstrap fails | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.91.4.md` | v0.1.91.4 |
+
+
+## DOD-117 — Run-all live_project_ensure terminal-line aggregation
+
+Done when run-all summary aggregation selects valid `ok=true` `ensure_project` / `project_ensure` payloads with a concrete `project_url`, even when the JSON is followed by a human-readable `shared_live_project_url:` line, and does not mark the step failed solely due to nested schema/helper payloads.

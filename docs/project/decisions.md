@@ -316,3 +316,8 @@ Decision: release-control must not report `container_not_found` as a Docker cont
 Release-control must not assume a Promptbranch service is already running. On a clean system, `promptbranch src add` depends on `localhost:8000`; therefore the candidate CLI and candidate service must be installed/verified or bootstrapped before source-add. Dirty-system success with a stale pre-existing service is not sufficient release evidence.
 
 This is a repair-only release-control ordering decision and does not alter Project Source mutation semantics or adoption/current rules.
+
+
+## Decision — v0.1.91.5 aggregation-only repair
+
+`ensure_project` live command payloads may omit `status`; a valid `ok=true` payload with `project_url` is the authoritative command result and must outrank trailing `shared_live_project_url:` terminal text and nested helper/schema JSON.
