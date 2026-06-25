@@ -245,3 +245,15 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | Scope | Docker service clean-system recreate/version verification hardening |
 | Adoption state | not accepted/current until release-control and `pb artifact current --json` prove alignment |
 | Notes | No live/browser, adoption/current, Project Source, or Project deletion semantics changed. |
+
+## v0.1.91.4 repair candidate
+
+| Field | Value |
+|---|---|
+| Version | `v0.1.91.4` |
+| Type | repair candidate |
+| Base accepted/current | `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` |
+| Preserved repair candidates | `v0.1.91.2`, `v0.1.91.3` |
+| Scope | Pre-source-add service bootstrap for clean-system release-control |
+| Adoption state | not accepted/current until release-control and `pb artifact current --json` prove alignment |
+| Notes | Candidate CLI/service are installed/verified before `promptbranch src add`; no live/browser, adoption/current, Project Source semantic, or Project deletion behavior changed. |

@@ -310,3 +310,9 @@ Release-control live command logs can contain browser telemetry, shell trace lin
 ## DEC-115 — Docker verification must distinguish lifecycle absence from version mismatch
 
 Decision: release-control must not report `container_not_found` as a Docker content-version mismatch. Missing/non-running containers after recreate are Docker lifecycle/bootstrap failures and require Compose service-ID lookup, wait/health checks, and diagnostic collection before fail-closed release refusal.
+
+## Decision — v0.1.91.4 pre-source-add service bootstrap
+
+Release-control must not assume a Promptbranch service is already running. On a clean system, `promptbranch src add` depends on `localhost:8000`; therefore the candidate CLI and candidate service must be installed/verified or bootstrapped before source-add. Dirty-system success with a stale pre-existing service is not sufficient release evidence.
+
+This is a repair-only release-control ordering decision and does not alter Project Source mutation semantics or adoption/current rules.

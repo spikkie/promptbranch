@@ -1296,20 +1296,275 @@ with zipfile.ZipFile(zip_path) as z:
 print(f"ZIP verified: {zip_path}")
 PY
 
+# Reinstall local CLI from the release ZIP before any service-mediated source
+# mutation.  Clean hosts may not have a running Promptbranch service yet, and
+# source-add must therefore be performed by the candidate runtime after the
+# candidate service has been bootstrapped and version-verified.
+if [[ ${skip_install} -eq 0 ]]; then
+  pipx uninstall promptbranch || true
+  pipx install "./${artifact_zip}"
+fi
+
+compose_file="docker-compose.chatgpt-service.yml"
+pre_source_add_service_health_json="${release_log_dir}/pre_source_add_service_health.${ver}.json"
+pre_source_add_service_start_log="${release_log_dir}/pre_source_add_service_start.${ver}.log"
+pre_source_add_docker_preflight_json="${release_log_dir}/pre_source_add_docker_preflight.${ver}.json"
+pre_source_add_docker_compose_ps_json="${release_log_dir}/pre_source_add_docker_compose_ps.${ver}.json"
+pre_source_add_docker_compose_logs_path="${release_log_dir}/pre_source_add_docker_compose_logs.${ver}.log"
+
+pre_source_add_release_artifact_sha256() {
+  local path="${repo_root}/${artifact_zip}"
+  if [[ -f "${path}" ]]; then
+    python3 - "${path}" <<'INNERPY'
+from pathlib import Path
+import hashlib
+import sys
+path = Path(sys.argv[1])
+h = hashlib.sha256()
+with path.open('rb') as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+        h.update(chunk)
+print(h.hexdigest())
+INNERPY
+  else
+    printf 'unknown\n'
+  fi
+}
+
+pre_source_add_service_image_tag() {
+  if [[ -n "${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE_TAG}"
+    return 0
+  fi
+  printf '%s\n' "${ver#v}"
+}
+
+pre_source_add_service_image_ref() {
+  local image_tag
+  image_tag="$(pre_source_add_service_image_tag)"
+  if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" == "1" && -n "${PROMPTBRANCH_SERVICE_IMAGE:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE}"
+    return 0
+  fi
+  printf 'promptbranch-service:%s\n' "${image_tag}"
+}
+
+run_pre_source_add_docker_compose() {
+  local image_tag
+  local image_ref
+  local artifact_sha
+  image_tag="$(pre_source_add_service_image_tag)"
+  image_ref="$(pre_source_add_service_image_ref)"
+  artifact_sha="$(pre_source_add_release_artifact_sha256)"
+  COMPOSE_PROJECT_NAME="${compose_project_name}" \
+  PROMPTBRANCH_SERVICE_PORT="${service_port}" \
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
+  PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
+  PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
+  PROMPTBRANCH_VERSION="${ver#v}" \
+  PROMPTBRANCH_ARTIFACT_SHA256="${artifact_sha}" \
+  docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
+}
+
+pre_source_add_service_version_ready() {
+  local expected_version_plain="${ver#v}"
+  python3 - "${expected_version_plain}" "${pre_source_add_service_health_json}" "${service_port}" <<'INNERPY'
+import json
+import sys
+import urllib.request
+from datetime import datetime, timezone
+
+expected = sys.argv[1]
+out_path = sys.argv[2]
+port = sys.argv[3]
+
+def normalize(value):
+    text = str(value or '').strip()
+    return text[1:] if text.startswith('v') else text
+
+last_error = None
+for path in ('/healthz', '/health'):
+    url = f'http://127.0.0.1:{port}{path}'
+    try:
+        with urllib.request.urlopen(url, timeout=2.0) as response:
+            raw = response.read().decode('utf-8', errors='replace')
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = {'raw': raw}
+            actual = str(payload.get('package_version') or payload.get('version') or '')
+            payload.update({
+                'ok': normalize(actual) == normalize(expected),
+                'status': 'verified' if normalize(actual) == normalize(expected) else 'pre_source_add_service_version_mismatch',
+                'source_kind': 'pre_source_add_service_health',
+                'expected_version': expected,
+                'actual_version': actual,
+                'url': url,
+                'http_status': response.status,
+                'checked_at': datetime.now(timezone.utc).isoformat(),
+            })
+            with open(out_path, 'w', encoding='utf-8') as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write('\n')
+            raise SystemExit(0 if payload['ok'] else 1)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        last_error = f'{url}: {exc}'
+with open(out_path, 'w', encoding='utf-8') as handle:
+    json.dump({
+        'ok': False,
+        'status': 'pre_source_add_service_unavailable',
+        'source_kind': 'pre_source_add_service_health',
+        'expected_version': expected,
+        'error': last_error,
+        'checked_at': datetime.now(timezone.utc).isoformat(),
+    }, handle, indent=2, sort_keys=True)
+    handle.write('\n')
+raise SystemExit(1)
+INNERPY
+}
+
+write_pre_source_add_docker_preflight() {
+  python3 - "${pre_source_add_docker_preflight_json}" "${compose_project_name}" "${compose_service_name}" "${compose_file}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+import json
+import shutil
+import subprocess
+import sys
+
+out, compose_project, compose_service, compose_file = sys.argv[1:5]
+
+def run(args):
+    try:
+        proc = subprocess.run(args, text=True, capture_output=True, timeout=20)
+        return {
+            'args': args,
+            'returncode': proc.returncode,
+            'stdout_tail': proc.stdout[-4000:],
+            'stderr_tail': proc.stderr[-4000:],
+        }
+    except Exception as exc:
+        return {'args': args, 'error': repr(exc)}
+
+payload = {
+    'ok': False,
+    'status': 'pre_source_add_docker_preflight_failed',
+    'source_kind': 'pre_source_add_docker_preflight',
+    'compose_project_name': compose_project,
+    'compose_service_name': compose_service,
+    'compose_file': compose_file,
+    'docker_available': shutil.which('docker') is not None,
+    'checked_at': datetime.now(timezone.utc).isoformat(),
+    'checks': {},
+}
+if payload['docker_available']:
+    payload['checks']['docker_version'] = run(['docker', 'version'])
+    payload['checks']['docker_compose_version'] = run(['docker', 'compose', 'version'])
+    payload['checks']['docker_context_show'] = run(['docker', 'context', 'show'])
+    ok = (
+        payload['checks']['docker_version'].get('returncode') == 0
+        and payload['checks']['docker_compose_version'].get('returncode') == 0
+    )
+    payload['ok'] = ok
+    payload['status'] = 'verified' if ok else 'pre_source_add_docker_preflight_failed'
+with open(out, 'w', encoding='utf-8') as handle:
+    json.dump(payload, handle, indent=2, sort_keys=True)
+    handle.write('\n')
+raise SystemExit(0 if payload['ok'] else 1)
+INNERPY
+}
+
+write_pre_source_add_service_diagnostics() {
+  local reason="$1"
+  {
+    echo "== Pre-source-add service bootstrap diagnostics =="
+    echo "reason: ${reason}"
+    echo "compose_project_name: ${compose_project_name}"
+    echo "compose_service_name: ${compose_service_name}"
+    echo "compose_file: ${compose_file}"
+    echo "service_base_url: ${service_base_url}"
+    echo "expected_version: ${ver#v}"
+    echo "+ docker compose ps -a"
+    run_pre_source_add_docker_compose ps -a || true
+  } > "${pre_source_add_docker_compose_ps_json}" 2>"${pre_source_add_docker_compose_ps_json}.stderr" || true
+  run_pre_source_add_docker_compose logs --tail=200 "${compose_service_name}" > "${pre_source_add_docker_compose_logs_path}" 2>"${pre_source_add_docker_compose_logs_path}.stderr" || true
+}
+
+ensure_service_before_source_add() {
+  if pre_source_add_service_version_ready >/dev/null 2>"${pre_source_add_service_health_json}.stderr"; then
+    rm -f "${pre_source_add_service_health_json}.stderr"
+    echo "Pre-source-add Promptbranch service already verified: ${ver#v}"
+    return 0
+  fi
+
+  if [[ ${skip_service} -ne 0 ]]; then
+    echo "ERROR: pre_source_add_service_unavailable and --skip-service prevents bootstrap" >&2
+    echo "ERROR: inspect pre_source_add_service_health_json=${pre_source_add_service_health_json}" >&2
+    cat "${pre_source_add_service_health_json}" >&2 || true
+    return 1
+  fi
+
+  need_cmd docker
+  [[ -f "${compose_file}" ]] || fail "compose file not found before source add: ${compose_file}"
+  [[ -x "./run_chatgpt_service.sh" ]] || chmod +x ./run_chatgpt_service.sh 2>/dev/null || true
+  echo "Pre-source-add service unavailable or stale; bootstrapping candidate service before Project Source add."
+  echo "output -> ${pre_source_add_service_start_log}"
+
+  {
+    echo "== Pre-source-add service bootstrap =="
+    echo "compose_project_name: ${compose_project_name}"
+    echo "compose_service_name: ${compose_service_name}"
+    echo "compose_file: ${compose_file}"
+    echo "service_base_url: ${service_base_url}"
+    echo "expected_version: ${ver#v}"
+    echo "service_image: $(pre_source_add_service_image_ref)"
+    echo "artifact_sha256: $(pre_source_add_release_artifact_sha256)"
+    echo "+ write_pre_source_add_docker_preflight"
+    write_pre_source_add_docker_preflight
+    echo "+ docker compose down --remove-orphans"
+    run_pre_source_add_docker_compose down --remove-orphans
+    echo "+ docker compose build --pull"
+    run_pre_source_add_docker_compose build --pull
+    echo "+ docker compose up -d --force-recreate --remove-orphans"
+    run_pre_source_add_docker_compose up -d --force-recreate --remove-orphans
+    echo "+ docker compose ps ${compose_service_name}"
+    run_pre_source_add_docker_compose ps "${compose_service_name}"
+  } >"${pre_source_add_service_start_log}" 2>&1 || {
+    write_pre_source_add_service_diagnostics "pre_source_add_bootstrap_command_failed"
+    echo "ERROR: pre_source_add_service_bootstrap_failed" >&2
+    echo "ERROR: inspect pre_source_add_service_start_log=${pre_source_add_service_start_log}" >&2
+    return 1
+  }
+
+  local deadline=$((SECONDS + service_timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if pre_source_add_service_version_ready >/dev/null 2>"${pre_source_add_service_health_json}.stderr"; then
+      rm -f "${pre_source_add_service_health_json}.stderr"
+      echo "Pre-source-add Promptbranch service health/version verified: ${ver#v}"
+      return 0
+    fi
+    sleep 2
+  done
+
+  write_pre_source_add_service_diagnostics "pre_source_add_service_unavailable"
+  echo "ERROR: pre_source_add_service_unavailable" >&2
+  echo "ERROR: inspect pre_source_add_service_health_json=${pre_source_add_service_health_json}" >&2
+  echo "ERROR: inspect pre_source_add_service_start_log=${pre_source_add_service_start_log}" >&2
+  cat "${pre_source_add_service_health_json}" >&2 || true
+  return 1
+}
+
 # Add release ZIP to ChatGPT Project Sources.
 # The CLI flag and PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD are both honored so
 # Stage-0 candidate delegation cannot accidentally re-enable Project Source
 # mutation after the operator explicitly selected --skip-source-add.
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
+  ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
   promptbranch src add "${artifact_zip}"
 else
   echo "Source add skipped: --skip-source-add"
-fi
-
-# Reinstall local CLI from the release ZIP.
-if [[ ${skip_install} -eq 0 ]]; then
-  pipx uninstall promptbranch || true
-  pipx install "./${artifact_zip}"
 fi
 
 # Restore ownership of generated repo-local state if needed.

@@ -576,3 +576,7 @@ No user data, Project Source, artifact-current, Project deletion, loop, Kubernet
 ## Repair migration note — v0.1.91.3
 
 `v0.1.91.2` retained the run-all aggregation repair but failed before validation when Docker service verification produced `container_not_found` after no-cache recreate. `v0.1.91.3` migrates that failure into an explicit Docker lifecycle diagnostic path with clean-system preflight, Compose service-ID lookup, running/health wait, and diagnostics collection. No normal slice advanced.
+
+## Repair migration note — v0.1.91.4
+
+The clean-system `v0.1.91.3` attempt failed before post-release Docker verification because no service was running when release-control called `promptbranch src add`. `v0.1.91.4` migrates that defect into an explicit pre-source-add bootstrap contract: install candidate CLI first, verify/bootstrap the candidate service, then mutate Project Source. The `v0.1.91.1`, `v0.1.91.2`, and `v0.1.91.3` repairs are preserved; no normal slice advanced.
