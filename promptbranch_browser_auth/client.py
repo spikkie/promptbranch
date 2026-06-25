@@ -5185,11 +5185,21 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     expected_source_name=canonical_display_name if normalized_kind == "file" else display_name,
                 )
+                # File uploads often involve multiple backend requests.  In the
+                # v0.1.90 live overwrite regression, a commit was observed while a
+                # second file-source request remained inflight; treating that state
+                # as quiet advanced verification too early and produced a
+                # release-blocking stale-surface false negative.  Keep the
+                # stale-inflight soft boundary for text sources, where the
+                # refreshed persistence proof is sufficient, but require file
+                # uploads/overwrites to reach normal request quiet before
+                # post-save persistence verification.
                 save_request_quiet_result = await self._wait_for_project_source_save_request_quiet(
                     page,
                     save_request_watch,
                     source_kind=normalized_kind,
-                    allow_stale_inflight_after_commit=True,
+                    timeout_ms=60_000 if normalized_kind == "file" else 15_000,
+                    allow_stale_inflight_after_commit=normalized_kind == "text",
                 )
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
@@ -5224,10 +5234,10 @@ class ChatGPTBrowserClient:
                         "If the replacement source is absent, the old source was removed before upload verification; re-add the file once the Project Sources surface is stable.",
                         "If the replacement source is visible, avoid a second overwrite and treat this as a late UI/verification failure.",
                     ],
-                    "current_source_count": len(current_sources),
+                    "current_source_count": len(post_recovery_sources),
                     "current_source_identities": [
                         self._preferred_source_card_identity(source) or source.get("text")
-                        for source in current_sources[:10]
+                        for source in post_recovery_sources[:10]
                     ],
                     "current_url": await self._safe_page_url(page),
                 }
@@ -5283,6 +5293,10 @@ class ChatGPTBrowserClient:
                     save_watch=save_request_watch,
                     original_error=str(exc),
                 )
+            recovery_attempted = self._project_source_post_commit_recovery_allowed(
+                source_kind=normalized_kind,
+                transaction=transaction,
+            )
             if recovered_source is not None:
                 persisted_source = recovered_source
                 post_commit_recovery = (
@@ -5291,19 +5305,61 @@ class ChatGPTBrowserClient:
                     else None
                 )
             else:
-                persistence_false_negative_possible = bool(transaction.get("ambiguous"))
-                recovery_attempted = self._project_source_post_commit_recovery_allowed(
-                    source_kind=normalized_kind,
-                    transaction=transaction,
-                )
-                status = (
-                    "overwrite_persistence_not_verified"
-                    if overwritten_existing and removed_existing_via_ui
-                    else "post_commit_source_surface_not_refreshed"
-                    if recovery_attempted
-                    else "persistence_not_verified"
-                )
-                result = {
+                snapshot_recovered_source: Optional[dict[str, str]] = None
+                post_recovery_sources = current_sources
+                if recovery_attempted:
+                    try:
+                        post_recovery_sources = await self._snapshot_project_source_cards(page)
+                        snapshot_recovered_source = self._match_source_card(
+                            post_recovery_sources,
+                            persistence_candidates,
+                        )
+                    except Exception as snapshot_exc:
+                        self._log(
+                            "project-source-add",
+                            "post-commit recovery snapshot probe failed",
+                            source_kind=normalized_kind,
+                            source_match_candidates=persistence_candidates,
+                            error=repr(snapshot_exc),
+                        )
+                if snapshot_recovered_source is not None and bool(transaction.get("save_saw_commit")) and not int(transaction.get("save_failed") or 0):
+                    persisted_source = dict(snapshot_recovered_source)
+                    persisted_source["_promptbranch_verification_mode"] = "post_commit_surface_snapshot_recovered"
+                    persisted_source["_promptbranch_ui_card_seen_before_refresh"] = True
+                    persisted_source["_promptbranch_post_refresh_attempt"] = None
+                    post_commit_recovery = {
+                        "status": "recovered_from_visible_surface_snapshot",
+                        "method": "post_commit_snapshot_match",
+                        "transaction_status": transaction.get("transaction_status"),
+                        "source_match_candidates": persistence_candidates,
+                        "save_watch_summary": save_summary,
+                    }
+                    self._log(
+                        "project-source-add",
+                        "post-commit project source persistence recovered from visible surface snapshot",
+                        source_kind=normalized_kind,
+                        source_match_candidates=persistence_candidates,
+                        recovered_source=self._preferred_source_card_identity(persisted_source) or persisted_source.get("text"),
+                        transaction_status=transaction.get("transaction_status"),
+                    )
+                else:
+                    persistence_false_negative_possible = bool(transaction.get("ambiguous"))
+                    post_commit_visible_match_found = snapshot_recovered_source is not None
+                    post_commit_source_absent_after_recovery = bool(
+                        recovery_attempted
+                        and post_recovery_sources
+                        and snapshot_recovered_source is None
+                    )
+                    status = (
+                        "overwrite_persistence_not_verified"
+                        if overwritten_existing and removed_existing_via_ui
+                        else "post_commit_source_absent_after_stale_inflight"
+                        if post_commit_source_absent_after_recovery
+                        else "post_commit_source_surface_not_refreshed"
+                        if recovery_attempted
+                        else "persistence_not_verified"
+                    )
+                    result = {
                     "ok": False,
                     "action": "add",
                     "status": status,
@@ -5312,6 +5368,8 @@ class ChatGPTBrowserClient:
                     "source_match": actual_match,
                     "source_match_requested": requested_match,
                     "source_match_candidates": persistence_candidates,
+                    "post_commit_visible_match_found": post_commit_visible_match_found,
+                    "post_commit_source_absent_after_recovery": post_commit_source_absent_after_recovery,
                     "persistence_verified": False,
                     "persistence_error": str(exc),
                     "persistence_false_negative_possible": persistence_false_negative_possible,
@@ -5335,52 +5393,52 @@ class ChatGPTBrowserClient:
                         "If the requested source is visible, treat the failure as a persistence verification false negative and avoid removing it again.",
                         "If the requested source is absent, re-run `pb src add` for the same file after the Project Sources surface is stable.",
                     ],
-                    "current_source_count": len(current_sources),
+                    "current_source_count": len(post_recovery_sources),
                     "current_source_identities": [
                         self._preferred_source_card_identity(source) or source.get("text")
-                        for source in current_sources[:10]
+                        for source in post_recovery_sources[:10]
                     ],
                     "current_url": await self._safe_page_url(page),
                 }
-                if normalized_kind == "text":
-                    result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
-                    result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
-                    result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
-                    current_text_document_proofs = [
-                        self._text_source_card_content_proof(source, value=value, display_name=display_name)
-                        for source in current_sources
-                    ]
-                    result["current_text_document_content_proofs"] = current_text_document_proofs
-                    result["source_content_match_verified"] = any(
-                        bool(proof.get("content_match_verified"))
-                        for proof in current_text_document_proofs
-                        if isinstance(proof, dict)
-                    )
-                    result["dedicated_document_name_detected"] = any(
-                        bool(proof.get("dedicated_document_name_detected"))
-                        for proof in current_text_document_proofs
-                        if isinstance(proof, dict)
-                    )
-                    result["legacy_pasted_document_seen"] = any(
-                        bool(proof.get("legacy_pasted_document_seen"))
-                        for proof in current_text_document_proofs
-                        if isinstance(proof, dict)
-                    )
-                    if result.get("text_source_document_conversion_expected"):
-                        result["document_conversion_characterization_status"] = (
-                            "dedicated_document_name_detected"
-                            if result.get("dedicated_document_name_detected")
-                            else "generic_document_identity_seen"
-                            if result.get("legacy_pasted_document_seen")
-                            else "document_identity_not_characterized"
+                    if normalized_kind == "text":
+                        result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
+                        result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
+                        result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
+                        current_text_document_proofs = [
+                            self._text_source_card_content_proof(source, value=value, display_name=display_name)
+                            for source in post_recovery_sources
+                        ]
+                        result["current_text_document_content_proofs"] = current_text_document_proofs
+                        result["source_content_match_verified"] = any(
+                            bool(proof.get("content_match_verified"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
                         )
-                        result["content_verification_release_blocking"] = False
-                if overwrite_remove_result is not None:
-                    result["overwrite_remove_result"] = overwrite_remove_result
-                if capacity_prune_result is not None:
-                    result["capacity_prune_result"] = capacity_prune_result
-                self._log("project-source-add", "project source persistence not verified after add", **result)
-                return result
+                        result["dedicated_document_name_detected"] = any(
+                            bool(proof.get("dedicated_document_name_detected"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
+                        )
+                        result["legacy_pasted_document_seen"] = any(
+                            bool(proof.get("legacy_pasted_document_seen"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
+                        )
+                        if result.get("text_source_document_conversion_expected"):
+                            result["document_conversion_characterization_status"] = (
+                                "dedicated_document_name_detected"
+                                if result.get("dedicated_document_name_detected")
+                                else "generic_document_identity_seen"
+                                if result.get("legacy_pasted_document_seen")
+                                else "document_identity_not_characterized"
+                            )
+                            result["content_verification_release_blocking"] = False
+                    if overwrite_remove_result is not None:
+                        result["overwrite_remove_result"] = overwrite_remove_result
+                    if capacity_prune_result is not None:
+                        result["capacity_prune_result"] = capacity_prune_result
+                    self._log("project-source-add", "project source persistence not verified after add", **result)
+                    return result
         persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
         text_document_conversion_proof = None
         if normalized_kind == "text":

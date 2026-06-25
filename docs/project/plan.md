@@ -1308,3 +1308,7 @@ Planned work:
 Out of scope: removing rate-limit modal handling, changing Project Source mutation semantics, changing adoption/current behavior, changing Project deletion safety, Kubernetes/deployment behavior, and loop behavior.
 
 Exit criteria: focused request-shield tests, test-report summary tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.
+
+### v0.1.90.1 repair note
+
+Repair-only continuation of `v0.1.90`. Fix the release-blocking `project_source_overwrite_file` stale-inflight post-commit verification path. File-source uploads/overwrites must not advance to persistence verification on stale-inflight soft quiet; they must wait for normal save-request quiet. If a post-commit recovery loop times out but the requested source is visible on the current Project Sources surface, classify it as recovered from a visible surface snapshot. If the source remains absent, classify it explicitly as `post_commit_source_absent_after_stale_inflight`. Do not advance the conversation-history shield scope, adoption behavior, loop behavior, deployment behavior, or Project deletion behavior.

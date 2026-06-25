@@ -566,3 +566,9 @@ chatgpt_claudecode_workflow-2_v0.1.89.zip
 This candidate shields non-essential global conversation-history auto-requests from the ChatGPT frontend by fulfilling them with an empty Promptbranch-marked response, while still allowing explicit Promptbranch conversation-history fetches and project-scoped `/backend-api/gizmos/{project_id}/conversations` calls. The goal is to reduce unnecessary 429/cooldown pressure without weakening functional validation.
 
 Out of scope: changing Project Source mutation semantics, artifact adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, loop behavior, and evidence-reuse expansion.
+
+## v0.1.90.1 repair status
+
+`v0.1.90` reduced global conversation-history/backend-api 429 pressure but failed release-control at `project_source_overwrite_file` with `commit_seen_with_stale_inflight_not_verified_present`. `v0.1.90.1` is a repair-only candidate that preserves the conversation-history shield while making file-source uploads/overwrites wait for normal save-request quiet, adding visible-surface post-commit recovery, and distinguishing true source absence after stale-inflight recovery from a generic source-surface refresh failure.
+
+Accepted/current remains the latest adopted baseline until `v0.1.90.1` has release-control/adoption and `pb artifact current --json` evidence.
