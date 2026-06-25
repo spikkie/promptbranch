@@ -1312,3 +1312,21 @@ Exit criteria: focused request-shield tests, test-report summary tests, version/
 ### v0.1.90.1 repair note
 
 Repair-only continuation of `v0.1.90`. Fix the release-blocking `project_source_overwrite_file` stale-inflight post-commit verification path. File-source uploads/overwrites must not advance to persistence verification on stale-inflight soft quiet; they must wait for normal save-request quiet. If a post-commit recovery loop times out but the requested source is visible on the current Project Sources surface, classify it as recovered from a visible surface snapshot. If the source remains absent, classify it explicitly as `post_commit_source_absent_after_stale_inflight`. Do not advance the conversation-history shield scope, adoption behavior, loop behavior, deployment behavior, or Project deletion behavior.
+
+## v0.1.91 — Run-all evidence reuse proof and localhost matrix cooldown audit
+
+### Objective
+
+Make `--run-all-tests` prove that it reuses already-passed direct `--run-tests` evidence only when the artifact hash and validation dimensions match, while still running the missing localhost/live matrix groups.
+
+### Required behavior
+
+- `--run-tests --strict-source-kind-matrix` writes direct `full_direct` validation evidence.
+- A later `--run-all-tests --strict-source-kind-matrix` can reuse only that identical `full_direct` evidence.
+- `full_localhost` still executes and is represented in `validation_reuse.executed_groups`.
+- `localhost_matrix_cooldown_audit` summarizes localhost/offline rate-limit evidence and retry-policy violations.
+- Missing, stale, failed, or dimension-mismatched evidence causes rerun or failure; it must not be treated as green.
+
+### Out of scope
+
+No live browser behavior changes, no Project Source mutation changes, no adoption/current changes, no Project deletion changes, no loop behavior changes, and no deployment/Kubernetes behavior.

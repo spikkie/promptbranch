@@ -289,3 +289,9 @@ The shield is a cooldown-pressure reduction mechanism, not an authority shortcut
 A file-source save can observe a commit while another file-source request remains inflight. For file uploads and overwrites, that state is not a safe quiet boundary because the remaining request may still be the upload/indexing path required for source visibility. Promptbranch must therefore wait for normal file-source request quiet before post-save persistence verification.
 
 If post-commit recovery times out but the current Project Sources surface visibly contains the requested source and no save failure was observed, Promptbranch may classify the result as recovered from a visible surface snapshot. If the requested source is still absent, Promptbranch must fail closed with `post_commit_source_absent_after_stale_inflight` rather than calling it a generic surface-refresh problem.
+
+## Decision — v0.1.91 run-all direct evidence reuse must be proof-based
+
+`--run-all-tests` may reuse direct `full_direct` validation only when evidence proves the same artifact SHA256, version, artifact ref, transport, service base, runtime mode, strict source-kind matrix mode, command signature, and green test/report status. Same filename or same version is not enough.
+
+The localhost matrix remains a separate validation dimension. It must be executed unless it has its own matching evidence in a later slice. Localhost/offline validation must not sleep/retry on browser cooldown evidence; any such evidence is surfaced by `localhost_matrix_cooldown_audit`.

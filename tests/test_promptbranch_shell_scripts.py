@@ -2728,3 +2728,109 @@ def test_release_control_all_tests_summary_reports_validation_reuse_groups():
     assert '"invalidated_groups": []' in text
     assert '"failed_groups": [step["name"] for step in failed]' in text
     assert '"validation_reuse": validation_reuse_summary' in text
+
+
+def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audits_localhost(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.91\n", encoding="utf-8")
+    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.91"
+    evidence_dir = log_dir / "validation_evidence"
+    evidence_dir.mkdir(parents=True)
+    evidence_path = evidence_dir / "full_direct.v9.9.91.json"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.release_control.validation_evidence",
+                "schema_version": "1.0",
+                "ok": True,
+                "status": "passed",
+                "version": "v9.9.91",
+                "artifact": "repo_v9.9.91.zip",
+                "artifact_sha256": "missing",
+                "test_group_id": "full_direct",
+                "transport": "direct",
+                "service_base": "http://localhost:8000",
+                "runtime_mode": "single_default",
+                "strict_source_kind_matrix": True,
+                "command_signature": "pb test full --keep-project --json --source-kind-matrix=strict --run-failing-tests=0 --duplicate-release-validation-groups-skip=0",
+                "test_exit_code": 0,
+                "report_exit_code": 0,
+                "release_validation_groups_ok": True,
+                "summary_json": str(log_dir / "post_release_validation.v9.9.91.summary.json"),
+                "full_log": str(log_dir / "pb_test.full.v9.9.91.log"),
+                "report_json": str(log_dir / "pb_test.full.v9.9.91.report.json"),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=${PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": false, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.91\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"rate_limit_summary\": {\"status\": \"none\", \"cooldown_wait_seconds_total\": 0, \"cooldown_wait_count\": 0}, \"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--strict-source-kind-matrix", "--version", "v9.9.91"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    summary = json.loads((log_dir / "pb_test.all.v9.9.91.summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["validation_reuse"]["reused_groups"] == ["full_direct"]
+    assert "full_localhost" in summary["validation_reuse"]["executed_groups"]
+    assert summary["localhost_matrix_cooldown_audit"]["status"] == "clear"
+    assert summary["localhost_matrix_cooldown_audit"]["localhost_steps"] == ["full_localhost"]
+    assert summary["localhost_matrix_cooldown_audit"]["rate_limit_retry_allowed_violations"] == []
+    call_text = calls.read_text(encoding="utf-8")
+    assert call_text.count("pb test full") == 1
+    assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
+    assert "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=1" in call_text
+    assert "validation_evidence_reuse: reused full_direct" in result.stdout
+
+
+def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_contract():
+    script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script_path.read_text(encoding="utf-8")
+    assert "promptbranch.release_control.localhost_matrix_cooldown_audit" in text
+    assert '"localhost_matrix_cooldown_audit": localhost_matrix_cooldown_audit' in text
+    assert '"rate_limit_retry_allowed_violations": localhost_retry_allowed_violations' in text
+    assert "localhost/offline matrix groups must not sleep/retry on browser cooldown evidence" in text

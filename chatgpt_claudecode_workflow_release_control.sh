@@ -2713,6 +2713,12 @@ payload = {
         "source_full_log": evidence.get("full_log"),
         "source_report_json": evidence.get("report_json"),
     },
+    "release_validation_groups": {
+        "ok": bool(evidence.get("release_validation_groups_ok")),
+        "reused": True,
+        "groups": {},
+        "missing_required_groups": [],
+    },
     "suite": {
         "release_validation_groups": {
             "ok": bool(evidence.get("release_validation_groups_ok")),
@@ -3249,6 +3255,10 @@ for item in raw_steps:
         "recovered_rate_limit_success": recovered_rate_limit_success,
         "download_status": payload.get("download_status"),
         "verification_status": payload.get("verification_status"),
+        "transport_class": diagnostics.get("transport_class"),
+        "rate_limit_retry_allowed": diagnostics.get("rate_limit_retry_allowed"),
+        "rate_limit_retry_denied": diagnostics.get("rate_limit_retry_denied"),
+        "rate_limit_evidence_detected": diagnostics.get("rate_limit_evidence_detected"),
         "diagnostics": diagnostics,
     })
 
@@ -3263,13 +3273,40 @@ reused_groups = [
 executed_groups = [step["name"] for step in steps if step["name"] not in reused_groups]
 validation_reuse_summary = {
     "schema": "promptbranch.release_control.validation_reuse_summary",
-    "schema_version": "1.0",
+    "schema_version": "1.1",
     "enabled": True,
+    "policy": "reuse_only_when_artifact_hash_and_validation_dimensions_match",
+    "proof_status": "reused" if reused_groups else "no_reusable_evidence",
     "reused_groups": reused_groups,
     "executed_groups": executed_groups,
     "invalidated_groups": [],
     "failed_groups": [step["name"] for step in failed],
+    "expected_reuse_flow": {
+        "first_command": "--run-tests --strict-source-kind-matrix",
+        "second_command": "--run-all-tests --strict-source-kind-matrix",
+        "reusable_group": "full_direct",
+        "must_still_execute_groups": ["full_localhost", "live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live", "import_smoke", "artifact_guard"],
+    },
 }
+
+localhost_steps = [step for step in steps if step.get("diagnostics", {}).get("transport_class") == "localhost"]
+localhost_rate_limit_steps = [step["name"] for step in localhost_steps if step.get("diagnostics", {}).get("rate_limit_evidence_detected") is True]
+localhost_retry_allowed_violations = [step["name"] for step in localhost_steps if step.get("diagnostics", {}).get("rate_limit_retry_allowed") is not False]
+localhost_retry_denied_steps = [step["name"] for step in localhost_steps if step.get("diagnostics", {}).get("rate_limit_retry_denied") is True]
+localhost_failed_steps = [step["name"] for step in localhost_steps if not step.get("ok")]
+localhost_matrix_cooldown_audit = {
+    "schema": "promptbranch.release_control.localhost_matrix_cooldown_audit",
+    "schema_version": "1.0",
+    "status": "clear" if not localhost_rate_limit_steps and not localhost_retry_allowed_violations and not localhost_failed_steps else "review",
+    "localhost_steps": [step["name"] for step in localhost_steps],
+    "rate_limit_evidence_steps": localhost_rate_limit_steps,
+    "rate_limit_retry_allowed_violations": localhost_retry_allowed_violations,
+    "rate_limit_retry_denied_steps": localhost_retry_denied_steps,
+    "failed_steps": localhost_failed_steps,
+    "policy": "localhost/offline matrix groups must not sleep/retry on browser cooldown evidence; they should fail closed or rerun only after operator review.",
+    "recommendation": "If this audit reports review, inspect localhost logs before trusting repeated --run-all-tests runs.",
+}
+
 diagnostics_summary = {
     "schema": "promptbranch.release_control.live_validation_diagnostics",
     "schema_version": "1.0",
@@ -3300,6 +3337,7 @@ summary = {
     "service_health_json": service_health_json,
     "diagnostics": diagnostics_summary,
     "validation_reuse": validation_reuse_summary,
+    "localhost_matrix_cooldown_audit": localhost_matrix_cooldown_audit,
     "steps": steps,
     "failed_steps": failed,
 }

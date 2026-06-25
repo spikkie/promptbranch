@@ -572,3 +572,19 @@ Out of scope: changing Project Source mutation semantics, artifact adoption/curr
 `v0.1.90` reduced global conversation-history/backend-api 429 pressure but failed release-control at `project_source_overwrite_file` with `commit_seen_with_stale_inflight_not_verified_present`. `v0.1.90.1` is a repair-only candidate that preserves the conversation-history shield while making file-source uploads/overwrites wait for normal save-request quiet, adding visible-surface post-commit recovery, and distinguishing true source absence after stale-inflight recovery from a generic source-surface refresh failure.
 
 Accepted/current remains the latest adopted baseline until `v0.1.90.1` has release-control/adoption and `pb artifact current --json` evidence.
+
+## v0.1.91 candidate status — Run-all evidence reuse proof and localhost matrix cooldown audit
+
+Accepted/current baseline with operator adoption evidence:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.90.1.zip
+```
+
+`v0.1.91` opens a normal validation-control slice after `v0.1.90.1` proved the conversation-history shield and overwrite-file stale-inflight repair in the direct `--run-tests` gate.
+
+The goal is not to add new live browser behavior. The goal is to make the broad `--run-all-tests` path auditable and cheaper: if direct `--run-tests` already passed for the same artifact hash and validation dimensions, `--run-all-tests` may reuse that direct proof and must still execute the localhost matrix and live-only groups that have not been proven.
+
+This slice also adds a first-class localhost cooldown audit. Localhost/offline matrix groups must not consume browser cooldown sleeps or retries; any rate-limit evidence in those groups is surfaced for operator review instead of hidden in repeated reruns.
+
+Out of scope: Project Source mutation semantics, adoption/current behavior, ChatGPT Project deletion behavior, loop behavior, Kubernetes/deployment behavior, and live selector/path changes.
