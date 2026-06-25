@@ -615,6 +615,10 @@ class ChatGPTBrowserClient:
         self._conversation_history_fetch_attempt_count = 0
         self._conversation_history_fetch_skipped_count = 0
         self._conversation_history_cooldown_skip_count = 0
+        self._conversation_history_request_shielded_count = 0
+        self._conversation_history_request_shield_allowed_count = 0
+        self._conversation_history_request_shield_events: list[dict[str, object]] = []
+        self._conversation_history_explicit_fetch_depth = 0
         self._google_device_prompt_logged_keys: set[str] = set()
         self._browser_action_events: list[dict[str, object]] = []
         if self.config.debug:
@@ -715,6 +719,100 @@ class ChatGPTBrowserClient:
     def _is_conversation_history_url(self, url: str) -> bool:
         normalized = (url or '').lower()
         return any(fragment in normalized for fragment in CONVERSATION_HISTORY_RATE_LIMIT_PATH_FRAGMENTS)
+
+    def _is_global_conversation_history_url(self, url: str) -> bool:
+        try:
+            parsed = urlparse(url or '')
+        except Exception:
+            return False
+        return (parsed.path or '').lower().rstrip('/') == '/backend-api/conversations'
+
+    def _conversation_history_request_shield_enabled(self) -> bool:
+        mode = str(getattr(self.config, 'conversation_history_request_shield_mode', 'fulfill_empty') or 'fulfill_empty').strip().lower()
+        return mode not in {'', 'disabled', 'off', 'false', '0', 'allow'}
+
+    def _record_conversation_history_request_shield_event(
+        self,
+        *,
+        kind: str,
+        url: str,
+        operation_name: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        event: dict[str, object] = {
+            'kind': kind,
+            'url': self._redact_backend_api_url(url).get('redacted_url', str(url or '')[:200]),
+            'operation_name': operation_name or '',
+            'monotonic_time': round(time.monotonic(), 6),
+        }
+        if reason:
+            event['reason'] = reason
+        if kind == 'conversation_history_request_shielded':
+            self._conversation_history_request_shielded_count += 1
+        elif kind == 'conversation_history_request_allowed_explicit_fetch':
+            self._conversation_history_request_shield_allowed_count += 1
+        self._conversation_history_request_shield_events.append(event)
+        if len(self._conversation_history_request_shield_events) > 200:
+            del self._conversation_history_request_shield_events[: len(self._conversation_history_request_shield_events) - 200]
+
+    async def _conversation_history_request_shield_route(self, route: Any, request: Any, *, operation_name: str = '') -> None:
+        url = str(getattr(request, 'url', '') or '')
+        method = str(getattr(request, 'method', 'GET') or 'GET').upper()
+        if not self._conversation_history_request_shield_enabled() or method != 'GET' or not self._is_global_conversation_history_url(url):
+            await route.continue_()
+            return
+        if self._conversation_history_explicit_fetch_depth > 0:
+            self._record_conversation_history_request_shield_event(
+                kind='conversation_history_request_allowed_explicit_fetch',
+                url=url,
+                operation_name=operation_name,
+                reason='explicit_promptbranch_history_fetch',
+            )
+            await route.continue_()
+            return
+        payload = {
+            'items': [],
+            'conversations': [],
+            'total': 0,
+            'has_more': False,
+            'promptbranch_request_shield': True,
+        }
+        self._record_conversation_history_request_shield_event(
+            kind='conversation_history_request_shielded',
+            url=url,
+            operation_name=operation_name,
+            reason='global_conversation_history_auto_request',
+        )
+        await route.fulfill(
+            status=200,
+            content_type='application/json',
+            body=json.dumps(payload),
+            headers={
+                'cache-control': 'no-store',
+                'x-promptbranch-conversation-history-shield': 'fulfill_empty',
+            },
+        )
+
+    async def _install_conversation_history_request_shield(self, context: Any, *, operation_name: str) -> None:
+        if not self._conversation_history_request_shield_enabled():
+            self._log('rate-limit', 'conversation-history request shield disabled', operation=operation_name)
+            return
+        async def handle_conversation_history_route(route: Any, request: Any) -> None:
+            await self._conversation_history_request_shield_route(route, request, operation_name=operation_name)
+
+        try:
+            await context.route(
+                '**/backend-api/conversations**',
+                handle_conversation_history_route,
+            )
+            self._log(
+                'rate-limit',
+                'conversation-history request shield installed',
+                operation=operation_name,
+                mode=getattr(self.config, 'conversation_history_request_shield_mode', 'fulfill_empty'),
+            )
+        except Exception as exc:
+            self._log('rate-limit', 'conversation-history request shield install failed', operation=operation_name, error=repr(exc))
 
     def _is_backend_api_url(self, url: str) -> bool:
         normalized = (url or '').lower()
@@ -861,6 +959,11 @@ class ChatGPTBrowserClient:
             'conversation_history_fetch_attempt_count': int(self._conversation_history_fetch_attempt_count),
             'conversation_history_fetch_skipped_count': int(self._conversation_history_fetch_skipped_count),
             'conversation_history_cooldown_skip_count': int(self._conversation_history_cooldown_skip_count),
+            'conversation_history_request_shield_enabled': self._conversation_history_request_shield_enabled(),
+            'conversation_history_request_shield_mode': str(getattr(self.config, 'conversation_history_request_shield_mode', 'fulfill_empty')),
+            'conversation_history_request_shielded_count': int(self._conversation_history_request_shielded_count),
+            'conversation_history_request_shield_allowed_count': int(self._conversation_history_request_shield_allowed_count),
+            'conversation_history_request_shield_events': list(self._conversation_history_request_shield_events[-50:]),
             'navigation_noop_skip_count': int(self._navigation_noop_skip_count),
             'service_rate_limit_events': events,
         }
@@ -1801,6 +1904,7 @@ class ChatGPTBrowserClient:
             context = await self._launch_persistent_context_with_recovery(p.chromium, launch_kwargs)
             context.set_default_timeout(self.config.navigation_timeout_ms)
             page = context.pages[0] if context.pages else await context.new_page()
+            await self._install_conversation_history_request_shield(context, operation_name=operation_name)
             self._attach_context_debug(context, page, operation_name)
             if self.config.debug and self.config.save_trace:
                 self._log("trace", "starting browser trace")
@@ -13260,7 +13364,9 @@ class ChatGPTBrowserClient:
                 'cooldown_remaining_seconds': round(self._conversation_history_cooldown_remaining(), 3),
             }
         self._conversation_history_fetch_attempt_count += 1
-        result = await page.evaluate(
+        self._conversation_history_explicit_fetch_depth += 1
+        try:
+            result = await page.evaluate(
             r'''
             async ({ offset, limit, order }) => {
                 const base = new URL('/backend-api/conversations', window.location.origin);
@@ -13301,7 +13407,9 @@ class ChatGPTBrowserClient:
             }
             ''',
             {'offset': offset, 'limit': limit, 'order': order},
-        )
+            )
+        finally:
+            self._conversation_history_explicit_fetch_depth = max(0, self._conversation_history_explicit_fetch_depth - 1)
         if not isinstance(result, dict):
             raise RuntimeError('Unexpected conversation history response shape')
         text_body = str(result.get('text') or '')

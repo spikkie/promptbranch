@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from promptbranch_test_report import build_test_report, parse_service_log
+from promptbranch_test_report import build_test_report, classify_rate_limit_summary, parse_service_log
 
 
 def _suite_payload(ok: bool = True) -> dict:
@@ -334,3 +334,28 @@ def test_build_test_report_summarizes_browser_action_audit(tmp_path):
     assert audit["steps"][0]["shortest_path_status"] == "review"
     assert report["suite"]["timing_summary"]["total_duration_seconds"] == 74.575
     assert report["suite"]["timing_summary"]["slowest_steps"][0]["name"] == "project_source_add_text"
+
+
+
+def test_rate_limit_summary_reports_conversation_history_shield() -> None:
+    telemetry = {
+        "rate_limit_modal_detected": False,
+        "conversation_history_429_seen": False,
+        "cooldown_wait_seconds_total": 0.0,
+        "cooldown_wait_count": 0,
+        "planned_cooldown_wait_seconds_total": 0.0,
+        "planned_cooldown_wait_count": 0,
+        "conversation_history_request_shield_enabled": True,
+        "conversation_history_request_shield_mode": "fulfill_empty",
+        "conversation_history_request_shielded_count": 11,
+        "service_rate_limit_events": [],
+        "event_count": 0,
+    }
+
+    summary = classify_rate_limit_summary(telemetry, suite_ok=True)
+
+    assert summary["status"] == "none"
+    assert summary["conversation_history_request_shield_enabled"] is True
+    assert summary["conversation_history_request_shield_mode"] == "fulfill_empty"
+    assert summary["conversation_history_request_shielded_count"] == 11
+    assert "shielded" in summary["recommendation"]

@@ -276,3 +276,10 @@ Project Source mutation calls through the Docker service may need a larger timeo
 ## Decision — v0.1.89 every extra click is cooldown risk
 
 Live browser validation must treat browser clicks as an expensive resource. Any click beyond the shortest safe path can increase ChatGPT cooldown/429 exposure. Promptbranch should therefore expose a reviewable browser action audit with click attempts, fallback click strategies, repeated click labels, and a cooldown-risk score. The audit is observational and must not authorize additional browser actions.
+
+
+## Decision — v0.1.90 global conversation-history auto-requests are shieldable
+
+The global `/backend-api/conversations` endpoint is rate-limit sensitive and can trigger repeated 429/cooldown pressure during live validation even when Promptbranch does not explicitly fetch conversation history. Non-essential frontend auto-requests to that global endpoint may therefore be shielded with an empty Promptbranch-marked response. Explicit Promptbranch history fetches and project-scoped `/backend-api/gizmos/{project_id}/conversations` calls must remain allowed.
+
+The shield is a cooldown-pressure reduction mechanism, not an authority shortcut. It must not convert failed functional validation into green results, must not change Project Source mutation semantics, and must remain observable through rate-limit telemetry and test reports.

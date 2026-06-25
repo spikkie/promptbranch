@@ -1288,3 +1288,23 @@ Planned work:
 Out of scope: changing Project Source mutation semantics, artifact adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, and expanding validation evidence reuse beyond the `v0.1.88` scope.
 
 Exit criteria: focused browser action audit tests, test-report timing/action aggregation tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.
+
+
+## v0.1.90 — Conversation-history/backend-api 429 pressure reduction
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.89.zip`.
+
+Goal: reduce live validation cooldown pressure by preventing non-essential global conversation-history auto-requests from repeatedly hitting the rate-limit-sensitive `/backend-api/conversations` surface.
+
+Planned work:
+
+1. Add a configurable conversation-history request shield for global `/backend-api/conversations` GET requests.
+2. Fulfill non-essential frontend auto-requests with an empty Promptbranch-marked payload instead of letting the browser repeatedly hit the rate-limit-sensitive endpoint.
+3. Preserve explicit Promptbranch history fetches by allowing them through during controlled fetch scopes.
+4. Preserve project-scoped project-conversation endpoint calls.
+5. Add telemetry fields for shield enabled/mode, shielded request count, explicit-fetch allowed count, and shield events.
+6. Expose shield counts in the test-report rate-limit summary.
+
+Out of scope: removing rate-limit modal handling, changing Project Source mutation semantics, changing adoption/current behavior, changing Project deletion safety, Kubernetes/deployment behavior, and loop behavior.
+
+Exit criteria: focused request-shield tests, test-report summary tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.

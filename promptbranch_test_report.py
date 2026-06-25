@@ -182,6 +182,12 @@ def classify_rate_limit_summary(telemetry: Any, *, suite_ok: bool | None = None)
         planned_count = int(data.get("planned_cooldown_wait_count") or 0)
     except (TypeError, ValueError):
         planned_count = 0
+    try:
+        shielded_count = int(data.get("conversation_history_request_shielded_count") or 0)
+    except (TypeError, ValueError):
+        shielded_count = 0
+    shield_enabled = bool(data.get("conversation_history_request_shield_enabled"))
+    shield_mode = str(data.get("conversation_history_request_shield_mode") or "")
     modal = bool(data.get("rate_limit_modal_detected"))
     history_429 = bool(data.get("conversation_history_429_seen"))
     observed = modal or history_429 or event_count > 0 or cooldown_count > 0
@@ -190,6 +196,8 @@ def classify_rate_limit_summary(telemetry: Any, *, suite_ok: bool | None = None)
         status = "none"
         blocking = False
         recommendation = "No ChatGPT rate-limit evidence observed."
+        if shielded_count > 0:
+            recommendation = "No ChatGPT rate-limit evidence observed; global conversation-history auto-requests were shielded."
     elif suite_ok is False:
         status = "rate_limited_failed"
         blocking = True
@@ -216,6 +224,9 @@ def classify_rate_limit_summary(telemetry: Any, *, suite_ok: bool | None = None)
         "cooldown_wait_count": cooldown_count,
         "planned_cooldown_wait_seconds_total": round(planned_total, 3),
         "planned_cooldown_wait_count": planned_count,
+        "conversation_history_request_shield_enabled": shield_enabled,
+        "conversation_history_request_shield_mode": shield_mode,
+        "conversation_history_request_shielded_count": shielded_count,
         "recommendation": recommendation,
     }
 

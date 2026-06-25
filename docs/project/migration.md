@@ -550,3 +550,10 @@ No user data, Project Source, artifact-current, or Project deletion migration is
 ## v0.1.89 migration note
 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should use `pb test report <full-test-log> --json` after live validation to review `timing_summary` and `browser_action_audit` before repeatedly running broad `--run-all-tests`. The new audit is read-only observability and does not change live mutation semantics.
+
+
+## v0.1.90 migration note
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/release-v0.1.89.md` | accepted observability release evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/decisions.md`, `docs/project/definition-of-done.md` | extended | v0.1.90 follows the v0.1.89 timing/click audit evidence by reducing global conversation-history/backend-api 429 pressure. |
