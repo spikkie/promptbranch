@@ -580,3 +580,8 @@ No user data, Project Source, artifact-current, Project deletion, loop, Kubernet
 ## Repair migration note — v0.1.91.4
 
 The clean-system `v0.1.91.3` attempt failed before post-release Docker verification because no service was running when release-control called `promptbranch src add`. `v0.1.91.4` migrates that defect into an explicit pre-source-add bootstrap contract: install candidate CLI first, verify/bootstrap the candidate service, then mutate Project Source. The `v0.1.91.1`, `v0.1.91.2`, and `v0.1.91.3` repairs are preserved; no normal slice advanced.
+
+
+## v0.1.91.5 migration note
+
+No data migration. Release-control summary parsing is narrowed to select the authoritative `ensure_project` command payload for `live_project_ensure`.

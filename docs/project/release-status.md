@@ -257,3 +257,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | Scope | Pre-source-add service bootstrap for clean-system release-control |
 | Adoption state | not accepted/current until release-control and `pb artifact current --json` prove alignment |
 | Notes | Candidate CLI/service are installed/verified before `promptbranch src add`; no live/browser, adoption/current, Project Source semantic, or Project deletion behavior changed. |
+
+| v0.1.91.5 | repair | Run-all live_project_ensure aggregation terminal-line repair | candidate | focused aggregation/version/project-control validation before operator release-control | DOD-117 done; no normal slice advanced | pending |

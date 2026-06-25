@@ -3419,6 +3419,15 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
             }
             command_profiles = {"visual-artifact-roundtrip", "release-live", "ask-live"}
             profile = str(value.get("profile") or "")
+            # project-ensure/project_ensure emits a valid command payload without a
+            # status field and the shell appends a human-readable
+            # ``shared_live_project_url: ...`` line after the JSON.  Treat the
+            # command payload as the highest ranked candidate when it proves an
+            # exact Project URL, otherwise a later nested schema/helper object can
+            # incorrectly become the selected payload and make run-all mark
+            # live_project_ensure as failed.
+            if action in {"project_ensure", "ensure_project"} and value.get("ok") is True and value.get("project_url"):
+                return 110
             if action in command_actions and "ok" in value and status:
                 return 100
             if profile in command_profiles and "ok" in value and status:
