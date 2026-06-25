@@ -283,3 +283,9 @@ Live browser validation must treat browser clicks as an expensive resource. Any 
 The global `/backend-api/conversations` endpoint is rate-limit sensitive and can trigger repeated 429/cooldown pressure during live validation even when Promptbranch does not explicitly fetch conversation history. Non-essential frontend auto-requests to that global endpoint may therefore be shielded with an empty Promptbranch-marked response. Explicit Promptbranch history fetches and project-scoped `/backend-api/gizmos/{project_id}/conversations` calls must remain allowed.
 
 The shield is a cooldown-pressure reduction mechanism, not an authority shortcut. It must not convert failed functional validation into green results, must not change Project Source mutation semantics, and must remain observable through rate-limit telemetry and test reports.
+
+## Decision — v0.1.90.1 file-source stale inflight is not quiet enough
+
+A file-source save can observe a commit while another file-source request remains inflight. For file uploads and overwrites, that state is not a safe quiet boundary because the remaining request may still be the upload/indexing path required for source visibility. Promptbranch must therefore wait for normal file-source request quiet before post-save persistence verification.
+
+If post-commit recovery times out but the current Project Sources surface visibly contains the requested source and no save failure was observed, Promptbranch may classify the result as recovered from a visible surface snapshot. If the requested source is still absent, Promptbranch must fail closed with `post_commit_source_absent_after_stale_inflight` rather than calling it a generic surface-refresh problem.

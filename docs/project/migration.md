@@ -557,3 +557,5 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 | Existing file | Current role | Migrated to | Migration status | Notes |
 |---|---|---|---|---|
 | `docs/release-v0.1.89.md` | accepted observability release evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/decisions.md`, `docs/project/definition-of-done.md` | extended | v0.1.90 follows the v0.1.89 timing/click audit evidence by reducing global conversation-history/backend-api 429 pressure. |
+
+| `docs/repair-v0.1.90.1.md` | repair_evidence | `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | summarized | Repair evidence for file-source overwrite stale-inflight post-commit recovery; preserves v0.1.90 conversation-history shield scope and does not advance normal slice scope. |

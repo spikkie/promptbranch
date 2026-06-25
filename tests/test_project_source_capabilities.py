@@ -2726,3 +2726,293 @@ def test_large_text_source_legacy_pasted_document_is_non_blocking_characterizati
     assert result["legacy_pasted_document_seen"] is True
     assert result["content_verification_release_blocking"] is False
     assert result["document_conversion_characterization_status"] == "generic_document_identity_seen"
+
+
+def test_file_project_source_add_waits_for_normal_quiet_not_stale_soft_quiet(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    captured: dict[str, object] = {}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_wait_for_quiet(*_args, **kwargs):
+        captured["timeout_ms"] = kwargs.get("timeout_ms")
+        captured["allow_stale_inflight_after_commit"] = kwargs.get("allow_stale_inflight_after_commit")
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 2,
+            "failed": 0,
+            "inflight": 0,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        return {
+            "identity": "release.zip",
+            "title": "release.zip",
+            "text": "release.zip",
+            "_promptbranch_verification_mode": "post_refresh",
+        }
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert captured["allow_stale_inflight_after_commit"] is False
+    assert captured["timeout_ms"] == 60_000
+
+
+def test_add_file_source_operation_recovers_post_commit_visible_snapshot_after_recovery_timeout(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    snapshot_calls = {"count": 0}
+    recovery_called = {"value": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        snapshot_calls["count"] += 1
+        if snapshot_calls["count"] <= 1:
+            return []
+        return [{"identity": "release.zip", "title": "release.zip", "text": "release.zip Document"}]
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip Document"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "inflight": 1,
+            "stale_inflight_after_commit": True,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("post-refresh surface did not verify the committed source")
+
+    async def fake_recover(*_args, **_kwargs):
+        recovery_called["value"] = True
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert recovery_called["value"] is True
+    assert result["ok"] is True
+    assert result["persistence_verified"] is True
+    assert result["verification_mode"] == "post_commit_surface_snapshot_recovered"
+    assert result["persistence_recovered_after_commit"] is True
+    assert result["post_commit_recovery"]["status"] == "recovered_from_visible_surface_snapshot"
+
+
+def test_stale_inflight_post_commit_absent_source_is_classified_as_true_absence(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{"identity": "pasted.txt Document", "title": "pasted.txt Document", "text": "pasted.txt Document"}]
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip Document"}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "inflight": 1,
+            "stale_inflight_after_commit": True,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("post-refresh surface did not verify the committed source")
+
+    async def fake_recover(*_args, **_kwargs):
+        return None
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "post_commit_source_absent_after_stale_inflight"
+    assert result["post_commit_source_absent_after_recovery"] is True
+    assert result["post_commit_visible_match_found"] is False
+    assert result["current_source_identities"] == ["pasted.txt Document"]
