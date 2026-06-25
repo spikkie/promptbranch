@@ -301,3 +301,6 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 
 | DOD-108 | Project-source-add-text timeout diagnostics/recovery uses an extended source-mutation timeout and fails closed with source-list diagnostics if the service still times out | focused_candidate | `promptbranch_full_integration_test.py`, `tests/test_full_integration_harness.py`, `docs/repair-v0.1.88.1.md` | v0.1.88.1 |
 | DOD-109 | Live validation exposes reviewable timing and browser-action/click audit so redundant clicks can be treated as cooldown risk | focused | `promptbranch_browser_auth/client.py`, `promptbranch_test_report.py`, focused browser-action/test-report tests, `docs/release-v0.1.89.md` | v0.1.89 |
+
+
+| DOD-110 | Live validation shields non-essential global conversation-history auto-requests while preserving explicit Promptbranch history fetches | focused | `promptbranch_browser_auth/client.py`, `promptbranch_browser_auth/config.py`, `promptbranch_automation/automation.py`, `tests/test_project_list_browser_client.py`, `tests/test_promptbranch_test_report.py` | v0.1.90 |

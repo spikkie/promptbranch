@@ -140,6 +140,7 @@ class ChatGPTAutomation:
         conversation_history_rate_limit_cooldown_seconds: Optional[float] = None,
         rate_limit_modal_wait_timeout_ms: Optional[int] = None,
         rate_limit_modal_poll_interval_ms: Optional[int] = None,
+        conversation_history_request_shield_mode: Optional[str] = None,
         clear_singleton_locks: Optional[bool] = None,
         dom_diagnostic_mode: Optional[str] = None,
         pause_before_fill: Optional[bool] = None,
@@ -213,6 +214,11 @@ class ChatGPTAutomation:
             if rate_limit_modal_poll_interval_ms is None
             else int(rate_limit_modal_poll_interval_ms)
         )
+        self.conversation_history_request_shield_mode = (
+            os.getenv("CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE", "fulfill_empty")
+            if conversation_history_request_shield_mode is None
+            else str(conversation_history_request_shield_mode)
+        )
         self.clear_singleton_locks = (
             _env_flag("CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS", False)
             if clear_singleton_locks is None
@@ -272,6 +278,7 @@ class ChatGPTAutomation:
                 conversation_history_rate_limit_cooldown_seconds=self.conversation_history_rate_limit_cooldown_seconds,
                 rate_limit_modal_wait_timeout_ms=self.rate_limit_modal_wait_timeout_ms,
                 rate_limit_modal_poll_interval_ms=self.rate_limit_modal_poll_interval_ms,
+                conversation_history_request_shield_mode=self.conversation_history_request_shield_mode,
                 clear_singleton_locks=self.clear_singleton_locks,
                 dom_diagnostic_mode=self.dom_diagnostic_mode,
                 pause_before_fill=self.pause_before_fill,

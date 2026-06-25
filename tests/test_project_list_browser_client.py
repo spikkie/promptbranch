@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 
@@ -5791,3 +5792,93 @@ def test_attach_rate_limit_telemetry_adds_browser_action_audit(tmp_path: Path) -
 
     assert payload["rate_limit_telemetry"]["cooldown_wait_count"] == 0
     assert payload["browser_action_audit"]["click_attempt_count"] == 1
+
+
+
+def test_global_conversation_history_shield_fulfills_auto_requests(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class Request:
+        url = "https://chatgpt.com/backend-api/conversations?offset=0&limit=28&order=updated"
+        method = "GET"
+
+    class Route:
+        def __init__(self) -> None:
+            self.continued = False
+            self.fulfilled = None
+
+        async def continue_(self) -> None:
+            self.continued = True
+
+        async def fulfill(self, **kwargs) -> None:
+            self.fulfilled = kwargs
+
+    route = Route()
+
+    asyncio.run(client._conversation_history_request_shield_route(route, Request(), operation_name="login_check"))
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert route.continued is False
+    assert route.fulfilled["status"] == 200
+    assert route.fulfilled["headers"]["x-promptbranch-conversation-history-shield"] == "fulfill_empty"
+    assert telemetry["conversation_history_request_shield_enabled"] is True
+    assert telemetry["conversation_history_request_shielded_count"] == 1
+    assert telemetry["conversation_history_request_shield_events"][0]["kind"] == "conversation_history_request_shielded"
+
+
+def test_global_conversation_history_shield_allows_explicit_promptbranch_fetch(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._conversation_history_explicit_fetch_depth = 1
+
+    class Request:
+        url = "https://chatgpt.com/backend-api/conversations?offset=0&limit=100&order=updated"
+        method = "GET"
+
+    class Route:
+        def __init__(self) -> None:
+            self.continued = False
+            self.fulfilled = None
+
+        async def continue_(self) -> None:
+            self.continued = True
+
+        async def fulfill(self, **kwargs) -> None:
+            self.fulfilled = kwargs
+
+    route = Route()
+
+    asyncio.run(client._conversation_history_request_shield_route(route, Request(), operation_name="chat-list"))
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert route.continued is True
+    assert route.fulfilled is None
+    assert telemetry["conversation_history_request_shield_allowed_count"] == 1
+    assert telemetry["conversation_history_request_shielded_count"] == 0
+
+
+def test_global_conversation_history_shield_does_not_intercept_project_endpoint(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class Request:
+        url = "https://chatgpt.com/backend-api/gizmos/g-p-demo/conversations?limit=50"
+        method = "GET"
+
+    class Route:
+        def __init__(self) -> None:
+            self.continued = False
+            self.fulfilled = None
+
+        async def continue_(self) -> None:
+            self.continued = True
+
+        async def fulfill(self, **kwargs) -> None:
+            self.fulfilled = kwargs
+
+    route = Route()
+
+    asyncio.run(client._conversation_history_request_shield_route(route, Request(), operation_name="chat-list-project-endpoint"))
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert route.continued is True
+    assert route.fulfilled is None
+    assert telemetry["conversation_history_request_shielded_count"] == 0

@@ -551,3 +551,18 @@ This candidate makes browser action/click review first-class. Browser-operation 
 Important policy: every extra click increases the chance of cooldown/rate-limit pressure. Repeated or fallback clicks are therefore flagged for review instead of hidden in verbose logs.
 
 Out of scope: Project Source mutation semantics, adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, loop behavior, and broad run-all reuse expansion.
+
+
+## v0.1.90 candidate status — Conversation-history/backend-api 429 pressure reduction
+
+Accepted/current baseline with operator adoption evidence:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.89.zip
+```
+
+`v0.1.90` opens a normal reduction slice after `v0.1.89` proved timing and click visibility. The `v0.1.89` report showed minimal observed click paths but excessive cooldown pressure from global `/backend-api/conversations` responses and rate-limit modal handling.
+
+This candidate shields non-essential global conversation-history auto-requests from the ChatGPT frontend by fulfilling them with an empty Promptbranch-marked response, while still allowing explicit Promptbranch conversation-history fetches and project-scoped `/backend-api/gizmos/{project_id}/conversations` calls. The goal is to reduce unnecessary 429/cooldown pressure without weakening functional validation.
+
+Out of scope: changing Project Source mutation semantics, artifact adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, loop behavior, and evidence-reuse expansion.
