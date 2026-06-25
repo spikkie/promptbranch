@@ -568,3 +568,7 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 ## Repair migration note — v0.1.91.1
 
 No user data, Project Source, artifact-current, Project deletion, loop, Kubernetes, or deployment migration is performed. This repair changes only ask-live first-turn transient retry classification and all-tests summary payload ranking. Operators should rerun `v0.1.91.1 --run-tests --adopt-after-validation` before retrying `--run-all-tests`.
+
+## Repair migration note — v0.1.91.2
+
+No user data, Project Source, artifact-current, Project deletion, loop, Kubernetes, or deployment migration is performed. This repair changes only release-control all-tests summary extraction/ranking for noisy pretty-printed live command JSON. Operators should rerun `v0.1.91.2 --run-tests --adopt-after-validation`; after adoption, rerun `--run-all-tests` to prove final summary aggregation.

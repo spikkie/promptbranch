@@ -2842,3 +2842,104 @@ def test_release_control_all_tests_summary_prefers_live_step_result_payloads_ove
     assert '"ensure_project"' in script
     assert 'command_profiles = {"visual-artifact-roundtrip", "release-live", "ask-live"}' in script
     assert 'if profile in command_profiles and "ok" in value and status:' in script
+
+
+def test_release_control_all_tests_summary_reads_pretty_live_json_with_nested_metadata(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".pb_profile_local_debug").mkdir()
+    (repo / "VERSION").write_text("v9.9.912\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls.log"
+
+    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
+    (fake_bin / "promptbranch").chmod(0o755)
+    (fake_bin / "timeout").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
+        "shift\n"
+        "exec \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "timeout").chmod(0o755)
+    (fake_bin / "pb").write_text(
+        "#!/usr/bin/env bash\n"
+        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
+        "emit_pretty_project_ensure() {\n"
+        "  echo '[debug] before project ensure payload'\n"
+        "  cat <<'JSON'\n"
+        "{\n"
+        "  \"ok\": true,\n"
+        "  \"action\": \"project_ensure\",\n"
+        "  \"status\": \"resolved\",\n"
+        "  \"created\": false,\n"
+        "  \"project_name\": \"shared-test-project\",\n"
+        "  \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\",\n"
+        "  \"metadata\": {\"action\": \"project_ensure\", \"note\": \"nested helper must not outrank command\"}\n"
+        "}\n"
+        "JSON\n"
+        "}\n"
+        "emit_pretty_live() {\n"
+        "  local action=\"$1\" profile=\"$2\"\n"
+        "  echo '[browser] noisy log before pretty JSON'\n"
+        "  cat <<JSON\n"
+        "{\n"
+        "  \"ok\": true,\n"
+        "  \"action\": \"${action}\",\n"
+        "  \"profile\": \"${profile}\",\n"
+        "  \"status\": \"verified\",\n"
+        "  \"failure_count\": 0,\n"
+        "  \"download_status\": \"downloaded\",\n"
+        "  \"verification_status\": \"smoke_zip_verified\",\n"
+        "  \"profile_lease\": {\n"
+        "    \"ok\": true,\n"
+        "    \"action\": \"profile_lease\",\n"
+        "    \"status\": \"leased\",\n"
+        "    \"metadata\": {\"action\": \"${action}\", \"profile\": \"${profile}\"}\n"
+        "  }\n"
+        "}\n"
+        "JSON\n"
+        "}\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"--profile-dir ./.pb_profile_local_debug project-ensure\" ]]; then emit_pretty_project_ensure; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.912\"}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then emit_pretty_live test_ask_live ask-live; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then emit_pretty_live test_visual_artifact_roundtrip visual-artifact-roundtrip; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test release-live\" ]]; then emit_pretty_live test_visual_artifact_roundtrip release-live; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
+        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_guard\", \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
+        "echo unexpected pb args >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pb").chmod(0o755)
+
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_FAKE_CALL_LOG"] = str(calls)
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+    result = subprocess.run(
+        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.912"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    summary_path = repo / ".pb_profile" / "release_logs" / "v9.9.912" / "pb_test.all.v9.9.912.summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["final_verdict"] == "GO"
+    assert summary["failed_steps"] == []
+    live_steps = {step["name"]: step for step in summary["steps"] if step["name"] in {"live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}}
+    assert set(live_steps) == {"live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}
+    assert all(step["ok"] is True and step["json_error"] is None for step in live_steps.values())
+    assert live_steps["ask_live"]["action"] == "test_ask_live"
+    assert live_steps["visual_artifact_roundtrip"]["action"] == "test_visual_artifact_roundtrip"
+    assert live_steps["release_live"]["profile"] == "release-live"
+    assert "all_tests_final_verdict: GO" in result.stdout
+    assert "all_tests_failed_steps" not in result.stdout

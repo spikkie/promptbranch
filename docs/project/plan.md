@@ -1335,3 +1335,7 @@ No live browser behavior changes, no Project Source mutation changes, no adoptio
 ### v0.1.91.1 repair note
 
 Repair-only continuation of `v0.1.91`. Fix the `--run-all-tests` proof failure by adding a narrow one-time retry for the first ask-live plain step when ChatGPT returns a generic null-project Retry response, while keeping concrete wrong-Project failures release-blocking. Also fix all-tests summary aggregation so successful live command payloads are not displaced by nested helper/schema JSON objects in verbose logs. Do not advance evidence-reuse scope, localhost audit scope, adoption semantics, Project deletion behavior, Project Source behavior, loop behavior, or deployment behavior.
+
+### v0.1.91.2 repair note
+
+Repair-only candidate from accepted/current `v0.1.91.1`. Fix only run-all final summary aggregation for noisy logs containing pretty-printed live command JSON. Preserve ask-live retry recovery, evidence reuse, localhost cooldown audit, live command behavior, adoption/current semantics, Project deletion freeze, and Project Source behavior. No normal slice advances.
