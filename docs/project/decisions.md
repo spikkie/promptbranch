@@ -272,3 +272,7 @@ Release-control may reuse already-passed validation evidence only when the artif
 ## Decision — v0.1.88.1 source-mutation timeouts are longer and diagnostic, not green
 
 Project Source mutation calls through the Docker service may need a larger timeout than the general full-integration HTTP client timeout. Release validation must pass the extended source-mutation timeout to source-add requests. If the request still times out, Promptbranch must fail closed with structured diagnostics and a post-failure source-list probe where possible; it must not convert a text-source timeout into a successful source add.
+
+## Decision — v0.1.89 every extra click is cooldown risk
+
+Live browser validation must treat browser clicks as an expensive resource. Any click beyond the shortest safe path can increase ChatGPT cooldown/429 exposure. Promptbranch should therefore expose a reviewable browser action audit with click attempts, fallback click strategies, repeated click labels, and a cooldown-risk score. The audit is observational and must not authorize additional browser actions.

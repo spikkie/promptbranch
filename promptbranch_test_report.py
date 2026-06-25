@@ -237,6 +237,96 @@ def _package_hygiene_from(section: dict[str, Any] | None) -> dict[str, Any] | No
     }
 
 
+
+
+def _browser_action_audit_from_steps(section: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(section, dict):
+        return {
+            "schema": "promptbranch.test_report.browser_action_audit_summary",
+            "schema_version": "1.0",
+            "step_count": 0,
+            "total_click_attempt_count": 0,
+            "total_fallback_click_count": 0,
+            "steps": [],
+            "cooldown_risk_steps": [],
+        }
+    summaries: list[dict[str, Any]] = []
+    total_clicks = 0
+    total_fallback = 0
+    total_score = 0
+    for step_key, scope in (("steps", "main"), ("cleanup_steps", "cleanup")):
+        raw_steps = section.get(step_key)
+        if not isinstance(raw_steps, list):
+            continue
+        for step in raw_steps:
+            if not isinstance(step, dict):
+                continue
+            details = step.get("details") if isinstance(step.get("details"), dict) else {}
+            payload = step.get("payload") if isinstance(step.get("payload"), dict) else {}
+            audit = details.get("browser_action_audit") if isinstance(details.get("browser_action_audit"), dict) else payload.get("browser_action_audit")
+            if not isinstance(audit, dict):
+                continue
+            click_count = int(audit.get("click_attempt_count") or 0)
+            fallback_count = int(audit.get("fallback_click_count") or 0)
+            risk_score = int(audit.get("cooldown_risk_score") or 0)
+            total_clicks += click_count
+            total_fallback += fallback_count
+            total_score += risk_score
+            summaries.append({
+                "scope": scope,
+                "name": step.get("name"),
+                "ok": bool(step.get("ok")),
+                "duration_seconds": step.get("duration_seconds"),
+                "click_attempt_count": click_count,
+                "fallback_click_count": fallback_count,
+                "shortest_path_status": audit.get("shortest_path_status"),
+                "cooldown_risk_score": risk_score,
+                "repeated_click_labels": audit.get("repeated_click_labels") if isinstance(audit.get("repeated_click_labels"), list) else [],
+                "recommendation": audit.get("recommendation"),
+            })
+    return {
+        "schema": "promptbranch.test_report.browser_action_audit_summary",
+        "schema_version": "1.0",
+        "step_count": len(summaries),
+        "total_click_attempt_count": total_clicks,
+        "total_fallback_click_count": total_fallback,
+        "cooldown_risk_score_total": total_score,
+        "cooldown_risk_steps": [item for item in summaries if item.get("shortest_path_status") == "review"],
+        "steps": summaries,
+    }
+
+
+
+def _timing_summary_from_steps(section: dict[str, Any] | None) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    if isinstance(section, dict):
+        for step_key, scope in (("steps", "main"), ("cleanup_steps", "cleanup")):
+            raw_steps = section.get(step_key)
+            if not isinstance(raw_steps, list):
+                continue
+            for step in raw_steps:
+                if not isinstance(step, dict):
+                    continue
+                try:
+                    duration = float(step.get("duration_seconds") or 0.0)
+                except (TypeError, ValueError):
+                    duration = 0.0
+                rows.append({
+                    "scope": scope,
+                    "name": step.get("name"),
+                    "ok": bool(step.get("ok")),
+                    "duration_seconds": round(duration, 3),
+                })
+    rows.sort(key=lambda item: float(item.get("duration_seconds") or 0.0), reverse=True)
+    total = sum(float(item.get("duration_seconds") or 0.0) for item in rows)
+    return {
+        "schema": "promptbranch.test_report.live_validation_timing_summary",
+        "schema_version": "1.0",
+        "step_count": len(rows),
+        "total_duration_seconds": round(total, 3),
+        "slowest_steps": rows[:12],
+    }
+
 def _section_summary(name: str, section: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "name": name,
@@ -294,6 +384,8 @@ def summarize_test_suite_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "failed_steps": failures,
         "rate_limit_telemetry": rate_limit_telemetry if isinstance(rate_limit_telemetry, dict) else {},
         "rate_limit_summary": rate_limit_summary,
+        "browser_action_audit": _browser_action_audit_from_steps(browser),
+        "timing_summary": _timing_summary_from_steps(browser),
         "safety": safety if isinstance(safety, dict) else {},
         "package_hygiene": _package_hygiene_from(agent or payload),
         "version_consistency": _version_consistency_from(agent or payload),

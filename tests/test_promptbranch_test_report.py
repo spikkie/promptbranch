@@ -75,6 +75,7 @@ def test_build_test_report_extracts_last_test_suite_json_from_noisy_log(tmp_path
     assert report["suite"]["package_hygiene"]["ok"] is True
     assert report["suite"]["release_validation_groups"]["ok"] is True
     assert "artifact_json_contracts" in report["suite"]["release_validation_groups"]["groups"]
+    assert report["suite"]["timing_summary"]["step_count"] == 1
 
 
 
@@ -296,3 +297,40 @@ def test_build_test_report_counts_cleanup_failures(tmp_path):
     assert report["suite"]["failed_steps"][0]["scope"] == "cleanup"
     assert report["suite"]["failed_steps"][0]["name"] == "project_remove_cleanup"
     assert report["suite"]["failed_steps"][0]["status"] == "browser_profile_busy"
+
+
+def test_build_test_report_summarizes_browser_action_audit(tmp_path):
+    log = tmp_path / "suite_clicks.log"
+    payload = _suite_payload()
+    payload["browser"]["steps"] = [
+        {
+            "name": "project_source_add_text",
+            "ok": True,
+            "duration_seconds": 74.575,
+            "details": {
+                "browser_action_audit": {
+                    "schema": "promptbranch.browser_action_audit",
+                    "schema_version": "1.0",
+                    "click_attempt_count": 3,
+                    "fallback_click_count": 1,
+                    "shortest_path_status": "review",
+                    "cooldown_risk_score": 8,
+                    "repeated_click_labels": [{"label": "save-source", "attempt_count": 2}],
+                    "recommendation": "Review repeated/fallback clicks before broad live validation; each extra click increases cooldown/429 exposure.",
+                    "events": [],
+                }
+            },
+        }
+    ]
+    log.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    report = build_test_report(log)
+
+    audit = report["suite"]["browser_action_audit"]
+    assert audit["total_click_attempt_count"] == 3
+    assert audit["total_fallback_click_count"] == 1
+    assert audit["cooldown_risk_score_total"] == 8
+    assert audit["cooldown_risk_steps"][0]["name"] == "project_source_add_text"
+    assert audit["steps"][0]["shortest_path_status"] == "review"
+    assert report["suite"]["timing_summary"]["total_duration_seconds"] == 74.575
+    assert report["suite"]["timing_summary"]["slowest_steps"][0]["name"] == "project_source_add_text"

@@ -1270,3 +1270,21 @@ Out of scope: live/browser reuse, localhost reuse, adoption behavior changes, Pr
 ### v0.1.88.1 repair note
 
 Repair-only continuation of `v0.1.88`. Fix the release-blocking `project_source_add_text` timeout path by applying the extended source-mutation timeout to Docker-service source-add calls and by returning structured fail-closed diagnostics if a source mutation still times out. Do not expand evidence-reuse scope, do not change adoption semantics, and do not advance to `v0.1.89` until `v0.1.88.1` adoption/current evidence exists.
+
+## v0.1.89 — Live validation timing visibility and shortest-path click audit
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.88.1.zip`.
+
+Goal: reduce wasted live-validation time and cooldown risk by making timing and browser-action/click paths visible before repeatedly running broad `--run-all-tests`.
+
+Planned work:
+
+1. Attach a browser action audit to live browser operation results.
+2. Record click attempts, click successes/failures, fallback strategies, repeated click labels, and a cooldown-risk score.
+3. Aggregate browser action audits in `pb test report` so the operator can review whether the shortest safe path to the goal was taken.
+4. Add a live validation timing summary with total browser-step duration and slowest steps.
+5. Keep the change observational and fail-closed: no extra clicks are authorized by the audit itself.
+
+Out of scope: changing Project Source mutation semantics, artifact adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, and expanding validation evidence reuse beyond the `v0.1.88` scope.
+
+Exit criteria: focused browser action audit tests, test-report timing/action aggregation tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.
