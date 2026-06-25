@@ -2943,3 +2943,34 @@ def test_release_control_all_tests_summary_reads_pretty_live_json_with_nested_me
     assert live_steps["release_live"]["profile"] == "release-live"
     assert "all_tests_final_verdict: GO" in result.stdout
     assert "all_tests_failed_steps" not in result.stdout
+
+
+def test_release_control_docker_service_lookup_is_clean_system_safe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'compose_service_name="${PROMPTBRANCH_COMPOSE_SERVICE_NAME:-chatgpt-service}"' in script
+    assert 'run_docker_compose ps -q "${compose_service_name}"' in script
+    assert 'run_docker_compose ps -q 2>/dev/null | head -n 1' not in script
+    assert 'wait_for_compose_service_container()' in script
+    assert 'docker inspect -f \'{{.State.Status}}\'' in script
+    assert 'docker inspect -f \'{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}\'' in script
+    assert 'docker_service_container_missing_after_recreate' in script
+    assert 'docker_service_container_not_running_after_recreate' in script
+    assert 'write_docker_service_diagnostics "no_cache_recreate_container_not_running"' in script
+
+
+def test_release_control_docker_preflight_and_diagnostics_are_declared() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'docker_preflight_json="${release_log_dir}/docker_preflight.${ver}.json"' in script
+    assert 'docker_compose_config_json="${release_log_dir}/docker_compose_config.${ver}.json"' in script
+    assert 'docker_compose_ps_all_json="${release_log_dir}/docker_compose_ps_all.${ver}.json"' in script
+    assert 'docker_compose_logs_path="${release_log_dir}/docker_compose_logs.${ver}.log"' in script
+    assert 'docker_release_preflight()' in script
+    assert '["docker", "compose", "version"]' in script
+    assert '["docker", "context", "show"]' in script
+    assert 'run_docker_compose ps -a > "${docker_compose_ps_all_json}"' in script
+    assert 'run_docker_compose logs --tail=200 "${compose_service_name}"' in script
+    assert 'run_docker_compose config > "${docker_compose_config_json}"' in script

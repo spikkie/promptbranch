@@ -311,3 +311,9 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 
 | DOD-113 | Ask-live first-turn null-project Retry responses are bounded-retried without hiding real wrong-Project failures, and run-all summary aggregation prefers live command results over nested helper objects | done_with_followup | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, focused tests, `docs/repair-v0.1.91.1.md` | v0.1.91.1 |
 | DOD-114 | Run-all final summary extracts pretty-printed live command JSON from noisy logs and does not mark verified live steps failed because of payload parsing/selection | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.91.2.md` | v0.1.91.2 |
+
+## DOD-115 — Docker service clean-system recreate/version verification
+
+Status: in_progress in `v0.1.91.3` repair candidate.
+
+The release-control Docker lifecycle must be deterministic from clean, dirty, and broken host states. It must check Docker/Compose availability before build, resolve the running container by explicit Compose service ID, wait for running/healthy state before content-version probing, and emit diagnostics that distinguish missing containers from version mismatches.

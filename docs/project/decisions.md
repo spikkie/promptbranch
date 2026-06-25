@@ -306,3 +306,7 @@ Run-all summary aggregation must prefer top-level live command result payloads o
 ## Decision — run-all summary must parse pretty live command JSON from noisy logs
 
 Release-control live command logs can contain browser telemetry, shell trace lines, and pretty-printed JSON. Final all-tests summary extraction must scan the full log for JSON objects and rank real command payloads above nested helper/schema/profile metadata. A live step that returned an `ok=true` verified command payload must not be reported as failed merely because the payload was pretty-printed or preceded by noisy log text.
+
+## DEC-115 — Docker verification must distinguish lifecycle absence from version mismatch
+
+Decision: release-control must not report `container_not_found` as a Docker content-version mismatch. Missing/non-running containers after recreate are Docker lifecycle/bootstrap failures and require Compose service-ID lookup, wait/health checks, and diagnostic collection before fail-closed release refusal.

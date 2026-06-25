@@ -572,3 +572,7 @@ No user data, Project Source, artifact-current, Project deletion, loop, Kubernet
 ## Repair migration note — v0.1.91.2
 
 No user data, Project Source, artifact-current, Project deletion, loop, Kubernetes, or deployment migration is performed. This repair changes only release-control all-tests summary extraction/ranking for noisy pretty-printed live command JSON. Operators should rerun `v0.1.91.2 --run-tests --adopt-after-validation`; after adoption, rerun `--run-all-tests` to prove final summary aggregation.
+
+## Repair migration note — v0.1.91.3
+
+`v0.1.91.2` retained the run-all aggregation repair but failed before validation when Docker service verification produced `container_not_found` after no-cache recreate. `v0.1.91.3` migrates that failure into an explicit Docker lifecycle diagnostic path with clean-system preflight, Compose service-ID lookup, running/health wait, and diagnostics collection. No normal slice advanced.

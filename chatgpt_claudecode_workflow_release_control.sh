@@ -37,6 +37,7 @@ artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
 # identity may still be branch/worktree-specific and is handled separately below.
 runtime_mode="single_default"
 compose_project_name="${PROMPTBRANCH_DEFAULT_COMPOSE_PROJECT_NAME:-${project_name}}"
+compose_service_name="${PROMPTBRANCH_COMPOSE_SERVICE_NAME:-chatgpt-service}"
 service_port="${PROMPTBRANCH_DEFAULT_SERVICE_PORT:-8000}"
 service_base_url="http://localhost:${service_port}"
 test_transport="${PROMPTBRANCH_TEST_TRANSPORT:-direct}"
@@ -1865,6 +1866,10 @@ docker_image_content_json="${release_log_dir}/docker_image_content.${ver}.json"
 docker_image_content_nocache_json="${release_log_dir}/docker_image_content.nocache.${ver}.json"
 docker_container_content_json="${release_log_dir}/docker_container_content.${ver}.json"
 docker_image_inspect_json="${release_log_dir}/docker_image_inspect.${ver}.json"
+docker_preflight_json="${release_log_dir}/docker_preflight.${ver}.json"
+docker_compose_config_json="${release_log_dir}/docker_compose_config.${ver}.json"
+docker_compose_ps_all_json="${release_log_dir}/docker_compose_ps_all.${ver}.json"
+docker_compose_logs_path="${release_log_dir}/docker_compose_logs.${ver}.log"
 
 write_version_probe_json() {
   local output="$1"
@@ -1978,8 +1983,20 @@ docker_container_version_probe() {
   local raw_path="${output}.raw"
   local stderr_path="${output}.stderr"
   if [[ -z "${container}" ]]; then
-    printf '{"ok":false,"status":"container_not_found","source_kind":"docker_container_content"}
-' > "${output}"
+    python3 - "${output}" "${compose_project_name}" "${compose_service_name}" "${ver#v}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+out, compose_project_name, compose_service_name, expected_version = sys.argv[1:5]
+Path(out).write_text(json.dumps({
+    "ok": False,
+    "status": "docker_service_container_missing_after_recreate",
+    "source_kind": "docker_container_content",
+    "expected_version": expected_version,
+    "compose_project_name": compose_project_name,
+    "compose_service_name": compose_service_name,
+}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
     return 1
   fi
   if ! docker exec "${container}" sh -lc 'set -eu
@@ -2007,19 +2024,82 @@ INNERPY
   write_version_probe_json "${output}" "docker_container_content" "running_container" "${raw_path}" "{\"container\":\"${container}\"}"
 }
 
+docker_release_preflight() {
+  python3 - "${docker_preflight_json}" "${compose_project_name}" "${compose_service_name}" "${compose_file}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import shutil
+import subprocess
+import sys
+
+out, compose_project, compose_service, compose_file = sys.argv[1:5]
+
+def run(cmd):
+    try:
+        completed = subprocess.run(cmd, text=True, capture_output=True, timeout=20)
+        return {
+            "cmd": cmd,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout[-4000:],
+            "stderr": completed.stderr[-4000:],
+        }
+    except Exception as exc:  # pragma: no cover - defensive runtime diagnostics
+        return {"cmd": cmd, "error": repr(exc)}
+
+payload = {
+    "ok": False,
+    "status": "docker_preflight_failed",
+    "source_kind": "docker_preflight",
+    "compose_project_name": compose_project,
+    "compose_service_name": compose_service,
+    "compose_file": compose_file,
+    "docker_available": shutil.which("docker") is not None,
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "checks": {},
+}
+if payload["docker_available"]:
+    payload["checks"]["docker_version"] = run(["docker", "version"])
+    payload["checks"]["docker_compose_version"] = run(["docker", "compose", "version"])
+    payload["checks"]["docker_context_show"] = run(["docker", "context", "show"])
+    payload["checks"]["docker_info"] = run(["docker", "info"])
+    ok = (
+        payload["checks"]["docker_version"].get("returncode") == 0
+        and payload["checks"]["docker_compose_version"].get("returncode") == 0
+    )
+    payload["ok"] = bool(ok)
+    payload["status"] = "verified" if ok else "docker_preflight_failed"
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+raise SystemExit(0 if payload["ok"] else 1)
+INNERPY
+}
+
 compose_service_container_id() {
   if ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
-  run_docker_compose ps -q 2>/dev/null | head -n 1 || true
+  run_docker_compose ps -q "${compose_service_name}" 2>/dev/null | head -n 1 || true
 }
 
 write_container_inspect_json() {
   local container="$1"
   local output="$2"
   if [[ -z "${container}" ]]; then
-    printf '{"ok":false,"status":"container_not_found"}
-' > "${output}"
+    python3 - "${output}" "${compose_project_name}" "${compose_service_name}" "${ver#v}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+out, compose_project_name, compose_service_name, expected_version = sys.argv[1:5]
+Path(out).write_text(json.dumps({
+    "ok": False,
+    "status": "docker_service_container_missing_after_recreate",
+    "source_kind": "docker_container_inspect",
+    "expected_version": expected_version,
+    "compose_project_name": compose_project_name,
+    "compose_service_name": compose_service_name,
+}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
     return 0
   fi
   if docker inspect "${container}" > "${output}" 2>"${output}.stderr"; then
@@ -2028,6 +2108,59 @@ write_container_inspect_json() {
     printf '{"ok":false,"status":"docker_inspect_failed","container":"%s"}
 ' "${container}" > "${output}"
   fi
+}
+
+write_docker_service_diagnostics() {
+  local reason="$1"
+  echo "Collecting Docker service diagnostics: ${reason}" >&2
+  run_docker_compose ps -a > "${docker_compose_ps_all_json}" 2>"${docker_compose_ps_all_json}.stderr" || true
+  run_docker_compose logs --tail=200 "${compose_service_name}" > "${docker_compose_logs_path}" 2>"${docker_compose_logs_path}.stderr" || true
+  run_docker_compose config > "${docker_compose_config_json}" 2>"${docker_compose_config_json}.stderr" || true
+  docker context show > "${docker_preflight_json}.context" 2>"${docker_preflight_json}.context.stderr" || true
+  docker info > "${docker_preflight_json}.info" 2>"${docker_preflight_json}.info.stderr" || true
+}
+
+wait_for_compose_service_container() {
+  local phase="$1"
+  local deadline=$((SECONDS + service_timeout_seconds))
+  local detected=""
+  local state=""
+  local health=""
+  while (( SECONDS < deadline )); do
+    detected="$(compose_service_container_id)"
+    if [[ -n "${detected}" ]]; then
+      state="$(docker inspect -f '{{.State.Status}}' "${detected}" 2>/dev/null || true)"
+      health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${detected}" 2>/dev/null || true)"
+      if [[ "${state}" == "running" && ( "${health}" == "healthy" || "${health}" == "none" || -z "${health}" ) ]]; then
+        printf '%s\n' "${detected}"
+        return 0
+      fi
+      if [[ "${state}" == "exited" || "${state}" == "dead" ]]; then
+        break
+      fi
+    fi
+    sleep 2
+  done
+  python3 - "${service_container_after_json}" "${phase}" "${compose_project_name}" "${compose_service_name}" "${ver#v}" "${detected}" "${state}" "${health}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+out, phase, compose_project_name, compose_service_name, expected_version, container, state, health = sys.argv[1:9]
+status = "docker_service_container_missing_after_recreate" if not container else "docker_service_container_not_running_after_recreate"
+Path(out).write_text(json.dumps({
+    "ok": False,
+    "status": status,
+    "source_kind": "docker_container_inspect",
+    "phase": phase,
+    "expected_version": expected_version,
+    "compose_project_name": compose_project_name,
+    "compose_service_name": compose_service_name,
+    "container": container or None,
+    "state": state or None,
+    "health": health or None,
+}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
+  return 1
 }
 
 service_health_probe() {
@@ -2122,11 +2255,14 @@ deploy_promptbranch_service_detached() {
     echo "compose_file: ${compose_file}"
     echo "runtime_mode: ${runtime_mode}"
     echo "compose_project_name: ${compose_project_name}"
+    echo "compose_service_name: ${compose_service_name}"
     echo "service_port: ${service_port}"
     echo "service_base_url: ${service_base_url}"
     echo "service_image: $(promptbranch_service_image_ref)"
     echo "expected_version: ${ver#v}"
     echo "artifact_sha256: $(release_artifact_sha256)"
+    echo "+ docker_release_preflight"
+    docker_release_preflight
     echo "+ assert_host_build_context_versions"
     assert_host_build_context_versions
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
@@ -2139,9 +2275,9 @@ deploy_promptbranch_service_detached() {
       docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
       echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
       run_docker_compose up -d --force-recreate --remove-orphans
-      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
-      run_docker_compose ps
-      run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps ${compose_service_name}"
+      run_docker_compose ps "${compose_service_name}"
+      run_docker_compose ps --format json "${compose_service_name}" > "${service_compose_ps_json}" 2>/dev/null || true
     else
       image_probe_failed=1
       echo "WARN: Docker image content probe failed after normal build; skipping container start before no-cache fallback."
@@ -2149,23 +2285,30 @@ deploy_promptbranch_service_detached() {
   } >"${service_start_log}" 2>&1
 
   if [[ ${image_probe_failed} -eq 0 ]]; then
-    container_id="$(compose_service_container_id)"
-    write_container_inspect_json "${container_id}" "${service_container_after_json}"
+    if container_id="$(wait_for_compose_service_container normal_recreate)"; then
+      write_container_inspect_json "${container_id}" "${service_container_after_json}"
 
-    if [[ -n "${before_container}" && -n "${container_id}" && "${before_container}" == "${container_id}" ]]; then
-      echo "ERROR: Docker container was not recreated; before and after container IDs are both ${container_id}" >&2
-      echo "ERROR: inspect service_start_log=${service_start_log}" >&2
-      return 1
-    fi
+      if [[ -n "${before_container}" && -n "${container_id}" && "${before_container}" == "${container_id}" ]]; then
+        echo "ERROR: Docker container was not recreated; before and after container IDs are both ${container_id}" >&2
+        echo "ERROR: inspect service_start_log=${service_start_log}" >&2
+        write_docker_service_diagnostics "container_id_not_recreated"
+        return 1
+      fi
 
-    if ! docker_container_version_probe "${docker_container_content_json}" "${container_id}"; then
-      echo "ERROR: Docker running container content version mismatch before health probe" >&2
-      echo "ERROR: inspect docker_container_content_json=${docker_container_content_json}" >&2
-      cat "${docker_container_content_json}" >&2 || true
-    fi
+      if ! docker_container_version_probe "${docker_container_content_json}" "${container_id}"; then
+        echo "ERROR: Docker running container content version mismatch before health probe" >&2
+        echo "ERROR: inspect docker_container_content_json=${docker_container_content_json}" >&2
+        cat "${docker_container_content_json}" >&2 || true
+      fi
 
-    if wait_for_promptbranch_service_version; then
-      return 0
+      if wait_for_promptbranch_service_version; then
+        return 0
+      fi
+    else
+      echo "WARN: Docker service container was not running after normal recreate; trying no-cache fallback." >&2
+      echo "WARN: inspect service_container_after_json=${service_container_after_json}" >&2
+      cat "${service_container_after_json}" >&2 || true
+      write_docker_service_diagnostics "normal_recreate_container_not_running"
     fi
   fi
 
@@ -2186,17 +2329,24 @@ deploy_promptbranch_service_detached() {
     docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
     run_docker_compose up -d --force-recreate --remove-orphans
-    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps"
-    run_docker_compose ps
-    run_docker_compose ps --format json > "${service_compose_ps_json}" 2>/dev/null || true
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps ${compose_service_name}"
+    run_docker_compose ps "${compose_service_name}"
+    run_docker_compose ps --format json "${compose_service_name}" > "${service_compose_ps_json}" 2>/dev/null || true
   } >>"${service_start_log}" 2>&1
 
-  container_id="$(compose_service_container_id)"
+  if ! container_id="$(wait_for_compose_service_container no_cache_recreate)"; then
+    echo "ERROR: Docker service container missing or not running after no-cache rebuild" >&2
+    echo "ERROR: inspect service_container_after_json=${service_container_after_json}" >&2
+    cat "${service_container_after_json}" >&2 || true
+    write_docker_service_diagnostics "no_cache_recreate_container_not_running"
+    return 1
+  fi
   write_container_inspect_json "${container_id}" "${service_container_after_json}"
   docker_container_version_probe "${docker_container_content_json}" "${container_id}" || {
     echo "ERROR: Docker running container content version mismatch after no-cache rebuild" >&2
     echo "ERROR: inspect docker_container_content_json=${docker_container_content_json}" >&2
     cat "${docker_container_content_json}" >&2 || true
+    write_docker_service_diagnostics "no_cache_container_content_version_mismatch"
     return 1
   }
   wait_for_promptbranch_service_version
