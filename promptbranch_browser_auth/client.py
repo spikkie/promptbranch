@@ -616,8 +616,85 @@ class ChatGPTBrowserClient:
         self._conversation_history_fetch_skipped_count = 0
         self._conversation_history_cooldown_skip_count = 0
         self._google_device_prompt_logged_keys: set[str] = set()
+        self._browser_action_events: list[dict[str, object]] = []
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
+
+
+    def _record_browser_action(
+        self,
+        *,
+        kind: str,
+        label: str,
+        strategy: str | None = None,
+        status: str | None = None,
+        cooldown_sensitive: bool = True,
+        **fields: Any,
+    ) -> None:
+        event: dict[str, object] = {
+            'kind': kind,
+            'label': label,
+            'monotonic_time': round(time.monotonic(), 6),
+            'cooldown_sensitive': bool(cooldown_sensitive),
+        }
+        if strategy is not None:
+            event['strategy'] = strategy
+        if status is not None:
+            event['status'] = status
+        for key, value in fields.items():
+            if value is None:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                event[key] = value
+            else:
+                event[key] = self._safe_repr(value)
+        self._browser_action_events.append(event)
+        if len(self._browser_action_events) > 500:
+            del self._browser_action_events[: len(self._browser_action_events) - 500]
+
+    def _browser_action_audit_snapshot(self) -> dict[str, object]:
+        events = list(self._browser_action_events)
+        click_attempts = [event for event in events if str(event.get('kind')) == 'click_attempt']
+        click_successes = [event for event in events if str(event.get('kind')) == 'click_success']
+        fallback_clicks = [
+            event
+            for event in click_attempts
+            if str(event.get('strategy') or 'primary') not in {'primary', 'skip'}
+        ]
+        label_counts: dict[str, int] = {}
+        for event in click_attempts:
+            label = str(event.get('label') or '')
+            label_counts[label] = label_counts.get(label, 0) + 1
+        repeated = [
+            {'label': label, 'attempt_count': count}
+            for label, count in sorted(label_counts.items())
+            if count > 1
+        ]
+        cooldown_risk_score = len(click_attempts) + (2 * len(fallback_clicks)) + (3 * len(repeated))
+        shortest_path_status = 'review' if fallback_clicks or repeated else 'minimal_observed'
+        recommendation = (
+            'Review repeated/fallback clicks before broad live validation; each extra click increases cooldown/429 exposure.'
+            if shortest_path_status == 'review'
+            else 'No repeated or fallback click attempts were observed in this operation.'
+        )
+        return {
+            'schema': 'promptbranch.browser_action_audit',
+            'schema_version': '1.0',
+            'event_count': len(events),
+            'click_attempt_count': len(click_attempts),
+            'click_success_count': len(click_successes),
+            'fallback_click_count': len(fallback_clicks),
+            'repeated_click_labels': repeated,
+            'shortest_path_status': shortest_path_status,
+            'cooldown_risk_score': cooldown_risk_score,
+            'recommendation': recommendation,
+            'events': events[-200:],
+        }
+
+    def _attach_browser_action_audit(self, result: Any) -> Any:
+        if isinstance(result, dict):
+            result.setdefault('browser_action_audit', self._browser_action_audit_snapshot())
+        return result
 
     def _record_ask_progress(self, **fields: Any) -> None:
         try:
@@ -792,8 +869,7 @@ class ChatGPTBrowserClient:
         telemetry = self._rate_limit_telemetry_snapshot()
         if isinstance(result, dict):
             result.setdefault('rate_limit_telemetry', telemetry)
-            return result
-        return result
+        return self._attach_browser_action_audit(result)
 
     def _note_conversation_history_rate_limit(self, *, trigger: str, url: str, status: int | None = None) -> None:
         cooldown_seconds = max(0.0, float(self.config.conversation_history_rate_limit_cooldown_seconds))
@@ -15220,7 +15296,9 @@ class ChatGPTBrowserClient:
         )
         if tab is None:
             raise ResponseTimeoutError("Project Sources tab did not become visible")
+        self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
         await tab.click(timeout=5_000)
+        self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
         await page.wait_for_timeout(750)
         self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
 
@@ -15260,20 +15338,26 @@ class ChatGPTBrowserClient:
 
         last_error: Exception | None = None
         try:
+            self._record_browser_action(kind='click_attempt', label=label, strategy='primary')
             await locator.click(timeout=timeout_ms)
+            self._record_browser_action(kind='click_success', label=label, strategy='primary')
             return
         except Exception as exc:
             last_error = exc
+            self._record_browser_action(kind='click_failure', label=label, strategy='primary', status=type(exc).__name__, error=str(exc))
             self._log("click", "primary locator click failed", label=label, error=repr(exc))
             if page is not None:
                 await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-primary-click-failure')
 
         if allow_force:
             try:
+                self._record_browser_action(kind='click_attempt', label=label, strategy='force')
                 await locator.click(timeout=timeout_ms, force=True)
+                self._record_browser_action(kind='click_success', label=label, strategy='force')
                 return
             except Exception as exc:
                 last_error = exc
+                self._record_browser_action(kind='click_failure', label=label, strategy='force', status=type(exc).__name__, error=str(exc))
                 self._log("click", "force locator click failed", label=label, error=repr(exc))
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-force-click-failure')
@@ -15284,19 +15368,25 @@ class ChatGPTBrowserClient:
                 if box:
                     click_x = float(box.get("x", 0)) + (float(box.get("width", 0)) / 2.0)
                     click_y = float(box.get("y", 0)) + (float(box.get("height", 0)) / 2.0)
+                    self._record_browser_action(kind='click_attempt', label=label, strategy='mouse_coordinate', x=round(click_x, 2), y=round(click_y, 2))
                     await page.mouse.click(click_x, click_y)
+                    self._record_browser_action(kind='click_success', label=label, strategy='mouse_coordinate')
                     return
             except Exception as exc:
                 last_error = exc
+                self._record_browser_action(kind='click_failure', label=label, strategy='mouse_coordinate', status=type(exc).__name__, error=str(exc))
                 self._log("click", "mouse coordinate click failed", label=label, error=repr(exc))
                 await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-coordinate-click-failure')
 
         if allow_evaluate:
             try:
+                self._record_browser_action(kind='click_attempt', label=label, strategy='evaluate')
                 await locator.evaluate("(el) => el.click()")
+                self._record_browser_action(kind='click_success', label=label, strategy='evaluate')
                 return
             except Exception as exc:
                 last_error = exc
+                self._record_browser_action(kind='click_failure', label=label, strategy='evaluate', status=type(exc).__name__, error=str(exc))
                 self._log("click", "evaluate locator click failed", label=label, error=repr(exc))
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-evaluate-click-failure')
@@ -15354,9 +15444,14 @@ class ChatGPTBrowserClient:
         except Exception:
             pass
         try:
+            self._record_browser_action(kind='click_attempt', label=f'project-source-kind-{source_kind}', strategy='primary')
             await option.click(timeout=5_000)
-        except Exception:
+            self._record_browser_action(kind='click_success', label=f'project-source-kind-{source_kind}', strategy='primary')
+        except Exception as exc:
+            self._record_browser_action(kind='click_failure', label=f'project-source-kind-{source_kind}', strategy='primary', status=type(exc).__name__, error=str(exc))
+            self._record_browser_action(kind='click_attempt', label=f'project-source-kind-{source_kind}', strategy='force')
             await option.click(timeout=5_000, force=True)
+            self._record_browser_action(kind='click_success', label=f'project-source-kind-{source_kind}', strategy='force')
         await page.wait_for_timeout(500)
 
     async def _fill_locator_text(self, locator: Any, text: str) -> None:

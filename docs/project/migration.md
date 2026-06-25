@@ -546,3 +546,7 @@ The release-control validation model now records direct full-test evidence under
 ## v0.1.88.1 repair migration note
 
 No user data, Project Source, artifact-current, or Project deletion migration is performed. Operators should install `v0.1.88.1` and rerun the normal `--run-tests --adopt-after-validation` gate before attempting the `--run-all-tests` evidence-reuse proof. This repair only extends Docker-service source-add timeout handling and adds structured timeout diagnostics; it does not advance the evidence-reuse slice.
+
+## v0.1.89 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should use `pb test report <full-test-log> --json` after live validation to review `timing_summary` and `browser_action_audit` before repeatedly running broad `--run-all-tests`. The new audit is read-only observability and does not change live mutation semantics.

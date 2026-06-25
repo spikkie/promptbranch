@@ -5751,3 +5751,43 @@ def test_successful_ask_result_flattens_submit_diagnostics_for_json_transport() 
     assert 'diagnostic_fields = self._submit_failure_diagnostic_fields(submit_evidence)' in source
     assert 'if key not in {"answer_text", "answer_text_length"}' in source
     assert 'result[key] = value' in source
+
+
+def test_browser_action_audit_marks_minimal_click_path(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._record_browser_action(kind="click_attempt", label="open-sources", strategy="primary")
+    client._record_browser_action(kind="click_success", label="open-sources", strategy="primary")
+
+    audit = client._browser_action_audit_snapshot()
+
+    assert audit["schema"] == "promptbranch.browser_action_audit"
+    assert audit["click_attempt_count"] == 1
+    assert audit["fallback_click_count"] == 0
+    assert audit["shortest_path_status"] == "minimal_observed"
+    assert audit["cooldown_risk_score"] == 1
+
+
+def test_browser_action_audit_flags_repeated_fallback_clicks_as_cooldown_risk(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._record_browser_action(kind="click_attempt", label="save-source", strategy="primary")
+    client._record_browser_action(kind="click_failure", label="save-source", strategy="primary", status="TimeoutError")
+    client._record_browser_action(kind="click_attempt", label="save-source", strategy="force")
+    client._record_browser_action(kind="click_success", label="save-source", strategy="force")
+
+    audit = client._browser_action_audit_snapshot()
+
+    assert audit["click_attempt_count"] == 2
+    assert audit["fallback_click_count"] == 1
+    assert audit["shortest_path_status"] == "review"
+    assert audit["repeated_click_labels"] == [{"label": "save-source", "attempt_count": 2}]
+    assert "extra click increases cooldown" in audit["recommendation"]
+
+
+def test_attach_rate_limit_telemetry_adds_browser_action_audit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client._record_browser_action(kind="click_attempt", label="composer", strategy="primary")
+
+    payload = client._attach_rate_limit_telemetry({"ok": True})
+
+    assert payload["rate_limit_telemetry"]["cooldown_wait_count"] == 0
+    assert payload["browser_action_audit"]["click_attempt_count"] == 1

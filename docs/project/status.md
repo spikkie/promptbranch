@@ -535,3 +535,19 @@ This candidate does not change Promptbranch loop behavior, live browser behavior
 The repair keeps the evidence-reuse slice intact but does not advance it. Docker-service source add requests now use the extended source-mutation timeout budget, and any remaining client-side source-add timeout is converted into a structured, release-blocking diagnostic payload with post-failure `pb src list --json` evidence collection where possible.
 
 Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.87.1.zip` until `v0.1.88.1` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.
+
+## v0.1.89 candidate status — Live validation timing visibility and shortest-path click audit
+
+Accepted/current baseline with operator adoption evidence:
+
+```text
+chatgpt_claudecode_workflow-2_v0.1.88.1.zip
+```
+
+`v0.1.89` opens a normal observability slice before repeated broad `--run-all-tests` runs. The release-control timing evidence from `v0.1.88.1` showed that the fast local validation groups took only a few seconds while live browser validation spent most wall time in browser operations and cooldown waits.
+
+This candidate makes browser action/click review first-class. Browser-operation results now carry a `browser_action_audit` with click attempts, fallback strategies, repeated click labels, and a cooldown-risk score. Test reports aggregate this into a reviewable overview so the operator can inspect whether Promptbranch took the shortest safe path to the goal.
+
+Important policy: every extra click increases the chance of cooldown/rate-limit pressure. Repeated or fallback clicks are therefore flagged for review instead of hidden in verbose logs.
+
+Out of scope: Project Source mutation semantics, adoption/current behavior, Project deletion behavior, Kubernetes/deployment behavior, loop behavior, and broad run-all reuse expansion.
