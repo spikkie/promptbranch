@@ -2954,6 +2954,35 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
             pass
     decoder = json.JSONDecoder()
     candidates: list[dict] = []
+
+    def is_promptbranch_payload(value: dict) -> bool:
+        return (
+            "action" in value
+            or "profile" in value
+            or "schema" in value
+            or "source_kind" in value
+            or "final_verdict" in value
+            or value.get("status") == "guard_passed"
+        )
+
+    # Release-control live-step logs are often mixed shell/browser logs plus
+    # pretty-printed JSON.  A line-by-line decoder misses those payloads
+    # because the opening line is only ``{``.  Scan the complete raw log for
+    # JSON objects starting at every brace, while still allowing nested helper
+    # objects to be ranked below the real command result.
+    for idx, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(raw, idx)
+        except Exception:
+            continue
+        if isinstance(value, dict) and is_promptbranch_payload(value):
+            candidates.append(value)
+
+    # Keep the old single-line fallback for compact JSON emitted beside other
+    # text.  Duplicates are harmless because ranking below prefers the best
+    # command result payload.
     for line in raw.splitlines():
         candidate_text = line.strip()
         if not candidate_text.startswith("{"):
@@ -2962,16 +2991,7 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
             value, _end = decoder.raw_decode(candidate_text)
         except Exception:
             continue
-        if not isinstance(value, dict):
-            continue
-        if (
-            "action" in value
-            or "profile" in value
-            or "schema" in value
-            or "source_kind" in value
-            or "final_verdict" in value
-            or value.get("status") == "guard_passed"
-        ):
+        if isinstance(value, dict) and is_promptbranch_payload(value):
             candidates.append(value)
     if candidates:
         def candidate_rank(value: dict) -> int:

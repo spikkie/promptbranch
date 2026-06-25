@@ -596,3 +596,11 @@ Out of scope: Project Source mutation semantics, adoption/current behavior, Chat
 The repair is limited to two defects: the first `ask_live` plain step may retry once when ChatGPT returns the generic null-project Retry answer with no conversation URL or Project identity, and the all-tests summary now prefers live command result payloads over nested helper/schema objects so successful `live_project_ensure`, `visual_artifact_roundtrip`, and `release_live` steps are not listed as failed.
 
 Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.zip` until `v0.1.91.1` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.
+
+## v0.1.91.2 repair status — run-all final summary aggregation
+
+`v0.1.91.2` is a repair-only candidate on top of accepted/current `v0.1.91.1`. The `v0.1.91.1 --run-all-tests` proof showed functionally green live steps, but the final all-tests summary still reported `live_project_ensure`, `ask_live`, `visual_artifact_roundtrip`, and `release_live` as failed.
+
+This repair changes only final all-tests summary payload extraction/ranking for noisy logs containing pretty-printed live command JSON. It preserves ask-live retry recovery, evidence reuse, localhost cooldown audit, live command behavior, adoption/current semantics, Project Source behavior, Project deletion freeze, loop behavior, and deployment boundaries.
+
+Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until `v0.1.91.2` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.

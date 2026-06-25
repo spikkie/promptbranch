@@ -302,3 +302,7 @@ The localhost matrix remains a separate validation dimension. It must be execute
 The first ask-live plain prompt may receive ChatGPT's generic “Something went wrong... Retry” response without a conversation URL or Project identity. That condition may be retried once as a transient service response. A response with a concrete wrong Project identity remains a real wrong-project failure and must not be retried away or marked green.
 
 Run-all summary aggregation must prefer top-level live command result payloads over nested helper/schema JSON objects emitted in verbose browser logs. Successful live steps must not be listed in `failed_steps` merely because a later nested helper object had a schema/status field.
+
+## Decision — run-all summary must parse pretty live command JSON from noisy logs
+
+Release-control live command logs can contain browser telemetry, shell trace lines, and pretty-printed JSON. Final all-tests summary extraction must scan the full log for JSON objects and rank real command payloads above nested helper/schema/profile metadata. A live step that returned an `ok=true` verified command payload must not be reported as failed merely because the payload was pretty-printed or preceded by noisy log text.
