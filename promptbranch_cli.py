@@ -20694,7 +20694,7 @@ def _ask_live_in_expected_project(
     return True, expected_project_id, response_project_id
 
 
-async def _run_ask_live_step(
+async def _run_ask_live_step_once(
     backend: CommandBackend,
     args: argparse.Namespace,
     *,
@@ -20800,6 +20800,97 @@ async def _run_ask_live_step(
         "attachment_paths": [str(path) for path in attachment_paths or []],
         "duration_seconds": round(time.monotonic() - started, 3),
     }
+
+
+def _ask_live_transient_first_turn_retry_candidate(result: dict[str, Any], *, name: str, attachment_paths: list[str] | None) -> bool:
+    """Return True for the bounded first-turn ChatGPT transient Retry page.
+
+    This is intentionally narrow: a real wrong Project response remains
+    release-blocking.  The only retried condition is the first plain ask-live
+    step returning ChatGPT's generic Retry text without a conversation URL or
+    project identity.  That condition has no usable Project evidence and is
+    commonly a transient first-turn service response rather than a completed
+    wrong-project answer.
+    """
+    if name != "plain":
+        return False
+    if attachment_paths:
+        return False
+    status = str(result.get("status") or "")
+    if status not in {"wrong_project", "failed", "ask_failed"}:
+        return False
+    if result.get("contains_expected_sentinel") is True:
+        return False
+    if result.get("conversation_url"):
+        return False
+    if result.get("response_project_home_url") or result.get("response_project_id"):
+        return False
+    preview = str(result.get("answer_text_preview") or "").lower()
+    if not preview:
+        return False
+    return "something went wrong" in preview and "try again" in preview and "retry" in preview
+
+
+async def _run_ask_live_step(
+    backend: CommandBackend,
+    args: argparse.Namespace,
+    *,
+    name: str,
+    prompt: str,
+    expected_sentinel: str,
+    attachment_paths: list[str] | None = None,
+    forbidden_sentinels: list[str] | None = None,
+    expected_project_home_url: str | None = None,
+    prefer_button_submit: bool = False,
+    transient_retry_attempts: int = 0,
+) -> dict[str, Any]:
+    max_attempts = max(0, int(transient_retry_attempts or 0)) + 1
+    attempt_summaries: list[dict[str, Any]] = []
+    last_result: dict[str, Any] | None = None
+    for attempt_index in range(max_attempts):
+        result = await _run_ask_live_step_once(
+            backend,
+            args,
+            name=name,
+            prompt=prompt,
+            expected_sentinel=expected_sentinel,
+            attachment_paths=attachment_paths,
+            forbidden_sentinels=forbidden_sentinels,
+            expected_project_home_url=expected_project_home_url,
+            prefer_button_submit=prefer_button_submit,
+        )
+        last_result = result
+        attempt_summaries.append({
+            "attempt_index": attempt_index,
+            "ok": bool(result.get("ok")),
+            "status": result.get("status"),
+            "conversation_url": result.get("conversation_url"),
+            "response_project_home_url": result.get("response_project_home_url"),
+            "response_project_id": result.get("response_project_id"),
+            "contains_expected_sentinel": result.get("contains_expected_sentinel"),
+            "answer_text_preview": result.get("answer_text_preview"),
+            "duration_seconds": result.get("duration_seconds"),
+        })
+        should_retry = (
+            attempt_index + 1 < max_attempts
+            and _ask_live_transient_first_turn_retry_candidate(result, name=name, attachment_paths=attachment_paths)
+        )
+        if should_retry:
+            continue
+        if attempt_summaries:
+            result["attempt_index"] = attempt_index
+            result["retry_attempt_count"] = attempt_index
+            result["transient_retry_attempted"] = attempt_index > 0
+            result["transient_retry_reason"] = "first_turn_null_project_retry_response" if attempt_index > 0 else None
+            result["attempts"] = attempt_summaries
+        return result
+    assert last_result is not None
+    last_result["attempt_index"] = len(attempt_summaries) - 1
+    last_result["retry_attempt_count"] = max(0, len(attempt_summaries) - 1)
+    last_result["transient_retry_attempted"] = len(attempt_summaries) > 1
+    last_result["transient_retry_reason"] = "first_turn_null_project_retry_response" if len(attempt_summaries) > 1 else None
+    last_result["attempts"] = attempt_summaries
+    return last_result
 
 
 def _restore_ask_live_state(backend: Any, snapshot: dict[str, Any]) -> None:
@@ -21213,6 +21304,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     prompt=f"Return exactly the single token {sentinels['plain']} and nothing else.",
                     expected_sentinel=sentinels["plain"],
                     expected_project_home_url=test_project_url,
+                    transient_retry_attempts=1,
                 ))
 
             if "repeated_stale_first" in selected_steps:

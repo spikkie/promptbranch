@@ -2834,3 +2834,11 @@ def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_cont
     assert '"localhost_matrix_cooldown_audit": localhost_matrix_cooldown_audit' in text
     assert '"rate_limit_retry_allowed_violations": localhost_retry_allowed_violations' in text
     assert "localhost/offline matrix groups must not sleep/retry on browser cooldown evidence" in text
+
+
+def test_release_control_all_tests_summary_prefers_live_step_result_payloads_over_nested_schema_objects() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert '"project_ensure"' in script
+    assert '"ensure_project"' in script
+    assert 'command_profiles = {"visual-artifact-roundtrip", "release-live", "ask-live"}' in script
+    assert 'if profile in command_profiles and "ok" in value and status:' in script

@@ -229,3 +229,6 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.90.1 | repair | Project source overwrite stale-inflight post-commit recovery | accepted_current_by_operator_log | focused source-overwrite stale-inflight tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | repairs v0.1.90 overwrite-file verification only; no slice advanced | pending adoption evidence |
 
 | v0.1.91 | normal | Run-all evidence reuse proof and localhost matrix cooldown audit | candidate | focused shell tests for proof-based reuse and localhost cooldown audit, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | Adds DOD-112 focused; builds from accepted/current v0.1.90.1 | pending adoption evidence |
+
+
+| v0.1.91.1 | repair | Ask-live first-turn retry recovery and run-all step aggregation correctness | candidate | focused ask-live retry tests, real wrong-project no-retry test, run-all summary payload-ranking test, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene | no slice advanced; v0.1.91 evidence reuse and localhost cooldown audit preserved | pending adoption evidence |

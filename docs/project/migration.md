@@ -563,3 +563,8 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 ## v0.1.91 migration note
 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should run `--run-tests --strict-source-kind-matrix` first, then run `--run-all-tests --strict-source-kind-matrix` for reuse proof. The all-tests summary now includes `validation_reuse` and `localhost_matrix_cooldown_audit` sections for operator review.
+
+
+## Repair migration note — v0.1.91.1
+
+No user data, Project Source, artifact-current, Project deletion, loop, Kubernetes, or deployment migration is performed. This repair changes only ask-live first-turn transient retry classification and all-tests summary payload ranking. Operators should rerun `v0.1.91.1 --run-tests --adopt-after-validation` before retrying `--run-all-tests`.

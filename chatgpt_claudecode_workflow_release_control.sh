@@ -2989,8 +2989,14 @@ def read_json_object(path: Path) -> tuple[dict, str | None]:
                 "test_suite",
                 "test_report",
                 "package_import_smoke",
+                "project_ensure",
+                "ensure_project",
             }
+            command_profiles = {"visual-artifact-roundtrip", "release-live", "ask-live"}
+            profile = str(value.get("profile") or "")
             if action in command_actions and "ok" in value and status:
+                return 100
+            if profile in command_profiles and "ok" in value and status:
                 return 100
             if status == "guard_passed" and "ok" in value:
                 return 95

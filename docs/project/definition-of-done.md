@@ -308,3 +308,5 @@ A release candidate satisfies this DoD when the required `browser_scheduler_sour
 | DOD-111 | File-source uploads/overwrites do not treat stale inflight after commit as quiet, and post-commit recovery distinguishes visible-source false negatives from true absence | done | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.90.1.md` | v0.1.90.1 |
 
 | DOD-112 | Run-all validation exposes proof-based direct evidence reuse and localhost/offline cooldown audit so repeated broad validation does not rerun identical direct groups or hide localhost cooldown policy violations | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/release-v0.1.91.md` | v0.1.91 |
+
+| DOD-113 | Ask-live first-turn null-project Retry responses are bounded-retried without hiding real wrong-Project failures, and run-all summary aggregation prefers live command results over nested helper objects | in_progress | `promptbranch_cli.py`, `chatgpt_claudecode_workflow_release_control.sh`, focused tests, `docs/repair-v0.1.91.1.md` | v0.1.91.1 |
