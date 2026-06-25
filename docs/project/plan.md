@@ -1343,3 +1343,18 @@ Repair-only candidate from accepted/current `v0.1.91.1`. Fix only run-all final 
 ## v0.1.91.3 repair plan
 
 Repair-only objective: preserve `v0.1.91.1` accepted behavior and `v0.1.91.2` run-all aggregation repair while hardening Docker service recreate/version verification for clean-system bootstrap and stale local Docker states. Do not open `v0.1.92` until the `v0.1.91` run-all proof line is green or explicitly deferred.
+
+## v0.1.91.4 repair plan
+
+Repair-only objective: make release-control reproducible on a clean system with no running Docker service before Project Source add.
+
+Required changes:
+
+1. Preserve the `v0.1.91.1` ask-live retry repair.
+2. Preserve the `v0.1.91.2` run-all summary aggregation repair.
+3. Preserve the `v0.1.91.3` Docker recreate/version verification hardening.
+4. Reinstall the candidate CLI before service-mediated Project Source mutation.
+5. Verify the pre-source-add service health/version before `promptbranch src add`.
+6. If missing or stale and service management is enabled, bootstrap the candidate Docker service before source add.
+7. Classify clean-system absence as `pre_source_add_service_unavailable` with diagnostics.
+8. Do not change adoption/current semantics, Project deletion behavior, live/browser behavior, or Project Source mutation semantics.

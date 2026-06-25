@@ -608,3 +608,9 @@ Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until `v0
 ## v0.1.91.3 repair candidate status
 
 `v0.1.91.3` is a repair-only candidate on top of the `v0.1.91.2` candidate state while accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until adoption proof. It hardens Docker service recreate/version verification for clean-system and dirty-system cases by adding Docker/Compose preflight diagnostics, resolving the service container by explicit Compose service name, waiting for running/healthy state before content probing, and classifying missing containers separately from version mismatches.
+
+## v0.1.91.4 repair candidate status
+
+`v0.1.91.4` is a repair-only candidate on top of the `v0.1.91.3` candidate state while accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.1.zip` until adoption proof. It preserves `v0.1.91.1`, `v0.1.91.2`, and `v0.1.91.3` repairs and fixes the clean-system pre-source-add bootstrap ordering defect: release-control now reinstalls the candidate CLI, verifies or bootstraps the candidate service, and only then performs Project Source add.
+
+No live/browser behavior, adoption/current semantics, Project deletion behavior, or normal slice scope advances.

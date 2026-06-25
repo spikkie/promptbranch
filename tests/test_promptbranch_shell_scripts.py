@@ -2974,3 +2974,29 @@ def test_release_control_docker_preflight_and_diagnostics_are_declared() -> None
     assert 'run_docker_compose ps -a > "${docker_compose_ps_all_json}"' in script
     assert 'run_docker_compose logs --tail=200 "${compose_service_name}"' in script
     assert 'run_docker_compose config > "${docker_compose_config_json}"' in script
+
+
+def test_release_control_pre_source_add_service_bootstrap_is_clean_system_safe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'pre_source_add_service_health_json="${release_log_dir}/pre_source_add_service_health.${ver}.json"' in script
+    assert 'pre_source_add_service_start_log="${release_log_dir}/pre_source_add_service_start.${ver}.log"' in script
+    assert 'ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"' in script
+    assert 'pre_source_add_service_unavailable' in script
+    assert 'Pre-source-add service unavailable or stale; bootstrapping candidate service before Project Source add.' in script
+    assert 'run_pre_source_add_docker_compose up -d --force-recreate --remove-orphans' in script
+    assert 'run_pre_source_add_docker_compose ps "${compose_service_name}"' in script
+    assert 'Pre-source-add Promptbranch service health/version verified: ${ver#v}' in script
+
+
+def test_release_control_installs_candidate_before_source_add_bootstrap() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    install_idx = script.index('# Reinstall local CLI from the release ZIP before any service-mediated source')
+    ensure_idx = script.index('ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"')
+    source_add_idx = script.index('promptbranch src add "${artifact_zip}"')
+    assert install_idx < ensure_idx < source_add_idx
+    assert "'source_kind': 'pre_source_add_service_health'" in script
+    assert "'source_kind': 'pre_source_add_docker_preflight'" in script
