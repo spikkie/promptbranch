@@ -14148,3 +14148,96 @@ def test_ask_live_streaming_timeout_still_fails_without_visible_sentinel(monkeyp
     step = payload["steps"][0]
     assert step["status"] == "ask_failed"
     assert step["contains_expected_sentinel"] is False
+
+
+def test_ask_live_plain_retries_first_turn_null_project_retry(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from promptbranch_cli import _run_ask_live_step
+
+    project_url = "https://chatgpt.com/g/g-p-6a1af3fe64a481919a2cc7de3cff0487/project"
+    conversation_url = "https://chatgpt.com/g/g-p-6a1af3fe64a481919a2cc7de3cff0487/c/00000000-0000-0000-0000-000000000091"
+    calls: list[str] = []
+
+    class FakeBackend:
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, prefer_button_submit=False):
+            calls.append(prompt)
+            if len(calls) == 1:
+                return {
+                    "ok": True,
+                    "answer": "Something went wrong while processing your request. Please try again.\n\nRetry",
+                    "conversation_url": None,
+                    "rate_limit_telemetry": {
+                        "rate_limit_modal_detected": False,
+                        "conversation_history_429_seen": False,
+                        "backend_api_guardrail_seen": False,
+                        "service_rate_limit_events": [],
+                    },
+                }
+            return {
+                "ok": True,
+                "answer": "ASK_LIVE_PLAIN_UNIT",
+                "conversation_url": conversation_url,
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": False,
+                    "conversation_history_429_seen": False,
+                    "backend_api_guardrail_seen": False,
+                    "service_rate_limit_events": [],
+                },
+            }
+
+    result = asyncio.run(_run_ask_live_step(
+        FakeBackend(),
+        SimpleNamespace(conversation_url=project_url, keep_open=False, retries=None),
+        name="plain",
+        prompt="Return exactly the single token ASK_LIVE_PLAIN_UNIT and nothing else.",
+        expected_sentinel="ASK_LIVE_PLAIN_UNIT",
+        expected_project_home_url=project_url,
+        transient_retry_attempts=1,
+    ))
+
+    assert result["ok"] is True
+    assert result["status"] == "verified"
+    assert result["contains_expected_sentinel"] is True
+    assert result["retry_attempt_count"] == 1
+    assert result["transient_retry_attempted"] is True
+    assert result["transient_retry_reason"] == "first_turn_null_project_retry_response"
+    assert len(result["attempts"]) == 2
+    assert result["attempts"][0]["status"] == "wrong_project"
+    assert result["attempts"][1]["status"] == "verified"
+    assert len(calls) == 2
+
+
+def test_ask_live_plain_does_not_retry_real_wrong_project(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from promptbranch_cli import _run_ask_live_step
+
+    expected_project_url = "https://chatgpt.com/g/g-p-11111111111111111111111111111111/project"
+    wrong_conversation_url = "https://chatgpt.com/g/g-p-22222222222222222222222222222222/c/00000000-0000-0000-0000-000000000092"
+    calls = 0
+
+    class FakeBackend:
+        async def ask(self, **kwargs):
+            nonlocal calls
+            calls += 1
+            return {
+                "ok": True,
+                "answer": "ASK_LIVE_PLAIN_UNIT",
+                "conversation_url": wrong_conversation_url,
+                "rate_limit_telemetry": {"service_rate_limit_events": []},
+            }
+
+    result = asyncio.run(_run_ask_live_step(
+        FakeBackend(),
+        SimpleNamespace(conversation_url=expected_project_url, keep_open=False, retries=None),
+        name="plain",
+        prompt="Return exactly the single token ASK_LIVE_PLAIN_UNIT and nothing else.",
+        expected_sentinel="ASK_LIVE_PLAIN_UNIT",
+        expected_project_home_url=expected_project_url,
+        transient_retry_attempts=1,
+    ))
+
+    assert result["ok"] is False
+    assert result["status"] == "wrong_project"
+    assert result["retry_attempt_count"] == 0
+    assert result["transient_retry_attempted"] is False
+    assert calls == 1

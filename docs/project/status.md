@@ -588,3 +588,11 @@ The goal is not to add new live browser behavior. The goal is to make the broad 
 This slice also adds a first-class localhost cooldown audit. Localhost/offline matrix groups must not consume browser cooldown sleeps or retries; any rate-limit evidence in those groups is surfaced for operator review instead of hidden in repeated reruns.
 
 Out of scope: Project Source mutation semantics, adoption/current behavior, ChatGPT Project deletion behavior, loop behavior, Kubernetes/deployment behavior, and live selector/path changes.
+
+## v0.1.91.1 repair status — Ask-live first-turn retry and run-all aggregation
+
+`v0.1.91.1` is a repair-only candidate on top of accepted/current `v0.1.91`. It keeps the `v0.1.91` run-all evidence reuse and localhost cooldown audit scope intact while repairing the failed run-all proof.
+
+The repair is limited to two defects: the first `ask_live` plain step may retry once when ChatGPT returns the generic null-project Retry answer with no conversation URL or Project identity, and the all-tests summary now prefers live command result payloads over nested helper/schema objects so successful `live_project_ensure`, `visual_artifact_roundtrip`, and `release_live` steps are not listed as failed.
+
+Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.91.zip` until `v0.1.91.1` is installed, validated, source-added/adopted, and proven current by `pb artifact current --json`.

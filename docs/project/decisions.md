@@ -295,3 +295,10 @@ If post-commit recovery times out but the current Project Sources surface visibl
 `--run-all-tests` may reuse direct `full_direct` validation only when evidence proves the same artifact SHA256, version, artifact ref, transport, service base, runtime mode, strict source-kind matrix mode, command signature, and green test/report status. Same filename or same version is not enough.
 
 The localhost matrix remains a separate validation dimension. It must be executed unless it has its own matching evidence in a later slice. Localhost/offline validation must not sleep/retry on browser cooldown evidence; any such evidence is surfaced by `localhost_matrix_cooldown_audit`.
+
+
+## Decision — v0.1.91.1 null-project Retry is transient only without Project evidence
+
+The first ask-live plain prompt may receive ChatGPT's generic “Something went wrong... Retry” response without a conversation URL or Project identity. That condition may be retried once as a transient service response. A response with a concrete wrong Project identity remains a real wrong-project failure and must not be retried away or marked green.
+
+Run-all summary aggregation must prefer top-level live command result payloads over nested helper/schema JSON objects emitted in verbose browser logs. Successful live steps must not be listed in `failed_steps` merely because a later nested helper object had a schema/status field.

@@ -1330,3 +1330,8 @@ Make `--run-all-tests` prove that it reuses already-passed direct `--run-tests` 
 ### Out of scope
 
 No live browser behavior changes, no Project Source mutation changes, no adoption/current changes, no Project deletion changes, no loop behavior changes, and no deployment/Kubernetes behavior.
+
+
+### v0.1.91.1 repair note
+
+Repair-only continuation of `v0.1.91`. Fix the `--run-all-tests` proof failure by adding a narrow one-time retry for the first ask-live plain step when ChatGPT returns a generic null-project Retry response, while keeping concrete wrong-Project failures release-blocking. Also fix all-tests summary aggregation so successful live command payloads are not displaced by nested helper/schema JSON objects in verbose logs. Do not advance evidence-reuse scope, localhost audit scope, adoption semantics, Project deletion behavior, Project Source behavior, loop behavior, or deployment behavior.
