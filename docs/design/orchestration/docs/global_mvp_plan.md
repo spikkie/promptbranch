@@ -172,3 +172,10 @@ The k8s-game remains the lifecycle test vehicle for orchestration state. The orc
 The MVP direction is now loop-first: Promptbranch should solve bounded problems through controlled loops. The Kubernetes game remains the first future target fixture, but the immediate work is to define target schemas and dry-run plans before any implementation or deployment.
 
 `v0.1.87` adds target schema validation and a side-effect-free dry-run planner. No target commands are executed.
+
+
+## v0.1.92 MVP-1 state-only walkthrough update
+
+MVP-0 is the Promptbranch control-plane/release foundation. It is considered complete after accepted/current `v0.1.91.10` evidence. MVP-1 begins with the smallest safe automatic-plan-loop proof: a state-only walkthrough over the existing dry-run loop plan.
+
+The first MVP-1 step is `pb loop run --state-only`: print the planned state names only, without executing actions, tests, corrections, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.

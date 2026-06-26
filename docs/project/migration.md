@@ -608,3 +608,8 @@ No data migration. This repair changes only release-control adopt-after-validati
 ## Repair migration note — v0.1.91.10
 
 No data migration. This repair changes release-control/test-suite diagnostics only: run-all progress JSON uses `chr(10)` for safe newline writing, and the `browser_scheduler_source_lifecycle` release-validation group reports per-nodeid progress and timeout diagnostics. Operators should rerun `v0.1.91.10 --run-all-tests --adopt-after-validation`; if the scheduler group times out, inspect the reported `active_nodeid` instead of guessing from empty stdout/stderr tails.
+
+
+## v0.1.92 migration note
+
+No user data, Project Source, artifact-current, or deployment migration is performed. Operators may use `pb loop run --target <file> --state-only` to print the planned loop state walkthrough only. Existing `pb loop run` dry-run output remains available. The Kubernetes game remains a future acceptance scenario and is not implemented or deployed in this slice.

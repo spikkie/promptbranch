@@ -268,4 +268,6 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 
 | v0.1.91.9 | repair | Adopt-after-validation localhost lifecycle-reuse report path repair plus run-all progress telemetry | candidate | focused shell tests, version/control-surface tests, compileall, bash syntax, artifact guard before operator install | no slice advanced | pending adoption evidence |
 
-| v0.1.91.10 | repair | Run-all progress writer syntax and browser scheduler timeout diagnostics | candidate | focused progress writer/per-nodeid diagnostics tests, explicit browser scheduler nodeid group execution, version/control-surface tests, compileall, bash syntax, Artifact Guardian, ZIP hygiene | DOD-122 focused; no normal slice advanced | pending adoption evidence |
+| v0.1.91.10 | repair | Run-all progress writer syntax and browser scheduler timeout diagnostics | accepted_current | operator-provided run-all/adopt-current evidence; all_tests_final_verdict=GO; `Adopt verified`; runtime/state/source/registry alignment true | DOD-121 and DOD-122 done; no normal slice advanced | 610185adcc3170baa6910b73f494f6ba8059af728d413c7d3474a8da6419c257 |
+
+| v0.1.92 | normal | MVP-1 state-only loop walkthrough | candidate | focused loop/CLI/version/project-control tests, compileall, Artifact Guardian, ZIP hygiene; full release-control/adoption pending | DOD-123 focused; first MVP-1 normal slice from accepted/current v0.1.91.10 | pending adoption evidence |

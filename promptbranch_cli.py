@@ -82,8 +82,10 @@ from promptbranch_orchestration import (
     validate_paths as validate_orchestration_event_paths,
 )
 from promptbranch_loop import (
+    build_loop_state_only_payload,
     plan_loop_target_file,
     render_loop_plan_text,
+    render_loop_state_only_text,
     render_loop_validation_text,
     validate_loop_target_file,
 )
@@ -8047,11 +8049,18 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
             print(render_loop_plan_text(payload), end="")
         return 0 if payload.get("ok") else 1
     if loop_command == "run":
-        # v0.1.87 intentionally supports dry-run/stubbed control flow only.
+        # The loop runner remains dry-run/stubbed only. ``--state-only`` is a
+        # presentation mode over the same planned states; it does not execute
+        # actions, commands, tests, deployment, Project Source mutation, or
+        # artifact adoption.
         payload = plan_loop_target_file(target, execute_stubbed=True)
         payload["dry_run"] = True
+        if getattr(args, "state_only", False):
+            payload = build_loop_state_only_payload(payload)
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
+        elif getattr(args, "state_only", False):
+            print(render_loop_state_only_text(payload), end="")
         else:
             print(render_loop_plan_text(payload), end="")
         return 0 if payload.get("ok") else 1
@@ -23875,9 +23884,10 @@ def make_parser() -> argparse.ArgumentParser:
     loop_plan.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
     loop_plan.add_argument("--json", action="store_true", help="Emit dry-run plan as JSON.")
 
-    loop_run = loop_subparsers.add_parser("run", help="Run the stubbed loop control flow. v0.1.87 is dry-run only.")
+    loop_run = loop_subparsers.add_parser("run", help="Run the stubbed loop control flow. v0.1.92 is dry-run only and can print states only.")
     loop_run.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
-    loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. v0.1.87 always runs as dry-run/stubbed only.")
+    loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. v0.1.92 always runs as dry-run/stubbed only.")
+    loop_run.add_argument("--state-only", action="store_true", help="Print only the planned loop state names; no actions are executed.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

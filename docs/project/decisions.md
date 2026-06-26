@@ -344,3 +344,5 @@ When `full_localhost` is intentionally reused from matching green `full_direct` 
 ## Decision — v0.1.91.10 browser scheduler validation reports active nodeids
 
 The required `browser_scheduler_source_lifecycle` release-validation group remains required and continues to use the same explicit fast pytest nodeids, but its execution now reports per-nodeid progress. This avoids opaque 300-second timeouts with empty stdout/stderr tails and gives operators the active nodeid without increasing timeouts or weakening validation. The run-all progress writer uses `chr(10)` to avoid shell-generated Python newline quoting defects.
+
+| ADR-PROJ-092 | 2026-06-26 | MVP-1 starts with a state-only loop walkthrough | The original Kubernetes game target was a useful acceptance scenario, but the real product direction is Promptbranch working through a plan in controlled steps | `v0.1.92` adds `pb loop run --state-only`; it prints only planned states and preserves no-execution/no-mutation boundaries. The k8s game remains a future acceptance scenario, not the opening implementation slice. |
