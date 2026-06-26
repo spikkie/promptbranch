@@ -650,8 +650,15 @@ MVP-0 foundation is complete by accepted/current evidence for `chatgpt_claudecod
 
 The first MVP-1 slice is deliberately minimal: walk a target through the existing dry-run loop state machine and print only the state transitions. The Kubernetes game remains the first future acceptance scenario, not implementation scope for the opening slice.
 
-## v0.1.92 candidate status
+## v0.1.92 accepted/current status
 
-`v0.1.92` adds `pb loop run --state-only` as a presentation-only dry-run walkthrough. It prints only planned state names in text mode and emits a compact `mode=state_only` JSON payload when `--json` is supplied.
+`v0.1.92` added `pb loop run --state-only` as a presentation-only dry-run walkthrough. It prints only planned state names in text mode and emits a compact `mode=state_only` JSON payload when `--json` is supplied. Full release-control/adoption completed successfully and `v0.1.92` is the accepted/current MVP-1 opening baseline.
 
 No execution semantics change: no commands, tests, file mutation, deployment, Kubernetes apply, Project Source mutation, artifact adoption, or ChatGPT Project deletion are performed.
+
+
+## v0.1.93 candidate status
+
+`v0.1.93` advances MVP-1 with `pb loop run --planned-actions`. The command prints one planned action and validation gate per state while preserving the same dry-run/no-execution semantics as `--state-only` and default loop run.
+
+This slice is intentionally still non-mutating: it does not execute commands, tests, corrections, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.

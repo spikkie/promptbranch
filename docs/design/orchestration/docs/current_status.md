@@ -114,3 +114,8 @@ The candidate is side-effect free. It validates target definitions and emits dry
 After the accepted/current `v0.1.91.10` release-control foundation proof, MVP-1 opens with a state-only loop walkthrough. The command `pb loop run --target examples/loop-targets/static-game-dry-run-target.json --state-only` prints only the planned state sequence and remains side-effect free.
 
 This slice does not implement the Kubernetes game, execute validation commands, mutate files, deploy to Kubernetes, mutate Project Sources, or adopt artifacts. The Kubernetes game remains the first future acceptance scenario for the loop once state walkthrough and later controlled action gates are proven.
+
+
+## v0.1.93 planned-action walkthrough
+
+MVP-1 advances from state-only output to a planned-action walkthrough. `pb loop run --planned-actions` prints the planned action and validation gate for each loop state while remaining fully side-effect free. This prepares the future execution loop without granting execution authority yet.

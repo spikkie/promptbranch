@@ -90,4 +90,6 @@ MVP-1:
 
 `v0.1.91.10` completed the MVP-0 foundation proof: candidate ZIP install/import, service bootstrap, Project Source add, full validation, run-all progress, Artifact Guardian, adopt-after-validation, and artifact-current alignment.
 
-`v0.1.92` opens MVP-1 with the smallest safe step: `pb loop run --state-only` walks the existing dry-run loop state machine and prints only state transitions. The Kubernetes game remains the first future acceptance scenario, not an implementation target in this slice.
+`v0.1.92` opened MVP-1 with the smallest safe step: `pb loop run --state-only` walks the existing dry-run loop state machine and prints only state transitions.
+
+`v0.1.93` advances MVP-1 from state names to a planned-action walkthrough: `pb loop run --planned-actions` prints what each state would do and which gate would validate it, while still performing no commands, tests, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion. The Kubernetes game remains the first future acceptance scenario, not an implementation target in this slice.

@@ -34,6 +34,68 @@ FORBIDDEN_ACTION_DEFAULTS = [
     "destructive_filesystem_change",
 ]
 
+LOOP_ACTION_WALKTHROUGH_SCHEMA = "promptbranch.loop.action_walkthrough"
+LOOP_ACTION_WALKTHROUGH_SCHEMA_VERSION = "1.0"
+
+STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
+    "INTAKE": (
+        "load target definition and create loop context",
+        "target JSON parsed and target_id/goal are available",
+    ),
+    "REQUIREMENTS_CHECK": (
+        "verify bounded requirements before any action is considered",
+        "allowed_paths and validation_commands are present or human input is required",
+    ),
+    "PLAN": (
+        "derive the bounded step plan from the validated target",
+        "plan is explicit, ordered, and still side-effect free",
+    ),
+    "ACT_STUB": (
+        "describe the action that would be taken in a future execution slice",
+        "no command, file mutation, Project Source mutation, or deployment is performed",
+    ),
+    "TEST_STUB": (
+        "list validation commands that would be used in a future execution slice",
+        "commands are listed but not executed",
+    ),
+    "VERIFY_STUB": (
+        "describe how validation evidence would be checked",
+        "verification remains synthetic and side-effect free",
+    ),
+    "DIAGNOSE_STUB": (
+        "describe how a failed validation would be diagnosed",
+        "no corrective action is executed automatically",
+    ),
+    "CORRECT_STUB": (
+        "describe the correction phase without mutating files",
+        "correction remains proposal-only",
+    ),
+    "DEPLOY_GATE_STUB": (
+        "evaluate whether deployment is allowed for this target",
+        "deployment is not performed in MVP-1 dry-run walkthroughs",
+    ),
+    "DEPLOY_STUB": (
+        "describe deployment that would happen only after an explicit future gate",
+        "no Kubernetes, Docker, or Helm mutation is performed",
+    ),
+    "POST_DEPLOY_VERIFY_STUB": (
+        "describe post-deployment verification for a future execution slice",
+        "no cluster or external system is inspected or mutated",
+    ),
+    "SOLVED": (
+        "stop the loop because the dry-run plan reaches its terminal success state",
+        "final state is recorded without artifact adoption",
+    ),
+    "REQUIREMENTS_MISSING": (
+        "stop and ask the operator for missing requirements",
+        "missing requirement is explicit and no action is performed",
+    ),
+    "BLOCKED": (
+        "stop because target parsing or validation blocked planning",
+        "error is reported without side effects",
+    ),
+}
+
 @dataclass(frozen=True)
 class LoopTarget:
     target_id: str
@@ -177,7 +239,18 @@ def validate_loop_target_file(path: str | Path) -> dict[str, Any]:
     }
 
 
+
+def _state_action_blueprint(state: str) -> tuple[str, str]:
+    return STATE_ACTION_BLUEPRINTS.get(
+        state,
+        (
+            "describe planned state transition without executing it",
+            "state transition remains side-effect free",
+        ),
+    )
+
 def _event(loop_id: str, target: LoopTarget, index: int, state: str, *, decision: str, next_state: str | None, status: str = "planned") -> dict[str, Any]:
+    planned_action, validation_gate = _state_action_blueprint(state)
     return {
         "loop_id": loop_id,
         "target_id": target.target_id,
@@ -186,6 +259,9 @@ def _event(loop_id: str, target: LoopTarget, index: int, state: str, *, decision
         "state": state,
         "status": status,
         "decision": decision,
+        "planned_action": planned_action,
+        "validation_gate": validation_gate,
+        "execution_status": "not_executed_dry_run",
         "next_state": next_state,
         "side_effects_performed": False,
         "mutation_allowed": False,
@@ -334,6 +410,76 @@ def build_loop_state_only_payload(plan: dict[str, Any]) -> dict[str, Any]:
         "operator_instruction": "State-only dry-run walkthrough. It prints planned loop states only and performs no actions, tests, corrections, deployment, Project Source mutation, or artifact adoption.",
     }
 
+
+
+def build_loop_action_walkthrough_payload(plan: dict[str, Any]) -> dict[str, Any]:
+    actions: list[dict[str, Any]] = []
+    for event in plan.get("events") or []:
+        state = event.get("state")
+        if not state:
+            continue
+        planned_action = event.get("planned_action")
+        validation_gate = event.get("validation_gate")
+        if not planned_action or not validation_gate:
+            planned_action, validation_gate = _state_action_blueprint(str(state))
+        actions.append({
+            "index": event.get("event_index"),
+            "state": state,
+            "status": event.get("status"),
+            "decision": event.get("decision"),
+            "planned_action": planned_action,
+            "validation_gate": validation_gate,
+            "execution_status": "not_executed_dry_run",
+            "next_state": event.get("next_state"),
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "deployment_allowed": False,
+            "artifact_adoption_allowed": False,
+            "project_source_mutation_allowed": False,
+        })
+    return {
+        "ok": bool(plan.get("ok")),
+        "schema": LOOP_ACTION_WALKTHROUGH_SCHEMA,
+        "schema_version": LOOP_ACTION_WALKTHROUGH_SCHEMA_VERSION,
+        "action": "loop_run",
+        "status": plan.get("status"),
+        "mode": "planned_actions",
+        "target_id": plan.get("target_id"),
+        "target_path": plan.get("target_path"),
+        "loop_id": plan.get("loop_id"),
+        "final_state": plan.get("final_state"),
+        "action_count": len(actions),
+        "states": [item["state"] for item in actions],
+        "actions": actions,
+        "dry_run": True,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "Planned-action dry-run walkthrough. It explains what each state would do next, but performs no commands, tests, corrections, deployment, Project Source mutation, or artifact adoption.",
+    }
+
+
+def render_loop_action_walkthrough_text(payload: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for item in payload.get("actions") or []:
+        state = item.get("state") or "UNKNOWN"
+        planned_action = item.get("planned_action") or "none"
+        validation_gate = item.get("validation_gate") or "none"
+        next_state = item.get("next_state") or "none"
+        lines.append(f"{state} | action={planned_action} | gate={validation_gate} | next={next_state}")
+    if lines:
+        return "\n".join(lines) + "\n"
+    if payload.get("error"):
+        return "ERROR\n"
+    return ""
 
 def render_loop_state_only_text(payload: dict[str, Any]) -> str:
     states = payload.get("states") or []

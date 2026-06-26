@@ -179,3 +179,8 @@ The MVP direction is now loop-first: Promptbranch should solve bounded problems 
 MVP-0 is the Promptbranch control-plane/release foundation. It is considered complete after accepted/current `v0.1.91.10` evidence. MVP-1 begins with the smallest safe automatic-plan-loop proof: a state-only walkthrough over the existing dry-run loop plan.
 
 The first MVP-1 step is `pb loop run --state-only`: print the planned state names only, without executing actions, tests, corrections, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.
+
+
+## v0.1.93 planned-action walkthrough
+
+MVP-1 advances from state-only output to a planned-action walkthrough. `pb loop run --planned-actions` prints the planned action and validation gate for each loop state while remaining fully side-effect free. This prepares the future execution loop without granting execution authority yet.

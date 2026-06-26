@@ -342,4 +342,6 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 | DOD-122 | Run-all progress writer emits valid JSON without embedded-Python newline syntax errors, and `browser_scheduler_source_lifecycle` timeout diagnostics expose active/completed/failed/timed-out pytest nodeids without changing required validation semantics | done | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_test_suite.py`, focused shell/test-suite regressions, `docs/repair-v0.1.91.10.md`, all-tests/adopt-current proof | v0.1.91.10 |
 
 
-| DOD-123 | MVP-1 state-only loop walkthrough prints only planned loop states while preserving dry-run/no-side-effect semantics | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.92.md` | v0.1.92 |
+| DOD-123 | MVP-1 state-only loop walkthrough prints only planned loop states while preserving dry-run/no-side-effect semantics | done | accepted/current `v0.1.92`; `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.92.md` | v0.1.92 |
+
+| DOD-124 | MVP-1 planned-action walkthrough prints one planned action and validation gate per state while preserving no-execution semantics | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.93.md` | v0.1.93 |

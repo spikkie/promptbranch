@@ -613,3 +613,8 @@ No data migration. This repair changes release-control/test-suite diagnostics on
 ## v0.1.92 migration note
 
 No user data, Project Source, artifact-current, or deployment migration is performed. Operators may use `pb loop run --target <file> --state-only` to print the planned loop state walkthrough only. Existing `pb loop run` dry-run output remains available. The Kubernetes game remains a future acceptance scenario and is not implemented or deployed in this slice.
+
+
+## v0.1.93 migration note
+
+No operator data migration is required. `v0.1.93` adds a presentation-only planned-action walkthrough for MVP-1. Existing `pb loop validate`, `pb loop plan`, `pb loop run`, and `pb loop run --state-only` behavior is preserved. Operators can use `pb loop run --planned-actions` to inspect the action/gate sequence without executing any actions.
