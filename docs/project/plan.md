@@ -1368,3 +1368,8 @@ Repair only the final all-tests summary aggregation for `live_project_ensure` pa
 ## v0.1.91.6 repair plan
 
 Repair only the adopt-after-validation verifier path after a green run-all summary with reused direct evidence. Preserve all `v0.1.91.1` through `v0.1.91.5` repairs. Do not alter validation semantics, live/browser behavior, adoption/current semantics, Project Source mutation, or Project deletion behavior.
+
+
+## v0.1.91.7 repair plan
+
+Repair only the pre-source-add Docker bootstrap freshness failure where a cached `COPY . .` layer can contain stale version surfaces. Preserve all `v0.1.91.1` through `v0.1.91.6` repairs. Required behavior: use explicit `--project-directory "$repo_root"`, absolute compose file path, `build --no-cache --pull`, repo version-surface diagnostics before build, and fail-closed classification for `pre_source_add_docker_build_context_version_mismatch`.

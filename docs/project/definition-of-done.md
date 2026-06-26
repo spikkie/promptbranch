@@ -329,3 +329,5 @@ Done when run-all summary aggregation selects valid `ok=true` `ensure_project` /
 ## DOD-118 — Adopt-after-validation accepts reused direct evidence report path
 
 Done when `--run-all-tests --adopt-after-validation` does not require `pb_test.full.direct.<version>.report.json` if direct validation was reused. The adoption verifier must accept a green `pb_test.all.<version>.summary.json` plus matching `validation_evidence/full_direct.<version>.json`, and must still fail closed when both the direct report and valid reused evidence are absent.
+
+| DOD-119 | Pre-source-add candidate Docker bootstrap uses explicit repo-root Compose invocation and a no-cache build, records build-context version surfaces, and classifies Docker build-context version mismatches before health probing | done | `chatgpt_claudecode_workflow_release_control.sh`, focused shell contract tests, `docs/repair-v0.1.91.7.md` | v0.1.91.7 |

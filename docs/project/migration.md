@@ -590,3 +590,8 @@ No data migration. Release-control summary parsing is narrowed to select the aut
 ## Repair migration note — v0.1.91.6
 
 No data migration. This repair changes only release-control adopt-after-validation report-path selection for run-all evidence reuse. Operators should rerun `v0.1.91.6 --run-all-tests --adopt-after-validation` to prove the footer no longer crashes after `all_tests_final_verdict=GO`.
+
+
+## Repair migration note — v0.1.91.7
+
+No data migration. This repair changes release-control Docker bootstrap behavior only. Existing Docker images may remain locally, but the pre-source-add candidate service build uses `--no-cache --pull` and explicit repo-root Compose invocation. Operators should rerun `v0.1.91.7 --run-all-tests --adopt-after-validation` to prove the Docker freshness guard and adoption footer path.
