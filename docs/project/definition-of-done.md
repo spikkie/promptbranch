@@ -324,3 +324,8 @@ The release-control Docker lifecycle must be deterministic from clean, dirty, an
 ## DOD-117 — Run-all live_project_ensure terminal-line aggregation
 
 Done when run-all summary aggregation selects valid `ok=true` `ensure_project` / `project_ensure` payloads with a concrete `project_url`, even when the JSON is followed by a human-readable `shared_live_project_url:` line, and does not mark the step failed solely due to nested schema/helper payloads.
+
+
+## DOD-118 — Adopt-after-validation accepts reused direct evidence report path
+
+Done when `--run-all-tests --adopt-after-validation` does not require `pb_test.full.direct.<version>.report.json` if direct validation was reused. The adoption verifier must accept a green `pb_test.all.<version>.summary.json` plus matching `validation_evidence/full_direct.<version>.json`, and must still fail closed when both the direct report and valid reused evidence are absent.

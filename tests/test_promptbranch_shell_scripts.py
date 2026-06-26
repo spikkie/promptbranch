@@ -2827,6 +2827,18 @@ def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audi
     assert "validation_evidence_reuse: reused full_direct" in result.stdout
 
 
+
+def test_release_control_adopt_after_run_all_accepts_reused_direct_evidence_without_direct_report():
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "report_or_reused_full_direct_evidence_green" in script
+    assert "verify_reused_full_direct_evidence_green" in script
+    assert 'validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}"' in script
+    assert "run-all validation reuse evidence is missing or stale" in script
+    assert 'report_or_reused_full_direct_evidence_green "${direct_report_json}"' in script
+    assert 'report_or_reused_full_direct_evidence_green "${report_json}"' in script
+    assert '[[ -f "${path}" ]]' in script
+
+
 def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_contract():
     script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script_path.read_text(encoding="utf-8")

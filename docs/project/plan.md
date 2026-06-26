@@ -1363,3 +1363,8 @@ Required changes:
 ## v0.1.91.5 repair plan
 
 Repair only the final all-tests summary aggregation for `live_project_ensure` payload selection. Preserve ask-live retry, run-all pretty JSON extraction, Docker recreate hardening, pre-source-add service bootstrap, adoption semantics, and Project deletion freeze.
+
+
+## v0.1.91.6 repair plan
+
+Repair only the adopt-after-validation verifier path after a green run-all summary with reused direct evidence. Preserve all `v0.1.91.1` through `v0.1.91.5` repairs. Do not alter validation semantics, live/browser behavior, adoption/current semantics, Project Source mutation, or Project deletion behavior.

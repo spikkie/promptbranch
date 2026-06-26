@@ -585,3 +585,8 @@ The clean-system `v0.1.91.3` attempt failed before post-release Docker verificat
 ## v0.1.91.5 migration note
 
 No data migration. Release-control summary parsing is narrowed to select the authoritative `ensure_project` command payload for `live_project_ensure`.
+
+
+## Repair migration note — v0.1.91.6
+
+No data migration. This repair changes only release-control adopt-after-validation report-path selection for run-all evidence reuse. Operators should rerun `v0.1.91.6 --run-all-tests --adopt-after-validation` to prove the footer no longer crashes after `all_tests_final_verdict=GO`.
