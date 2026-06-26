@@ -619,3 +619,8 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.5 repair candidate status
 
 `v0.1.91.5` repairs only run-all `live_project_ensure` summary aggregation when valid `ensure_project` JSON is followed by a `shared_live_project_url:` terminal line. Accepted/current remains `v0.1.91.1` until this repair is adopted/current.
+
+
+## v0.1.91.6 repair candidate status
+
+`v0.1.91.6` repairs only the adopt-after-validation footer when `--run-all-tests` reaches `GO` through reused direct evidence. In that mode the direct report file may be absent by design, so adoption verification now accepts a green all-tests summary plus valid `validation_evidence/full_direct.<version>.json`. Live behavior, validation semantics, adoption/current semantics, Project Source behavior, and Project deletion behavior are unchanged.

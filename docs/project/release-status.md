@@ -259,3 +259,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | Notes | Candidate CLI/service are installed/verified before `promptbranch src add`; no live/browser, adoption/current, Project Source semantic, or Project deletion behavior changed. |
 
 | v0.1.91.5 | repair | Run-all live_project_ensure aggregation terminal-line repair | candidate | focused aggregation/version/project-control validation before operator release-control | DOD-117 done; no normal slice advanced | pending |
+
+| v0.1.91.6 | repair | Adopt-after-validation run-all evidence-reuse report path repair | candidate | focused adoption-verifier/evidence-reuse contract tests, version/project-control validation, compileall, shell syntax, Artifact Guardian, ZIP hygiene | DOD-118 done; no normal slice advanced | pending |

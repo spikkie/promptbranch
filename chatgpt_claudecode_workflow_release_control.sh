@@ -1922,13 +1922,37 @@ if payload.get("ok") is not True or payload.get("final_verdict") != "GO":
 INNERPY
 }
 
+verify_reused_full_direct_evidence_green() {
+  local command_signature
+  command_signature="$(release_validation_full_test_command_signature 0)"
+  verify_all_tests_summary_green "${all_tests_summary_json}"
+  validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}" "${command_signature}" || \
+    fail "run-all validation reuse evidence is missing or stale: ${full_direct_validation_evidence_json}"
+}
+
+report_or_reused_full_direct_evidence_green() {
+  local path="$1"
+  if [[ -f "${path}" ]]; then
+    report_is_green "${path}"
+    return 0
+  fi
+  if [[ ${run_all_tests} -eq 1 ]]; then
+    verify_reused_full_direct_evidence_green
+    return 0
+  fi
+  report_is_green "${path}"
+}
+
 verify_validation_reports_green() {
   case "${test_transport}" in
-    direct|localhost)
+    direct)
+      report_or_reused_full_direct_evidence_green "${report_json}"
+      ;;
+    localhost)
       report_is_green "${report_json}"
       ;;
     both)
-      report_is_green "${direct_report_json}"
+      report_or_reused_full_direct_evidence_green "${direct_report_json}"
       report_is_green "${localhost_report_json}"
       ;;
   esac
