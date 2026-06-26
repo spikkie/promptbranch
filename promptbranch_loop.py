@@ -304,6 +304,46 @@ def plan_loop_target_file(path: str | Path, *, execute_stubbed: bool = False) ->
     return plan
 
 
+def build_loop_state_only_payload(plan: dict[str, Any]) -> dict[str, Any]:
+    states = [event.get("state") for event in plan.get("events") or [] if event.get("state")]
+    return {
+        "ok": bool(plan.get("ok")),
+        "schema": LOOP_PLANNER_SCHEMA,
+        "schema_version": LOOP_PLANNER_SCHEMA_VERSION,
+        "action": "loop_run",
+        "status": plan.get("status"),
+        "mode": "state_only",
+        "target_id": plan.get("target_id"),
+        "target_path": plan.get("target_path"),
+        "loop_id": plan.get("loop_id"),
+        "final_state": plan.get("final_state"),
+        "state_count": len(states),
+        "states": states,
+        "dry_run": True,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "State-only dry-run walkthrough. It prints planned loop states only and performs no actions, tests, corrections, deployment, Project Source mutation, or artifact adoption.",
+    }
+
+
+def render_loop_state_only_text(payload: dict[str, Any]) -> str:
+    states = payload.get("states") or []
+    if states:
+        return "\n".join(str(state) for state in states) + "\n"
+    if payload.get("error"):
+        return f"ERROR\n"
+    return ""
+
+
 def render_loop_plan_text(plan: dict[str, Any]) -> str:
     lines = [
         f"status={plan.get('status')}",

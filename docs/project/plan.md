@@ -1386,3 +1386,22 @@ Repair the final `v0.1.91.8` adoption-footer path assumption by allowing a green
 ## v0.1.91.10 repair plan
 
 Repair the `v0.1.91.9` embedded Python progress-writer syntax error by using `chr(10)` for JSON newlines, and improve `browser_scheduler_source_lifecycle` observability by emitting per-nodeid progress plus active-nodeid timeout diagnostics. Preserve all `v0.1.91.1` through `v0.1.91.9` repairs and do not change validation semantics or live/browser behavior.
+
+
+## v0.1.92 — MVP-1 state-only loop walkthrough
+
+Baseline: `chatgpt_claudecode_workflow-2_v0.1.91.10.zip`.
+
+Goal: open MVP-1 with the smallest safe automatic-plan-loop proof: walk the existing dry-run target loop through all planned states and print only the state names.
+
+Planned work:
+
+1. Add `pb loop run --target <file> --state-only` text output with one state name per line.
+2. Add `pb loop run --target <file> --state-only --json` with `mode=state_only` and a `states` array.
+3. Preserve the existing verbose dry-run output for `pb loop run` without `--state-only`.
+4. Add focused loop/CLI tests proving no side effects and no events in state-only JSON.
+5. Update MVP/control-surface docs to mark MVP-0 complete and MVP-1 opened.
+
+Out of scope: real implementation actions, validation command execution, file mutation by the loop, Docker/Kubernetes/Helm deployment, Project Source mutation, artifact adoption/current behavior changes, ChatGPT Project deletion, and the actual Kubernetes game implementation.
+
+Exit criteria: focused loop/CLI/version/project-control tests, compileall, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.

@@ -642,3 +642,16 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.10 repair candidate status
 
 `v0.1.91.10` repairs only the `v0.1.91.9` progress-writer syntax defect and the opaque `browser_scheduler_source_lifecycle` release-validation timeout diagnostics. Run-all progress JSON now writes newlines via `chr(10)` to avoid shell/heredoc escaping corruption. The browser scheduler/source lifecycle group keeps the same explicit pytest nodeids and required status, but executes them with per-nodeid progress markers and timeout summaries that include the active nodeid, completed nodeids, failed nodeids, and timed-out nodeids. Live/browser behavior, validation pass/fail semantics, adoption/current semantics, Project Source semantics, Project deletion behavior, Docker bootstrap behavior, and localhost lifecycle reuse policy are unchanged.
+
+
+## MVP-0 / MVP-1 status after v0.1.91.10
+
+MVP-0 foundation is complete by accepted/current evidence for `chatgpt_claudecode_workflow-2_v0.1.91.10.zip`. The next normal line opens MVP-1: automatic multi-step plan execution.
+
+The first MVP-1 slice is deliberately minimal: walk a target through the existing dry-run loop state machine and print only the state transitions. The Kubernetes game remains the first future acceptance scenario, not implementation scope for the opening slice.
+
+## v0.1.92 candidate status
+
+`v0.1.92` adds `pb loop run --state-only` as a presentation-only dry-run walkthrough. It prints only planned state names in text mode and emits a compact `mode=state_only` JSON payload when `--json` is supplied.
+
+No execution semantics change: no commands, tests, file mutation, deployment, Kubernetes apply, Project Source mutation, artifact adoption, or ChatGPT Project deletion are performed.

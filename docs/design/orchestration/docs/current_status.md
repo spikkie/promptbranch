@@ -107,3 +107,10 @@ Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.86.zip`.
 Current candidate direction: `v0.1.87 — Loop target schema and dry-run planner`.
 
 The candidate is side-effect free. It validates target definitions and emits dry-run loop plans only. K8s-game work is represented as a future target fixture, not as implementation or deployment.
+
+
+## v0.1.92 current status — MVP-1 state-only loop walkthrough
+
+After the accepted/current `v0.1.91.10` release-control foundation proof, MVP-1 opens with a state-only loop walkthrough. The command `pb loop run --target examples/loop-targets/static-game-dry-run-target.json --state-only` prints only the planned state sequence and remains side-effect free.
+
+This slice does not implement the Kubernetes game, execute validation commands, mutate files, deploy to Kubernetes, mutate Project Sources, or adopt artifacts. The Kubernetes game remains the first future acceptance scenario for the loop once state walkthrough and later controlled action gates are proven.

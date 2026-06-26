@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from promptbranch_loop import plan_loop_target_file, validate_loop_target_file
+from promptbranch_loop import build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
 
 
 def test_loop_target_schema_validates_static_game_fixture():
@@ -55,3 +55,18 @@ def test_loop_invalid_target_does_not_perform_side_effects(tmp_path: Path):
     assert payload["final_state"] == "BLOCKED"
     assert payload["side_effects_performed"] is False
     assert payload["safety"]["deployment_performed"] is False
+
+
+def test_loop_state_only_payload_is_presentation_only():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    payload = build_loop_state_only_payload(plan)
+    assert payload["ok"] is True
+    assert payload["mode"] == "state_only"
+    assert payload["states"] == plan["planned_states"]
+    assert payload["state_count"] == len(plan["planned_states"])
+    assert payload["side_effects_performed"] is False
+    assert payload["safety"]["commands_executed"] is False
+    assert payload["safety"]["deployment_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+    assert "events" not in payload

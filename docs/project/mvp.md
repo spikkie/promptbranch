@@ -76,3 +76,18 @@ This MVP is complete only when the Definition of Done in docs/project/definition
 The Kubernetes game remains a controlled test vehicle for the JSON orchestration state MVP. It is not yet an implementation target in this release.
 
 `v0.1.86` reconciles the project control surface and orchestration design docs against accepted/current `chatgpt_claudecode_workflow-2_v0.1.85.zip`. Game implementation, Docker image changes, Kubernetes manifest application, Helm use, cluster mutation, Project Source mutation, artifact adoption/current behavior changes, and accepted-event ledger writes are out of scope for this slice.
+
+
+## MVP-0 / MVP-1 framing
+
+```text
+MVP-0:
+  Promptbranch release/artifact/control-plane foundation.
+
+MVP-1:
+  Automatic multi-step plan execution loop, starting with state-only walkthrough.
+```
+
+`v0.1.91.10` completed the MVP-0 foundation proof: candidate ZIP install/import, service bootstrap, Project Source add, full validation, run-all progress, Artifact Guardian, adopt-after-validation, and artifact-current alignment.
+
+`v0.1.92` opens MVP-1 with the smallest safe step: `pb loop run --state-only` walks the existing dry-run loop state machine and prints only state transitions. The Kubernetes game remains the first future acceptance scenario, not an implementation target in this slice.
