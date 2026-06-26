@@ -595,3 +595,8 @@ No data migration. This repair changes only release-control adopt-after-validati
 ## Repair migration note — v0.1.91.7
 
 No data migration. This repair changes release-control Docker bootstrap behavior only. Existing Docker images may remain locally, but the pre-source-add candidate service build uses `--no-cache --pull` and explicit repo-root Compose invocation. Operators should rerun `v0.1.91.7 --run-all-tests --adopt-after-validation` to prove the Docker freshness guard and adoption footer path.
+
+
+## Repair migration note — v0.1.91.8
+
+No data migration. This repair changes release-control run-all orchestration only: `full_localhost` reuses matching direct browser/source lifecycle evidence instead of rerunning live Project Source mutations. Operators should rerun `v0.1.91.8 --run-all-tests --adopt-after-validation` to prove the single-live-browser-source-lifecycle flow.

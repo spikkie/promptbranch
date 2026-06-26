@@ -629,3 +629,8 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.7 repair candidate status
 
 `v0.1.91.7` repairs only the pre-source-add Docker bootstrap build freshness path. It preserves the `v0.1.91.1` through `v0.1.91.6` repair stack and changes release-control so candidate service bootstrap uses explicit repo-root Docker Compose invocation with a no-cache candidate build. Docker build-context version mismatches are classified before health probing. Live/browser behavior, validation semantics, adoption/current semantics, Project Source semantics, and Project deletion behavior are unchanged.
+
+
+## v0.1.91.8 repair candidate status
+
+`v0.1.91.8` repairs only the run-all localhost duplicate live-source mutation path. After matching green `full_direct` evidence exists for the same artifact/version/hash/dimensions, `full_localhost` reuses the direct browser/source lifecycle proof instead of rerunning Project Source mutations. Localhost service/report/cooldown audit visibility is preserved. No live/browser command behavior, adoption/current semantics, Project Source semantics, or Project deletion behavior changed.
