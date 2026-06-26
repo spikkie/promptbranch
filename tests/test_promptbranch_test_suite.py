@@ -725,3 +725,100 @@ def test_release_validation_group_strips_browser_service_env(monkeypatch, tmp_pa
     assert result["ok"] is True
     assert "CHATGPT_SERVICE_BASE_URL" not in captured["env"]
     assert "PROMPTBRANCH_SERVICE_BASE_URL" not in captured["env"]
+
+
+def test_browser_scheduler_release_validation_group_uses_nodeid_progress() -> None:
+    manifest = suite.release_validation_group_manifest()
+    group = manifest["browser_scheduler_source_lifecycle"]
+
+    assert group["nodeid_progress"] is True
+
+
+def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    class Completed:
+        returncode = 0
+        stdout = "passed node\n"
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+        return Completed()
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite._run_release_validation_group(
+        "browser_scheduler_source_lifecycle",
+        {
+            "required": True,
+            "description": "nodeid progress demo",
+            "timeout_seconds": 300.0,
+            "nodeid_progress": True,
+            "command": [
+                suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER,
+                "-m",
+                "pytest",
+                "-q",
+                "tests/test_demo.py::test_one",
+                "tests/test_demo.py::test_two",
+            ],
+        },
+        repo_path=tmp_path,
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "passed"
+    assert result["command_mode"] == "per_nodeid_progress"
+    assert result["completed_nodeids"] == ["tests/test_demo.py::test_one", "tests/test_demo.py::test_two"]
+    assert result["failed_nodeids"] == []
+    assert result["timed_out_nodeids"] == []
+    assert calls == [
+        ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_one"],
+        ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_two"],
+    ]
+    assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=1/2 nodeid=tests/test_demo.py::test_one" in result["stdout_tail"]
+
+
+def test_release_validation_group_nodeid_progress_timeout_reports_active_nodeid(monkeypatch, tmp_path: Path) -> None:
+    def fake_run(command, **kwargs):
+        if command[-1].endswith("test_two"):
+            raise suite.subprocess.TimeoutExpired(command, timeout=kwargs.get("timeout"), output="started two\n", stderr="waiting\n")
+
+        class Completed:
+            returncode = 0
+            stdout = "passed one\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite._run_release_validation_group(
+        "browser_scheduler_source_lifecycle",
+        {
+            "required": True,
+            "description": "nodeid timeout demo",
+            "timeout_seconds": 300.0,
+            "nodeid_progress": True,
+            "command": [
+                suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER,
+                "-m",
+                "pytest",
+                "-q",
+                "tests/test_demo.py::test_one",
+                "tests/test_demo.py::test_two",
+            ],
+        },
+        repo_path=tmp_path,
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "timeout"
+    assert result["command_mode"] == "per_nodeid_progress"
+    assert result["active_nodeid"] == "tests/test_demo.py::test_two"
+    assert result["completed_nodeids"] == ["tests/test_demo.py::test_one"]
+    assert result["failed_nodeids"] == []
+    assert result["timed_out_nodeids"] == ["tests/test_demo.py::test_two"]
+    assert result["nodeid_results"][-1]["status"] == "timeout"
+    assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=2/2 nodeid=tests/test_demo.py::test_two" in result["stdout_tail"]

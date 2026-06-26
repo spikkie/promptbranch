@@ -638,3 +638,7 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.9 repair candidate status
 
 `v0.1.91.9` repairs only the adopt-after-validation footer when `full_localhost` is intentionally represented by `reused_browser_source_lifecycle` instead of a standalone `pb_test.full.localhost.<version>.report.json`. It also adds incremental run-all progress telemetry so operators can see tested/succeeded/failed percentages before the final summary. It preserves all `v0.1.91.1` through `v0.1.91.8` repairs and does not change live/browser behavior, validation semantics, adoption/current semantics, Project Source semantics, or Project deletion behavior.
+
+## v0.1.91.10 repair candidate status
+
+`v0.1.91.10` repairs only the `v0.1.91.9` progress-writer syntax defect and the opaque `browser_scheduler_source_lifecycle` release-validation timeout diagnostics. Run-all progress JSON now writes newlines via `chr(10)` to avoid shell/heredoc escaping corruption. The browser scheduler/source lifecycle group keeps the same explicit pytest nodeids and required status, but executes them with per-nodeid progress markers and timeout summaries that include the active nodeid, completed nodeids, failed nodeids, and timed-out nodeids. Live/browser behavior, validation pass/fail semantics, adoption/current semantics, Project Source semantics, Project deletion behavior, Docker bootstrap behavior, and localhost lifecycle reuse policy are unchanged.

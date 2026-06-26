@@ -3652,8 +3652,7 @@ payload = {
     "failure_percent_of_tested": failure_percent,
     "steps": steps,
 }
-out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "
-", encoding="utf-8")
+out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
 print(
     "all_tests_progress: "
     f"tested={tested}/{expected} tested_percent={tested_percent:.1f} "

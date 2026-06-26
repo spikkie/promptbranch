@@ -1382,3 +1382,7 @@ Repair only the duplicate live browser/source lifecycle in the localhost leg of 
 ## v0.1.91.9 repair plan
 
 Repair the final `v0.1.91.8` adoption-footer path assumption by allowing a green all-tests summary plus validated direct evidence and a `full_localhost` `reused_browser_source_lifecycle` step to satisfy adoption verification when the localhost report file is absent by design. Add incremental run-all progress output so long validation runs expose tested/succeeded/failed percentages before completion.
+
+## v0.1.91.10 repair plan
+
+Repair the `v0.1.91.9` embedded Python progress-writer syntax error by using `chr(10)` for JSON newlines, and improve `browser_scheduler_source_lifecycle` observability by emitting per-nodeid progress plus active-nodeid timeout diagnostics. Preserve all `v0.1.91.1` through `v0.1.91.9` repairs and do not change validation semantics or live/browser behavior.
