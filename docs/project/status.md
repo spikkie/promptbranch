@@ -624,3 +624,8 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.6 repair candidate status
 
 `v0.1.91.6` repairs only the adopt-after-validation footer when `--run-all-tests` reaches `GO` through reused direct evidence. In that mode the direct report file may be absent by design, so adoption verification now accepts a green all-tests summary plus valid `validation_evidence/full_direct.<version>.json`. Live behavior, validation semantics, adoption/current semantics, Project Source behavior, and Project deletion behavior are unchanged.
+
+
+## v0.1.91.7 repair candidate status
+
+`v0.1.91.7` repairs only the pre-source-add Docker bootstrap build freshness path. It preserves the `v0.1.91.1` through `v0.1.91.6` repair stack and changes release-control so candidate service bootstrap uses explicit repo-root Docker Compose invocation with a no-cache candidate build. Docker build-context version mismatches are classified before health probing. Live/browser behavior, validation semantics, adoption/current semantics, Project Source semantics, and Project deletion behavior are unchanged.

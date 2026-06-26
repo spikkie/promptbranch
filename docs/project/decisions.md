@@ -326,3 +326,8 @@ This is a repair-only release-control ordering decision and does not alter Proje
 ## Decision — v0.1.91.6 run-all reused evidence is a valid adoption proof input
 
 When `--run-all-tests` reuses direct validation evidence, the old direct report JSON path may be absent by design. The adoption verifier must therefore validate the green all-tests summary and the matching direct validation evidence instead of requiring `pb_test.full.direct.<version>.report.json`. This is a report-path repair only; evidence matching remains fail-closed.
+
+
+## Decision — v0.1.91.7 pre-source-add candidate Docker builds are no-cache
+
+Release-control candidate service bootstrap is adoption-grade validation, not a developer convenience build. Pre-source-add Docker bootstrap must use a no-cache build with explicit repo-root Compose invocation so stale application-source layers cannot pass into Project Source mutation. A Docker build-context version mismatch is classified before health probing and remains release-blocking.

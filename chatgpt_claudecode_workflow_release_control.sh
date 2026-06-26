@@ -1305,12 +1305,13 @@ if [[ ${skip_install} -eq 0 ]]; then
   pipx install "./${artifact_zip}"
 fi
 
-compose_file="docker-compose.chatgpt-service.yml"
+compose_file="${repo_root}/docker-compose.chatgpt-service.yml"
 pre_source_add_service_health_json="${release_log_dir}/pre_source_add_service_health.${ver}.json"
 pre_source_add_service_start_log="${release_log_dir}/pre_source_add_service_start.${ver}.log"
 pre_source_add_docker_preflight_json="${release_log_dir}/pre_source_add_docker_preflight.${ver}.json"
 pre_source_add_docker_compose_ps_json="${release_log_dir}/pre_source_add_docker_compose_ps.${ver}.json"
 pre_source_add_docker_compose_logs_path="${release_log_dir}/pre_source_add_docker_compose_logs.${ver}.log"
+pre_source_add_build_context_json="${release_log_dir}/pre_source_add_build_context.${ver}.json"
 
 pre_source_add_release_artifact_sha256() {
   local path="${repo_root}/${artifact_zip}"
@@ -1363,7 +1364,7 @@ run_pre_source_add_docker_compose() {
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
   PROMPTBRANCH_VERSION="${ver#v}" \
   PROMPTBRANCH_ARTIFACT_SHA256="${artifact_sha}" \
-  docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
+  docker compose --project-directory "${repo_root}" -p "${compose_project_name}" -f "${compose_file}" "$@"
 }
 
 pre_source_add_service_version_ready() {
@@ -1476,6 +1477,121 @@ raise SystemExit(0 if payload['ok'] else 1)
 INNERPY
 }
 
+write_pre_source_add_build_context_snapshot() {
+  python3 - "${pre_source_add_build_context_json}" "${repo_root}" "${compose_file}" "${compose_project_name}" "${compose_service_name}" "${ver#v}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+out_path, repo_root, compose_file, compose_project, compose_service, expected_version = sys.argv[1:7]
+root = Path(repo_root).resolve()
+compose = Path(compose_file).resolve()
+
+def read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding='utf-8').strip()
+    except Exception:
+        return None
+
+def pyproject_version(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', text, re.M)
+    return match.group(1) if match else None
+
+def package_version(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r'^PACKAGE_VERSION\s*=\s*["\']([^"\']+)["\']', text, re.M)
+    return match.group(1) if match else None
+
+def norm(value: object) -> str:
+    text = str(value or '').strip()
+    return text[1:] if text.startswith('v') else text
+
+version_text = read(root / 'VERSION')
+pyproject_text = read(root / 'pyproject.toml')
+promptbranch_version_text = read(root / 'promptbranch_version.py')
+actuals = {
+    'VERSION': version_text,
+    'promptbranch_version.py': package_version(promptbranch_version_text),
+    'pyproject.toml': pyproject_version(pyproject_text),
+}
+checks = {key: norm(value) == norm(expected_version) for key, value in actuals.items()}
+compose_config = None
+compose_config_error = None
+try:
+    proc = subprocess.run(
+        ['docker', 'compose', '--project-directory', str(root), '-p', compose_project, '-f', str(compose), 'config'],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    compose_config = {
+        'returncode': proc.returncode,
+        'stdout_tail': proc.stdout[-12000:],
+        'stderr_tail': proc.stderr[-4000:],
+    }
+except Exception as exc:
+    compose_config_error = repr(exc)
+
+payload = {
+    'ok': all(checks.values()),
+    'status': 'verified' if all(checks.values()) else 'pre_source_add_repo_version_surface_mismatch',
+    'source_kind': 'pre_source_add_build_context',
+    'checked_at': datetime.now(timezone.utc).isoformat(),
+    'cwd': str(Path.cwd()),
+    'repo_root': str(root),
+    'compose_file': str(compose),
+    'compose_project_name': compose_project,
+    'compose_service_name': compose_service,
+    'expected_version': expected_version,
+    'actuals': actuals,
+    'checks': checks,
+    'compose_config': compose_config,
+    'compose_config_error': compose_config_error,
+}
+Path(out_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+raise SystemExit(0 if payload['ok'] else 1)
+INNERPY
+}
+
+classify_pre_source_add_bootstrap_failure() {
+  local reason="${1:-pre_source_add_bootstrap_command_failed}"
+  local status="${reason}"
+  if grep -q "Docker build context version mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
+    status="pre_source_add_docker_build_context_version_mismatch"
+  fi
+  python3 - "${pre_source_add_service_health_json}" "${status}" "${ver#v}" "${pre_source_add_service_start_log}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+import json
+import sys
+from pathlib import Path
+
+out_path, status, expected, log_path = sys.argv[1:5]
+log = Path(log_path)
+text = log.read_text(encoding='utf-8', errors='replace') if log.exists() else ''
+payload = {
+    'ok': False,
+    'status': status,
+    'source_kind': 'pre_source_add_service_health',
+    'expected_version': expected,
+    'error': status,
+    'bootstrap_log': str(log),
+    'bootstrap_log_tail': text[-12000:],
+    'checked_at': datetime.now(timezone.utc).isoformat(),
+}
+Path(out_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+raise SystemExit(0)
+INNERPY
+  printf '%s\n' "${status}"
+}
+
 write_pre_source_add_service_diagnostics() {
   local reason="$1"
   {
@@ -1484,6 +1600,7 @@ write_pre_source_add_service_diagnostics() {
     echo "compose_project_name: ${compose_project_name}"
     echo "compose_service_name: ${compose_service_name}"
     echo "compose_file: ${compose_file}"
+    echo "repo_root: ${repo_root}"
     echo "service_base_url: ${service_base_url}"
     echo "expected_version: ${ver#v}"
     echo "+ docker compose ps -a"
@@ -1521,20 +1638,27 @@ ensure_service_before_source_add() {
     echo "expected_version: ${ver#v}"
     echo "service_image: $(pre_source_add_service_image_ref)"
     echo "artifact_sha256: $(pre_source_add_release_artifact_sha256)"
+    echo "repo_root: ${repo_root}"
     echo "+ write_pre_source_add_docker_preflight"
     write_pre_source_add_docker_preflight
-    echo "+ docker compose down --remove-orphans"
+    echo "+ write_pre_source_add_build_context_snapshot"
+    write_pre_source_add_build_context_snapshot
+    echo "+ docker compose --project-directory ${repo_root} down --remove-orphans"
     run_pre_source_add_docker_compose down --remove-orphans
-    echo "+ docker compose build --pull"
-    run_pre_source_add_docker_compose build --pull
-    echo "+ docker compose up -d --force-recreate --remove-orphans"
+    echo "+ docker compose --project-directory ${repo_root} build --no-cache --pull"
+    run_pre_source_add_docker_compose build --no-cache --pull
+    echo "+ docker compose --project-directory ${repo_root} up -d --force-recreate --remove-orphans"
     run_pre_source_add_docker_compose up -d --force-recreate --remove-orphans
     echo "+ docker compose ps ${compose_service_name}"
     run_pre_source_add_docker_compose ps "${compose_service_name}"
   } >"${pre_source_add_service_start_log}" 2>&1 || {
-    write_pre_source_add_service_diagnostics "pre_source_add_bootstrap_command_failed"
-    echo "ERROR: pre_source_add_service_bootstrap_failed" >&2
+    bootstrap_status="$(classify_pre_source_add_bootstrap_failure "pre_source_add_bootstrap_command_failed")"
+    write_pre_source_add_service_diagnostics "${bootstrap_status}"
+    echo "ERROR: ${bootstrap_status}" >&2
+    echo "ERROR: inspect pre_source_add_service_health_json=${pre_source_add_service_health_json}" >&2
+    echo "ERROR: inspect pre_source_add_build_context_json=${pre_source_add_build_context_json}" >&2
     echo "ERROR: inspect pre_source_add_service_start_log=${pre_source_add_service_start_log}" >&2
+    cat "${pre_source_add_service_health_json}" >&2 || true
     return 1
   }
 
