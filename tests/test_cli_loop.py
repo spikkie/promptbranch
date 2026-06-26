@@ -130,3 +130,59 @@ def test_loop_run_state_only_json_reports_states_without_events(capsys):
     assert payload["safety"]["project_source_mutation_performed"] is False
     assert payload["safety"]["artifact_adoption_performed"] is False
     assert "events" not in payload
+
+
+def test_loop_run_planned_actions_prints_state_action_gate_lines(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--planned-actions",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert lines[0] == "INTAKE | action=load target definition and create loop context | gate=target JSON parsed and target_id/goal are available | next=REQUIREMENTS_CHECK"
+    assert any(line.startswith("TEST_STUB | action=list validation commands") for line in lines)
+    assert lines[-1] == "SOLVED | action=stop the loop because the dry-run plan reaches its terminal success state | gate=final state is recorded without artifact adoption | next=none"
+    assert "side_effects_performed" not in out
+
+
+def test_loop_run_planned_actions_json_reports_actions_without_events(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--planned-actions",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["action"] == "loop_run"
+    assert payload["mode"] == "planned_actions"
+    assert payload["dry_run"] is True
+    assert payload["side_effects_performed"] is False
+    assert payload["safety"]["commands_executed"] is False
+    assert payload["safety"]["kubernetes_mutation_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+    assert "events" not in payload
+    assert payload["actions"][0]["state"] == "INTAKE"
+    assert payload["actions"][0]["execution_status"] == "not_executed_dry_run"
+
+
+def test_loop_run_state_only_and_planned_actions_are_mutually_exclusive(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--state-only",
+        "--planned-actions",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "mutually exclusive" in captured.err

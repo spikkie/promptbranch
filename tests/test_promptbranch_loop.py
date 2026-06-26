@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from promptbranch_loop import build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
+from promptbranch_loop import build_loop_action_walkthrough_payload, build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
 
 
 def test_loop_target_schema_validates_static_game_fixture():
@@ -70,3 +70,24 @@ def test_loop_state_only_payload_is_presentation_only():
     assert payload["safety"]["project_source_mutation_performed"] is False
     assert payload["safety"]["artifact_adoption_performed"] is False
     assert "events" not in payload
+
+
+def test_loop_action_walkthrough_payload_is_dry_run_only():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    payload = build_loop_action_walkthrough_payload(plan)
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.action_walkthrough"
+    assert payload["mode"] == "planned_actions"
+    assert payload["states"] == plan["planned_states"]
+    assert payload["action_count"] == len(plan["planned_states"])
+    assert payload["side_effects_performed"] is False
+    assert payload["safety"]["commands_executed"] is False
+    assert payload["safety"]["deployment_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+    assert "events" not in payload
+    first = payload["actions"][0]
+    assert first["state"] == "INTAKE"
+    assert first["planned_action"] == "load target definition and create loop context"
+    assert first["validation_gate"] == "target JSON parsed and target_id/goal are available"
+    assert first["execution_status"] == "not_executed_dry_run"

@@ -1405,3 +1405,25 @@ Planned work:
 Out of scope: real implementation actions, validation command execution, file mutation by the loop, Docker/Kubernetes/Helm deployment, Project Source mutation, artifact adoption/current behavior changes, ChatGPT Project deletion, and the actual Kubernetes game implementation.
 
 Exit criteria: focused loop/CLI/version/project-control tests, compileall, Artifact Guardian, ZIP hygiene, then operator release-control/adoption.
+
+
+## v0.1.93 — MVP-1 planned-action walkthrough
+
+Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.92.zip`.
+
+Goal: move MVP-1 beyond state names by showing the operator what each loop state would do next and which validation gate would apply, while preserving dry-run/no-side-effect semantics.
+
+Implementation slice:
+
+1. Add deterministic `planned_action`, `validation_gate`, and `execution_status=not_executed_dry_run` metadata to loop events.
+2. Add `pb loop run --planned-actions` text output with one state/action/gate line per state.
+3. Add `pb loop run --planned-actions --json` with `mode=planned_actions` and an `actions[]` list.
+4. Keep `--state-only` unchanged and mutually exclusive with `--planned-actions`.
+5. Preserve no command execution, no validation-command execution, no deployment, no Project Source mutation, no artifact adoption, and no ChatGPT Project deletion.
+
+Acceptance:
+
+- Focused loop/CLI/version/project-control tests pass.
+- CLI smoke proves text and JSON planned-action modes.
+- Artifact Guardian and artifact verify pass.
+- Full release-control/adoption required before accepted/current.
