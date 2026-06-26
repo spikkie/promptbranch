@@ -331,3 +331,8 @@ When `--run-all-tests` reuses direct validation evidence, the old direct report 
 ## Decision — v0.1.91.7 pre-source-add candidate Docker builds are no-cache
 
 Release-control candidate service bootstrap is adoption-grade validation, not a developer convenience build. Pre-source-add Docker bootstrap must use a no-cache build with explicit repo-root Compose invocation so stale application-source layers cannot pass into Project Source mutation. A Docker build-context version mismatch is classified before health probing and remains release-blocking.
+
+
+## Decision — v0.1.91.8 run-all uses one authoritative browser/source lifecycle proof
+
+Release-control must not duplicate live Project Source mutations in `full_localhost` after `full_direct` already proved the same browser/source lifecycle for the same artifact/version/hash/dimensions. The localhost matrix should reuse that proof and remain visible through transport/report/cooldown audit metadata. This avoids redundant ChatGPT UI/source-surface churn without weakening fail-closed evidence matching.

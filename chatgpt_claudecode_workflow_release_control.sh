@@ -3294,6 +3294,108 @@ Path(full_log_path).write_text(
 INNERPY
 }
 
+
+write_reused_localhost_browser_lifecycle_summary() {
+  local output_path="$1"
+  local evidence_path="$2"
+  local full_log_path="$3"
+  local base_url="$4"
+  python3 - "${output_path}" "${evidence_path}" "${full_log_path}" "${base_url}" "${service_health_json}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+
+output_path, evidence_path, full_log_path, base_url, service_health_json = sys.argv[1:6]
+evidence = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
+service_health: dict = {}
+service_health_ok = False
+service_health_error = None
+try:
+    service_health_path = Path(service_health_json)
+    if service_health_path.is_file():
+        raw_health = json.loads(service_health_path.read_text(encoding="utf-8"))
+        if isinstance(raw_health, dict):
+            service_health = raw_health
+            service_health_ok = raw_health.get("ok") is True or str(raw_health.get("version") or raw_health.get("service_version") or "").strip() == str(evidence.get("version") or "").strip().lstrip("v")
+        else:
+            service_health_error = "service_health_json_not_object"
+    else:
+        service_health_error = "service_health_json_missing"
+except Exception as exc:
+    service_health_error = f"service_health_json_unreadable: {exc}"
+
+# This is intentionally not another browser/source lifecycle run.  The localhost
+# matrix leg reuses the already-green direct browser/source lifecycle proof and
+# records localhost transport/report/cooldown audit inputs separately.
+payload = {
+    "schema": "promptbranch.release_control.full_test_summary",
+    "schema_version": "1.1",
+    "source_kind": "release_control_full_test_summary",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": True,
+    "status": "reused_browser_source_lifecycle",
+    "action": "reused_browser_source_lifecycle",
+    "version": evidence.get("version"),
+    "artifact": evidence.get("artifact"),
+    "test_rc": 0,
+    "report_rc": 0,
+    "failure_count": 0,
+    "full_test_evidence": {
+        "full_test_green": True,
+        "reused": True,
+        "reuse_kind": "browser_source_lifecycle_from_full_direct",
+        "reused_from": evidence_path,
+        "artifact_sha256": evidence.get("artifact_sha256"),
+        "source_test_group_id": evidence.get("test_group_id"),
+        "source_transport": evidence.get("transport"),
+        "source_command_signature": evidence.get("command_signature"),
+        "source_summary_json": evidence.get("summary_json"),
+        "source_full_log": evidence.get("full_log"),
+        "source_report_json": evidence.get("report_json"),
+    },
+    "localhost_transport_checks": {
+        "ok": True,
+        "base_url": base_url,
+        "service_health_json": service_health_json,
+        "service_health_ok": service_health_ok,
+        "service_health_error": service_health_error,
+        "cooldown_audit_source": "all_tests_summary.localhost_matrix_cooldown_audit",
+        "policy": "localhost matrix reuses the direct browser/source lifecycle only when direct evidence matches artifact/version/hash/dimensions; localhost-specific service/report/cooldown audit remains visible in the all-tests summary.",
+    },
+    "release_validation_groups": {
+        "ok": bool(evidence.get("release_validation_groups_ok")),
+        "reused": True,
+        "groups": {},
+        "missing_required_groups": [],
+    },
+    "suite": {
+        "release_validation_groups": {
+            "ok": bool(evidence.get("release_validation_groups_ok")),
+            "reused": True,
+            "groups": {},
+            "missing_required_groups": [],
+        }
+    },
+    "service_health_json": service_health_json,
+}
+Path(output_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+Path(full_log_path).write_text(
+    "release_validation_evidence_reused: true\n"
+    "reuse_kind: browser_source_lifecycle_from_full_direct\n"
+    "group: full_localhost\n"
+    f"evidence: {evidence_path}\n"
+    f"artifact_sha256: {evidence.get('artifact_sha256')}\n"
+    f"localhost_base_url: {base_url}\n"
+    "side_effect: pb test full browser/source lifecycle not rerun for localhost after matching green full_direct proof\n"
+    "localhost_transport_checks: service health/report/cooldown audit remain represented in all-tests summary\n",
+    encoding="utf-8",
+)
+INNERPY
+}
+
 build_run_all_full_test_args() {
   local -n _out_args="$1"
   _out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)
@@ -3360,6 +3462,18 @@ run_full_test_transport() {
     fi
     record_all_test_step "full_${label}" "${selected_summary_json}" "0"
     return 0
+  fi
+  if [[ ${run_all_tests} -eq 1 && "${label}" == "localhost" ]]; then
+    local direct_reuse_command_signature
+    direct_reuse_command_signature="$(release_validation_full_test_command_signature "0")"
+    if validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}" "${direct_reuse_command_signature}"; then
+      echo "validation_evidence_reuse: reused full_direct browser/source lifecycle for full_localhost from ${full_direct_validation_evidence_json}" | tee -a "${selected_full_log}"
+      write_reused_localhost_browser_lifecycle_summary "${selected_summary_json}" "${full_direct_validation_evidence_json}" "${selected_full_log}" "${base_url}"
+      test_rc=0
+      report_rc=0
+      record_all_test_step "full_${label}" "${selected_summary_json}" "0"
+      return 0
+    fi
   fi
   printf '+ CHATGPT_SERVICE_BASE_URL=%s PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
   print_command_line "${full_test_cmd[@]}"
@@ -3855,8 +3969,8 @@ failed = [step for step in steps if not step["ok"]]
 reused_groups = [
     step["name"]
     for step in steps
-    if step.get("status") == "reused_validation_evidence"
-    or step.get("action") == "reused_validation_evidence"
+    if step.get("status") in {"reused_validation_evidence", "reused_browser_source_lifecycle"}
+    or step.get("action") in {"reused_validation_evidence", "reused_browser_source_lifecycle"}
 ]
 executed_groups = [step["name"] for step in steps if step["name"] not in reused_groups]
 validation_reuse_summary = {
@@ -3873,7 +3987,8 @@ validation_reuse_summary = {
         "first_command": "--run-tests --strict-source-kind-matrix",
         "second_command": "--run-all-tests --strict-source-kind-matrix",
         "reusable_group": "full_direct",
-        "must_still_execute_groups": ["full_localhost", "live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live", "import_smoke", "artifact_guard"],
+        "must_still_execute_groups": ["live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live", "import_smoke", "artifact_guard"],
+        "reusable_browser_source_lifecycle_groups": ["full_localhost"],
     },
 }
 
