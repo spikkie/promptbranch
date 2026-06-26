@@ -716,15 +716,24 @@ def test_release_validation_group_strips_browser_service_env(monkeypatch, tmp_pa
         return Completed()
 
     monkeypatch.setenv("CHATGPT_SERVICE_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("CHATGPT_EMAIL", "operator@example.test")
+    monkeypatch.setenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/g/g-p-live/project")
     monkeypatch.setenv("PROMPTBRANCH_SERVICE_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("PROMPTBRANCH_SERVICE_IMAGE", "promptbranch-service:live")
+    monkeypatch.setenv("PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR", "./.pb_profile_local_debug")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--maxfail=1")
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     spec = {"required": True, "description": "unit", "command": ["python3", "-c", "pass"]}
     result = suite._run_release_validation_group("unit", spec, repo_path=tmp_path)
 
     assert result["ok"] is True
-    assert "CHATGPT_SERVICE_BASE_URL" not in captured["env"]
+    assert not any(key.startswith("CHATGPT_") for key in captured["env"])
     assert "PROMPTBRANCH_SERVICE_BASE_URL" not in captured["env"]
+    assert "PROMPTBRANCH_SERVICE_IMAGE" not in captured["env"]
+    assert "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR" not in captured["env"]
+    assert "PYTEST_ADDOPTS" not in captured["env"]
+    assert captured["env"]["PROMPTBRANCH_RELEASE_VALIDATION_ISOLATED"] == "1"
 
 
 def test_browser_scheduler_release_validation_group_uses_nodeid_progress() -> None:
@@ -736,6 +745,7 @@ def test_browser_scheduler_release_validation_group_uses_nodeid_progress() -> No
 
 def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monkeypatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
+    envs: list[dict[str, str]] = []
 
     class Completed:
         returncode = 0
@@ -744,6 +754,7 @@ def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monk
 
     def fake_run(command, **kwargs):
         calls.append(list(command))
+        envs.append(dict(kwargs.get("env") or {}))
         return Completed()
 
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
@@ -777,6 +788,12 @@ def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monk
         ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_one"],
         ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_two"],
     ]
+    assert envs[0]["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] == "tests/test_demo.py::test_one"
+    assert envs[1]["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] == "tests/test_demo.py::test_two"
+    assert envs[0]["HOME"] != envs[1]["HOME"]
+    assert envs[0]["TMPDIR"] != envs[1]["TMPDIR"]
+    assert result["environment_isolation"]["enabled"] is True
+    assert result["environment_isolation"]["ambient_repo_profile_lock"]["lock_file_exists"] is False
     assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=1/2 nodeid=tests/test_demo.py::test_one" in result["stdout_tail"]
 
 
@@ -822,3 +839,41 @@ def test_release_validation_group_nodeid_progress_timeout_reports_active_nodeid(
     assert result["timed_out_nodeids"] == ["tests/test_demo.py::test_two"]
     assert result["nodeid_results"][-1]["status"] == "timeout"
     assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=2/2 nodeid=tests/test_demo.py::test_two" in result["stdout_tail"]
+
+
+def test_release_validation_nodeid_progress_records_ambient_profile_lock(monkeypatch, tmp_path: Path) -> None:
+    profile = tmp_path / ".pb_profile"
+    profile.mkdir()
+    lock = profile / ".promptbranch-browser-profile.lock"
+    lock.write_text("pid=123\noperation=add_project_source\n", encoding="utf-8")
+
+    class Completed:
+        returncode = 0
+        stdout = "passed node\n"
+        stderr = ""
+
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = suite._run_release_validation_group(
+        "browser_scheduler_source_lifecycle",
+        {
+            "required": True,
+            "description": "nodeid isolation demo",
+            "timeout_seconds": 300.0,
+            "nodeid_progress": True,
+            "command": [
+                suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER,
+                "-m",
+                "pytest",
+                "-q",
+                "tests/test_demo.py::test_one",
+            ],
+        },
+        repo_path=tmp_path,
+    )
+
+    assert result["ok"] is True
+    snapshot = result["environment_isolation"]["ambient_repo_profile_lock"]
+    assert snapshot["lock_file_exists"] is True
+    assert snapshot["last_operation"] == "add_project_source"
+    assert snapshot["last_pid"] == "123"

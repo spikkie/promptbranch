@@ -1427,3 +1427,21 @@ Acceptance:
 - CLI smoke proves text and JSON planned-action modes.
 - Artifact Guardian and artifact verify pass.
 - Full release-control/adoption required before accepted/current.
+
+## v0.1.93.1 — repair: direct release-validation scheduler nodeid isolation
+
+Type: repair-only candidate.
+
+Base: `v0.1.93` candidate, preserving the planned-action walkthrough.
+
+Goal: prevent direct live browser/source lock state and service-routing environment from leaking into the offline `browser_scheduler_source_lifecycle` release-validation pytest nodeids.
+
+Planned change:
+
+- keep the same required scheduler/source nodeids;
+- keep the same group timeout budget and per-nodeid progress reporting;
+- strip inherited `CHATGPT_*`, service/image/version/profile-seed variables, and `PYTEST_ADDOPTS`;
+- run each scheduler/source nodeid with isolated `HOME`, `TMPDIR`, XDG directories, and release-validation profile directory;
+- record ambient repo `.pb_profile` browser-lock snapshot for diagnostics.
+
+No normal MVP-1 slice advances.
