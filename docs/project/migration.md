@@ -604,3 +604,7 @@ No data migration. This repair changes release-control run-all orchestration onl
 ## Repair migration note — v0.1.91.9
 
 No data migration. This repair changes only release-control adopt-after-validation report-path selection for reused `full_localhost` lifecycle evidence and adds operator-facing run-all progress telemetry. Operators should rerun `v0.1.91.9 --run-all-tests --adopt-after-validation` to prove the footer no longer requires `pb_test.full.localhost.<version>.report.json` when `full_localhost` is reused.
+
+## Repair migration note — v0.1.91.10
+
+No data migration. This repair changes release-control/test-suite diagnostics only: run-all progress JSON uses `chr(10)` for safe newline writing, and the `browser_scheduler_source_lifecycle` release-validation group reports per-nodeid progress and timeout diagnostics. Operators should rerun `v0.1.91.10 --run-all-tests --adopt-after-validation`; if the scheduler group times out, inspect the reported `active_nodeid` instead of guessing from empty stdout/stderr tails.

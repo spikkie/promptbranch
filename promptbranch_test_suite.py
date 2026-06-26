@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -119,6 +120,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
         "required": True,
         "description": "Scheduler/source lifecycle and same-profile queue regression coverage.",
         "timeout_seconds": 300.0,
+        "nodeid_progress": True,
         "command": _release_validation_command(
             "-m",
             "pytest",
@@ -160,6 +162,7 @@ def release_validation_group_manifest() -> dict[str, dict[str, Any]]:
             "required": bool(spec.get("required")),
             "description": spec.get("description"),
             "timeout_seconds": float(spec.get("timeout_seconds", 600.0)),
+            "nodeid_progress": bool(spec.get("nodeid_progress")),
             "command": _resolve_release_validation_command(spec.get("command", [])),
         }
         for group, spec in RELEASE_VALIDATION_GROUPS.items()
@@ -170,6 +173,205 @@ def _tail_text(text: str, *, max_chars: int = 4000) -> str:
     if len(text) <= max_chars:
         return text
     return text[-max_chars:]
+
+
+def _release_validation_group_env() -> dict[str, str]:
+    env = os.environ.copy()
+    # Release validation groups are deterministic repo-local checks. Disable
+    # ambient pytest plugin autoload so locally installed plugins cannot hang
+    # or change release-gate behavior after live browser tests have run.
+    env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    # These groups are offline repo validations. Do not let the surrounding
+    # live/browser transport leak service routing into the pytest process; a
+    # localhost release-control leg must not make local validators talk to the
+    # browser service or inherit its timeout behavior.
+    for key in ("CHATGPT_SERVICE_BASE_URL", "PROMPTBRANCH_SERVICE_BASE_URL"):
+        env.pop(key, None)
+    return env
+
+
+def _split_pytest_nodeid_command(command: Sequence[str]) -> tuple[list[str], list[str]]:
+    nodeids = [str(item) for item in command if str(item).startswith("tests/") and "::" in str(item)]
+    if not nodeids:
+        return list(command), []
+    first_nodeid = next(i for i, item in enumerate(command) if str(item) in nodeids)
+    # The release gate intentionally uses explicit nodeids only; if any option
+    # appears after the first nodeid, fall back to the original group execution
+    # rather than accidentally changing pytest semantics.
+    trailing = [str(item) for item in command[first_nodeid:] if str(item) not in nodeids]
+    if trailing:
+        return list(command), []
+    return [str(item) for item in command[:first_nodeid]], nodeids
+
+
+def _run_release_validation_group_with_nodeid_progress(
+    group_name: str,
+    spec: dict[str, Any],
+    *,
+    repo_path: Path,
+    command: list[str],
+    timeout_seconds: float,
+    started_at: str,
+) -> dict[str, Any] | None:
+    command_prefix, nodeids = _split_pytest_nodeid_command(command)
+    if not nodeids:
+        return None
+
+    env = _release_validation_group_env()
+    started_monotonic = time.monotonic()
+    completed_nodeids: list[str] = []
+    failed_nodeids: list[str] = []
+    timed_out_nodeids: list[str] = []
+    nodeid_results: list[dict[str, Any]] = []
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+
+    for index, nodeid in enumerate(nodeids, start=1):
+        elapsed = time.monotonic() - started_monotonic
+        remaining = timeout_seconds - elapsed
+        if remaining <= 0:
+            timed_out_nodeids.append(nodeid)
+            return {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "timeout",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": command,
+                "command_mode": "per_nodeid_progress",
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": timeout_seconds,
+                "active_nodeid": nodeid,
+                "completed_nodeids": completed_nodeids,
+                "failed_nodeids": failed_nodeids,
+                "timed_out_nodeids": timed_out_nodeids,
+                "nodeid_results": nodeid_results,
+                "stdout_tail": _tail_text("\n".join(stdout_parts)),
+                "stderr_tail": _tail_text("\n".join(stderr_parts)),
+            }
+
+        progress_line = (
+            "release_validation_group_progress: "
+            f"group={group_name} index={index}/{len(nodeids)} nodeid={nodeid}"
+        )
+        print(progress_line, flush=True)
+        stdout_parts.append(progress_line)
+        node_command = [*command_prefix, nodeid]
+        node_started_at = utc_now()
+        try:
+            completed = subprocess.run(
+                node_command,
+                cwd=str(repo_path),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=max(0.1, remaining),
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out_nodeids.append(nodeid)
+            stdout_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            stderr_text = (exc.stderr or "") if isinstance(exc.stderr, str) else ""
+            stdout_parts.append(stdout_text)
+            stderr_parts.append(stderr_text)
+            nodeid_results.append({
+                "nodeid": nodeid,
+                "status": "timeout",
+                "ok": False,
+                "command": node_command,
+                "started_at": node_started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": max(0.1, remaining),
+                "stdout_tail": _tail_text(stdout_text),
+                "stderr_tail": _tail_text(stderr_text),
+            })
+            return {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "timeout",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": command,
+                "command_mode": "per_nodeid_progress",
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": timeout_seconds,
+                "active_nodeid": nodeid,
+                "completed_nodeids": completed_nodeids,
+                "failed_nodeids": failed_nodeids,
+                "timed_out_nodeids": timed_out_nodeids,
+                "nodeid_results": nodeid_results,
+                "stdout_tail": _tail_text("\n".join(stdout_parts)),
+                "stderr_tail": _tail_text("\n".join(stderr_parts)),
+            }
+
+        stdout_text = completed.stdout or ""
+        stderr_text = completed.stderr or ""
+        stdout_parts.append(stdout_text)
+        stderr_parts.append(stderr_text)
+        node_ok = completed.returncode == 0
+        if node_ok:
+            completed_nodeids.append(nodeid)
+        else:
+            failed_nodeids.append(nodeid)
+        nodeid_results.append({
+            "nodeid": nodeid,
+            "status": "passed" if node_ok else "failed",
+            "ok": node_ok,
+            "command": node_command,
+            "returncode": completed.returncode,
+            "started_at": node_started_at,
+            "finished_at": utc_now(),
+            "stdout_tail": _tail_text(stdout_text),
+            "stderr_tail": _tail_text(stderr_text),
+        })
+        if not node_ok:
+            return {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "failed",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": command,
+                "command_mode": "per_nodeid_progress",
+                "returncode": completed.returncode,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": timeout_seconds,
+                "active_nodeid": nodeid,
+                "completed_nodeids": completed_nodeids,
+                "failed_nodeids": failed_nodeids,
+                "timed_out_nodeids": timed_out_nodeids,
+                "nodeid_results": nodeid_results,
+                "stdout_tail": _tail_text("\n".join(stdout_parts)),
+                "stderr_tail": _tail_text("\n".join(stderr_parts)),
+            }
+
+    return {
+        "ok": True,
+        "action": "release_validation_group",
+        "status": "passed",
+        "group": group_name,
+        "required": bool(spec.get("required")),
+        "description": spec.get("description"),
+        "command": command,
+        "command_mode": "per_nodeid_progress",
+        "returncode": 0,
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        "timeout_seconds": timeout_seconds,
+        "completed_nodeids": completed_nodeids,
+        "failed_nodeids": failed_nodeids,
+        "timed_out_nodeids": timed_out_nodeids,
+        "nodeid_results": nodeid_results,
+        "stdout_tail": _tail_text("\n".join(stdout_parts)),
+        "stderr_tail": _tail_text("\n".join(stderr_parts)),
+    }
 
 
 def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo_path: Path, timeout_seconds: float = 600.0) -> dict[str, Any]:
@@ -188,18 +390,20 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
             "description": spec.get("description"),
         }
     started_at = utc_now()
+    if bool(spec.get("nodeid_progress")):
+        progress_result = _run_release_validation_group_with_nodeid_progress(
+            group_name,
+            spec,
+            repo_path=repo_path,
+            command=command,
+            timeout_seconds=timeout_seconds,
+            started_at=started_at,
+        )
+        if progress_result is not None:
+            return progress_result
+
     try:
-        env = os.environ.copy()
-        # Release validation groups are deterministic repo-local checks. Disable
-        # ambient pytest plugin autoload so locally installed plugins cannot hang
-        # or change release-gate behavior after live browser tests have run.
-        env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
-        # These groups are offline repo validations.  Do not let the surrounding
-        # live/browser transport leak service routing into the pytest process; a
-        # localhost release-control leg must not make local validators talk to the
-        # browser service or inherit its timeout behavior.
-        for key in ("CHATGPT_SERVICE_BASE_URL", "PROMPTBRANCH_SERVICE_BASE_URL"):
-            env.pop(key, None)
+        env = _release_validation_group_env()
         completed = subprocess.run(
             command,
             cwd=str(repo_path),

@@ -3083,3 +3083,12 @@ def test_release_control_installs_candidate_before_source_add_bootstrap() -> Non
     assert install_idx < ensure_idx < source_add_idx
     assert "'source_kind': 'pre_source_add_service_health'" in script
     assert "'source_kind': 'pre_source_add_docker_preflight'" in script
+
+
+def test_release_control_all_tests_progress_writer_uses_chr10_newline() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert '"schema": "promptbranch.release_control.all_tests_progress"' in script
+    assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")' in script
+    assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")' not in script
+    assert 'all_tests_progress: ' in script

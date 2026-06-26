@@ -340,3 +340,7 @@ Release-control must not duplicate live Project Source mutations in `full_localh
 ## Decision — v0.1.91.9 reused localhost lifecycle is a valid adoption proof input
 
 When `full_localhost` is intentionally reused from matching green `full_direct` browser/source lifecycle evidence, `pb_test.full.localhost.<version>.report.json` may be absent by design. Adopt-after-validation must validate the green all-tests summary, matching direct evidence, and `full_localhost` `reused_browser_source_lifecycle` step instead of requiring a missing report file. Run-all should also emit progress percentages after each step so operators do not need to wait for the final summary to see whether the run is failing.
+
+## Decision — v0.1.91.10 browser scheduler validation reports active nodeids
+
+The required `browser_scheduler_source_lifecycle` release-validation group remains required and continues to use the same explicit fast pytest nodeids, but its execution now reports per-nodeid progress. This avoids opaque 300-second timeouts with empty stdout/stderr tails and gives operators the active nodeid without increasing timeouts or weakening validation. The run-all progress writer uses `chr(10)` to avoid shell-generated Python newline quoting defects.
