@@ -2843,6 +2843,28 @@ def test_release_control_adopt_after_run_all_accepts_reused_direct_evidence_with
     assert '[[ -f "${path}" ]]' in script
 
 
+
+
+def test_release_control_adopt_after_run_all_accepts_reused_localhost_lifecycle_without_localhost_report():
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "report_or_reused_full_localhost_lifecycle_green" in script
+    assert "verify_reused_full_localhost_lifecycle_green" in script
+    assert "full_localhost is not reused_browser_source_lifecycle" in script
+    assert 'report_or_reused_full_localhost_lifecycle_green "${localhost_report_json}"' in script
+    assert 'report_or_reused_full_localhost_lifecycle_green "${report_json}"' in script
+    assert "run-all localhost lifecycle reuse evidence is missing or stale" in script
+
+
+def test_release_control_run_all_emits_percent_progress_contract():
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "promptbranch.release_control.all_tests_progress" in script
+    assert "all_tests_progress:" in script
+    assert "tested_percent_of_expected" in script
+    assert "success_percent_of_tested" in script
+    assert "failure_percent_of_tested" in script
+    assert "run_all_emit_progress" in script
+    assert 'all_test_step_specs+=("${name}|${log_path}|${rc}")\n  run_all_emit_progress' in script
+
 def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_contract():
     script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script_path.read_text(encoding="utf-8")

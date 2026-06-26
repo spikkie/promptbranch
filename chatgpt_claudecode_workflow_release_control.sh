@@ -2054,6 +2054,33 @@ verify_reused_full_direct_evidence_green() {
     fail "run-all validation reuse evidence is missing or stale: ${full_direct_validation_evidence_json}"
 }
 
+verify_reused_full_localhost_lifecycle_green() {
+  local command_signature
+  command_signature="$(release_validation_full_test_command_signature 0)"
+  verify_all_tests_summary_green "${all_tests_summary_json}"
+  validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}" "${command_signature}" || \
+    fail "run-all localhost lifecycle reuse evidence is missing or stale: ${full_direct_validation_evidence_json}"
+  python3 - "${all_tests_summary_json}" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
+for step in steps:
+    if not isinstance(step, dict):
+        continue
+    if step.get("name") != "full_localhost":
+        continue
+    status = step.get("status")
+    action = step.get("action")
+    if step.get("ok") is True and (status == "reused_browser_source_lifecycle" or action == "reused_browser_source_lifecycle"):
+        raise SystemExit(0)
+    raise SystemExit(f"full_localhost is not reused_browser_source_lifecycle in {path}: {step!r}")
+raise SystemExit(f"full_localhost step not found in {path}")
+INNERPY
+}
+
 report_or_reused_full_direct_evidence_green() {
   local path="$1"
   if [[ -f "${path}" ]]; then
@@ -2067,17 +2094,30 @@ report_or_reused_full_direct_evidence_green() {
   report_is_green "${path}"
 }
 
+report_or_reused_full_localhost_lifecycle_green() {
+  local path="$1"
+  if [[ -f "${path}" ]]; then
+    report_is_green "${path}"
+    return 0
+  fi
+  if [[ ${run_all_tests} -eq 1 ]]; then
+    verify_reused_full_localhost_lifecycle_green
+    return 0
+  fi
+  report_is_green "${path}"
+}
+
 verify_validation_reports_green() {
   case "${test_transport}" in
     direct)
       report_or_reused_full_direct_evidence_green "${report_json}"
       ;;
     localhost)
-      report_is_green "${report_json}"
+      report_or_reused_full_localhost_lifecycle_green "${report_json}"
       ;;
     both)
       report_or_reused_full_direct_evidence_green "${direct_report_json}"
-      report_is_green "${localhost_report_json}"
+      report_or_reused_full_localhost_lifecycle_green "${localhost_report_json}"
       ;;
   esac
   if [[ ${run_all_tests} -eq 1 ]]; then
@@ -3543,11 +3583,92 @@ run_full_test_transport() {
 
 all_test_step_specs=()
 
+run_all_expected_step_count() {
+  local total=0
+  case "${test_transport}" in
+    direct) total=1 ;;
+    localhost) total=1 ;;
+    both) total=2 ;;
+    *) total=0 ;;
+  esac
+  if [[ ${run_all_tests} -eq 1 && ${run_failing_tests} -eq 0 ]]; then
+    total=$((total + 7))
+  fi
+  if [[ ${total} -le 0 ]]; then
+    total=1
+  fi
+  printf '%s' "${total}"
+}
+
+run_all_emit_progress() {
+  [[ ${run_all_tests} -eq 1 ]] || return 0
+  local expected
+  expected="$(run_all_expected_step_count)"
+  python3 - "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${all_test_step_specs[@]}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+out = Path(sys.argv[1])
+try:
+    expected = int(sys.argv[2])
+except Exception:
+    expected = 1
+items = sys.argv[3:]
+tested = len(items)
+succeeded = 0
+failed = 0
+steps = []
+for item in items:
+    parts = item.split("|", 2)
+    if len(parts) != 3:
+        continue
+    name, log, rc_text = parts
+    try:
+        rc = int(rc_text)
+    except Exception:
+        rc = 99
+    ok = rc == 0
+    if ok:
+        succeeded += 1
+    else:
+        failed += 1
+    steps.append({"name": name, "log": log, "exit_code": rc, "ok": ok})
+expected = max(expected, tested, 1)
+tested_percent = round((tested / expected) * 100.0, 1)
+success_percent = round((succeeded / tested) * 100.0, 1) if tested else 0.0
+failure_percent = round((failed / tested) * 100.0, 1) if tested else 0.0
+payload = {
+    "schema": "promptbranch.release_control.all_tests_progress",
+    "schema_version": "1.0",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "expected_step_count": expected,
+    "tested_count": tested,
+    "tested_percent_of_expected": tested_percent,
+    "succeeded_count": succeeded,
+    "failed_count": failed,
+    "success_percent_of_tested": success_percent,
+    "failure_percent_of_tested": failure_percent,
+    "steps": steps,
+}
+out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "
+", encoding="utf-8")
+print(
+    "all_tests_progress: "
+    f"tested={tested}/{expected} tested_percent={tested_percent:.1f} "
+    f"succeeded={succeeded} failed={failed} "
+    f"success_percent={success_percent:.1f} failure_percent={failure_percent:.1f}"
+)
+INNERPY
+}
+
 record_all_test_step() {
   local name="$1"
   local log_path="$2"
   local rc="$3"
   all_test_step_specs+=("${name}|${log_path}|${rc}")
+  run_all_emit_progress
 }
 
 run_all_json_step() {

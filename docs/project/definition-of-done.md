@@ -336,3 +336,5 @@ Done when `--run-all-tests --adopt-after-validation` does not require `pb_test.f
 ## DOD-120 — Run-all reuses one live browser/source lifecycle for localhost matrix
 
 Done when `--run-all-tests` executes one authoritative direct browser/source lifecycle proof and reuses it for `full_localhost` only when direct validation evidence matches artifact SHA256, version, artifact ref, service base, runtime mode, strict source-kind matrix mode, command signature, and green test/report status. The localhost matrix remains visible through the all-tests summary and cooldown audit, and release-control fails closed if matching direct evidence is missing or stale.
+
+| DOD-121 | Adopt-after-validation accepts reused `full_localhost` lifecycle proof without requiring a missing localhost report file, and run-all emits incremental progress percentages | candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.91.9.md` | v0.1.91.9 |

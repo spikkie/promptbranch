@@ -600,3 +600,7 @@ No data migration. This repair changes release-control Docker bootstrap behavior
 ## Repair migration note — v0.1.91.8
 
 No data migration. This repair changes release-control run-all orchestration only: `full_localhost` reuses matching direct browser/source lifecycle evidence instead of rerunning live Project Source mutations. Operators should rerun `v0.1.91.8 --run-all-tests --adopt-after-validation` to prove the single-live-browser-source-lifecycle flow.
+
+## Repair migration note — v0.1.91.9
+
+No data migration. This repair changes only release-control adopt-after-validation report-path selection for reused `full_localhost` lifecycle evidence and adds operator-facing run-all progress telemetry. Operators should rerun `v0.1.91.9 --run-all-tests --adopt-after-validation` to prove the footer no longer requires `pb_test.full.localhost.<version>.report.json` when `full_localhost` is reused.
