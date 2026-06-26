@@ -662,3 +662,9 @@ No execution semantics change: no commands, tests, file mutation, deployment, Ku
 `v0.1.93` advances MVP-1 with `pb loop run --planned-actions`. The command prints one planned action and validation gate per state while preserving the same dry-run/no-execution semantics as `--state-only` and default loop run.
 
 This slice is intentionally still non-mutating: it does not execute commands, tests, corrections, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.
+
+## v0.1.93.1 repair candidate status
+
+`v0.1.93.1` is a repair-only candidate for the `v0.1.93` MVP-1 planned-action walkthrough. It preserves `pb loop run --planned-actions` and changes only offline release-validation subprocess isolation for `browser_scheduler_source_lifecycle`.
+
+The repair strips inherited live ChatGPT/service environment from release-validation pytest subprocesses, gives each scheduler/source nodeid isolated `HOME`, `TMPDIR`, XDG directories, and release-validation profile state, and records ambient repo profile-lock diagnostics. It does not change loop behavior, browser behavior, adoption/current semantics, Project Source mutation semantics, Docker behavior, or Project deletion behavior.

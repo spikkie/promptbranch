@@ -273,3 +273,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.92 | normal | MVP-1 state-only loop walkthrough | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-123 done; first MVP-1 normal slice from accepted/current v0.1.91.10 | accepted/current `chatgpt_claudecode_workflow-2_v0.1.92.zip` |
 
 | v0.1.93 | normal | MVP-1 planned-action walkthrough | candidate | focused loop/CLI/version/project-control tests, compileall, Artifact Guardian, ZIP hygiene; full release-control/adoption pending | DOD-124 focused; planned actions/gates are presentation-only and side-effect free | pending adoption evidence |
+
+| v0.1.93.1 | repair | Direct release-validation scheduler nodeid isolation | candidate | focused test-suite isolation tests, targeted scheduler nodeid test, loop/CLI/version/project-control tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene; full release-control/adoption pending | DOD-125 focused; preserves DOD-124 planned-action feature; no normal slice advanced | pending adoption evidence |

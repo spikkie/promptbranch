@@ -175,7 +175,11 @@ def _tail_text(text: str, *, max_chars: int = 4000) -> str:
     return text[-max_chars:]
 
 
-def _release_validation_group_env() -> dict[str, str]:
+def _release_validation_group_env(
+    *,
+    isolation_root: Path | None = None,
+    nodeid: str | None = None,
+) -> dict[str, str]:
     env = os.environ.copy()
     # Release validation groups are deterministic repo-local checks. Disable
     # ambient pytest plugin autoload so locally installed plugins cannot hang
@@ -185,9 +189,73 @@ def _release_validation_group_env() -> dict[str, str]:
     # live/browser transport leak service routing into the pytest process; a
     # localhost release-control leg must not make local validators talk to the
     # browser service or inherit its timeout behavior.
-    for key in ("CHATGPT_SERVICE_BASE_URL", "PROMPTBRANCH_SERVICE_BASE_URL"):
+    for key in list(env):
+        if key.startswith("CHATGPT_"):
+            env.pop(key, None)
+    for key in (
+        "PROMPTBRANCH_SERVICE_BASE_URL",
+        "PROMPTBRANCH_SERVICE_PORT",
+        "PROMPTBRANCH_SERVICE_IMAGE",
+        "PROMPTBRANCH_SERVICE_IMAGE_TAG",
+        "PROMPTBRANCH_ARTIFACT_SHA256",
+        "PROMPTBRANCH_VERSION",
+        "PROMPTBRANCH_LOCALHOST_BASE_URL",
+        "PROMPTBRANCH_CONTAINER_ID",
+        "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR",
+    ):
         env.pop(key, None)
+    # Avoid operator-level pytest customizations in the release-validation
+    # subprocess. The release gate owns its selected nodeids and options.
+    env.pop("PYTEST_ADDOPTS", None)
+    env["PROMPTBRANCH_RELEASE_VALIDATION_ISOLATED"] = "1"
+    if nodeid:
+        env["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] = nodeid
+    if isolation_root is not None:
+        root = isolation_root.expanduser().resolve()
+        home = root / "home"
+        tmp = root / "tmp"
+        cache = root / "xdg-cache"
+        config = root / "xdg-config"
+        data = root / "xdg-data"
+        profile = root / "profile"
+        for path in (home, tmp, cache, config, data, profile):
+            path.mkdir(parents=True, exist_ok=True)
+        env.update({
+            "HOME": str(home),
+            "TMPDIR": str(tmp),
+            "XDG_CACHE_HOME": str(cache),
+            "XDG_CONFIG_HOME": str(config),
+            "XDG_DATA_HOME": str(data),
+            "PROMPTBRANCH_RELEASE_VALIDATION_PROFILE_DIR": str(profile),
+        })
     return env
+
+
+def _parse_lock_file(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    payload: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            payload[key.strip()] = value.strip()
+    return payload
+
+
+def _release_validation_ambient_lock_snapshot(repo_path: Path) -> dict[str, Any]:
+    profile_dir = repo_path / ".pb_profile"
+    lock_path = profile_dir / ".promptbranch-browser-profile.lock"
+    lock_payload = _parse_lock_file(lock_path) if lock_path.exists() else {}
+    return {
+        "profile_dir": str(profile_dir),
+        "lock_path": str(lock_path),
+        "lock_file_exists": lock_path.exists(),
+        "lock_file": lock_payload,
+        "last_operation": lock_payload.get("operation"),
+        "last_pid": lock_payload.get("pid"),
+    }
 
 
 def _split_pytest_nodeid_command(command: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -217,8 +285,26 @@ def _run_release_validation_group_with_nodeid_progress(
     if not nodeids:
         return None
 
-    env = _release_validation_group_env()
     started_monotonic = time.monotonic()
+    isolation_parent = Path(tempfile.mkdtemp(prefix=f"pb-release-validation-{group_name}-"))
+    isolation_diagnostics = {
+        "enabled": True,
+        "root": str(isolation_parent),
+        "ambient_repo_profile_lock": _release_validation_ambient_lock_snapshot(repo_path),
+        "stripped_env_prefixes": ["CHATGPT_"],
+        "stripped_env_keys": [
+            "PROMPTBRANCH_SERVICE_BASE_URL",
+            "PROMPTBRANCH_SERVICE_PORT",
+            "PROMPTBRANCH_SERVICE_IMAGE",
+            "PROMPTBRANCH_SERVICE_IMAGE_TAG",
+            "PROMPTBRANCH_ARTIFACT_SHA256",
+            "PROMPTBRANCH_VERSION",
+            "PROMPTBRANCH_LOCALHOST_BASE_URL",
+            "PROMPTBRANCH_CONTAINER_ID",
+            "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR",
+            "PYTEST_ADDOPTS",
+        ],
+    }
     completed_nodeids: list[str] = []
     failed_nodeids: list[str] = []
     timed_out_nodeids: list[str] = []
@@ -240,6 +326,7 @@ def _run_release_validation_group_with_nodeid_progress(
                 "description": spec.get("description"),
                 "command": command,
                 "command_mode": "per_nodeid_progress",
+                "environment_isolation": isolation_diagnostics,
                 "started_at": started_at,
                 "finished_at": utc_now(),
                 "timeout_seconds": timeout_seconds,
@@ -260,6 +347,8 @@ def _run_release_validation_group_with_nodeid_progress(
         stdout_parts.append(progress_line)
         node_command = [*command_prefix, nodeid]
         node_started_at = utc_now()
+        node_isolation_root = isolation_parent / f"node-{index:02d}"
+        node_env = _release_validation_group_env(isolation_root=node_isolation_root, nodeid=nodeid)
         try:
             completed = subprocess.run(
                 node_command,
@@ -269,7 +358,7 @@ def _run_release_validation_group_with_nodeid_progress(
                 stderr=subprocess.PIPE,
                 timeout=max(0.1, remaining),
                 check=False,
-                env=env,
+                env=node_env,
             )
         except subprocess.TimeoutExpired as exc:
             timed_out_nodeids.append(nodeid)
@@ -297,6 +386,7 @@ def _run_release_validation_group_with_nodeid_progress(
                 "description": spec.get("description"),
                 "command": command,
                 "command_mode": "per_nodeid_progress",
+                "environment_isolation": isolation_diagnostics,
                 "started_at": started_at,
                 "finished_at": utc_now(),
                 "timeout_seconds": timeout_seconds,
@@ -339,6 +429,7 @@ def _run_release_validation_group_with_nodeid_progress(
                 "description": spec.get("description"),
                 "command": command,
                 "command_mode": "per_nodeid_progress",
+                "environment_isolation": isolation_diagnostics,
                 "returncode": completed.returncode,
                 "started_at": started_at,
                 "finished_at": utc_now(),
@@ -361,6 +452,7 @@ def _run_release_validation_group_with_nodeid_progress(
         "description": spec.get("description"),
         "command": command,
         "command_mode": "per_nodeid_progress",
+        "environment_isolation": isolation_diagnostics,
         "returncode": 0,
         "started_at": started_at,
         "finished_at": utc_now(),

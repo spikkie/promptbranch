@@ -93,3 +93,5 @@ MVP-1:
 `v0.1.92` opened MVP-1 with the smallest safe step: `pb loop run --state-only` walks the existing dry-run loop state machine and prints only state transitions.
 
 `v0.1.93` advances MVP-1 from state names to a planned-action walkthrough: `pb loop run --planned-actions` prints what each state would do and which gate would validate it, while still performing no commands, tests, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion. The Kubernetes game remains the first future acceptance scenario, not an implementation target in this slice.
+
+`v0.1.93.1` is a repair-only continuation of the `v0.1.93` MVP-1 planned-action slice. It does not advance MVP-1 scope; it isolates offline scheduler/source release-validation nodeids from direct live browser/service/profile environment state.

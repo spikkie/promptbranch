@@ -618,3 +618,7 @@ No user data, Project Source, artifact-current, or deployment migration is perfo
 ## v0.1.93 migration note
 
 No operator data migration is required. `v0.1.93` adds a presentation-only planned-action walkthrough for MVP-1. Existing `pb loop validate`, `pb loop plan`, `pb loop run`, and `pb loop run --state-only` behavior is preserved. Operators can use `pb loop run --planned-actions` to inspect the action/gate sequence without executing any actions.
+
+## v0.1.93.1 repair migration note
+
+No operator data migration is required. `v0.1.93.1` repairs the `v0.1.93` release-validation environment only. Existing loop target files, state-only walkthrough behavior, and planned-action walkthrough behavior are preserved.

@@ -345,3 +345,5 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 | DOD-123 | MVP-1 state-only loop walkthrough prints only planned loop states while preserving dry-run/no-side-effect semantics | done | accepted/current `v0.1.92`; `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.92.md` | v0.1.92 |
 
 | DOD-124 | MVP-1 planned-action walkthrough prints one planned action and validation gate per state while preserving no-execution semantics | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.93.md` | v0.1.93 |
+
+| DOD-125 | Direct release-validation scheduler/source nodeids are isolated from ambient live browser/service/profile state while preserving the v0.1.93 planned-action feature | focused_candidate | `promptbranch_test_suite.py`, `tests/test_promptbranch_test_suite.py`, `docs/repair-v0.1.93.1.md` | v0.1.93.1 |
