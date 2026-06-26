@@ -336,3 +336,7 @@ Release-control candidate service bootstrap is adoption-grade validation, not a 
 ## Decision — v0.1.91.8 run-all uses one authoritative browser/source lifecycle proof
 
 Release-control must not duplicate live Project Source mutations in `full_localhost` after `full_direct` already proved the same browser/source lifecycle for the same artifact/version/hash/dimensions. The localhost matrix should reuse that proof and remain visible through transport/report/cooldown audit metadata. This avoids redundant ChatGPT UI/source-surface churn without weakening fail-closed evidence matching.
+
+## Decision — v0.1.91.9 reused localhost lifecycle is a valid adoption proof input
+
+When `full_localhost` is intentionally reused from matching green `full_direct` browser/source lifecycle evidence, `pb_test.full.localhost.<version>.report.json` may be absent by design. Adopt-after-validation must validate the green all-tests summary, matching direct evidence, and `full_localhost` `reused_browser_source_lifecycle` step instead of requiring a missing report file. Run-all should also emit progress percentages after each step so operators do not need to wait for the final summary to see whether the run is failing.

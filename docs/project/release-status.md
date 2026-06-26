@@ -265,3 +265,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.91.7 | repair | Pre-source-add Docker no-cache build-context freshness repair | candidate | focused Docker bootstrap/no-cache/build-context diagnostics tests, version/project-control validation, compileall, shell syntax, Artifact Guardian, ZIP hygiene | DOD-119 done; no normal slice advanced | pending |
 
 | v0.1.91.8 | repair | Run-all single live-browser source lifecycle reuse for full_localhost | candidate | focused run-all reuse/localhost audit tests, version/project-control validation, compileall, shell syntax, Artifact Guardian, ZIP hygiene | DOD-120 done; no normal slice advanced | pending |
+
+| v0.1.91.9 | repair | Adopt-after-validation localhost lifecycle-reuse report path repair plus run-all progress telemetry | candidate | focused shell tests, version/control-surface tests, compileall, bash syntax, artifact guard before operator install | no slice advanced | pending adoption evidence |

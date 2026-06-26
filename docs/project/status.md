@@ -634,3 +634,7 @@ No live/browser behavior, adoption/current semantics, Project deletion behavior,
 ## v0.1.91.8 repair candidate status
 
 `v0.1.91.8` repairs only the run-all localhost duplicate live-source mutation path. After matching green `full_direct` evidence exists for the same artifact/version/hash/dimensions, `full_localhost` reuses the direct browser/source lifecycle proof instead of rerunning Project Source mutations. Localhost service/report/cooldown audit visibility is preserved. No live/browser command behavior, adoption/current semantics, Project Source semantics, or Project deletion behavior changed.
+
+## v0.1.91.9 repair candidate status
+
+`v0.1.91.9` repairs only the adopt-after-validation footer when `full_localhost` is intentionally represented by `reused_browser_source_lifecycle` instead of a standalone `pb_test.full.localhost.<version>.report.json`. It also adds incremental run-all progress telemetry so operators can see tested/succeeded/failed percentages before the final summary. It preserves all `v0.1.91.1` through `v0.1.91.8` repairs and does not change live/browser behavior, validation semantics, adoption/current semantics, Project Source semantics, or Project deletion behavior.
