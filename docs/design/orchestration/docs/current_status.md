@@ -119,3 +119,8 @@ This slice does not implement the Kubernetes game, execute validation commands, 
 ## v0.1.93 planned-action walkthrough
 
 MVP-1 advances from state-only output to a planned-action walkthrough. `pb loop run --planned-actions` prints the planned action and validation gate for each loop state while remaining fully side-effect free. This prepares the future execution loop without granting execution authority yet.
+
+
+## v0.1.94 update
+
+MVP-1 now includes a read-only execution preflight: `pb loop run --read-only-checks`. The command inspects target-declared path scopes and validation command declarations locally while preserving all no-command/no-mutation/no-deployment/no-adoption guarantees.
