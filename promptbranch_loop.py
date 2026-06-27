@@ -38,6 +38,8 @@ LOOP_ACTION_WALKTHROUGH_SCHEMA = "promptbranch.loop.action_walkthrough"
 LOOP_ACTION_WALKTHROUGH_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_EXECUTION_SCHEMA = "promptbranch.loop.read_only_execution"
 LOOP_READ_ONLY_EXECUTION_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA = "promptbranch.loop.read_only_evidence_report"
+LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -531,7 +533,7 @@ def build_loop_read_only_execution_payload(
         for command in validation_commands
     ]
     executed_state = "REQUIREMENTS_CHECK"
-    return {
+    payload = {
         "ok": bool(plan.get("ok")) and not unsafe_paths,
         "schema": LOOP_READ_ONLY_EXECUTION_SCHEMA,
         "schema_version": LOOP_READ_ONLY_EXECUTION_SCHEMA_VERSION,
@@ -572,6 +574,124 @@ def build_loop_read_only_execution_payload(
         },
         "operator_instruction": "Read-only execution preflight. It inspects declared path scopes and validation command declarations but executes no commands, mutates no files, performs no deployment, mutates no Project Sources, and adopts no artifacts.",
     }
+    payload["evidence_report"] = build_loop_read_only_evidence_report(payload)
+    return payload
+
+
+def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
+    checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+    allowed_paths = list(checks.get("allowed_paths") or [])
+    validation_commands = list(checks.get("validation_commands") or [])
+    unsafe_paths = [item for item in allowed_paths if not item.get("safe")]
+    safe_paths = [item for item in allowed_paths if item.get("safe")]
+    skipped_commands = [item for item in validation_commands if item.get("execution_status") == "not_executed_read_only"]
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    execution_clean = (
+        bool(payload.get("ok"))
+        and not unsafe_paths
+        and int((payload.get("summary") or {}).get("commands_executed") or 0) == 0
+        and not bool(payload.get("side_effects_performed"))
+        and not bool(safety.get("deployment_performed"))
+        and not bool(safety.get("kubernetes_mutation_performed"))
+        and not bool(safety.get("project_source_mutation_performed"))
+        and not bool(safety.get("artifact_adoption_performed"))
+    )
+    return {
+        "ok": execution_clean,
+        "schema": LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA_VERSION,
+        "action": "loop_evidence_report",
+        "status": "evidence_clean" if execution_clean else "evidence_blocked",
+        "source_schema": payload.get("schema"),
+        "source_status": payload.get("status"),
+        "target_id": payload.get("target_id"),
+        "target_path": payload.get("target_path"),
+        "loop_id": payload.get("loop_id"),
+        "execution_mode": payload.get("execution_mode"),
+        "executed_state": payload.get("executed_state"),
+        "final_state": payload.get("final_state"),
+        "evidence_summary": {
+            "allowed_path_count": len(allowed_paths),
+            "safe_path_count": len(safe_paths),
+            "unsafe_path_count": len(unsafe_paths),
+            "matched_path_count": sum(int(item.get("match_count") or 0) for item in allowed_paths),
+            "validation_command_count": len(validation_commands),
+            "declared_command_count": len(validation_commands),
+            "skipped_command_count": len(skipped_commands),
+            "commands_executed": int((payload.get("summary") or {}).get("commands_executed") or 0),
+        },
+        "path_evidence": [
+            {
+                "path": item.get("path"),
+                "status": item.get("status"),
+                "safe": bool(item.get("safe")),
+                "repo_relative": bool(item.get("repo_relative")),
+                "glob": bool(item.get("glob")),
+                "match_count": int(item.get("match_count") or 0),
+                "read_only": bool(item.get("read_only")),
+                "mutation_performed": bool(item.get("mutation_performed")),
+            }
+            for item in allowed_paths
+        ],
+        "command_evidence": [
+            {
+                "command": item.get("command"),
+                "declared": bool(item.get("declared")),
+                "execution_status": item.get("execution_status"),
+                "executed": False,
+                "side_effects_performed": bool(item.get("side_effects_performed")),
+            }
+            for item in validation_commands
+        ],
+        "blocked_reasons": ["unsafe_path_scope"] if unsafe_paths else [],
+        "safety_assertions": {
+            "commands_executed": False,
+            "files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "Evidence report only. It summarizes read-only preflight evidence and does not execute commands, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.",
+    }
+
+
+def render_loop_read_only_evidence_report_text(payload: dict[str, Any]) -> str:
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"executed_state={payload.get('executed_state') or 'none'}",
+        f"final_state={payload.get('final_state') or 'none'}",
+    ]
+    summary = payload.get("evidence_summary") if isinstance(payload.get("evidence_summary"), dict) else {}
+    lines.extend([
+        f"safe_path_count={summary.get('safe_path_count', 0)}",
+        f"unsafe_path_count={summary.get('unsafe_path_count', 0)}",
+        f"declared_command_count={summary.get('declared_command_count', 0)}",
+        f"skipped_command_count={summary.get('skipped_command_count', 0)}",
+        f"commands_executed={summary.get('commands_executed', 0)}",
+    ])
+    for item in payload.get("path_evidence") or []:
+        lines.append(
+            "path_evidence={path} status={status} safe={safe} match_count={match_count} mutation_performed=false".format(
+                path=item.get("path"),
+                status=item.get("status"),
+                safe=str(bool(item.get("safe"))).lower(),
+                match_count=item.get("match_count", 0),
+            )
+        )
+    for item in payload.get("command_evidence") or []:
+        lines.append(
+            "command_evidence={command} execution_status={status} executed=false".format(
+                command=item.get("command"),
+                status=item.get("execution_status"),
+            )
+        )
+    lines.append("side_effects_performed=false")
+    return "\n".join(lines) + "\n"
 
 
 def render_loop_action_walkthrough_text(payload: dict[str, Any]) -> str:

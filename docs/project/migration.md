@@ -626,3 +626,8 @@ No operator data migration is required. `v0.1.93.1` repairs the `v0.1.93` releas
 ## v0.1.94.1 repair migration note
 
 The `v0.1.94.1` repair preserves the intended `v0.1.94` read-only loop execution work and migrates the Project Source capacity-prune drift finding into the control surface. No existing planning documents are deleted or replaced. The old `v0.1.85` reference is treated only as an old Project Source prune candidate, not as the current baseline.
+
+
+## v0.1.95 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators may use `pb loop run --read-only-execution --evidence-report --json` to inspect the compact evidence report. Existing `validate`, `plan`, `run`, `--state-only`, `--planned-actions`, and `--read-only-execution` behavior is preserved.

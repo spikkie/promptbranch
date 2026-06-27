@@ -356,3 +356,6 @@ The required `browser_scheduler_source_lifecycle` release-validation group remai
 For release ZIP file source-add capacity pruning, if the exact remove of the selected prune target reports identity drift or collateral removal, Promptbranch must stop immediately, suppress any looser retry, return `operator_review_required=true`, and require operator review. The system must not continue pruning after source-row identity drift.
 
 This decision was added for `v0.1.94.1` after a `v0.1.94` run targeted old source `v0.1.85` but observed collateral removal of older rows.
+
+
+| ADR-PROJ-096 | 2026-06-27 | Read-only loop execution must produce evidence before real execution is introduced | The loop can only become safe if operators can inspect what was checked, what was skipped, and which side-effect boundaries stayed true before any command execution slice exists. | `v0.1.95` adds `promptbranch.loop.read_only_evidence_report` and `pb loop run --read-only-execution --evidence-report`; it remains no-command/no-mutation/no-deploy/no-adoption. |
