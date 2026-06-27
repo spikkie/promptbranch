@@ -1332,6 +1332,60 @@ INNERPY
   fi
 }
 
+
+promptbranch_source_fingerprint() {
+  python3 - <<'INNERPY'
+from pathlib import Path
+import hashlib
+files = ('VERSION', 'promptbranch_version.py', 'pyproject.toml')
+digest = hashlib.sha256()
+for rel in files:
+    path = Path(rel)
+    if not path.is_file():
+        print('unknown')
+        raise SystemExit(0)
+    digest.update(rel.encode('utf-8'))
+    digest.update(b'\0')
+    digest.update(path.read_bytes())
+    digest.update(b'\0')
+print(digest.hexdigest())
+INNERPY
+}
+
+refresh_docker_build_context_mtimes() {
+  # ZIP-installed release files intentionally carry deterministic mtimes.
+  # Docker/BuildKit local context snapshotting can miss same-size content
+  # changes when mtimes are preserved, so refresh safe repo-local file mtimes
+  # before service image builds. This changes no file contents and keeps Git
+  # status clean while forcing Docker to see the current installed candidate.
+  python3 - "${repo_root}" <<'INNERPY'
+from pathlib import Path
+import os
+import sys
+import time
+root = Path(sys.argv[1]).resolve()
+excluded_dirs = {
+    '.git', '.pb_profile', '.pytest_cache', '.mypy_cache', '.ruff_cache',
+    '.venv', 'venv', 'env', 'node_modules', '__pycache__', 'debug_artifacts',
+    'build', 'dist', 'coverage', '.cache'
+}
+now = time.time()
+count = 0
+for path in root.rglob('*'):
+    rel_parts = path.relative_to(root).parts
+    if any(part in excluded_dirs for part in rel_parts):
+        continue
+    if not path.is_file():
+        continue
+    try:
+        os.utime(path, (now, now), follow_symlinks=False)
+        count += 1
+    except Exception:
+        pass
+print(f"docker_build_context_mtime_refresh_count={count}")
+INNERPY
+}
+
 pre_source_add_service_image_tag() {
   if [[ -n "${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}" ]]; then
     printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE_TAG}"
@@ -1357,6 +1411,8 @@ run_pre_source_add_docker_compose() {
   image_tag="$(pre_source_add_service_image_tag)"
   image_ref="$(pre_source_add_service_image_ref)"
   artifact_sha="$(pre_source_add_release_artifact_sha256)"
+  local source_fingerprint
+  source_fingerprint="$(promptbranch_source_fingerprint)"
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
@@ -1364,6 +1420,7 @@ run_pre_source_add_docker_compose() {
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
   PROMPTBRANCH_VERSION="${ver#v}" \
   PROMPTBRANCH_ARTIFACT_SHA256="${artifact_sha}" \
+  PROMPTBRANCH_SOURCE_FINGERPRINT="${source_fingerprint}" \
   docker compose --project-directory "${repo_root}" -p "${compose_project_name}" -f "${compose_file}" "$@"
 }
 
@@ -1481,6 +1538,7 @@ write_pre_source_add_build_context_snapshot() {
   python3 - "${pre_source_add_build_context_json}" "${repo_root}" "${compose_file}" "${compose_project_name}" "${compose_service_name}" "${ver#v}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
+import hashlib
 import json
 import re
 import subprocess
@@ -1512,6 +1570,22 @@ def package_version(text: str | None) -> str | None:
 def norm(value: object) -> str:
     text = str(value or '').strip()
     return text[1:] if text.startswith('v') else text
+
+def file_sha256(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except Exception:
+        return None
+
+def source_fingerprint() -> str:
+    digest = hashlib.sha256()
+    for rel in ('VERSION', 'promptbranch_version.py', 'pyproject.toml'):
+        path = root / rel
+        digest.update(rel.encode('utf-8'))
+        digest.update(b'\0')
+        digest.update(path.read_bytes())
+        digest.update(b'\0')
+    return digest.hexdigest()
 
 version_text = read(root / 'VERSION')
 pyproject_text = read(root / 'pyproject.toml')
@@ -1552,6 +1626,12 @@ payload = {
     'expected_version': expected_version,
     'actuals': actuals,
     'checks': checks,
+    'source_fingerprint': source_fingerprint(),
+    'file_sha256': {
+        'VERSION': file_sha256(root / 'VERSION'),
+        'promptbranch_version.py': file_sha256(root / 'promptbranch_version.py'),
+        'pyproject.toml': file_sha256(root / 'pyproject.toml'),
+    },
     'compose_config': compose_config,
     'compose_config_error': compose_config_error,
 }
@@ -1563,7 +1643,9 @@ INNERPY
 classify_pre_source_add_bootstrap_failure() {
   local reason="${1:-pre_source_add_bootstrap_command_failed}"
   local status="${reason}"
-  if grep -q "Docker build context version mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
+  if grep -q "Docker build context fingerprint mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
+    status="pre_source_add_docker_build_context_stale"
+  elif grep -q "Docker build context version mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
     status="pre_source_add_docker_build_context_version_mismatch"
   fi
   python3 - "${pre_source_add_service_health_json}" "${status}" "${ver#v}" "${pre_source_add_service_start_log}" <<'INNERPY'
@@ -1629,7 +1711,7 @@ ensure_service_before_source_add() {
   echo "Pre-source-add service unavailable or stale; bootstrapping candidate service before Project Source add."
   echo "output -> ${pre_source_add_service_start_log}"
 
-  {
+  (
     echo "== Pre-source-add service bootstrap =="
     echo "compose_project_name: ${compose_project_name}"
     echo "compose_service_name: ${compose_service_name}"
@@ -1641,17 +1723,19 @@ ensure_service_before_source_add() {
     echo "repo_root: ${repo_root}"
     echo "+ write_pre_source_add_docker_preflight"
     write_pre_source_add_docker_preflight
+    echo "+ refresh_docker_build_context_mtimes"
+    refresh_docker_build_context_mtimes
     echo "+ write_pre_source_add_build_context_snapshot"
     write_pre_source_add_build_context_snapshot
     echo "+ docker compose --project-directory ${repo_root} down --remove-orphans"
-    run_pre_source_add_docker_compose down --remove-orphans
+    run_pre_source_add_docker_compose down --remove-orphans || exit $?
     echo "+ docker compose --project-directory ${repo_root} build --no-cache --pull"
-    run_pre_source_add_docker_compose build --no-cache --pull
-    echo "+ docker compose --project-directory ${repo_root} up -d --force-recreate --remove-orphans"
-    run_pre_source_add_docker_compose up -d --force-recreate --remove-orphans
+    run_pre_source_add_docker_compose build --no-cache --pull || exit $?
+    echo "+ docker compose --project-directory ${repo_root} up -d --no-build --force-recreate --remove-orphans"
+    run_pre_source_add_docker_compose up -d --no-build --force-recreate --remove-orphans || exit $?
     echo "+ docker compose ps ${compose_service_name}"
-    run_pre_source_add_docker_compose ps "${compose_service_name}"
-  } >"${pre_source_add_service_start_log}" 2>&1 || {
+    run_pre_source_add_docker_compose ps "${compose_service_name}" || exit $?
+  ) >"${pre_source_add_service_start_log}" 2>&1 || {
     bootstrap_status="$(classify_pre_source_add_bootstrap_failure "pre_source_add_bootstrap_command_failed")"
     write_pre_source_add_service_diagnostics "${bootstrap_status}"
     echo "ERROR: ${bootstrap_status}" >&2
@@ -2279,8 +2363,10 @@ compose_env_prefix() {
   image_tag="$(promptbranch_service_image_tag)"
   image_ref="$(promptbranch_service_image_ref)"
   artifact_sha="$(release_artifact_sha256)"
-  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q PROMPTBRANCH_VERSION=%q PROMPTBRANCH_ARTIFACT_SHA256=%q' \
-    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}" "${ver#v}" "${artifact_sha}"
+  local source_fingerprint
+  source_fingerprint="$(promptbranch_source_fingerprint)"
+  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q PROMPTBRANCH_VERSION=%q PROMPTBRANCH_ARTIFACT_SHA256=%q PROMPTBRANCH_SOURCE_FINGERPRINT=%q' \
+    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}" "${ver#v}" "${artifact_sha}" "${source_fingerprint}"
 }
 
 run_docker_compose() {
@@ -2290,6 +2376,8 @@ run_docker_compose() {
   image_tag="$(promptbranch_service_image_tag)"
   image_ref="$(promptbranch_service_image_ref)"
   artifact_sha="$(release_artifact_sha256)"
+  local source_fingerprint
+  source_fingerprint="$(promptbranch_source_fingerprint)"
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
@@ -2297,6 +2385,7 @@ run_docker_compose() {
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
   PROMPTBRANCH_VERSION="${ver#v}" \
   PROMPTBRANCH_ARTIFACT_SHA256="${artifact_sha}" \
+  PROMPTBRANCH_SOURCE_FINGERPRINT="${source_fingerprint}" \
   docker compose -p "${compose_project_name}" -f "${compose_file}" "$@"
 }
 
@@ -2706,6 +2795,8 @@ deploy_promptbranch_service_detached() {
     echo "artifact_sha256: $(release_artifact_sha256)"
     echo "+ docker_release_preflight"
     docker_release_preflight
+    echo "+ refresh_docker_build_context_mtimes"
+    refresh_docker_build_context_mtimes
     echo "+ assert_host_build_context_versions"
     assert_host_build_context_versions
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
@@ -2716,8 +2807,8 @@ deploy_promptbranch_service_detached() {
     if docker_image_version_probe "${docker_image_content_json}" "normal_build"; then
       echo "+ docker image inspect $(promptbranch_service_image_ref)"
       docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
-      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-      run_docker_compose up -d --force-recreate --remove-orphans
+      echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
+      run_docker_compose up -d --no-build --force-recreate --remove-orphans
       echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps ${compose_service_name}"
       run_docker_compose ps "${compose_service_name}"
       run_docker_compose ps --format json "${compose_service_name}" > "${service_compose_ps_json}" 2>/dev/null || true
@@ -2760,6 +2851,8 @@ deploy_promptbranch_service_detached() {
   {
     echo "== Docker service no-cache rebuild fallback =="
     echo "reason: service or image content version did not match expected ${ver#v} after normal recreate"
+    echo "+ refresh_docker_build_context_mtimes"
+    refresh_docker_build_context_mtimes
     echo "+ assert_host_build_context_versions"
     assert_host_build_context_versions
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} down --remove-orphans"
@@ -2770,8 +2863,8 @@ deploy_promptbranch_service_detached() {
     docker_image_version_probe "${docker_image_content_nocache_json}" "no_cache_build"
     echo "+ docker image inspect $(promptbranch_service_image_ref)"
     docker image inspect "$(promptbranch_service_image_ref)" > "${docker_image_inspect_json}" 2>/dev/null || true
-    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --force-recreate --remove-orphans"
-    run_docker_compose up -d --force-recreate --remove-orphans
+    echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
+    run_docker_compose up -d --no-build --force-recreate --remove-orphans
     echo "+ $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} ps ${compose_service_name}"
     run_docker_compose ps "${compose_service_name}"
     run_docker_compose ps --format json "${compose_service_name}" > "${service_compose_ps_json}" 2>/dev/null || true

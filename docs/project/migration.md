@@ -654,3 +654,7 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. This slice migrates the next-slice derivation process into repo authority by adding `docs/project/architecture.md`, `docs/project/slice-horizon.md`, machine-readable `rolling_slice_horizon` state in `docs/project/plan-state.json`, and the `pb project next-slice --json` command. First controlled read-only validation command execution is explicitly deferred to `v0.1.100`.
 
+
+## v0.1.99.1 repair migration note
+
+`v0.1.99.1` does not migrate user data, Project Sources, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects. It preserves the `v0.1.99` rolling slice horizon and repairs only release-control/Docker build-context freshness after deterministic ZIP-installed files retained fixed mtimes. `v0.1.100` remains deferred until the repaired `v0.1.99` line is accepted/current.

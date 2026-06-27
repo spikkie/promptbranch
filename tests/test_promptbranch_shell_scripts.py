@@ -783,7 +783,7 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
 
     assert 'run_docker_compose down --remove-orphans' in script
     assert 'run_docker_compose build --pull' in script
-    assert 'run_docker_compose up -d --force-recreate --remove-orphans' in script
+    assert 'run_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
     assert 'service_health_json="${release_log_dir}/promptbranch_service_health.${ver}.json"' in script
     assert 'service version mismatch: ' in script
     assert 'actual_normalized == expected_normalized' in script
@@ -3052,7 +3052,7 @@ def test_release_control_pre_source_add_service_bootstrap_is_clean_system_safe()
     assert 'Pre-source-add service unavailable or stale; bootstrapping candidate service before Project Source add.' in script
     assert 'docker compose --project-directory "${repo_root}" -p "${compose_project_name}" -f "${compose_file}" "$@"' in script
     assert 'run_pre_source_add_docker_compose build --no-cache --pull' in script
-    assert 'run_pre_source_add_docker_compose up -d --force-recreate --remove-orphans' in script
+    assert 'run_pre_source_add_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
     assert 'run_pre_source_add_docker_compose ps "${compose_service_name}"' in script
     assert 'pre_source_add_build_context_json="${release_log_dir}/pre_source_add_build_context.${ver}.json"' in script
     assert 'write_pre_source_add_build_context_snapshot' in script
@@ -3068,6 +3068,11 @@ def test_release_control_pre_source_add_docker_build_context_freshness_is_fail_c
     assert 'classify_pre_source_add_bootstrap_failure()' in script
     assert 'ERROR: inspect pre_source_add_build_context_json=${pre_source_add_build_context_json}' in script
     assert 'build --no-cache --pull' in script
+    assert 'refresh_docker_build_context_mtimes' in script
+    assert 'PROMPTBRANCH_SOURCE_FINGERPRINT' in script
+    assert 'Docker build context fingerprint mismatch' in (root / 'Dockerfile').read_text(encoding='utf-8')
+    assert 'pre_source_add_docker_build_context_stale' in script
+    assert 'up -d --no-build --force-recreate --remove-orphans' in script
     assert "'source_kind': 'pre_source_add_build_context'" in script
     assert "'status': 'verified' if all(checks.values()) else 'pre_source_add_repo_version_surface_mismatch'" in script
     assert "['docker', 'compose', '--project-directory', str(root), '-p', compose_project, '-f', str(compose), 'config']" in script

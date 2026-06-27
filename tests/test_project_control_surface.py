@@ -131,12 +131,16 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.98"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.98.zip"
-    assert data["active_candidate_version"] == "v0.1.99"
+    assert data["active_candidate_version"] == "v0.1.99.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.99.1.zip"
     assert data["next_normal_version"] == "v0.1.99"
     assert data["active_slice"] == "Rolling slice horizon and architecture-decision protocol"
     assert data["next_planned_version_after_acceptance"] == "v0.1.100"
     assert data["next_planned_slice_after_acceptance"] == "First controlled read-only validation command execution"
     assert data["repair_must_not_advance_scope"] is True
+    assert data["release_mode"] == "repair"
+    assert data["scope_advance_allowed"] is False
+    assert data["repair_base_version"] == "v0.1.99"
     assert data["architecture_goal"] == "controlled problem-solving loop"
     assert len(data["rolling_slice_horizon"]) == 5
 
@@ -145,7 +149,7 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.98"
-    assert payload["active_candidate_version"] == "v0.1.99"
+    assert payload["active_candidate_version"] == "v0.1.99.1"
     assert payload["next_normal_slice"] == "Rolling slice horizon and architecture-decision protocol"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
@@ -163,7 +167,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.99.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.99.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -171,7 +175,7 @@ def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99.1\n", encoding="utf-8")
     status = repo / "docs" / "project" / "status.md"
     text = status.read_text(encoding="utf-8")
     status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.98.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
@@ -226,7 +230,7 @@ def test_project_control_surface_validator_rejects_short_horizon(tmp_path: Path)
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99.1\n", encoding="utf-8")
     state_file = repo / "docs" / "project" / "plan-state.json"
     data = json.loads(state_file.read_text(encoding="utf-8"))
     data["rolling_slice_horizon"] = data["rolling_slice_horizon"][:3]
@@ -242,7 +246,7 @@ def test_project_control_surface_validator_rejects_missing_active_horizon(tmp_pa
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99.1\n", encoding="utf-8")
     state_file = repo / "docs" / "project" / "plan-state.json"
     data = json.loads(state_file.read_text(encoding="utf-8"))
     for item in data["rolling_slice_horizon"]:
@@ -259,7 +263,7 @@ def test_project_control_surface_validator_rejects_repair_scope_advance(tmp_path
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99.1\n", encoding="utf-8")
     state_file = repo / "docs" / "project" / "plan-state.json"
     data = json.loads(state_file.read_text(encoding="utf-8"))
     data["release_mode"] = "repair"

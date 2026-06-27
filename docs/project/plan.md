@@ -7,8 +7,10 @@ accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.98.zip
 accepted/current version: v0.1.98
 last completed normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
 last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
-active candidate version: v0.1.99
+active candidate: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+active candidate version: v0.1.99.1
+repair base candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
+repair base version: v0.1.99
 next normal target: chatgpt_claudecode_workflow-2_v0.1.99.zip
 next normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
 next planned target after acceptance: chatgpt_claudecode_workflow-2_v0.1.100.zip
@@ -33,6 +35,13 @@ v0.1.101 — Read-only command result diagnosis and blocked/failed classificatio
 v0.1.102 — Correction-plan generation without file mutation
 v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
+
+
+## Active repair — v0.1.99.1 Docker build-context freshness repair
+
+`v0.1.99.1` repairs the failed `v0.1.99` release-control pre-source-add service bootstrap. Docker copied stale `v0.1.98` version surfaces into `/app` after a deterministic ZIP install left same-size version files with fixed 1980 mtimes. The repair refreshes safe repo-local build-context mtimes before service builds, passes a source fingerprint into Docker, verifies the fingerprint after `COPY . .`, uses `up --no-build` after an explicit successful build, and fails fast/classifies Docker build-context mismatch instead of continuing to a generic service health failure.
+
+Scope advancement is forbidden: the active normal slice remains `v0.1.99 — Rolling slice horizon and architecture-decision protocol`, and `v0.1.100 — First controlled read-only validation command execution` remains deferred.
 
 ## Release / slice plan
 
