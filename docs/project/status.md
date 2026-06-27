@@ -3,28 +3,37 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.79.zip
-accepted version: v0.1.79
-active focused working candidate: chatgpt_claudecode_workflow-2_v0.1.84.5.3.zip
-next normal target: deferred until focused-candidate promotion gate
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
+accepted/current version: v0.1.97.1
+last completed normal slice: v0.1.97 — Read-only loop evidence gate
+last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.98.zip
+active candidate version: v0.1.98
+next normal target: chatgpt_claudecode_workflow-2_v0.1.98.zip
+next normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
+next planned slice after acceptance: v0.1.99 — First controlled read-only validation command execution
 ```
 
 ## Current MVP state
 
 ```text
 MVP status: active
+active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.79 — JSON orchestration event intake foundation
-active plan slice: v0.1.84 — Accepted-event ledger validation command
-active repair: v0.1.84.5.3 — rate-limit telemetry aggregation deduplication
+last accepted/current slice: v0.1.97.1 — repair of v0.1.97 read-only loop evidence gate
+active plan slice: v0.1.98 — Plan authority and anti-drift control-surface gate
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.79.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.84.5.3.zip repair candidate once packaged
-release status: v0.1.80-v0.1.84.5.3 are focused/repair candidates only; accepted/current remains v0.1.79 until later full validation and adoption evidence
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.98.zip candidate once packaged
+release status: v0.1.98 is a focused candidate until full release-control/adoption evidence proves accepted/current alignment
+plan authority file: docs/project/plan-state.json
+control-surface validator: pb project validate-control-surface --json
 ```
 
 ## Current risks
@@ -37,9 +46,10 @@ release status: v0.1.80-v0.1.84.5.3 are focused/repair candidates only; accepted
 
 ## Current blockers
 
-- `v0.1.84.5.3` remains repair-candidate-only until installed/runtime proof passes; v0.1.80-v0.1.84 remain focused candidates only.
-- `v0.1.84.5.3` must not be adopted/current without the user-preferred validation order: install candidate ZIP, run dedicated changed-code tests, run the selected promotion gate, then adopt only after required validation passes.
-- No accepted-event ledger write, proposal promotion, runtime orchestration, Project Source behavior change, artifact adoption behavior change, or ChatGPT Project deletion behavior change is allowed in this repair.
+- `v0.1.98` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- Any normal or repair release must validate `docs/project/plan-state.json` against `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md`, and `docs/project/migration.md`.
+- Repair releases must not advance the active normal slice unless an explicit decision records the scope change.
+- First controlled read-only validation command execution is deferred to `v0.1.99` and remains out of scope for `v0.1.98`.
 
 ## Current unknowns
 
@@ -50,7 +60,25 @@ release status: v0.1.80-v0.1.84.5.3 are focused/repair candidates only; accepted
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.84.5.3.zip, then rerun focused changed-code checks first. A repeated visual roundtrip with rate-limit telemetry should keep `status=rate_limited_contaminated` while reporting deduplicated top-level cooldown/event totals.
+Validate and package v0.1.98 as a plan-authority/anti-drift control-surface gate from accepted/current chatgpt_claudecode_workflow-2_v0.1.97.1.zip.
+```
+
+Operator promotion command after candidate ZIP creation:
+
+```bash
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.98.zip
+ver=v0.1.98
+
+timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
+  --install-from-zip "$zip" \
+  --version "$ver" \
+  --run-all-tests \
+  --strict-source-kind-matrix \
+  --adopt-after-validation \
+  --skip-docker-logs \
+  --prune-release-logs \
+  --release-log-keep 12 \
+  2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
 
 ## Last updated

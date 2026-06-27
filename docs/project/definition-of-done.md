@@ -360,3 +360,4 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 ## DOD-131 — Text-source post-commit reconciliation requires exact text proof
 
 Done when `project_source_add_text` can recover a committed-but-stale-inflight text-source add only after the Project Sources surface is re-read and the expected text-source identity or content anchor is visible. Recovery must reject nearby/different text sources and must not accept release ZIP source visibility as text-source proof. Ambiguous stale-inflight states remain release-blocking when exact text proof is missing.
+| DOD-132 | Plan authority and anti-drift control-surface gate is machine-readable and validated | done | `docs/project/plan-state.json`, `pb project validate-control-surface --json`, `tests/test_project_control_surface.py` | v0.1.98 |

@@ -1,0 +1,41 @@
+{
+  "schema": "promptbranch.project.plan_state",
+  "schema_version": "1.0",
+  "repo_id": "chatgpt_claudecode_workflow-2",
+  "accepted_current_version": "v0.1.97.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.97.1.zip",
+  "active_mvp": "MVP-1 loop-based problem-solving engine",
+  "last_completed_normal_slice_version": "v0.1.97",
+  "last_completed_normal_slice": "Read-only loop evidence gate",
+  "last_completed_repair_version": "v0.1.97.1",
+  "last_completed_repair": "text-source add post-commit reconciliation repair",
+  "active_candidate_version": "v0.1.98",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.98.zip",
+  "active_slice": "Plan authority and anti-drift control-surface gate",
+  "next_normal_version": "v0.1.98",
+  "next_normal_slice": "Plan authority and anti-drift control-surface gate",
+  "next_planned_version_after_acceptance": "v0.1.99",
+  "next_planned_slice_after_acceptance": "First controlled read-only validation command execution",
+  "scope_advance_allowed": true,
+  "repair_must_not_advance_scope": true,
+  "release_mode": "normal",
+  "out_of_scope": [
+    "read-only validation command execution",
+    "file mutation",
+    "deployment",
+    "Kubernetes mutation",
+    "Project Source behavior change",
+    "artifact adoption behavior change",
+    "ChatGPT Project deletion"
+  ],
+  "required_control_surface_files": [
+    "docs/project/mvp.md",
+    "docs/project/definition-of-done.md",
+    "docs/project/plan.md",
+    "docs/project/status.md",
+    "docs/project/release-status.md",
+    "docs/project/decisions.md",
+    "docs/project/migration.md",
+    "docs/project/plan-state.json"
+  ]
+}
