@@ -355,3 +355,8 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 | DOD-129 | Project Source capacity pruning keeps at most five generated release ZIP sources per repository family and never auto-selects documentation or other-repository sources | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/release-v0.1.96.md` | v0.1.96 |
 
 | DOD-130 | Read-only loop evidence gate converts the read-only evidence report into a deterministic pass/block decision before real command execution is introduced | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.97.md` | v0.1.97 |
+
+
+## DOD-131 — Text-source post-commit reconciliation requires exact text proof
+
+Done when `project_source_add_text` can recover a committed-but-stale-inflight text-source add only after the Project Sources surface is re-read and the expected text-source identity or content anchor is visible. Recovery must reject nearby/different text sources and must not accept release ZIP source visibility as text-source proof. Ambiguous stale-inflight states remain release-blocking when exact text proof is missing.

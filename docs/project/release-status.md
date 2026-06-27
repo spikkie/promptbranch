@@ -282,3 +282,5 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 
 | v0.1.96 | normal | Project Source generated ZIP retention guard | candidate | focused generated ZIP retention/source-prune tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene; full release-control/adoption pending | DOD-129 focused; source capacity control without deleting docs or other repo sources | pending adoption evidence |
 | v0.1.97 | normal | Read-only loop evidence gate | candidate | focused loop/CLI/version/control-surface tests, compileall, shell syntax, Artifact Guardian, ZIP hygiene; full release-control/adoption pending | DOD-130 focused; deterministic pass/block gate before real command execution | pending adoption evidence |
+
+| v0.1.97.1 | repair | Text-source add post-commit reconciliation repair | candidate | focused Project Source text reconciliation tests, loop/CLI/version/control-surface tests, compileall, shell syntax, Artifact Guardian, artifact verify | DOD-131 done; no normal slice advanced | pending adoption evidence |

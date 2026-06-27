@@ -639,3 +639,8 @@ No user data, artifact-current, deployment, Kubernetes, or ChatGPT Project delet
 ## v0.1.97 migration note
 
 No user data migration is required. Operators can use `pb loop run --read-only-execution --evidence-gate` to get a deterministic pass/block decision over the existing read-only evidence report. The gate remains non-mutating and does not execute validation commands.
+
+
+## v0.1.97.1 repair migration note
+
+No user data migration is required. This repair changes only text-source Project Source post-commit reconciliation after a stale-inflight save. Existing loop target files and `pb loop run --read-only-execution --evidence-gate` behavior are preserved. Operators should rerun full release-control/adoption for `v0.1.97.1` before treating it as current.

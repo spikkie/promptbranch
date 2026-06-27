@@ -697,3 +697,10 @@ Operator-provided release-control evidence accepted `chatgpt_claudecode_workflow
 ## v0.1.97 candidate status
 
 `v0.1.97` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.96.zip`. It adds a deterministic read-only loop evidence gate over the `v0.1.95` evidence report so future execution-capable slices have a machine-checkable pass/block contract. The loop still executes no commands, mutates no files, performs no deployment/Kubernetes action, mutates no Project Sources, adopts no artifacts, and deletes no ChatGPT Projects.
+
+
+## v0.1.97.1 repair candidate status
+
+`v0.1.97.1` repairs only the failed `v0.1.97` text-source Project Source validation path. The `v0.1.97` release ZIP was visible in Project Source, but the `project_source_add_text` validation step reached `commit_seen_with_stale_inflight_not_verified_present` and could not prove the expected text source after the Sources surface failed to refresh.
+
+This repair adapts the visibility reconciliation pattern used by the spikkies-site lifecycle to text sources: after a text-source commit is observed, Promptbranch re-reads the Project Sources surface and accepts recovery only when the expected text-source identity or content anchor is visible. A nearby unrelated source or a release ZIP source card does not satisfy text-source proof. The `v0.1.97` read-only evidence gate behavior is unchanged and no loop action executes commands or mutates files.
