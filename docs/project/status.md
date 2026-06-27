@@ -669,8 +669,15 @@ This slice is intentionally still non-mutating: it does not execute commands, te
 
 The repair strips inherited live ChatGPT/service environment from release-validation pytest subprocesses, gives each scheduler/source nodeid isolated `HOME`, `TMPDIR`, XDG directories, and release-validation profile state, and records ambient repo profile-lock diagnostics. It does not change loop behavior, browser behavior, adoption/current semantics, Project Source mutation semantics, Docker behavior, or Project deletion behavior.
 
-## v0.1.94.1 repair candidate status
+## v0.1.94.1 accepted/current status
 
-`v0.1.94.1` is a repair-only candidate for the intended `v0.1.94` first controlled read-only execution step. The failed `v0.1.94` release-control run showed Project Source capacity pruning targeted old source `chatgpt_claudecode_workflow-2_v0.1.85.zip` but drifted to collateral older rows. This repair stops capacity-prune retries immediately after identity drift and requires operator review instead of trying a looser remove.
+`v0.1.94.1` is the accepted/current repair for the intended `v0.1.94` first controlled read-only execution step. The failed `v0.1.94` release-control run showed Project Source capacity pruning targeted old source `chatgpt_claudecode_workflow-2_v0.1.85.zip` but drifted to collateral older rows. This repair stops capacity-prune retries immediately after identity drift and requires operator review instead of trying a looser remove. Full release-control/adoption passed and future work builds from `chatgpt_claudecode_workflow-2_v0.1.94.1.zip`.
 
 The active MVP-1 loop behavior remains read-only: target path scopes and validation commands are inspected, no commands are executed, no files are mutated, no Kubernetes mutation occurs, no Project Source mutation is performed by the loop engine, and no artifact adoption occurs from the loop engine.
+
+
+## v0.1.95 candidate status
+
+`v0.1.95` is a normal MVP-1 candidate from accepted/current `chatgpt_claudecode_workflow-2_v0.1.94.1.zip`. It adds a controlled read-only execution evidence report for `pb loop run --read-only-execution`.
+
+The evidence report is read-only and summarizes allowed path inspection, unsafe path blockers, declared validation commands, skipped command count, and explicit no-side-effect assertions. It does not execute commands, mutate files, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.

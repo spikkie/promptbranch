@@ -348,4 +348,6 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 
 | DOD-125 | Direct release-validation scheduler/source nodeids are isolated from ambient live browser/service/profile state while preserving the v0.1.93 planned-action feature | focused_candidate | `promptbranch_test_suite.py`, `tests/test_promptbranch_test_suite.py`, `docs/repair-v0.1.93.1.md` | v0.1.93.1 |
 
-| DOD-127 | Project Source capacity-prune identity drift fails closed before looser retry | open | `v0.1.94.1` adds a no-retry guard and regression test for exact-remove drift during capacity pruning; full release-control/adoption still pending | v0.1.94.1 |
+| DOD-127 | Project Source capacity-prune identity drift fails closed before looser retry | done | `v0.1.94.1` accepted/current evidence showed full release-control/adoption passed after the repair; focused tests cover exact-remove drift no-retry behavior | v0.1.94.1 |
+
+| DOD-128 | Read-only loop execution produces an explicit evidence report with no-side-effect assertions | focused | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.95.md` | v0.1.95 |

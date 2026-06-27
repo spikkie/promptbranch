@@ -95,3 +95,7 @@ MVP-1:
 `v0.1.93` advances MVP-1 from state names to a planned-action walkthrough: `pb loop run --planned-actions` prints what each state would do and which gate would validate it, while still performing no commands, tests, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion. The Kubernetes game remains the first future acceptance scenario, not an implementation target in this slice.
 
 `v0.1.93.1` is a repair-only continuation of the `v0.1.93` MVP-1 planned-action slice. It does not advance MVP-1 scope; it isolates offline scheduler/source release-validation nodeids from direct live browser/service/profile environment state.
+
+`v0.1.94.1` is accepted/current repair evidence for the first controlled read-only loop execution step and Project Source capacity-prune identity guard.
+
+`v0.1.95` adds a compact read-only evidence report for MVP-1 loop execution preflight. The loop still executes no commands, mutates no files, performs no Kubernetes/deployment action, mutates no Project Sources, adopts no artifacts, and deletes no ChatGPT Projects.

@@ -1455,3 +1455,21 @@ Base: intended `v0.1.94` release built from accepted/current `chatgpt_claudecode
 Scope: preserve `pb loop run --read-only-execution` and harden Project Source capacity pruning so a drift/collateral-removal signal from exact remove stops immediately with `operator_review_required=true` and no looser retry.
 
 Out of scope: no command execution, no file mutation, no Kubernetes mutation, no deployment, no Project Source mutation from the loop engine, no artifact adoption behavior change, and no ChatGPT Project deletion behavior change.
+
+
+## v0.1.95 — Controlled read-only loop execution evidence report
+
+Type: normal MVP-1 slice.
+
+Base: accepted/current `chatgpt_claudecode_workflow-2_v0.1.94.1.zip`.
+
+Goal: make `pb loop run --read-only-execution` produce a durable evidence report so operators and later gates can inspect what was checked, what was skipped, and which no-side-effect assertions remain true.
+
+Planned change:
+
+- embed `evidence_report` in read-only execution JSON output;
+- add `--evidence-report` to emit only the compact report;
+- report safe/unsafe path counts, matched path evidence, declared validation commands, skipped command count, and zero command execution;
+- preserve no file mutation, no deployment, no Kubernetes mutation, no Project Source mutation, no artifact adoption, and no ChatGPT Project deletion.
+
+Out of scope: command execution, file mutation, correction, deployment, Kubernetes apply, Docker push, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion.

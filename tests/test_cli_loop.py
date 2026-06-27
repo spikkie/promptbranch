@@ -220,3 +220,35 @@ def test_loop_run_read_only_execution_is_mutually_exclusive_with_presentation_mo
     assert rc == 2
     captured = capsys.readouterr()
     assert "mutually exclusive" in captured.err
+
+
+def test_loop_run_read_only_execution_evidence_report_json(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-execution",
+        "--evidence-report",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "promptbranch.loop.read_only_evidence_report"
+    assert payload["status"] == "evidence_clean"
+    assert payload["evidence_summary"]["commands_executed"] == 0
+    assert payload["evidence_summary"]["skipped_command_count"] == payload["evidence_summary"]["declared_command_count"]
+    assert payload["safety_assertions"]["project_source_mutation_performed"] is False
+
+
+def test_loop_run_evidence_report_requires_read_only_execution(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--evidence-report",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "--evidence-report requires --read-only-execution" in captured.err

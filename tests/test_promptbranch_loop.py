@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from promptbranch_loop import build_loop_action_walkthrough_payload, build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
+from promptbranch_loop import build_loop_action_walkthrough_payload, build_loop_read_only_evidence_report, build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
 
 
 def test_loop_target_schema_validates_static_game_fixture():
@@ -141,3 +141,42 @@ def test_loop_read_only_execution_rejects_unsafe_paths(tmp_path: Path):
     assert payload["summary"]["unsafe_path_count"] == 1
     assert payload["checks"]["allowed_paths"][0]["parent_traversal"] is True
     assert payload["side_effects_performed"] is False
+
+
+def test_loop_read_only_execution_embeds_evidence_report():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    from promptbranch_loop import build_loop_read_only_execution_payload
+
+    payload = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    report = payload["evidence_report"]
+
+    assert report["ok"] is True
+    assert report["schema"] == "promptbranch.loop.read_only_evidence_report"
+    assert report["source_schema"] == "promptbranch.loop.read_only_execution"
+    assert report["evidence_summary"]["commands_executed"] == 0
+    assert report["evidence_summary"]["unsafe_path_count"] == 0
+    assert report["evidence_summary"]["declared_command_count"] == len(payload["checks"]["validation_commands"])
+    assert all(item["executed"] is False for item in report["command_evidence"])
+    assert report["safety_assertions"] == {
+        "commands_executed": False,
+        "files_mutated": False,
+        "deployment_performed": False,
+        "kubernetes_mutation_performed": False,
+        "project_source_mutation_performed": False,
+        "artifact_adoption_performed": False,
+        "chatgpt_project_deletion_performed": False,
+    }
+
+
+def test_loop_read_only_evidence_report_blocks_unsafe_path():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    from promptbranch_loop import build_loop_read_only_execution_payload
+
+    payload = build_loop_read_only_execution_payload({**plan, "allowed_paths": ["../outside"]}, repo_root=Path.cwd())
+    report = build_loop_read_only_evidence_report(payload)
+
+    assert report["ok"] is False
+    assert report["status"] == "evidence_blocked"
+    assert report["blocked_reasons"] == ["unsafe_path_scope"]
+    assert report["evidence_summary"]["unsafe_path_count"] == 1
+    assert report["safety_assertions"]["commands_executed"] is False
