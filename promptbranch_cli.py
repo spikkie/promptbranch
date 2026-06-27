@@ -163,6 +163,7 @@ from promptbranch_project import (
     project_repo_config_path,
     write_repo_identity,
 )
+from promptbranch_project_control import validate_project_control_surface
 
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
@@ -17701,6 +17702,20 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
             for repo in payload.get("repos") or []:
                 print(f"{repo.get('repo_id')}.current_artifact={repo.get('current_artifact') or 'none'}")
         return 0 if payload.get("ok") else 2
+    if args.project_command == "validate-control-surface":
+        payload = validate_project_control_surface(getattr(args, "repo_path", ".") or ".")
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"accepted_current_version={payload.get('accepted_current_version') or ''}")
+            print(f"active_candidate_version={payload.get('active_candidate_version') or ''}")
+            print(f"next_normal_version={payload.get('next_normal_version') or ''}")
+            print(f"next_normal_slice={payload.get('next_normal_slice') or ''}")
+            if payload.get("errors"):
+                for error in payload.get("errors") or []:
+                    print(f"error={error}")
+        return 0 if payload.get("ok") else 2
     if args.project_command == "import-current-registry":
         identity_payload = _current_project_identity_payload(args)
         if not identity_payload.get("ok"):
@@ -23363,6 +23378,9 @@ def make_parser() -> argparse.ArgumentParser:
     project_join.add_argument("--json", action="store_true")
     project_status = project_subparsers.add_parser("status", help="Show current repo project identity and registry paths.")
     project_status.add_argument("--json", action="store_true")
+    project_validate_control = project_subparsers.add_parser("validate-control-surface", help="Validate docs/project plan authority and anti-drift state.")
+    project_validate_control.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
+    project_validate_control.add_argument("--json", action="store_true")
     project_import = project_subparsers.add_parser(
         "import-current-registry",
         help="Explicitly import current records from an existing repo-local registry into the joined project registry.",

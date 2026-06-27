@@ -644,3 +644,8 @@ No user data migration is required. Operators can use `pb loop run --read-only-e
 ## v0.1.97.1 repair migration note
 
 No user data migration is required. This repair changes only text-source Project Source post-commit reconciliation after a stale-inflight save. Existing loop target files and `pb loop run --read-only-execution --evidence-gate` behavior are preserved. Operators should rerun full release-control/adoption for `v0.1.97.1` before treating it as current.
+
+
+## v0.1.98 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. This slice migrates current planning authority into `docs/project/plan-state.json` and adds the anti-drift validator `pb project validate-control-surface --json`. Existing historical planning documents remain preserved; current-state fields in `docs/project/status.md`, `docs/project/plan.md`, and `docs/project/release-status.md` must agree with plan-state before release validation can pass. First controlled read-only validation command execution remains deferred to `v0.1.99`.

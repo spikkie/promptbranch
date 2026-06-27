@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import subprocess
+import sys
+
+from promptbranch_project_control import validate_project_control_surface
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_DOCS = ROOT / "docs" / "project"
@@ -15,6 +20,7 @@ REQUIRED_FILES = [
     "decisions.md",
     "migration.md",
     "validation-matrix.md",
+    "plan-state.json",
 ]
 
 
@@ -39,15 +45,11 @@ def test_definition_of_done_has_evidence_table() -> None:
 def test_release_status_has_allowed_table_and_current_baseline() -> None:
     text = read_doc("release-status.md")
     assert "| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |" in text
-    assert "v0.1.66" in text
-    assert "accepted_current" in text
-    assert "v0.1.67" in text
-    assert "v0.1.68" in text
-    assert "v0.1.69" in text
-    assert "v0.1.70" in text
-    assert "v0.1.73.4" in text
-    assert "v0.1.74" in text
-    assert "v0.1.75" in text
+    assert "v0.1.97.1" in text
+    assert "accepted/current" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.97.1.zip" in text
+    assert "v0.1.98" in text
+    assert "Plan authority and anti-drift control-surface gate" in text
     assert "candidate" in text
 
 
@@ -63,8 +65,9 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.86.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.87.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.97.1.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.98.zip" in text
+    assert "Plan authority and anti-drift control-surface gate" in text
 
 
 def test_validation_matrix_declares_required_release_groups() -> None:
@@ -118,3 +121,71 @@ def test_loop_target_schema_and_dry_run_planner_control_surface() -> None:
     assert "side-effect free" in combined or "side-effect-free" in combined
     assert "no Kubernetes" in combined or "kubernetes_mutation_performed=false" in combined
     assert "DOD-105" in combined
+
+
+def test_plan_state_is_machine_readable_next_slice_authority() -> None:
+    data = json.loads((PROJECT_DOCS / "plan-state.json").read_text(encoding="utf-8"))
+    assert data["schema"] == "promptbranch.project.plan_state"
+    assert data["schema_version"] == "1.0"
+    assert data["accepted_current_version"] == "v0.1.97.1"
+    assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.97.1.zip"
+    assert data["active_candidate_version"] == "v0.1.98"
+    assert data["next_normal_version"] == "v0.1.98"
+    assert data["active_slice"] == "Plan authority and anti-drift control-surface gate"
+    assert data["next_planned_version_after_acceptance"] == "v0.1.99"
+    assert data["repair_must_not_advance_scope"] is True
+
+
+def test_project_control_surface_validator_passes_current_repo() -> None:
+    payload = validate_project_control_surface(ROOT)
+    assert payload["ok"] is True, payload.get("errors")
+    assert payload["accepted_current_version"] == "v0.1.97.1"
+    assert payload["active_candidate_version"] == "v0.1.98"
+    assert payload["next_normal_slice"] == "Plan authority and anti-drift control-surface gate"
+
+
+def test_project_control_surface_cli_emits_json() -> None:
+    result = subprocess.run(
+        [sys.executable, "promptbranch_cli.py", "project", "validate-control-surface", "--repo-path", str(ROOT), "--json"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["status"] == "passed"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.98.zip"
+
+
+def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
+    import shutil
+
+    repo = tmp_path / "repo"
+    shutil.copytree(ROOT / "docs", repo / "docs")
+    (repo / "VERSION").write_text("v0.1.98\n", encoding="utf-8")
+    status = repo / "docs" / "project" / "status.md"
+    text = status.read_text(encoding="utf-8")
+    status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.97.1.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
+
+    payload = validate_project_control_surface(repo)
+    assert payload["ok"] is False
+    assert any("accepted_current_artifact" in error or "accepted_current_version" in error for error in payload["errors"])
+
+
+def test_project_control_surface_validator_rejects_repair_scope_advance(tmp_path: Path) -> None:
+    import shutil
+
+    repo = tmp_path / "repo"
+    shutil.copytree(ROOT / "docs", repo / "docs")
+    (repo / "VERSION").write_text("v0.1.98\n", encoding="utf-8")
+    state_file = repo / "docs" / "project" / "plan-state.json"
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    data["release_mode"] = "repair"
+    data["scope_advance_allowed"] = True
+    state_file.write_text(json.dumps(data), encoding="utf-8")
+
+    payload = validate_project_control_surface(repo)
+    assert payload["ok"] is False
+    assert "repair releases must set scope_advance_allowed=false" in payload["errors"]

@@ -366,3 +366,5 @@ This decision was added for `v0.1.94.1` after a `v0.1.94` run targeted old sourc
 
 
 | ADR-PROJ-099 | 2026-06-27 | Text-source post-commit reconciliation requires exact text proof | `v0.1.97` showed the release ZIP source can be visible while `project_source_add_text` remains unverified due stale-inflight source-surface refresh. | `v0.1.97.1` reuses the spikkies-site reconciliation principle but adapts it to text sources: after commit, re-read Project Sources and recover only when exact text-source identity/content proof is visible. Nearby text sources and ZIP source cards are rejected. |
+
+| ADR-PROJ-100 | 2026-06-27 | Make plan-state.json the machine-readable anti-drift authority before first command execution | Markdown-only control surfaces drifted after repair patches and stale current-baseline sections could mislead the next-slice choice | `v0.1.98` adds `docs/project/plan-state.json` and `pb project validate-control-surface --json`; repair releases must not advance scope, and first controlled read-only validation command execution is deferred to `v0.1.99`. |

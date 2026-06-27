@@ -3,17 +3,23 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
-accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
-active repair target: chatgpt_claudecode_workflow-2_v0.1.77.11.zip
-next normal target after accepted repair: chatgpt_claudecode_workflow-2_v0.1.78.zip
-release line: v0.1.x JSON orchestration / Promptbranch workflow control-plane hardening
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
+accepted/current version: v0.1.97.1
+last completed normal slice: v0.1.97 — Read-only loop evidence gate
+last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.98.zip
+active candidate version: v0.1.98
+next normal target: chatgpt_claudecode_workflow-2_v0.1.98.zip
+next normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
+next planned target after acceptance: chatgpt_claudecode_workflow-2_v0.1.99.zip
+next planned slice after acceptance: v0.1.99 — First controlled read-only validation command execution
+release line: v0.1.x MVP-1 loop-based problem-solving engine
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.76 is the accepted/current baseline. v0.1.77 is the normal repo-loop compatibility-hardening slice, and v0.1.77.8 is a repair candidate that preserves that slice while making the Docker-service adapter accept and forward explicit per-call project URLs after v0.1.77.7 release-control still failed at `project_remove_cleanup`.
+Keep release slices narrow and KISS-first. v0.1.97.1 is accepted/current and repaired the v0.1.97 read-only evidence gate line without advancing scope. v0.1.98 makes the continuation plan executable: docs/project/plan-state.json becomes the machine-readable authority and pb project validate-control-surface fails closed when current baseline, active slice, repair lineage, DoD, release-status, decisions, or migration docs drift. First controlled read-only validation command execution is intentionally deferred to v0.1.99.
 ```
 
 ## Release / slice plan
