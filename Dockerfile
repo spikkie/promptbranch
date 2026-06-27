@@ -7,8 +7,10 @@ WORKDIR /app
 
 ARG PROMPTBRANCH_VERSION=unknown
 ARG PROMPTBRANCH_ARTIFACT_SHA256=unknown
+ARG PROMPTBRANCH_SOURCE_FINGERPRINT=unknown
 LABEL promptbranch.version="${PROMPTBRANCH_VERSION}"
 LABEL promptbranch.artifact_sha256="${PROMPTBRANCH_ARTIFACT_SHA256}"
+LABEL promptbranch.source_fingerprint="${PROMPTBRANCH_SOURCE_FINGERPRINT}"
 
 RUN apt-get update && \
     apt-get install -y tesseract-ocr libtesseract-dev libglib2.0-0 libnss3 libgconf-2-4 libfontconfig1 libx11-xcb1 xvfb \
@@ -31,13 +33,20 @@ RUN playwright install --with-deps chromium
 
 RUN rm -rf /app/.pb_profile
 
+# The source fingerprint is intentionally consumed before COPY so a
+# same-size source change with deterministic ZIP mtimes cannot reuse a
+# stale build-context layer silently.
+RUN printf '%s\n' "${PROMPTBRANCH_SOURCE_FINGERPRINT}" > /tmp/promptbranch_source_fingerprint
+
 COPY . .
-RUN python3 - "${PROMPTBRANCH_VERSION}" <<'PY'
+RUN python3 - "${PROMPTBRANCH_VERSION}" "${PROMPTBRANCH_SOURCE_FINGERPRINT}" <<'PY'
 from pathlib import Path
+import hashlib
 import re
 import sys
 
 expected = sys.argv[1].strip().removeprefix("v")
+expected_fingerprint = sys.argv[2].strip() if len(sys.argv) > 2 else "unknown"
 version_file = Path("/app/VERSION").read_text(encoding="utf-8", errors="replace").strip().removeprefix("v")
 version_py = Path("/app/promptbranch_version.py").read_text(encoding="utf-8", errors="replace")
 pyproject = Path("/app/pyproject.toml").read_text(encoding="utf-8", errors="replace")
@@ -48,12 +57,28 @@ actuals = {
     "promptbranch_version.py": version_py_match.group(1) if version_py_match else "",
     "pyproject.toml": pyproject_match.group(1) if pyproject_match else "",
 }
+def source_fingerprint() -> str:
+    digest = hashlib.sha256()
+    for rel in ("VERSION", "promptbranch_version.py", "pyproject.toml"):
+        path = Path("/app") / rel
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+actual_fingerprint = source_fingerprint()
+if expected_fingerprint not in ("", "unknown") and actual_fingerprint != expected_fingerprint:
+    print(
+        f"Docker build context fingerprint mismatch: expected {expected_fingerprint}; actual {actual_fingerprint}; actuals={actuals}",
+        file=sys.stderr,
+    )
+    raise SystemExit(43)
 if expected != "unknown":
     mismatches = {key: value for key, value in actuals.items() if value.removeprefix("v") != expected}
     if mismatches:
         print(f"Docker build context version mismatch: expected {expected}; actuals={actuals}", file=sys.stderr)
         raise SystemExit(42)
-print(f"Docker build context version verified: expected={expected}; actuals={actuals}")
+print(f"Docker build context version verified: expected={expected}; fingerprint={actual_fingerprint}; actuals={actuals}")
 PY
 # Normalize application source permissions for non-root runtime users.
 # Host files may have restrictive modes; after COPY, Python must still be able
