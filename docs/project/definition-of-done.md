@@ -348,4 +348,4 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 
 | DOD-125 | Direct release-validation scheduler/source nodeids are isolated from ambient live browser/service/profile state while preserving the v0.1.93 planned-action feature | focused_candidate | `promptbranch_test_suite.py`, `tests/test_promptbranch_test_suite.py`, `docs/repair-v0.1.93.1.md` | v0.1.93.1 |
 
-| DOD-126 | MVP-1 read-only loop execution preflight inspects target path scopes and validation command declarations without side effects | candidate | `pb loop run --read-only-checks`, `promptbranch_loop.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.94.md` | v0.1.94 |
+| DOD-127 | Project Source capacity-prune identity drift fails closed before looser retry | open | `v0.1.94.1` adds a no-retry guard and regression test for exact-remove drift during capacity pruning; full release-control/adoption still pending | v0.1.94.1 |

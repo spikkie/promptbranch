@@ -351,5 +351,8 @@ The required `browser_scheduler_source_lifecycle` release-validation group remai
 
 | ADR-PROJ-094 | 2026-06-26 | Offline release-validation scheduler nodeids must not inherit live ChatGPT/service/profile environment | `v0.1.93` proved the planned-action feature but direct validation timed out after live browser/source work left ambient lock state visible | `v0.1.93.1` strips live browser/service env, isolates per-nodeid HOME/TMPDIR/XDG/profile state, and records ambient lock diagnostics without changing validation semantics. |
 
+## Decision — Project Source capacity-prune drift is fail-closed
 
-| ADR-PROJ-095 | 2026-06-27 | First MVP-1 execution step must be local read-only preflight only | After state-only and planned-action walkthroughs, the next useful step is to execute a bounded inspection without granting mutation authority | `v0.1.94` adds `pb loop run --read-only-checks`, which inspects allowed path scopes and validation command declarations but executes no commands, runs no tests, mutates no files, deploys nothing, mutates no Project Sources, adopts no artifacts, and never deletes ChatGPT Projects. |
+For release ZIP file source-add capacity pruning, if the exact remove of the selected prune target reports identity drift or collateral removal, Promptbranch must stop immediately, suppress any looser retry, return `operator_review_required=true`, and require operator review. The system must not continue pruning after source-row identity drift.
+
+This decision was added for `v0.1.94.1` after a `v0.1.94` run targeted old source `v0.1.85` but observed collateral removal of older rows.

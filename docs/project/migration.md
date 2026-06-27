@@ -623,7 +623,6 @@ No operator data migration is required. `v0.1.93` adds a presentation-only plann
 
 No operator data migration is required. `v0.1.93.1` repairs the `v0.1.93` release-validation environment only. Existing loop target files, state-only walkthrough behavior, and planned-action walkthrough behavior are preserved.
 
+## v0.1.94.1 repair migration note
 
-## v0.1.94 migration note
-
-No operator data migration is required. `v0.1.94` adds `pb loop run --read-only-checks` as the first controlled MVP-1 read-only execution preflight. Existing loop target files, state-only walkthroughs, planned-action walkthroughs, release-control semantics, Project Source behavior, artifact adoption/current behavior, Kubernetes/deployment behavior, and ChatGPT Project deletion policy are unchanged.
+The `v0.1.94.1` repair preserves the intended `v0.1.94` read-only loop execution work and migrates the Project Source capacity-prune drift finding into the control surface. No existing planning documents are deleted or replaced. The old `v0.1.85` reference is treated only as an old Project Source prune candidate, not as the current baseline.
