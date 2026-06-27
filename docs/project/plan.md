@@ -3,23 +3,35 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
-accepted/current version: v0.1.97.1
-last completed normal slice: v0.1.97 — Read-only loop evidence gate
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.98.zip
+accepted/current version: v0.1.98
+last completed normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
 last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.98.zip
-active candidate version: v0.1.98
-next normal target: chatgpt_claudecode_workflow-2_v0.1.98.zip
-next normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
-next planned target after acceptance: chatgpt_claudecode_workflow-2_v0.1.99.zip
-next planned slice after acceptance: v0.1.99 — First controlled read-only validation command execution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
+active candidate version: v0.1.99
+next normal target: chatgpt_claudecode_workflow-2_v0.1.99.zip
+next normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
+next planned target after acceptance: chatgpt_claudecode_workflow-2_v0.1.100.zip
+next planned slice after acceptance: v0.1.100 — First controlled read-only validation command execution
 release line: v0.1.x MVP-1 loop-based problem-solving engine
 ```
 
 ## Plan summary
 
 ```text
-Keep release slices narrow and KISS-first. v0.1.97.1 is accepted/current and repaired the v0.1.97 read-only evidence gate line without advancing scope. v0.1.98 makes the continuation plan executable: docs/project/plan-state.json becomes the machine-readable authority and pb project validate-control-surface fails closed when current baseline, active slice, repair lineage, DoD, release-status, decisions, or migration docs drift. First controlled read-only validation command execution is intentionally deferred to v0.1.99.
+Keep release slices narrow and KISS-first. v0.1.98 is accepted/current and made docs/project/plan-state.json the machine-readable anti-drift authority. v0.1.99 records how slices are derived, what architecture invariants remain fixed, and which 4–5 upcoming slices form the rolling horizon. First controlled read-only validation command execution is explicitly deferred from v0.1.99 to v0.1.100 so command execution starts only after the architecture-decision protocol and horizon are documented and validated.
+```
+
+## Rolling horizon authority
+
+The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
+
+```text
+v0.1.99 — Rolling slice horizon and architecture-decision protocol
+v0.1.100 — First controlled read-only validation command execution
+v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+v0.1.102 — Correction-plan generation without file mutation
+v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 ## Release / slice plan
@@ -1521,3 +1533,56 @@ Reason: `v0.1.97` preserved the read-only evidence gate but failed full release-
 In scope: add post-commit Project Sources reconciliation for text-source add; accept recovery only with exact text-source identity/content proof; reject nearby text sources and release ZIP source visibility; preserve `v0.1.97` loop evidence gate behavior.
 Out of scope: command execution, file mutation, deployment, Kubernetes mutation, Project Source mutation from loop execution, artifact adoption behavior changes, and ChatGPT Project deletion.
 Expected validation: focused Project Source text reconciliation tests, loop/CLI/version/control-surface tests, compileall, shell syntax, Artifact Guardian, artifact verify.
+
+
+## v0.1.99 — Rolling slice horizon and architecture-decision protocol
+
+Release: v0.1.99
+Baseline: chatgpt_claudecode_workflow-2_v0.1.98.zip
+Mode: normal
+Scope advance allowed: true
+
+Goal: make slice definition an explicit design process before Promptbranch starts real command execution.
+
+In scope:
+
+- Add `docs/project/architecture.md` with fixed architecture invariants and adaptive design boundaries.
+- Add `docs/project/slice-horizon.md` with the rolling 4–5 slice horizon.
+- Extend `docs/project/plan-state.json` with `architecture_invariants`, `slice_derivation_inputs`, `rolling_slice_horizon`, and `replan_rules`.
+- Add `pb project next-slice --json` so the next release can be derived from repo state instead of conversation memory.
+- Extend `pb project validate-control-surface --json` so the architecture and slice-horizon docs are part of the required control surface.
+- Record the explicit decision that first controlled read-only validation command execution moves from v0.1.99 to v0.1.100.
+
+Out of scope:
+
+- read-only validation command execution
+- file mutation
+- deployment
+- Kubernetes mutation
+- Project Source behavior change
+- artifact adoption behavior change
+- ChatGPT Project deletion
+
+Expected validation:
+
+- `tests/test_project_control_surface.py`
+- `tests/test_promptbranch_version.py`
+- CLI smoke for `pb project validate-control-surface --json`
+- CLI smoke for `pb project next-slice --json`
+- compileall, shell syntax, Artifact Guardian, artifact verify
+
+## v0.1.100 — First controlled read-only validation command execution
+
+Planned after acceptance of v0.1.99. This slice introduces the first real command execution only for an explicit, allowlisted, read-only validation fixture such as `python3 -m json.tool examples/loop-targets/static-game-dry-run-target.json`. It remains out of scope for v0.1.99.
+
+## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+
+Planned after v0.1.100. This slice classifies read-only command results without correction or file mutation.
+
+## v0.1.102 — Correction-plan generation without file mutation
+
+Planned after v0.1.101. This slice produces a bounded correction plan from diagnosis evidence without writing files.
+
+## v0.1.103 — First controlled file mutation in sandboxed fixture only
+
+Planned after v0.1.102. This slice performs the first file mutation only inside an explicit sandbox fixture with before/after evidence.

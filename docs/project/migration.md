@@ -649,3 +649,8 @@ No user data migration is required. This repair changes only text-source Project
 ## v0.1.98 migration note
 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. This slice migrates current planning authority into `docs/project/plan-state.json` and adds the anti-drift validator `pb project validate-control-surface --json`. Existing historical planning documents remain preserved; current-state fields in `docs/project/status.md`, `docs/project/plan.md`, and `docs/project/release-status.md` must agree with plan-state before release validation can pass. First controlled read-only validation command execution remains deferred to `v0.1.99`.
+
+## v0.1.99 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. This slice migrates the next-slice derivation process into repo authority by adding `docs/project/architecture.md`, `docs/project/slice-horizon.md`, machine-readable `rolling_slice_horizon` state in `docs/project/plan-state.json`, and the `pb project next-slice --json` command. First controlled read-only validation command execution is explicitly deferred to `v0.1.100`.
+

@@ -5,7 +5,7 @@ import json
 import subprocess
 import sys
 
-from promptbranch_project_control import validate_project_control_surface
+from promptbranch_project_control import build_project_next_slice_payload, validate_project_control_surface
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_DOCS = ROOT / "docs" / "project"
@@ -21,6 +21,8 @@ REQUIRED_FILES = [
     "migration.md",
     "validation-matrix.md",
     "plan-state.json",
+    "architecture.md",
+    "slice-horizon.md",
 ]
 
 
@@ -45,11 +47,11 @@ def test_definition_of_done_has_evidence_table() -> None:
 def test_release_status_has_allowed_table_and_current_baseline() -> None:
     text = read_doc("release-status.md")
     assert "| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |" in text
-    assert "v0.1.97.1" in text
-    assert "accepted/current" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.97.1.zip" in text
     assert "v0.1.98" in text
-    assert "Plan authority and anti-drift control-surface gate" in text
+    assert "accepted/current" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.98.zip" in text
+    assert "v0.1.99" in text
+    assert "Rolling slice horizon and architecture-decision protocol" in text
     assert "candidate" in text
 
 
@@ -65,9 +67,9 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.97.1.zip" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.98.zip" in text
-    assert "Plan authority and anti-drift control-surface gate" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.99.zip" in text
+    assert "Rolling slice horizon and architecture-decision protocol" in text
 
 
 def test_validation_matrix_declares_required_release_groups() -> None:
@@ -127,21 +129,26 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     data = json.loads((PROJECT_DOCS / "plan-state.json").read_text(encoding="utf-8"))
     assert data["schema"] == "promptbranch.project.plan_state"
     assert data["schema_version"] == "1.0"
-    assert data["accepted_current_version"] == "v0.1.97.1"
-    assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.97.1.zip"
-    assert data["active_candidate_version"] == "v0.1.98"
-    assert data["next_normal_version"] == "v0.1.98"
-    assert data["active_slice"] == "Plan authority and anti-drift control-surface gate"
-    assert data["next_planned_version_after_acceptance"] == "v0.1.99"
+    assert data["accepted_current_version"] == "v0.1.98"
+    assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.98.zip"
+    assert data["active_candidate_version"] == "v0.1.99"
+    assert data["next_normal_version"] == "v0.1.99"
+    assert data["active_slice"] == "Rolling slice horizon and architecture-decision protocol"
+    assert data["next_planned_version_after_acceptance"] == "v0.1.100"
+    assert data["next_planned_slice_after_acceptance"] == "First controlled read-only validation command execution"
     assert data["repair_must_not_advance_scope"] is True
+    assert data["architecture_goal"] == "controlled problem-solving loop"
+    assert len(data["rolling_slice_horizon"]) == 5
 
 
 def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
-    assert payload["accepted_current_version"] == "v0.1.97.1"
-    assert payload["active_candidate_version"] == "v0.1.98"
-    assert payload["next_normal_slice"] == "Plan authority and anti-drift control-surface gate"
+    assert payload["accepted_current_version"] == "v0.1.98"
+    assert payload["active_candidate_version"] == "v0.1.99"
+    assert payload["next_normal_slice"] == "Rolling slice horizon and architecture-decision protocol"
+    assert payload["architecture_goal"] == "controlled problem-solving loop"
+    assert len(payload["rolling_slice_horizon"]) == 5
 
 
 def test_project_control_surface_cli_emits_json() -> None:
@@ -156,7 +163,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.98.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.99.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -164,22 +171,95 @@ def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.98\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
     status = repo / "docs" / "project" / "status.md"
     text = status.read_text(encoding="utf-8")
-    status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.97.1.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
+    status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.98.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
 
     payload = validate_project_control_surface(repo)
     assert payload["ok"] is False
     assert any("accepted_current_artifact" in error or "accepted_current_version" in error for error in payload["errors"])
 
 
+
+def test_architecture_and_slice_horizon_are_documented() -> None:
+    architecture = read_doc("architecture.md")
+    horizon = read_doc("slice-horizon.md")
+    assert "controlled problem-solving loop" in architecture
+    assert "Fixed architecture invariants" in architecture
+    assert "Repair releases must not advance scope" in architecture
+    for version in ["v0.1.99", "v0.1.100", "v0.1.101", "v0.1.102", "v0.1.103"]:
+        assert version in horizon
+    assert "Repair horizon rule" in horizon
+
+
+def test_project_next_slice_payload_is_derived_from_validated_control_surface() -> None:
+    payload = build_project_next_slice_payload(ROOT)
+    assert payload["ok"] is True, payload.get("errors")
+    assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.98.zip"
+    assert payload["next_normal_version"] == "v0.1.99"
+    assert payload["next_normal_slice"] == "Rolling slice horizon and architecture-decision protocol"
+    assert payload["next_slice_after_acceptance_version"] == "v0.1.100"
+    assert payload["next_slice_after_acceptance"] == "First controlled read-only validation command execution"
+    assert payload["architecture_invariants_checked"] is True
+    assert payload["control_surface_validated"] is True
+
+
+def test_project_next_slice_cli_emits_json() -> None:
+    result = subprocess.run(
+        [sys.executable, "promptbranch_cli.py", "project", "next-slice", "--repo-path", str(ROOT), "--json"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["status"] == "next_slice_ready"
+    assert payload["next_normal_version"] == "v0.1.99"
+    assert payload["next_slice_after_acceptance_version"] == "v0.1.100"
+
+
+def test_project_control_surface_validator_rejects_short_horizon(tmp_path: Path) -> None:
+    import shutil
+
+    repo = tmp_path / "repo"
+    shutil.copytree(ROOT / "docs", repo / "docs")
+    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    state_file = repo / "docs" / "project" / "plan-state.json"
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    data["rolling_slice_horizon"] = data["rolling_slice_horizon"][:3]
+    state_file.write_text(json.dumps(data), encoding="utf-8")
+
+    payload = validate_project_control_surface(repo)
+    assert payload["ok"] is False
+    assert "plan-state rolling_slice_horizon must contain 4 to 5 slices" in payload["errors"]
+
+
+def test_project_control_surface_validator_rejects_missing_active_horizon(tmp_path: Path) -> None:
+    import shutil
+
+    repo = tmp_path / "repo"
+    shutil.copytree(ROOT / "docs", repo / "docs")
+    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
+    state_file = repo / "docs" / "project" / "plan-state.json"
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    for item in data["rolling_slice_horizon"]:
+        if item["status"] == "active":
+            item["status"] = "planned"
+    state_file.write_text(json.dumps(data), encoding="utf-8")
+
+    payload = validate_project_control_surface(repo)
+    assert payload["ok"] is False
+    assert "rolling_slice_horizon must contain exactly one active slice" in payload["errors"]
+
 def test_project_control_surface_validator_rejects_repair_scope_advance(tmp_path: Path) -> None:
     import shutil
 
     repo = tmp_path / "repo"
     shutil.copytree(ROOT / "docs", repo / "docs")
-    (repo / "VERSION").write_text("v0.1.98\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.99\n", encoding="utf-8")
     state_file = repo / "docs" / "project" / "plan-state.json"
     data = json.loads(state_file.read_text(encoding="utf-8"))
     data["release_mode"] = "repair"

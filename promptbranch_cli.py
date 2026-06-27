@@ -163,7 +163,7 @@ from promptbranch_project import (
     project_repo_config_path,
     write_repo_identity,
 )
-from promptbranch_project_control import validate_project_control_surface
+from promptbranch_project_control import build_project_next_slice_payload, validate_project_control_surface
 
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
@@ -17716,6 +17716,20 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 for error in payload.get("errors") or []:
                     print(f"error={error}")
         return 0 if payload.get("ok") else 2
+    if args.project_command == "next-slice":
+        payload = build_project_next_slice_payload(getattr(args, "repo_path", ".") or ".")
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"baseline={payload.get('baseline_artifact') or ''}")
+            print(f"next_normal_version={payload.get('next_normal_version') or ''}")
+            print(f"next_normal_slice={payload.get('next_normal_slice') or ''}")
+            print(f"next_slice_after_acceptance={payload.get('next_slice_after_acceptance_version') or ''} — {payload.get('next_slice_after_acceptance') or ''}")
+            if payload.get("errors"):
+                for error in payload.get("errors") or []:
+                    print(f"error={error}")
+        return 0 if payload.get("ok") else 2
     if args.project_command == "import-current-registry":
         identity_payload = _current_project_identity_payload(args)
         if not identity_payload.get("ok"):
@@ -23381,6 +23395,9 @@ def make_parser() -> argparse.ArgumentParser:
     project_validate_control = project_subparsers.add_parser("validate-control-surface", help="Validate docs/project plan authority and anti-drift state.")
     project_validate_control.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     project_validate_control.add_argument("--json", action="store_true")
+    project_next_slice = project_subparsers.add_parser("next-slice", help="Show the next slice derived from the validated project control surface.")
+    project_next_slice.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    project_next_slice.add_argument("--json", action="store_true")
     project_import = project_subparsers.add_parser(
         "import-current-registry",
         help="Explicitly import current records from an existing repo-local registry into the joined project registry.",

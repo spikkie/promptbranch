@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
-accepted/current version: v0.1.97.1
-last completed normal slice: v0.1.97 — Read-only loop evidence gate
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.98.zip
+accepted/current version: v0.1.98
+last completed normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
 last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.98.zip
-active candidate version: v0.1.98
-next normal target: chatgpt_claudecode_workflow-2_v0.1.98.zip
-next normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
-next planned slice after acceptance: v0.1.99 — First controlled read-only validation command execution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
+active candidate version: v0.1.99
+next normal target: chatgpt_claudecode_workflow-2_v0.1.99.zip
+next normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
+next planned slice after acceptance: v0.1.100 — First controlled read-only validation command execution
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.99 — First controlled read-only vali
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.97.1 — repair of v0.1.97 read-only loop evidence gate
-active plan slice: v0.1.98 — Plan authority and anti-drift control-surface gate
+last accepted/current slice: v0.1.98 — Plan authority and anti-drift control-surface gate
+active plan slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
 repair mode: false
 scope advance allowed: true
 ```
@@ -29,11 +29,14 @@ scope advance allowed: true
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.97.1.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.98.zip candidate once packaged
-release status: v0.1.98 is a focused candidate until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.98.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.99.zip candidate once packaged
+release status: v0.1.99 is a focused candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
+next-slice authority command: pb project next-slice --json
+slice horizon file: docs/project/slice-horizon.md
+architecture file: docs/project/architecture.md
 ```
 
 ## Current risks
@@ -43,48 +46,41 @@ control-surface validator: pb project validate-control-surface --json
 - Artifact Guardian must remain a structural ZIP guard only, not a build/heal/agent workflow.
 - Guard-passed must not be confused with accepted/current adoption state.
 - Project-specific ZIP requirements must remain policy-driven through `.artifact-guardian.yml`, not duplicated as hidden code constants.
+- Slice drift can occur when repairs or local failures cause the next release to be inferred from memory instead of repo control-surface state.
 
 ## Current blockers
 
-- `v0.1.98` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
-- Any normal or repair release must validate `docs/project/plan-state.json` against `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md`, and `docs/project/migration.md`.
-- Repair releases must not advance the active normal slice unless an explicit decision records the scope change.
-- First controlled read-only validation command execution is deferred to `v0.1.99` and remains out of scope for `v0.1.98`.
+- `v0.1.99` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- Any normal or repair release must validate `docs/project/plan-state.json` against `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md`, `docs/project/migration.md`, `docs/project/architecture.md`, and `docs/project/slice-horizon.md`.
+- Repair releases must not advance the active normal slice unless an explicit decision records the scope change for the next normal release.
+- First controlled read-only validation command execution is deferred to `v0.1.100` and remains out of scope for `v0.1.99`.
 
 ## Current unknowns
 
 - What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
 - Whether live ChatGPT file-source indexing will become visible within the extended post-commit readback window in release-control.
 - Whether future lifecycle scripts should delegate their install ZIP checks to `pb artifact guard` in AG-005 or an earlier slice.
+- Whether the first read-only command fixture in `v0.1.100` should be `python3 -m json.tool` only, or also include a minimal `test -f` path proof.
 
 ## Next safe action
 
 ```text
-Validate and package v0.1.98 as a plan-authority/anti-drift control-surface gate from accepted/current chatgpt_claudecode_workflow-2_v0.1.97.1.zip.
+Validate and package v0.1.99 as a rolling slice horizon and architecture-decision protocol from accepted/current chatgpt_claudecode_workflow-2_v0.1.98.zip.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.98.zip
-ver=v0.1.98
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.99.zip
+ver=v0.1.99
 
-timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
-  --install-from-zip "$zip" \
-  --version "$ver" \
-  --run-all-tests \
-  --strict-source-kind-matrix \
-  --adopt-after-validation \
-  --skip-docker-logs \
-  --prune-release-logs \
-  --release-log-keep 12 \
-  2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
+timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
 
 ## Last updated
 
 ```text
-v0.1.84.5.3 repair candidate build
+v0.1.99 rolling slice horizon and architecture-decision protocol candidate build
 ```
 
 
