@@ -668,3 +668,10 @@ This slice is intentionally still non-mutating: it does not execute commands, te
 `v0.1.93.1` is a repair-only candidate for the `v0.1.93` MVP-1 planned-action walkthrough. It preserves `pb loop run --planned-actions` and changes only offline release-validation subprocess isolation for `browser_scheduler_source_lifecycle`.
 
 The repair strips inherited live ChatGPT/service environment from release-validation pytest subprocesses, gives each scheduler/source nodeid isolated `HOME`, `TMPDIR`, XDG directories, and release-validation profile state, and records ambient repo profile-lock diagnostics. It does not change loop behavior, browser behavior, adoption/current semantics, Project Source mutation semantics, Docker behavior, or Project deletion behavior.
+
+
+## v0.1.94 candidate status
+
+`v0.1.94` is a normal MVP-1 candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.93.1.zip`. It adds `pb loop run --read-only-checks`, the first controlled read-only execution preflight. The command inspects target-declared allowed path scopes and validation command declarations without executing commands, running tests, mutating files, deploying to Kubernetes, mutating Project Sources, adopting artifacts, or deleting ChatGPT Projects.
+
+Accepted/current remains `v0.1.93.1` until this candidate passes release-control, Project Source add, full validation, adopt-after-validation, and `pb artifact current --json` alignment.

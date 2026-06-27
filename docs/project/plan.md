@@ -1445,3 +1445,10 @@ Planned change:
 - record ambient repo `.pb_profile` browser-lock snapshot for diagnostics.
 
 No normal MVP-1 slice advances.
+
+
+## v0.1.94 plan — MVP-1 read-only execution preflight
+
+Build from accepted/current `v0.1.93.1`. Add the first controlled execution step without allowing mutation: `pb loop run --read-only-checks` performs local read-only preflight of target-declared `allowed_paths` and validation command declarations. It must reject unsafe path scopes, report command declarations as `not_executed_read_only`, and preserve all no-side-effect safety flags.
+
+Out of scope: executing target validation commands, creating files, implementing the Kubernetes game, applying Kubernetes manifests, mutating ChatGPT Project Sources, adopting artifacts, or changing release-control semantics.

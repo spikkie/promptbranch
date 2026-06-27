@@ -36,6 +36,8 @@ FORBIDDEN_ACTION_DEFAULTS = [
 
 LOOP_ACTION_WALKTHROUGH_SCHEMA = "promptbranch.loop.action_walkthrough"
 LOOP_ACTION_WALKTHROUGH_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_EXECUTION_SCHEMA = "promptbranch.loop.read_only_execution"
+LOOP_READ_ONLY_EXECUTION_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -467,6 +469,108 @@ def build_loop_action_walkthrough_payload(plan: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _path_has_glob(pattern: str) -> bool:
+    return any(token in pattern for token in ("*", "?", "["))
+
+
+def _classify_allowed_path(pattern: str, *, repo_root: Path) -> dict[str, Any]:
+    path = Path(pattern)
+    parts = path.parts
+    is_absolute = path.is_absolute()
+    has_parent_traversal = ".." in parts
+    has_home_prefix = pattern.startswith("~")
+    safe = not is_absolute and not has_parent_traversal and not has_home_prefix
+    matches: list[str] = []
+    match_error: str | None = None
+    if safe:
+        try:
+            if _path_has_glob(pattern):
+                matches = [str(item.relative_to(repo_root)) for item in repo_root.glob(pattern)][:20]
+            else:
+                candidate = repo_root / pattern
+                if candidate.exists():
+                    matches = [str(candidate.relative_to(repo_root))]
+        except Exception as exc:  # pragma: no cover - defensive for invalid glob patterns
+            match_error = str(exc)
+            safe = False
+    return {
+        "path": pattern,
+        "safe": safe,
+        "repo_relative": safe,
+        "absolute": is_absolute,
+        "parent_traversal": has_parent_traversal,
+        "home_prefix": has_home_prefix,
+        "glob": _path_has_glob(pattern),
+        "match_count": len(matches),
+        "matches_sample": matches,
+        "match_error": match_error,
+        "status": "safe" if safe else "unsafe_path_scope",
+        "read_only": True,
+        "mutation_performed": False,
+    }
+
+
+def build_loop_read_only_execution_payload(plan: dict[str, Any], *, repo_root: str | Path | None = None) -> dict[str, Any]:
+    root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
+    target_id = plan.get("target_id")
+    allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
+    validation_commands = [str(item) for item in plan.get("validation_commands") or []]
+    path_checks = [_classify_allowed_path(pattern, repo_root=root) for pattern in allowed_paths]
+    unsafe_paths = [item for item in path_checks if not item.get("safe")]
+    command_checks = [
+        {
+            "command": command,
+            "declared": True,
+            "read_only_inspection_performed": True,
+            "execution_status": "not_executed_read_only",
+            "side_effects_performed": False,
+        }
+        for command in validation_commands
+    ]
+    executed_state = "REQUIREMENTS_CHECK"
+    return {
+        "ok": bool(plan.get("ok")) and not unsafe_paths,
+        "schema": LOOP_READ_ONLY_EXECUTION_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_EXECUTION_SCHEMA_VERSION,
+        "action": "loop_run",
+        "status": "read_only_checks_passed" if not unsafe_paths else "unsafe_path_scope",
+        "mode": "read_only_execution",
+        "execution_mode": "local_read_only_preflight",
+        "target_id": target_id,
+        "target_path": plan.get("target_path"),
+        "loop_id": plan.get("loop_id"),
+        "final_state": plan.get("final_state"),
+        "executed_state": executed_state,
+        "states": list(plan.get("planned_states") or []),
+        "checks": {
+            "allowed_paths": path_checks,
+            "validation_commands": command_checks,
+            "forbidden_actions": list(plan.get("forbidden_actions") or []),
+        },
+        "summary": {
+            "allowed_path_count": len(path_checks),
+            "unsafe_path_count": len(unsafe_paths),
+            "validation_command_count": len(command_checks),
+            "commands_executed": 0,
+            "matched_path_count": sum(int(item.get("match_count") or 0) for item in path_checks),
+        },
+        "read_operations_performed": True,
+        "dry_run": True,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "Read-only execution preflight. It inspects declared path scopes and validation command declarations but executes no commands, mutates no files, performs no deployment, mutates no Project Sources, and adopts no artifacts.",
+    }
+
+
 def render_loop_action_walkthrough_text(payload: dict[str, Any]) -> str:
     lines: list[str] = []
     for item in payload.get("actions") or []:
@@ -480,6 +584,34 @@ def render_loop_action_walkthrough_text(payload: dict[str, Any]) -> str:
     if payload.get("error"):
         return "ERROR\n"
     return ""
+
+
+def render_loop_read_only_execution_text(payload: dict[str, Any]) -> str:
+    lines = [
+        f"status={payload.get('status')}",
+        f"mode={payload.get('mode')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"executed_state={payload.get('executed_state') or 'none'}",
+        "execution_mode=local_read_only_preflight",
+    ]
+    for item in (payload.get("checks") or {}).get("allowed_paths") or []:
+        lines.append(
+            "allowed_path={path} safe={safe} glob={glob} match_count={match_count} mutation_performed=false".format(
+                path=item.get("path"),
+                safe=str(bool(item.get("safe"))).lower(),
+                glob=str(bool(item.get("glob"))).lower(),
+                match_count=item.get("match_count", 0),
+            )
+        )
+    for item in (payload.get("checks") or {}).get("validation_commands") or []:
+        lines.append(
+            "validation_command={command} execution_status=not_executed_read_only".format(
+                command=item.get("command")
+            )
+        )
+    lines.append("commands_executed=0")
+    lines.append("side_effects_performed=false")
+    return "\n".join(lines) + "\n"
 
 def render_loop_state_only_text(payload: dict[str, Any]) -> str:
     states = payload.get("states") or []

@@ -1,6 +1,13 @@
+import json
 from pathlib import Path
 
-from promptbranch_loop import build_loop_action_walkthrough_payload, build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
+from promptbranch_loop import (
+    build_loop_action_walkthrough_payload,
+    build_loop_read_only_execution_payload,
+    build_loop_state_only_payload,
+    plan_loop_target_file,
+    validate_loop_target_file,
+)
 
 
 def test_loop_target_schema_validates_static_game_fixture():
@@ -91,3 +98,44 @@ def test_loop_action_walkthrough_payload_is_dry_run_only():
     assert first["planned_action"] == "load target definition and create loop context"
     assert first["validation_gate"] == "target JSON parsed and target_id/goal are available"
     assert first["execution_status"] == "not_executed_dry_run"
+
+
+def test_loop_read_only_execution_payload_inspects_target_without_mutation():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    payload = build_loop_read_only_execution_payload(plan)
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.read_only_execution"
+    assert payload["mode"] == "read_only_execution"
+    assert payload["execution_mode"] == "local_read_only_preflight"
+    assert payload["executed_state"] == "REQUIREMENTS_CHECK"
+    assert payload["read_operations_performed"] is True
+    assert payload["side_effects_performed"] is False
+    assert payload["safety"]["commands_executed"] is False
+    assert payload["safety"]["deployment_performed"] is False
+    assert payload["safety"]["kubernetes_mutation_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+    assert payload["summary"]["allowed_path_count"] == 3
+    assert payload["summary"]["validation_command_count"] == 2
+    assert payload["summary"]["commands_executed"] == 0
+    assert all(item["safe"] for item in payload["checks"]["allowed_paths"])
+    assert all(item["execution_status"] == "not_executed_read_only" for item in payload["checks"]["validation_commands"])
+
+
+def test_loop_read_only_execution_rejects_unsafe_allowed_path(tmp_path: Path):
+    target = tmp_path / "unsafe.json"
+    target.write_text(json.dumps({
+        "schema": "promptbranch.loop.target",
+        "schema_version": "1.0",
+        "target_id": "unsafe-path-target",
+        "goal": "Prove read-only checks reject path breakout.",
+        "allowed_paths": ["../outside"],
+        "validation": {"commands": ["pytest -q tests/test_dummy.py"]},
+    }) + "\n", encoding="utf-8")
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    payload = build_loop_read_only_execution_payload(plan)
+    assert payload["ok"] is False
+    assert payload["status"] == "unsafe_path_scope"
+    assert payload["summary"]["unsafe_path_count"] == 1
+    assert payload["checks"]["allowed_paths"][0]["parent_traversal"] is True
+    assert payload["side_effects_performed"] is False

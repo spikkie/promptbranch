@@ -186,3 +186,60 @@ def test_loop_run_state_only_and_planned_actions_are_mutually_exclusive(capsys):
     assert rc == 2
     captured = capsys.readouterr()
     assert "mutually exclusive" in captured.err
+
+
+def test_loop_run_read_only_checks_text_reports_no_commands_executed(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-checks",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "mode=read_only_execution" in out
+    assert "executed_state=REQUIREMENTS_CHECK" in out
+    assert "allowed_path=examples/k8s-game/** safe=true" in out
+    assert "execution_status=not_executed_read_only" in out
+    assert "commands_executed=0" in out
+    assert "side_effects_performed=false" in out
+
+
+def test_loop_run_read_only_checks_json_reports_no_mutation(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-checks",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.read_only_execution"
+    assert payload["mode"] == "read_only_execution"
+    assert payload["execution_mode"] == "local_read_only_preflight"
+    assert payload["summary"]["commands_executed"] == 0
+    assert payload["read_operations_performed"] is True
+    assert payload["side_effects_performed"] is False
+    assert payload["safety"]["commands_executed"] is False
+    assert payload["safety"]["deployment_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+    assert "events" not in payload
+
+
+def test_loop_run_read_only_checks_is_mutually_exclusive_with_presentation_modes(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--planned-actions",
+        "--read-only-checks",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "mutually exclusive" in captured.err
