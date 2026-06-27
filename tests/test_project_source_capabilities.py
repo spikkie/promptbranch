@@ -2720,6 +2720,133 @@ def test_text_post_commit_recovery_failure_reports_specific_status(
     assert any("pb src list --json" in item for item in result["recovery_guidance"])
 
 
+def test_add_text_project_source_operation_reconciles_committed_text_from_post_commit_source_list(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+    snapshot_calls = {"count": 0}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        snapshot_calls["count"] += 1
+        if snapshot_calls["count"] >= 3:
+            return [
+                {
+                    "identity": "itest-text-20260627T-reconcile Document",
+                    "title": "itest-text-20260627T-reconcile Document",
+                    "text": "itest-text-20260627T-reconcile Document",
+                }
+            ]
+        return []
+
+    async def fake_add_text_source(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("source surface did not refresh")
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 1, "failed": 0, "inflight": 1}
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("commit was observed but refreshed text card was not found")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_text_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "text",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": {object()},
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value="Integration note for run 20260627T-reconcile\nbody",
+            file_path=None,
+            display_name="itest-text-20260627T-reconcile",
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["source_kind"] == "text"
+    assert result["persistence_verified"] is True
+    assert result["persistence_recovered_after_commit"] is True
+    assert result["verification_mode"] == "post_commit_text_source_list_reconciled"
+    assert result["post_commit_recovery"]["status"] == "recovered_by_text_source_reconciliation"
+    assert result["post_commit_recovery"]["proof"]["text_source_reconciliation_verified"] is True
+
+
+def test_text_source_post_commit_reconciliation_rejects_nearby_different_text_source(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    recovered = browser_client._find_text_source_post_commit_reconciliation_match(
+        [
+            {
+                "identity": "itest-text-20260627T-other Document",
+                "title": "itest-text-20260627T-other Document",
+                "text": "itest-text-20260627T-other Document",
+            }
+        ],
+        value="Integration note for run 20260627T-expected\nbody",
+        display_name="itest-text-20260627T-expected",
+        source_match_candidates=["itest-text-20260627T-expected", "Integration note for run 20260627T-expected"],
+    )
+
+    assert recovered is None
+
+
+def test_text_source_post_commit_reconciliation_rejects_visible_zip_source(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    recovered = browser_client._find_text_source_post_commit_reconciliation_match(
+        [
+            {
+                "identity": "chatgpt_claudecode_workflow-2_v0.1.97.zip Zip Archive",
+                "title": "chatgpt_claudecode_workflow-2_v0.1.97.zip",
+                "subtitle": "Zip Archive",
+                "text": "chatgpt_claudecode_workflow-2_v0.1.97.zip Zip Archive",
+            }
+        ],
+        value="Integration note for run 20260627T-expected\nbody",
+        display_name="itest-text-20260627T-expected",
+        source_match_candidates=["chatgpt_claudecode_workflow-2_v0.1.97.zip", "itest-text-20260627T-expected"],
+    )
+
+    assert recovered is None
+
+
 def test_text_source_document_conversion_candidates_use_first_line_and_display_name(
     browser_client: ChatGPTBrowserClient,
 ) -> None:

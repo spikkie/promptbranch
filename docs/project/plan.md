@@ -1503,3 +1503,15 @@ In scope: `promptbranch.loop.read_only_evidence_gate`, `pb loop run --read-only-
 Out of scope: executing validation commands, mutating files, deployment/Kubernetes/Docker/Helm actions, Project Source mutation from loop execution, artifact adoption from loop execution, ChatGPT Project deletion.
 Expected validation: focused loop/CLI tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, artifact verify, ZIP hygiene, then operator full release-control/adoption.
 ```
+
+
+## Repair definition — v0.1.97.1
+
+Release: v0.1.97.1
+Base candidate: v0.1.97
+Type: repair candidate
+Slice advanced: no
+Reason: `v0.1.97` preserved the read-only evidence gate but failed full release-control at `project_source_add_text` with `commit_seen_with_stale_inflight_not_verified_present`. The release ZIP source was visible; the failed gate was text-source validation.
+In scope: add post-commit Project Sources reconciliation for text-source add; accept recovery only with exact text-source identity/content proof; reject nearby text sources and release ZIP source visibility; preserve `v0.1.97` loop evidence gate behavior.
+Out of scope: command execution, file mutation, deployment, Kubernetes mutation, Project Source mutation from loop execution, artifact adoption behavior changes, and ChatGPT Project deletion.
+Expected validation: focused Project Source text reconciliation tests, loop/CLI/version/control-surface tests, compileall, shell syntax, Artifact Guardian, artifact verify.

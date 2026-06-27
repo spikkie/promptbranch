@@ -5364,6 +5364,9 @@ class ChatGPTBrowserClient:
                     page,
                     project_url=project_home_url,
                     source_match_candidates=persistence_candidates,
+                    source_kind=normalized_kind,
+                    value=value,
+                    display_name=display_name,
                     before_sources=before_sources,
                     save_watch=save_request_watch,
                     original_error=str(exc),
@@ -5385,10 +5388,20 @@ class ChatGPTBrowserClient:
                 if recovery_attempted:
                     try:
                         post_recovery_sources = await self._snapshot_project_source_cards(page)
-                        snapshot_recovered_source = self._match_source_card(
-                            post_recovery_sources,
-                            persistence_candidates,
-                        )
+                        if normalized_kind == "text":
+                            snapshot_recovered_source = self._find_text_source_post_commit_reconciliation_match(
+                                post_recovery_sources,
+                                value=value,
+                                display_name=display_name,
+                                source_match_candidates=persistence_candidates,
+                                verification_mode="post_commit_text_source_snapshot_reconciled",
+                                post_refresh_attempt=None,
+                            )
+                        else:
+                            snapshot_recovered_source = self._match_source_card(
+                                post_recovery_sources,
+                                persistence_candidates,
+                            )
                     except Exception as snapshot_exc:
                         self._log(
                             "project-source-add",
@@ -5404,10 +5417,15 @@ class ChatGPTBrowserClient:
                     persisted_source["_promptbranch_post_refresh_attempt"] = None
                     post_commit_recovery = {
                         "status": "recovered_from_visible_surface_snapshot",
-                        "method": "post_commit_snapshot_match",
+                        "method": "post_commit_text_source_snapshot_reconciliation" if normalized_kind == "text" else "post_commit_snapshot_match",
                         "transaction_status": transaction.get("transaction_status"),
                         "source_match_candidates": persistence_candidates,
                         "save_watch_summary": save_summary,
+                        "text_source_reconciliation_proof": (
+                            snapshot_recovered_source.get("_promptbranch_text_source_reconciliation_proof")
+                            if normalized_kind == "text" and isinstance(snapshot_recovered_source, dict)
+                            else None
+                        ),
                     }
                     self._log(
                         "project-source-add",
@@ -16645,12 +16663,110 @@ class ChatGPTBrowserClient:
             or int(transaction.get("save_finished") or 0) > 0
         )
 
+    def _project_source_card_looks_like_zip_artifact(self, card: Optional[dict[str, str]]) -> bool:
+        candidates = self._source_card_identity_candidates(card)
+        normalized = " ".join(candidates).lower()
+        return ".zip" in normalized or "zip archive" in normalized
+
+    def _text_source_post_commit_reconciliation_proof(
+        self,
+        card: Optional[dict[str, str]],
+        *,
+        value: Optional[str],
+        display_name: Optional[str],
+        source_match_candidates: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        content_proof = self._text_source_card_content_proof(
+            card,
+            value=value,
+            display_name=display_name,
+        )
+        card_candidates = self._source_card_identity_candidates(card)
+        normalized_card_text = " ".join(card_candidates).lower()
+        source_candidates: list[str] = []
+
+        def add(candidate: Optional[str]) -> None:
+            normalized = self._normalize_source_match_text(candidate)
+            if not normalized:
+                return
+            lower = normalized.lower()
+            if self._is_generic_source_metadata_only_value(normalized):
+                return
+            # A visible release ZIP source must never satisfy text-source
+            # reconciliation.  Text proof must come from the expected text
+            # identity/content anchors, not from an unrelated artifact source row.
+            if lower.endswith(".zip") or ".zip " in lower or "zip archive" in lower:
+                return
+            if normalized not in source_candidates:
+                source_candidates.append(normalized)
+
+        for anchor in self._text_source_document_conversion_anchors(value, display_name):
+            add(anchor)
+        for candidate in source_match_candidates or []:
+            add(candidate)
+
+        identity_matches = [
+            candidate
+            for candidate in source_candidates
+            if candidate.lower() and candidate.lower() in normalized_card_text
+        ]
+        zip_artifact_visible = self._project_source_card_looks_like_zip_artifact(card)
+        content_match_verified = bool(content_proof.get("content_match_verified"))
+        identity_match_verified = bool(identity_matches)
+        verified = bool(not zip_artifact_visible and (content_match_verified or identity_match_verified))
+        return {
+            "text_source_reconciliation_verified": verified,
+            "content_match_verified": content_match_verified,
+            "identity_match_verified": identity_match_verified,
+            "matched_identity_candidates": identity_matches,
+            "zip_artifact_visible": zip_artifact_visible,
+            "source_match_candidates": list(source_match_candidates or []),
+            "text_source_candidates": source_candidates,
+            "content_proof": content_proof,
+        }
+
+    def _find_text_source_post_commit_reconciliation_match(
+        self,
+        source_cards: list[dict[str, str]],
+        *,
+        value: Optional[str],
+        display_name: Optional[str],
+        source_match_candidates: Optional[list[str]] = None,
+        verification_mode: str = "post_commit_text_source_reconciliation_recovered",
+        post_refresh_attempt: Optional[int] = None,
+    ) -> Optional[dict[str, str]]:
+        for card in source_cards or []:
+            proof = self._text_source_post_commit_reconciliation_proof(
+                card,
+                value=value,
+                display_name=display_name,
+                source_match_candidates=source_match_candidates,
+            )
+            if not proof.get("text_source_reconciliation_verified"):
+                continue
+            recovered = dict(card)
+            recovered["_promptbranch_verification_mode"] = verification_mode
+            recovered["_promptbranch_ui_card_seen_before_refresh"] = True
+            recovered["_promptbranch_post_refresh_attempt"] = post_refresh_attempt
+            recovered["_promptbranch_text_source_reconciliation_proof"] = proof
+            recovered["_promptbranch_post_commit_recovery"] = {
+                "status": "recovered_by_text_source_reconciliation",
+                "method": "post_commit_source_list_exact_text_proof",
+                "source_match_candidates": list(source_match_candidates or []),
+                "proof": proof,
+            }
+            return recovered
+        return None
+
     async def _recover_project_source_after_post_commit_timeout(
         self,
         page: Any,
         *,
         project_url: str,
         source_match_candidates: list[str],
+        source_kind: str = "file",
+        value: Optional[str] = None,
+        display_name: Optional[str] = None,
         before_sources: Optional[list[dict[str, str]]] = None,
         save_watch: Optional[dict[str, Any]] = None,
         original_error: str = "",
@@ -16697,6 +16813,40 @@ class ChatGPTBrowserClient:
                     label=label,
                     respect_history_rate_limit_cooldown=False,
                 )
+                if source_kind == "text":
+                    # Spikkies-site-style reconciliation principle, adapted for text
+                    # sources: after the commit is observed, re-read the Sources
+                    # surface and accept recovery only when the expected text
+                    # identity/content proof is visible.  A release ZIP card or a
+                    # nearby/generic source card is not enough.
+                    source_cards = await self._snapshot_project_source_cards(page)
+                    reconciled = self._find_text_source_post_commit_reconciliation_match(
+                        source_cards,
+                        value=value,
+                        display_name=display_name,
+                        source_match_candidates=source_match_candidates,
+                        verification_mode="post_commit_text_source_list_reconciled",
+                        post_refresh_attempt=attempt + 1,
+                    )
+                    if reconciled is not None:
+                        recovery_payload = dict(reconciled.get("_promptbranch_post_commit_recovery") or {})
+                        recovery_payload.update({
+                            "attempt": attempt + 1,
+                            "attempts": effective_attempts,
+                            "timeout_ms": effective_timeout_ms,
+                            "original_error": original_error,
+                            "save_watch_summary": self._project_source_save_watch_summary(save_watch),
+                        })
+                        reconciled["_promptbranch_post_commit_recovery"] = recovery_payload
+                        self._log(
+                            "project-source-add",
+                            "post-commit text source persistence reconciled from refreshed source list",
+                            attempt=attempt + 1,
+                            source_match_candidates=source_match_candidates,
+                            recovered_source=self._preferred_source_card_identity(reconciled) or reconciled.get("text"),
+                            proof=reconciled.get("_promptbranch_text_source_reconciliation_proof"),
+                        )
+                        return reconciled
                 recovered = await self._wait_for_source_presence(
                     page,
                     source_match_candidates=source_match_candidates,
@@ -16706,6 +16856,24 @@ class ChatGPTBrowserClient:
                 )
                 if isinstance(recovered, dict):
                     recovered = dict(recovered)
+                    if source_kind == "text":
+                        proof = self._text_source_post_commit_reconciliation_proof(
+                            recovered,
+                            value=value,
+                            display_name=display_name,
+                            source_match_candidates=source_match_candidates,
+                        )
+                        if not proof.get("text_source_reconciliation_verified"):
+                            self._log(
+                                "project-source-add",
+                                "post-commit text source recovery rejected without exact text proof",
+                                attempt=attempt + 1,
+                                source_match_candidates=source_match_candidates,
+                                recovered_source=self._preferred_source_card_identity(recovered) or recovered.get("text"),
+                                proof=proof,
+                            )
+                            continue
+                        recovered["_promptbranch_text_source_reconciliation_proof"] = proof
                     recovered["_promptbranch_verification_mode"] = "post_commit_refresh_recovered"
                     recovered["_promptbranch_ui_card_seen_before_refresh"] = True
                     recovered["_promptbranch_post_refresh_attempt"] = attempt + 1
@@ -16716,6 +16884,7 @@ class ChatGPTBrowserClient:
                         "timeout_ms": effective_timeout_ms,
                         "original_error": original_error,
                         "save_watch_summary": self._project_source_save_watch_summary(save_watch),
+                        "text_source_reconciliation_proof": recovered.get("_promptbranch_text_source_reconciliation_proof"),
                     }
                     self._log(
                         "project-source-add",
