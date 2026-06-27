@@ -689,3 +689,11 @@ The evidence report is read-only and summarizes allowed path inspection, unsafe 
 The candidate keeps at most five generated release ZIP Project Sources per release family/repository after a new generated ZIP upload. Automatic removal is restricted to same-family canonical generated release ZIPs. Documentation files, non-ZIP Project Sources, text/link sources, and generated ZIPs from other repositories are not selected for deletion. If the 25-resource cap is reached and no safe same-family generated ZIP is available, the operation fails closed for operator review.
 
 This candidate does not change loop execution, deployment, Kubernetes, artifact adoption/current behavior, or ChatGPT Project deletion behavior.
+
+## v0.1.96 accepted/current status
+
+Operator-provided release-control evidence accepted `chatgpt_claudecode_workflow-2_v0.1.96.zip` as current after full `--run-all-tests --strict-source-kind-matrix --adopt-after-validation`. Future work continues from `v0.1.96` unless superseded by later adoption evidence.
+
+## v0.1.97 candidate status
+
+`v0.1.97` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.96.zip`. It adds a deterministic read-only loop evidence gate over the `v0.1.95` evidence report so future execution-capable slices have a machine-checkable pass/block contract. The loop still executes no commands, mutates no files, performs no deployment/Kubernetes action, mutates no Project Sources, adopts no artifacts, and deletes no ChatGPT Projects.

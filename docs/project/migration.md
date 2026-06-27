@@ -635,3 +635,7 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 ## v0.1.96 migration note
 
 No user data, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should expect generated release ZIP Project Sources to be retained per repository family with a maximum of five entries after upload. Promptbranch will only auto-prune same-family generated release ZIPs; documentation and non-generated Project Sources remain operator-managed.
+
+## v0.1.97 migration note
+
+No user data migration is required. Operators can use `pb loop run --read-only-execution --evidence-gate` to get a deterministic pass/block decision over the existing read-only evidence report. The gate remains non-mutating and does not execute validation commands.
