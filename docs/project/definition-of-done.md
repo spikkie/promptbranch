@@ -351,3 +351,5 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 | DOD-127 | Project Source capacity-prune identity drift fails closed before looser retry | done | `v0.1.94.1` accepted/current evidence showed full release-control/adoption passed after the repair; focused tests cover exact-remove drift no-retry behavior | v0.1.94.1 |
 
 | DOD-128 | Read-only loop execution produces an explicit evidence report with no-side-effect assertions | focused | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.95.md` | v0.1.95 |
+
+| DOD-129 | Project Source capacity pruning keeps at most five generated release ZIP sources per repository family and never auto-selects documentation or other-repository sources | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/release-v0.1.96.md` | v0.1.96 |

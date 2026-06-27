@@ -359,3 +359,5 @@ This decision was added for `v0.1.94.1` after a `v0.1.94` run targeted old sourc
 
 
 | ADR-PROJ-096 | 2026-06-27 | Read-only loop execution must produce evidence before real execution is introduced | The loop can only become safe if operators can inspect what was checked, what was skipped, and which side-effect boundaries stayed true before any command execution slice exists. | `v0.1.95` adds `promptbranch.loop.read_only_evidence_report` and `pb loop run --read-only-execution --evidence-report`; it remains no-command/no-mutation/no-deploy/no-adoption. |
+
+| ADR-PROJ-097 | 2026-06-27 | Generated release ZIP Project Sources are retained per repository family, not globally deleted | A single ChatGPT Project has a 25-resource source cap and may service multiple repositories. Automatic cleanup must avoid deleting documentation or project sources while still keeping generated source ZIP accumulation bounded. | `v0.1.96` keeps at most five generated release ZIPs per release family after upload, prunes only same-family canonical generated ZIPs, and fails closed when no safe same-family ZIP is available. |

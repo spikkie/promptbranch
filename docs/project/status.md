@@ -681,3 +681,11 @@ The active MVP-1 loop behavior remains read-only: target path scopes and validat
 `v0.1.95` is a normal MVP-1 candidate from accepted/current `chatgpt_claudecode_workflow-2_v0.1.94.1.zip`. It adds a controlled read-only execution evidence report for `pb loop run --read-only-execution`.
 
 The evidence report is read-only and summarizes allowed path inspection, unsafe path blockers, declared validation commands, skipped command count, and explicit no-side-effect assertions. It does not execute commands, mutate files, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.
+
+## v0.1.96 candidate status
+
+`v0.1.96` is a normal candidate built from the user-pinned `chatgpt_claudecode_workflow-2_v0.1.95.zip` baseline. It adds Project Source generated release ZIP retention control so a ChatGPT Project can remain serviceable with up to five repositories under the 25-resource source cap.
+
+The candidate keeps at most five generated release ZIP Project Sources per release family/repository after a new generated ZIP upload. Automatic removal is restricted to same-family canonical generated release ZIPs. Documentation files, non-ZIP Project Sources, text/link sources, and generated ZIPs from other repositories are not selected for deletion. If the 25-resource cap is reached and no safe same-family generated ZIP is available, the operation fails closed for operator review.
+
+This candidate does not change loop execution, deployment, Kubernetes, artifact adoption/current behavior, or ChatGPT Project deletion behavior.

@@ -631,3 +631,7 @@ The `v0.1.94.1` repair preserves the intended `v0.1.94` read-only loop execution
 ## v0.1.95 migration note
 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators may use `pb loop run --read-only-execution --evidence-report --json` to inspect the compact evidence report. Existing `validate`, `plan`, `run`, `--state-only`, `--planned-actions`, and `--read-only-execution` behavior is preserved.
+
+## v0.1.96 migration note
+
+No user data, artifact-current, deployment, Kubernetes, or ChatGPT Project deletion migration is performed. Operators should expect generated release ZIP Project Sources to be retained per repository family with a maximum of five entries after upload. Promptbranch will only auto-prune same-family generated release ZIPs; documentation and non-generated Project Sources remain operator-managed.

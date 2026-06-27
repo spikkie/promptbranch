@@ -99,3 +99,5 @@ MVP-1:
 `v0.1.94.1` is accepted/current repair evidence for the first controlled read-only loop execution step and Project Source capacity-prune identity guard.
 
 `v0.1.95` adds a compact read-only evidence report for MVP-1 loop execution preflight. The loop still executes no commands, mutates no files, performs no Kubernetes/deployment action, mutates no Project Sources, adopts no artifacts, and deletes no ChatGPT Projects.
+
+`v0.1.96` keeps Project Source capacity manageable for multi-repo Projects by retaining only the latest five generated release ZIP sources per release family/repository. It does not delete documentation or non-generated Project Sources and does not change loop execution, artifact adoption, deployment, Kubernetes, or ChatGPT Project deletion behavior.

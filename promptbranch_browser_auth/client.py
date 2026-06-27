@@ -4913,21 +4913,29 @@ class ChatGPTBrowserClient:
                     duplicate_notice = None
                     overwritten_existing = True
 
-            if not duplicate_detected and len(before_sources) >= 25:
-                prune_candidate = self._select_project_source_capacity_prune_candidate(
+            if not duplicate_detected:
+                release_source_limit = 25
+                release_source_retention_limit = 5
+                requested_release_source = self._parse_release_source_filename(canonical_display_name or file_path)
+                prune_candidates = self._select_project_source_capacity_prune_candidates(
                     requested_filename=canonical_display_name or file_path,
                     source_cards=before_sources,
-                    source_limit=25,
+                    source_limit=release_source_limit,
+                    retention_limit=release_source_retention_limit,
                 )
-                if prune_candidate is not None:
+                capacity_prune_results: list[dict[str, Any]] = []
+                for prune_candidate in prune_candidates:
                     prune_source_name = prune_candidate.get("source_name") or prune_candidate.get("filename")
                     self._log(
                         "project-source-add",
-                        "project source limit reached; pruning lowest same-family release source before upload",
+                        "project source generated release retention reached; pruning oldest same-family release source before upload",
                         project_url=project_home_url,
                         current_source_count=len(before_sources),
-                        source_limit=25,
+                        source_limit=release_source_limit,
+                        release_source_retention_limit=release_source_retention_limit,
+                        same_family_source_count=prune_candidate.get("same_family_source_count"),
                         requested_source=canonical_display_name,
+                        prune_reason=prune_candidate.get("reason"),
                         prune_source_name=prune_source_name,
                         prune_source_version=prune_candidate.get("normalized_version"),
                         prune_source_filename=prune_candidate.get("filename"),
@@ -4964,9 +4972,11 @@ class ChatGPTBrowserClient:
                                 "capacity_prune_identity_verified": False,
                                 "capacity_prune_retry_suppressed": True,
                                 "capacity_prune_remove_drift_detected": True,
+                                "capacity_prune_reason": prune_candidate.get("reason"),
                                 "operator_review_required": True,
                                 "current_source_count": len(current_sources),
-                                "source_limit": 25,
+                                "source_limit": release_source_limit,
+                                "release_source_retention_limit": release_source_retention_limit,
                                 "current_url": await self._safe_page_url(page),
                             }
                         self._log(
@@ -5005,9 +5015,11 @@ class ChatGPTBrowserClient:
                                 "capacity_prune_source_version": prune_candidate.get("normalized_version"),
                                 "capacity_prune_remove_error": str(retry_exc),
                                 "capacity_prune_remove_initial_error": str(exc),
+                                "capacity_prune_reason": prune_candidate.get("reason"),
                                 "operator_review_required": True,
                                 "current_source_count": len(current_sources),
-                                "source_limit": 25,
+                                "source_limit": release_source_limit,
+                                "release_source_retention_limit": release_source_retention_limit,
                                 "current_url": await self._safe_page_url(page),
                             }
                     if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
@@ -5029,20 +5041,54 @@ class ChatGPTBrowserClient:
                             "capacity_prune_source_filename": prune_candidate.get("filename"),
                             "capacity_prune_source_version": prune_candidate.get("normalized_version"),
                             "capacity_prune_remove_result": capacity_prune_result,
+                            "capacity_prune_reason": prune_candidate.get("reason"),
                             "operator_review_required": True,
                             "current_source_count": len(current_sources),
-                            "source_limit": 25,
+                            "source_limit": release_source_limit,
+                            "release_source_retention_limit": release_source_retention_limit,
                             "current_url": await self._safe_page_url(page),
                         }
+                    capacity_prune_results.append(dict(capacity_prune_result))
                     await self._open_project_sources_tab(page)
                     before_sources = await self._snapshot_project_source_cards(page)
-                elif self._parse_release_source_filename(canonical_display_name or file_path) is not None:
+                if capacity_prune_results:
+                    if len(before_sources) >= release_source_limit:
+                        current_sources = await self._snapshot_project_source_cards(page)
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_limit_prune_insufficient_capacity",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "already_exists": False,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "capacity_pruned": True,
+                            "capacity_prune_results": capacity_prune_results,
+                            "capacity_prune_count": len(capacity_prune_results),
+                            "operator_review_required": True,
+                            "current_source_count": len(current_sources),
+                            "source_limit": release_source_limit,
+                            "release_source_retention_limit": release_source_retention_limit,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    capacity_prune_result = capacity_prune_results[-1]
+                    capacity_prune_result = dict(capacity_prune_result)
+                    capacity_prune_result["prune_results"] = capacity_prune_results
+                    capacity_prune_result["prune_count"] = len(capacity_prune_results)
+                    capacity_prune_result["release_source_retention_limit"] = release_source_retention_limit
+                elif requested_release_source is not None and len(before_sources) >= release_source_limit:
                     self._log(
                         "project-source-add",
                         "project source limit reached but no same-family release source was available for pruning",
                         project_url=project_home_url,
                         current_source_count=len(before_sources),
-                        source_limit=25,
+                        source_limit=release_source_limit,
+                        release_source_retention_limit=release_source_retention_limit,
                         requested_source=canonical_display_name,
                     )
                     return {
@@ -5060,7 +5106,8 @@ class ChatGPTBrowserClient:
                         "removed_existing": False,
                         "operator_review_required": True,
                         "current_source_count": len(before_sources),
-                        "source_limit": 25,
+                        "source_limit": release_source_limit,
+                        "release_source_retention_limit": release_source_retention_limit,
                         "current_url": await self._safe_page_url(page),
                     }
 
@@ -14457,16 +14504,30 @@ class ChatGPTBrowserClient:
         candidates.sort(key=lambda item: (item["score"], item["index"]))
         return candidates[0]
 
-    def _select_project_source_capacity_prune_candidate(
+    def _select_project_source_capacity_prune_candidates(
         self,
         *,
         requested_filename: Optional[str],
         source_cards: list[dict[str, str]],
         source_limit: int = 25,
-    ) -> Optional[dict[str, Any]]:
+        retention_limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Select old generated release ZIP sources safe to prune before upload.
+
+        ChatGPT Projects currently cap the complete Sources surface at 25
+        resources. Promptbranch may attach generated release ZIPs for multiple
+        repositories to the same Project, so the safe automatic policy is:
+
+        * only consider canonical versioned ZIP release sources in the requested
+          repo/family;
+        * keep at most ``retention_limit`` generated release ZIPs for that
+          repo/family after the new upload; and
+        * when the global source limit is already reached, prune only from that
+          same generated ZIP family instead of touching docs or project sources.
+        """
         requested = self._parse_release_source_filename(requested_filename)
-        if requested is None or len(source_cards) < source_limit:
-            return None
+        if requested is None:
+            return []
 
         candidates: list[dict[str, Any]] = []
         for card in source_cards:
@@ -14484,9 +14545,47 @@ class ChatGPTBrowserClient:
             candidates.append(parsed)
 
         if not candidates:
-            return None
+            return []
+
+        effective_source_limit = max(1, int(source_limit or 25))
+        effective_retention_limit = max(1, int(retention_limit or 5))
+        target_existing_for_retention = max(0, effective_retention_limit - 1)
+        target_existing_for_capacity = max(0, effective_source_limit - 1)
+        retention_excess = max(0, len(candidates) - target_existing_for_retention)
+        capacity_excess = max(0, len(source_cards) - target_existing_for_capacity)
+        prune_count = max(retention_excess, capacity_excess)
+        if prune_count <= 0:
+            return []
+
         candidates.sort(key=lambda item: (item.get("version_tuple") or (), str(item.get("filename") or "")))
-        return candidates[0]
+        selected = candidates[: min(prune_count, len(candidates))]
+        reason = (
+            "release_source_retention_limit"
+            if retention_excess >= capacity_excess and retention_excess > 0
+            else "project_source_total_limit"
+        )
+        for item in selected:
+            item["source_limit"] = effective_source_limit
+            item["release_source_retention_limit"] = effective_retention_limit
+            item["same_family_source_count"] = len(candidates)
+            item["prune_count"] = len(selected)
+            item["reason"] = reason
+        return selected
+
+    def _select_project_source_capacity_prune_candidate(
+        self,
+        *,
+        requested_filename: Optional[str],
+        source_cards: list[dict[str, str]],
+        source_limit: int = 25,
+    ) -> Optional[dict[str, Any]]:
+        candidates = self._select_project_source_capacity_prune_candidates(
+            requested_filename=requested_filename,
+            source_cards=source_cards,
+            source_limit=source_limit,
+            retention_limit=5,
+        )
+        return candidates[0] if candidates else None
 
     async def _find_project_source_duplicate_notice(
         self,
