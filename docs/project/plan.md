@@ -1446,9 +1446,12 @@ Planned change:
 
 No normal MVP-1 slice advances.
 
+## v0.1.94.1 — repair: Project Source capacity-prune identity guard
 
-## v0.1.94 plan — MVP-1 read-only execution preflight
+Type: repair-only candidate.
 
-Build from accepted/current `v0.1.93.1`. Add the first controlled execution step without allowing mutation: `pb loop run --read-only-checks` performs local read-only preflight of target-declared `allowed_paths` and validation command declarations. It must reject unsafe path scopes, report command declarations as `not_executed_read_only`, and preserve all no-side-effect safety flags.
+Base: intended `v0.1.94` release built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.93.1.zip`.
 
-Out of scope: executing target validation commands, creating files, implementing the Kubernetes game, applying Kubernetes manifests, mutating ChatGPT Project Sources, adopting artifacts, or changing release-control semantics.
+Scope: preserve `pb loop run --read-only-execution` and harden Project Source capacity pruning so a drift/collateral-removal signal from exact remove stops immediately with `operator_review_required=true` and no looser retry.
+
+Out of scope: no command execution, no file mutation, no Kubernetes mutation, no deployment, no Project Source mutation from the loop engine, no artifact adoption behavior change, and no ChatGPT Project deletion behavior change.

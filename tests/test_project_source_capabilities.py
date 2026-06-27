@@ -3016,3 +3016,83 @@ def test_stale_inflight_post_commit_absent_source_is_classified_as_true_absence(
     assert result["post_commit_source_absent_after_recovery"] is True
     assert result["post_commit_visible_match_found"] is False
     assert result["current_source_identities"] == ["pasted.txt Document"]
+
+
+def test_capacity_prune_stops_without_loose_retry_when_exact_remove_reports_identity_drift(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    release_zip = tmp_path / "chatgpt_claudecode_workflow_v0.0.277.zip"
+    release_zip.write_text("fake zip fixture", encoding="utf-8")
+    old_source = {
+        "title": "chatgpt_claudecode_workflow_v0.0.275.zip",
+        "identity": "chatgpt_claudecode_workflow_v0.0.275.zip Document",
+        "text": "chatgpt_claudecode_workflow_v0.0.275.zip\nDocument",
+        "subtitle": "Document",
+    }
+    before_sources = [old_source]
+    while len(before_sources) < 25:
+        index = len(before_sources)
+        before_sources.append(
+            {
+                "title": f"other-source-{index}.txt",
+                "identity": f"other-source-{index}.txt Document",
+                "text": f"other-source-{index}.txt\nDocument",
+                "subtitle": "Document",
+            }
+        )
+    remove_calls: list[bool] = []
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return list(before_sources)
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_remove(*_args, **kwargs):
+        remove_calls.append(bool(kwargs["exact"]))
+        raise ResponseTimeoutError(
+            "Project source remove drifted to a different row before the target disappeared "
+            "(target=chatgpt_claudecode_workflow_v0.0.275.zip, collateral_removed=['unrelated.txt'])"
+        )
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(release_zip),
+            display_name=None,
+            keep_open=False,
+        )
+    )
+
+    assert remove_calls == [True]
+    assert result["ok"] is False
+    assert result["status"] == "source_limit_prune_remove_failed"
+    assert result["operator_review_required"] is True
+    assert result["capacity_prune_retry_suppressed"] is True
+    assert result["capacity_prune_remove_drift_detected"] is True
+    assert result["capacity_prune_identity_verified"] is False

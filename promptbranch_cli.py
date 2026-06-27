@@ -8053,34 +8053,33 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
             print(render_loop_plan_text(payload), end="")
         return 0 if payload.get("ok") else 1
     if loop_command == "run":
-        # The loop runner remains bounded and side-effect free. Presentation
-        # modes do not execute anything. ``--read-only-checks`` performs only
-        # local read-only inspection of target-declared path scopes and command
-        # declarations; it still executes no commands, tests, deployment,
-        # Project Source mutation, or artifact adoption.
+        # The loop runner remains dry-run/stubbed only. ``--state-only`` is a
+        # presentation mode over the same planned states; it does not execute
+        # actions, commands, tests, deployment, Project Source mutation, or
+        # artifact adoption.
         payload = plan_loop_target_file(target, execute_stubbed=True)
         payload["dry_run"] = True
         selected_modes = [
-            name
-            for name in ("state_only", "planned_actions", "read_only_checks")
-            if getattr(args, name, False)
+            bool(getattr(args, "state_only", False)),
+            bool(getattr(args, "planned_actions", False)),
+            bool(getattr(args, "read_only_execution", False)),
         ]
-        if len(selected_modes) > 1:
-            print("error: --state-only, --planned-actions, and --read-only-checks are mutually exclusive", file=sys.stderr)
+        if sum(1 for item in selected_modes if item) > 1:
+            print("error: --state-only, --planned-actions, and --read-only-execution are mutually exclusive", file=sys.stderr)
             return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
             payload = build_loop_action_walkthrough_payload(payload)
-        elif getattr(args, "read_only_checks", False):
-            payload = build_loop_read_only_execution_payload(payload)
+        elif getattr(args, "read_only_execution", False):
+            payload = build_loop_read_only_execution_payload(payload, repo_root=Path.cwd())
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         elif getattr(args, "state_only", False):
             print(render_loop_state_only_text(payload), end="")
         elif getattr(args, "planned_actions", False):
             print(render_loop_action_walkthrough_text(payload), end="")
-        elif getattr(args, "read_only_checks", False):
+        elif getattr(args, "read_only_execution", False):
             print(render_loop_read_only_execution_text(payload), end="")
         else:
             print(render_loop_plan_text(payload), end="")
@@ -23905,12 +23904,12 @@ def make_parser() -> argparse.ArgumentParser:
     loop_plan.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
     loop_plan.add_argument("--json", action="store_true", help="Emit dry-run plan as JSON.")
 
-    loop_run = loop_subparsers.add_parser("run", help="Run the bounded loop control flow. MVP-1 can print states/actions or perform read-only checks without mutation.")
+    loop_run = loop_subparsers.add_parser("run", help="Run the stubbed loop control flow. MVP-1 remains dry-run only and can print states or planned actions.")
     loop_run.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
     loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. MVP-1 loop runs remain dry-run/stubbed only.")
     loop_run.add_argument("--state-only", action="store_true", help="Print only the planned loop state names; no actions are executed.")
     loop_run.add_argument("--planned-actions", action="store_true", help="Print one dry-run planned action and validation gate per state; no actions are executed.")
-    loop_run.add_argument("--read-only-checks", action="store_true", help="Perform bounded local read-only target checks; no commands, tests, deployment, Project Source mutation, or artifact adoption are executed.")
+    loop_run.add_argument("--read-only-execution", action="store_true", help="Inspect allowed paths and validation command declarations without executing commands or mutating state.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

@@ -510,9 +510,12 @@ def _classify_allowed_path(pattern: str, *, repo_root: Path) -> dict[str, Any]:
     }
 
 
-def build_loop_read_only_execution_payload(plan: dict[str, Any], *, repo_root: str | Path | None = None) -> dict[str, Any]:
+def build_loop_read_only_execution_payload(
+    plan: dict[str, Any],
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
     root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
-    target_id = plan.get("target_id")
     allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
     validation_commands = [str(item) for item in plan.get("validation_commands") or []]
     path_checks = [_classify_allowed_path(pattern, repo_root=root) for pattern in allowed_paths]
@@ -536,7 +539,7 @@ def build_loop_read_only_execution_payload(plan: dict[str, Any], *, repo_root: s
         "status": "read_only_checks_passed" if not unsafe_paths else "unsafe_path_scope",
         "mode": "read_only_execution",
         "execution_mode": "local_read_only_preflight",
-        "target_id": target_id,
+        "target_id": plan.get("target_id"),
         "target_path": plan.get("target_path"),
         "loop_id": plan.get("loop_id"),
         "final_state": plan.get("final_state"),

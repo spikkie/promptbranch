@@ -4941,6 +4941,34 @@ class ChatGPTBrowserClient:
                             keep_open=False,
                         )
                     except ResponseTimeoutError as exc:
+                        if self._project_source_remove_identity_drift_detected(exc):
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "source_limit_prune_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": False,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "capacity_prune_source_name": prune_source_name,
+                                "capacity_prune_source_filename": prune_candidate.get("filename"),
+                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                                "capacity_prune_remove_error": str(exc),
+                                "capacity_prune_remove_initial_error": str(exc),
+                                "capacity_prune_identity_verified": False,
+                                "capacity_prune_retry_suppressed": True,
+                                "capacity_prune_remove_drift_detected": True,
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "source_limit": 25,
+                                "current_url": await self._safe_page_url(page),
+                            }
                         self._log(
                             "project-source-add",
                             "exact capacity prune remove failed; retrying with title-anchored source lookup",
@@ -5590,6 +5618,22 @@ class ChatGPTBrowserClient:
 
         for remove_attempt in range(1, max_remove_attempts + 1):
             attempt_source_cards = await self._snapshot_project_source_cards(page)
+            pre_click_guard = self._source_card_remove_guard(
+                initial_source_cards,
+                attempt_source_cards,
+                target_candidates=match_candidates,
+                matched_card=matched_card,
+            )
+            if pre_click_guard["collateral_removed"]:
+                raise ResponseTimeoutError(
+                    "Project source remove drifted before clicking the selected row "
+                    f"(target={source_name}, collateral_removed={pre_click_guard['collateral_removed']})"
+                )
+            if pre_click_guard["target_removed"] and not pre_click_guard["target_present_after"]:
+                raise ResponseTimeoutError(
+                    "Project source remove target disappeared before clicking the selected row "
+                    f"(target={source_name})"
+                )
             option_candidates: list[Any] = []
             if options_button is not None:
                 option_candidates.append(options_button)
@@ -17223,6 +17267,16 @@ class ChatGPTBrowserClient:
             "target_present_after": target_present_after,
             "collateral_removed": collateral_removed,
         }
+
+    @staticmethod
+    def _project_source_remove_identity_drift_detected(error: BaseException | str) -> bool:
+        text = str(error)
+        return (
+            "Project source remove drifted" in text
+            or "Project source remove deleted additional rows" in text
+            or "collateral_removed=" in text
+            or "collateral_removed=[" in text
+        )
 
     async def _find_project_source_direct_remove_action_for_card(
         self,
