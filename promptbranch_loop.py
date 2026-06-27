@@ -40,6 +40,8 @@ LOOP_READ_ONLY_EXECUTION_SCHEMA = "promptbranch.loop.read_only_execution"
 LOOP_READ_ONLY_EXECUTION_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA = "promptbranch.loop.read_only_evidence_report"
 LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA = "promptbranch.loop.read_only_evidence_gate"
+LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -657,6 +659,115 @@ def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, A
     }
 
 
+def build_loop_read_only_evidence_gate(report: dict[str, Any]) -> dict[str, Any]:
+    """Build a machine-checkable gate over a read-only evidence report.
+
+    This does not execute commands or inspect external systems.  It only
+    normalizes whether the evidence report is clean enough to let a future
+    loop slice proceed to the next *dry-run* step.
+    """
+    summary = report.get("evidence_summary") if isinstance(report.get("evidence_summary"), dict) else {}
+    assertions = report.get("safety_assertions") if isinstance(report.get("safety_assertions"), dict) else {}
+    declared_command_count = int(summary.get("declared_command_count") or 0)
+    skipped_command_count = int(summary.get("skipped_command_count") or 0)
+    unsafe_path_count = int(summary.get("unsafe_path_count") or 0)
+    commands_executed = int(summary.get("commands_executed") or 0)
+    gates = [
+        {
+            "name": "evidence_report_ok",
+            "passed": bool(report.get("ok")) and report.get("status") == "evidence_clean",
+            "detail": "source evidence report is clean",
+        },
+        {
+            "name": "source_schema_is_read_only_execution",
+            "passed": report.get("source_schema") == LOOP_READ_ONLY_EXECUTION_SCHEMA,
+            "detail": "gate only accepts promptbranch.loop.read_only_execution evidence",
+        },
+        {
+            "name": "no_unsafe_paths",
+            "passed": unsafe_path_count == 0,
+            "detail": f"unsafe_path_count={unsafe_path_count}",
+        },
+        {
+            "name": "no_commands_executed",
+            "passed": commands_executed == 0,
+            "detail": f"commands_executed={commands_executed}",
+        },
+        {
+            "name": "all_declared_commands_skipped",
+            "passed": declared_command_count == skipped_command_count,
+            "detail": f"declared={declared_command_count} skipped={skipped_command_count}",
+        },
+        {
+            "name": "no_files_mutated",
+            "passed": assertions.get("files_mutated") is False,
+            "detail": "files_mutated=false required",
+        },
+        {
+            "name": "no_deployment_performed",
+            "passed": assertions.get("deployment_performed") is False,
+            "detail": "deployment_performed=false required",
+        },
+        {
+            "name": "no_kubernetes_mutation_performed",
+            "passed": assertions.get("kubernetes_mutation_performed") is False,
+            "detail": "kubernetes_mutation_performed=false required",
+        },
+        {
+            "name": "no_project_source_mutation_performed",
+            "passed": assertions.get("project_source_mutation_performed") is False,
+            "detail": "project_source_mutation_performed=false required",
+        },
+        {
+            "name": "no_artifact_adoption_performed",
+            "passed": assertions.get("artifact_adoption_performed") is False,
+            "detail": "artifact_adoption_performed=false required",
+        },
+    ]
+    failed = [gate["name"] for gate in gates if not gate.get("passed")]
+    passed = not failed
+    return {
+        "ok": passed,
+        "schema": LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA_VERSION,
+        "action": "loop_evidence_gate",
+        "status": "gate_passed" if passed else "gate_blocked",
+        "decision": "continue_to_next_dry_run_step" if passed else "stop_for_operator_review",
+        "source_schema": report.get("schema"),
+        "source_status": report.get("status"),
+        "target_id": report.get("target_id"),
+        "target_path": report.get("target_path"),
+        "loop_id": report.get("loop_id"),
+        "execution_mode": report.get("execution_mode"),
+        "executed_state": report.get("executed_state"),
+        "final_state": report.get("final_state"),
+        "gate_summary": {
+            "gate_count": len(gates),
+            "passed_gate_count": sum(1 for gate in gates if gate.get("passed")),
+            "failed_gate_count": len(failed),
+            "unsafe_path_count": unsafe_path_count,
+            "declared_command_count": declared_command_count,
+            "skipped_command_count": skipped_command_count,
+            "commands_executed": commands_executed,
+            "all_declared_commands_skipped": declared_command_count == skipped_command_count,
+            "side_effects_performed": False,
+        },
+        "gates": gates,
+        "blocked_reasons": failed,
+        "side_effects_performed": False,
+        "safety_assertions": {
+            "commands_executed": False,
+            "files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "Evidence gate only. It makes a continue/block decision from existing read-only evidence and performs no commands, file mutation, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.",
+    }
+
+
 def render_loop_read_only_evidence_report_text(payload: dict[str, Any]) -> str:
     lines = [
         f"status={payload.get('status')}",
@@ -688,6 +799,32 @@ def render_loop_read_only_evidence_report_text(payload: dict[str, Any]) -> str:
             "command_evidence={command} execution_status={status} executed=false".format(
                 command=item.get("command"),
                 status=item.get("execution_status"),
+            )
+        )
+    lines.append("side_effects_performed=false")
+    return "\n".join(lines) + "\n"
+
+
+def render_loop_read_only_evidence_gate_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("gate_summary") if isinstance(payload.get("gate_summary"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"decision={payload.get('decision')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"gate_count={summary.get('gate_count', 0)}",
+        f"passed_gate_count={summary.get('passed_gate_count', 0)}",
+        f"failed_gate_count={summary.get('failed_gate_count', 0)}",
+        f"commands_executed={summary.get('commands_executed', 0)}",
+        f"unsafe_path_count={summary.get('unsafe_path_count', 0)}",
+    ]
+    for gate in payload.get("gates") or []:
+        lines.append(
+            "gate={name} passed={passed} detail={detail}".format(
+                name=gate.get("name"),
+                passed=str(bool(gate.get("passed"))).lower(),
+                detail=gate.get("detail") or "",
             )
         )
     lines.append("side_effects_performed=false")

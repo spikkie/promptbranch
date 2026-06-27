@@ -252,3 +252,69 @@ def test_loop_run_evidence_report_requires_read_only_execution(capsys):
     assert rc == 2
     captured = capsys.readouterr()
     assert "--evidence-report requires --read-only-execution" in captured.err
+
+
+
+def test_loop_run_read_only_execution_evidence_gate_json(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "promptbranch.loop.read_only_evidence_gate"
+    assert payload["status"] == "gate_passed"
+    assert payload["decision"] == "continue_to_next_dry_run_step"
+    assert payload["gate_summary"]["commands_executed"] == 0
+    assert payload["gate_summary"]["failed_gate_count"] == 0
+    assert payload["side_effects_performed"] is False
+
+
+def test_loop_run_read_only_execution_evidence_gate_text(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "status=gate_passed" in out
+    assert "decision=continue_to_next_dry_run_step" in out
+    assert "commands_executed=0" in out
+    assert "side_effects_performed=false" in out
+
+
+def test_loop_run_evidence_gate_requires_read_only_execution(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--evidence-gate",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "--evidence-gate requires --read-only-execution" in captured.err
+
+
+def test_loop_run_evidence_report_and_gate_are_mutually_exclusive(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/static-game-dry-run-target.json",
+        "--read-only-execution",
+        "--evidence-report",
+        "--evidence-gate",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "--evidence-report and --evidence-gate are mutually exclusive" in captured.err

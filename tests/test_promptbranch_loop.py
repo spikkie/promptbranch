@@ -1,7 +1,14 @@
 from pathlib import Path
 import json
 
-from promptbranch_loop import build_loop_action_walkthrough_payload, build_loop_read_only_evidence_report, build_loop_state_only_payload, plan_loop_target_file, validate_loop_target_file
+from promptbranch_loop import (
+    build_loop_action_walkthrough_payload,
+    build_loop_read_only_evidence_gate,
+    build_loop_read_only_evidence_report,
+    build_loop_state_only_payload,
+    plan_loop_target_file,
+    validate_loop_target_file,
+)
 
 
 def test_loop_target_schema_validates_static_game_fixture():
@@ -180,3 +187,38 @@ def test_loop_read_only_evidence_report_blocks_unsafe_path():
     assert report["blocked_reasons"] == ["unsafe_path_scope"]
     assert report["evidence_summary"]["unsafe_path_count"] == 1
     assert report["safety_assertions"]["commands_executed"] is False
+
+
+
+def test_loop_read_only_evidence_gate_passes_clean_report():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    from promptbranch_loop import build_loop_read_only_execution_payload
+
+    payload = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(payload["evidence_report"])
+
+    assert gate["ok"] is True
+    assert gate["schema"] == "promptbranch.loop.read_only_evidence_gate"
+    assert gate["status"] == "gate_passed"
+    assert gate["decision"] == "continue_to_next_dry_run_step"
+    assert gate["gate_summary"]["failed_gate_count"] == 0
+    assert gate["gate_summary"]["commands_executed"] == 0
+    assert all(item["passed"] for item in gate["gates"])
+    assert gate["side_effects_performed"] is False
+
+
+def test_loop_read_only_evidence_gate_blocks_unsafe_report():
+    plan = plan_loop_target_file("examples/loop-targets/static-game-dry-run-target.json", execute_stubbed=True)
+    from promptbranch_loop import build_loop_read_only_execution_payload
+
+    payload = build_loop_read_only_execution_payload({**plan, "allowed_paths": ["../outside"]}, repo_root=Path.cwd())
+    report = build_loop_read_only_evidence_report(payload)
+    gate = build_loop_read_only_evidence_gate(report)
+
+    assert gate["ok"] is False
+    assert gate["status"] == "gate_blocked"
+    assert gate["decision"] == "stop_for_operator_review"
+    assert "evidence_report_ok" in gate["blocked_reasons"]
+    assert "no_unsafe_paths" in gate["blocked_reasons"]
+    assert gate["gate_summary"]["unsafe_path_count"] == 1
+    assert gate["safety_assertions"]["commands_executed"] is False

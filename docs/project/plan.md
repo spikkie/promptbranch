@@ -1492,3 +1492,14 @@ Planned change:
 6. Preserve the v0.1.94.1 identity-drift guard: exact-remove drift requires operator review and suppresses looser retry.
 
 Out of scope: loop execution changes, Project Source mutation by the loop engine, artifact adoption/current changes, Docker/service behavior, Kubernetes/deployment behavior, and ChatGPT Project deletion.
+
+## v0.1.97 — Read-only loop evidence gate
+
+```text
+Baseline: chatgpt_claudecode_workflow-2_v0.1.96.zip accepted/current by operator evidence.
+Type: normal candidate.
+Goal: add a deterministic pass/block gate over the read-only loop evidence report before any future slice introduces real command execution.
+In scope: `promptbranch.loop.read_only_evidence_gate`, `pb loop run --read-only-execution --evidence-gate`, focused loop/CLI tests, project control-surface updates.
+Out of scope: executing validation commands, mutating files, deployment/Kubernetes/Docker/Helm actions, Project Source mutation from loop execution, artifact adoption from loop execution, ChatGPT Project deletion.
+Expected validation: focused loop/CLI tests, version/control-surface tests, compileall, shell syntax, Artifact Guardian, artifact verify, ZIP hygiene, then operator full release-control/adoption.
+```

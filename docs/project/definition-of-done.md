@@ -353,3 +353,5 @@ Done when `--run-all-tests` executes one authoritative direct browser/source lif
 | DOD-128 | Read-only loop execution produces an explicit evidence report with no-side-effect assertions | focused | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.95.md` | v0.1.95 |
 
 | DOD-129 | Project Source capacity pruning keeps at most five generated release ZIP sources per repository family and never auto-selects documentation or other-repository sources | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/release-v0.1.96.md` | v0.1.96 |
+
+| DOD-130 | Read-only loop evidence gate converts the read-only evidence report into a deterministic pass/block decision before real command execution is introduced | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.97.md` | v0.1.97 |

@@ -83,11 +83,13 @@ from promptbranch_orchestration import (
 )
 from promptbranch_loop import (
     build_loop_action_walkthrough_payload,
+    build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
     build_loop_read_only_execution_payload,
     build_loop_state_only_payload,
     plan_loop_target_file,
     render_loop_action_walkthrough_text,
+    render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
     render_loop_plan_text,
     render_loop_state_only_text,
@@ -8071,6 +8073,12 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if getattr(args, "evidence_report", False) and not getattr(args, "read_only_execution", False):
             print("error: --evidence-report requires --read-only-execution", file=sys.stderr)
             return 2
+        if getattr(args, "evidence_gate", False) and not getattr(args, "read_only_execution", False):
+            print("error: --evidence-gate requires --read-only-execution", file=sys.stderr)
+            return 2
+        if getattr(args, "evidence_report", False) and getattr(args, "evidence_gate", False):
+            print("error: --evidence-report and --evidence-gate are mutually exclusive", file=sys.stderr)
+            return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
@@ -8079,6 +8087,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
             payload = build_loop_read_only_execution_payload(payload, repo_root=Path.cwd())
             if getattr(args, "evidence_report", False):
                 payload = build_loop_read_only_evidence_report(payload)
+            elif getattr(args, "evidence_gate", False):
+                payload = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(payload))
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         elif getattr(args, "state_only", False):
@@ -8088,6 +8098,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         elif getattr(args, "read_only_execution", False):
             if getattr(args, "evidence_report", False):
                 print(render_loop_read_only_evidence_report_text(payload), end="")
+            elif getattr(args, "evidence_gate", False):
+                print(render_loop_read_only_evidence_gate_text(payload), end="")
             else:
                 print(render_loop_read_only_execution_text(payload), end="")
         else:
@@ -23920,6 +23932,7 @@ def make_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--planned-actions", action="store_true", help="Print one dry-run planned action and validation gate per state; no actions are executed.")
     loop_run.add_argument("--read-only-execution", action="store_true", help="Inspect allowed paths and validation command declarations without executing commands or mutating state.")
     loop_run.add_argument("--evidence-report", action="store_true", help="With --read-only-execution, emit the compact read-only execution evidence report only.")
+    loop_run.add_argument("--evidence-gate", action="store_true", help="With --read-only-execution, emit a pass/block gate over the compact read-only evidence report only.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")
