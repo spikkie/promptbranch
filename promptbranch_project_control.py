@@ -16,6 +16,8 @@ REQUIRED_DOCS = (
     Path("docs/project/decisions.md"),
     Path("docs/project/migration.md"),
     PLAN_STATE_REL,
+    Path("docs/project/architecture.md"),
+    Path("docs/project/slice-horizon.md"),
 )
 REQUIRED_FIELDS = (
     "schema",
@@ -24,6 +26,7 @@ REQUIRED_FIELDS = (
     "accepted_current_version",
     "accepted_current_artifact",
     "active_mvp",
+    "architecture_goal",
     "last_completed_normal_slice_version",
     "last_completed_normal_slice",
     "active_candidate_version",
@@ -34,6 +37,10 @@ REQUIRED_FIELDS = (
     "scope_advance_allowed",
     "repair_must_not_advance_scope",
     "release_mode",
+    "rolling_slice_horizon",
+    "architecture_invariants",
+    "slice_derivation_inputs",
+    "replan_rules",
 )
 
 
@@ -76,6 +83,49 @@ def load_plan_state(repo_path: str | Path = ".") -> dict[str, Any]:
         raise ValueError(f"{PLAN_STATE_REL} must contain a JSON object")
     return data
 
+
+
+
+def build_project_next_slice_payload(repo_path: str | Path = ".") -> dict[str, Any]:
+    root = Path(repo_path).expanduser().resolve()
+    validation = validate_project_control_surface(root)
+    if not validation.get("ok"):
+        return {
+            **validation,
+            "action": "project_next_slice",
+            "status": "control_surface_invalid",
+            "next_slice_available": False,
+        }
+    state = load_plan_state(root)
+    horizon = state.get("rolling_slice_horizon") if isinstance(state.get("rolling_slice_horizon"), list) else []
+    active = next((item for item in horizon if isinstance(item, dict) and item.get("status") == "active"), None)
+    planned_after_acceptance = next((item for item in horizon if isinstance(item, dict) and item.get("status") == "planned_after_acceptance"), None)
+    return {
+        "ok": True,
+        "action": "project_next_slice",
+        "status": "next_slice_ready",
+        "repo_path": str(root),
+        "baseline_version": state.get("accepted_current_version"),
+        "baseline_artifact": state.get("accepted_current_artifact"),
+        "release_mode": state.get("release_mode"),
+        "active_mvp": state.get("active_mvp"),
+        "architecture_goal": state.get("architecture_goal"),
+        "next_normal_version": state.get("next_normal_version"),
+        "next_normal_slice": state.get("next_normal_slice"),
+        "active_slice": state.get("active_slice"),
+        "active_candidate_version": state.get("active_candidate_version"),
+        "active_candidate_artifact": state.get("active_candidate_artifact"),
+        "next_slice_after_acceptance_version": state.get("next_planned_version_after_acceptance"),
+        "next_slice_after_acceptance": state.get("next_planned_slice_after_acceptance"),
+        "scope_advance_allowed": state.get("scope_advance_allowed"),
+        "repair_scope_advance_allowed": False,
+        "architecture_invariants_checked": True,
+        "control_surface_validated": True,
+        "active_horizon_item": active,
+        "planned_after_acceptance_horizon_item": planned_after_acceptance,
+        "rolling_slice_horizon": horizon,
+        "out_of_scope": state.get("out_of_scope") or [],
+    }
 
 def _current_block(text: str) -> str:
     # Prefer the first fenced block in the current-baseline section; this keeps
@@ -153,8 +203,59 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
     if release_mode == "repair" and not state.get("last_completed_repair_version"):
         errors.append("repair releases must record last_completed_repair_version")
 
+    horizon = state.get("rolling_slice_horizon")
+    if not isinstance(horizon, list):
+        errors.append("plan-state rolling_slice_horizon must be a list")
+        horizon = []
+    elif not (4 <= len(horizon) <= 5):
+        errors.append("plan-state rolling_slice_horizon must contain 4 to 5 slices")
+
+    active_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "active"]
+    planned_after_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "planned_after_acceptance"]
+    if len(active_items) != 1:
+        errors.append("rolling_slice_horizon must contain exactly one active slice")
+    if len(planned_after_items) != 1:
+        errors.append("rolling_slice_horizon must contain exactly one planned_after_acceptance slice")
+    if active_items:
+        active_item = active_items[0]
+        if active_item.get("version") != next_normal_version:
+            errors.append("active horizon item version must equal next_normal_version")
+        if active_item.get("slice") != next_normal_slice:
+            errors.append("active horizon item slice must equal next_normal_slice")
+    if planned_after_items:
+        planned_item = planned_after_items[0]
+        if planned_item.get("version") != state.get("next_planned_version_after_acceptance"):
+            errors.append("planned_after_acceptance horizon item version must equal next_planned_version_after_acceptance")
+        if planned_item.get("slice") != state.get("next_planned_slice_after_acceptance"):
+            errors.append("planned_after_acceptance horizon item slice must equal next_planned_slice_after_acceptance")
+
+    for index, item in enumerate(horizon):
+        if not isinstance(item, dict):
+            errors.append(f"rolling_slice_horizon item {index} must be an object")
+            continue
+        for field in ("version", "slice", "status", "release_mode", "scope"):
+            if not item.get(field):
+                errors.append(f"rolling_slice_horizon item {index} missing field: {field}")
+        if item.get("version") and not VERSION_RE.match(str(item.get("version"))):
+            errors.append(f"rolling_slice_horizon item {index} version must be canonical v-prefixed")
+
+    invariants = state.get("architecture_invariants")
+    if not isinstance(invariants, list) or len(invariants) < 5:
+        errors.append("plan-state architecture_invariants must contain at least five entries")
+    else:
+        required_invariant_fragments = ("artifact-first", "control surface", "repair releases", "ChatGPT Project deletion", "repo-relative")
+        invariant_text = "\n".join(str(item) for item in invariants)
+        for fragment in required_invariant_fragments:
+            if fragment not in invariant_text:
+                errors.append(f"architecture_invariants must include {fragment!r}")
+
+    for list_field in ("slice_derivation_inputs", "replan_rules"):
+        value = state.get(list_field)
+        if not isinstance(value, list) or len(value) < 4:
+            errors.append(f"plan-state {list_field} must contain at least four entries")
+
     docs: dict[str, str] = {}
-    for rel in ("docs/project/plan.md", "docs/project/status.md", "docs/project/release-status.md", "docs/project/definition-of-done.md", "docs/project/decisions.md", "docs/project/migration.md"):
+    for rel in ("docs/project/plan.md", "docs/project/status.md", "docs/project/release-status.md", "docs/project/definition-of-done.md", "docs/project/decisions.md", "docs/project/migration.md", "docs/project/architecture.md", "docs/project/slice-horizon.md"):
         path = root / rel
         if path.is_file():
             docs[rel] = _doc_text(root, rel)
@@ -170,12 +271,14 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
             errors.append(f"{label} must include active_candidate_version {active_candidate_version}")
 
     docs_required_tokens = {
-        "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action"],
-        "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, str(state.get("next_planned_version_after_acceptance") or "")],
-        "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice],
-        "docs/project/definition-of-done.md": ["DOD-132", "plan-state.json", "validate-control-surface"],
-        "docs/project/decisions.md": ["ADR-PROJ-100", "plan-state.json", "anti-drift"],
-        "docs/project/migration.md": ["v0.1.98", "plan-state.json", "anti-drift"],
+        "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action", "v0.1.100"],
+        "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, str(state.get("next_planned_version_after_acceptance") or ""), "Rolling horizon authority"],
+        "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "v0.1.100"],
+        "docs/project/definition-of-done.md": ["DOD-133", "slice-horizon.md", "project next-slice"],
+        "docs/project/decisions.md": ["ADR-PROJ-101", "slice-horizon", "v0.1.100"],
+        "docs/project/migration.md": ["v0.1.99", "slice-horizon.md", "v0.1.100"],
+        "docs/project/architecture.md": ["controlled problem-solving loop", "Fixed architecture invariants", "Repair releases must not advance scope"],
+        "docs/project/slice-horizon.md": ["v0.1.99", "v0.1.100", "v0.1.101", "v0.1.102", "v0.1.103", "Repair horizon rule"],
     }
     for rel, tokens in docs_required_tokens.items():
         text = docs.get(rel, "")
@@ -201,12 +304,14 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         "active_candidate_version": active_candidate_version,
         "active_candidate_artifact": active_candidate_artifact,
         "active_mvp": state.get("active_mvp"),
+        "architecture_goal": state.get("architecture_goal"),
         "active_slice": active_slice,
         "next_normal_version": next_normal_version,
         "next_normal_slice": next_normal_slice,
         "release_mode": release_mode,
         "scope_advance_allowed": state.get("scope_advance_allowed"),
         "repair_must_not_advance_scope": state.get("repair_must_not_advance_scope"),
+        "rolling_slice_horizon": horizon,
         "required_files": [str(rel) for rel in REQUIRED_DOCS],
         "missing_files": missing,
         "error_count": len(errors),
