@@ -1473,3 +1473,22 @@ Planned change:
 - preserve no file mutation, no deployment, no Kubernetes mutation, no Project Source mutation, no artifact adoption, and no ChatGPT Project deletion.
 
 Out of scope: command execution, file mutation, correction, deployment, Kubernetes apply, Docker push, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion.
+
+## v0.1.96 — Project Source generated ZIP retention guard
+
+Type: normal candidate.
+
+Baseline: user-pinned `chatgpt_claudecode_workflow-2_v0.1.95.zip`.
+
+Goal: keep ChatGPT Project Sources below the 25-resource cap when one Project serves multiple repositories by retaining only the latest five generated release ZIP sources per release family/repository.
+
+Planned change:
+
+1. Add generated release ZIP retention selection for Project Source capacity pruning.
+2. Preserve the 25-resource global Project Sources limit.
+3. Before uploading a generated release ZIP, remove enough oldest same-family generated release ZIPs so the family remains at five entries after upload.
+4. When the global limit is reached, prune only same-family generated release ZIPs; fail closed if no same-family generated ZIP is available.
+5. Never auto-remove documentation, text/link Project Sources, non-ZIP Project Sources, or generated release ZIPs from a different repository family.
+6. Preserve the v0.1.94.1 identity-drift guard: exact-remove drift requires operator review and suppresses looser retry.
+
+Out of scope: loop execution changes, Project Source mutation by the loop engine, artifact adoption/current changes, Docker/service behavior, Kubernetes/deployment behavior, and ChatGPT Project deletion.
