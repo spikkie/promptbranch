@@ -668,3 +668,13 @@ No user data, Project Source state, artifact-current state, deployment, Kubernet
 ## v0.1.100.1 migration note
 
 Migrates the failed `v0.1.100` release-control evidence into a repair-only Project Source text-add recovery diagnostic improvement. Existing rolling-horizon authority is preserved: active normal slice remains `v0.1.100`, the repair candidate is `v0.1.100.1`, and `v0.1.101` remains the next planned normal slice after acceptance.
+
+
+## v0.1.100.2 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This repair converts the same-profile source-remove scheduler test from unbounded status polling to bounded explicit fixture synchronization. Existing rolling-horizon authority is preserved: active normal slice remains `v0.1.100`, the repair candidate is `v0.1.100.2`, and `v0.1.101` remains the next planned normal slice after acceptance.
+
+## v0.1.100.3 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This repair removes generated `debug_artifacts/` from the release payload and aligns Artifact Guardian with release-control protected ZIP entry policy. Existing rolling-horizon authority is preserved: active normal slice remains `v0.1.100`, the repair candidate is `v0.1.100.3`, and `v0.1.101` remains the next planned normal slice after acceptance.
+

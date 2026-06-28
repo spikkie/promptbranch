@@ -33,6 +33,11 @@ required_entries:
 forbidden_entries:
   - ".git/"
   - ".pb_profile/"
+  - ".pb_profile_local_debug/"
+  - ".pb_profile_local_debug_pools/"
+  - "profile/"
+  - "debug_artifacts/"
+  - ".generated/"
   - "__pycache__/"
   - "*.pyc"
   - "*.pyo"

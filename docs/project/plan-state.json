@@ -10,8 +10,8 @@
   "last_completed_normal_slice": "Rolling slice horizon and architecture-decision protocol",
   "last_completed_repair_version": "v0.1.99.1",
   "last_completed_repair": "Docker build-context freshness repair",
-  "active_candidate_version": "v0.1.100.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.100.1.zip",
+  "active_candidate_version": "v0.1.100.3",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.100.3.zip",
   "active_slice": "First controlled read-only validation command execution",
   "next_normal_version": "v0.1.100",
   "next_normal_slice": "First controlled read-only validation command execution",
@@ -108,8 +108,13 @@
     "docs/project/architecture.md",
     "docs/project/slice-horizon.md"
   ],
-  "active_repair_version": "v0.1.100.1",
-  "active_repair": "text-source add stale-inflight recovery diagnostics/verification repair",
+  "active_repair_version": "v0.1.100.3",
+  "active_repair": "ZIP hygiene repair for packaged debug artifacts",
   "repair_base_version": "v0.1.100",
-  "repair_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.100.zip"
+  "repair_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.100.zip",
+  "failed_repair_versions": [
+    "v0.1.100",
+    "v0.1.100.1",
+    "v0.1.100.2"
+  ]
 }

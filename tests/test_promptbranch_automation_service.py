@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from promptbranch_automation.automation import ChatGPTAutomation
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
@@ -727,45 +728,58 @@ def test_source_remove_waits_behind_source_list_with_same_profile(monkeypatch, t
     events: list[str] = []
     profile_dir = tmp_path / ".pb_profile"
 
-    async def fake_list_project_sources(self, **kwargs):
-        events.append("list-start")
-        await asyncio.sleep(0.03)
-        events.append("list-end")
-        return {"ok": True, "sources": []}
-
-    async def fake_remove_project_source(self, **kwargs):
-        events.append("remove-start")
-        return {"ok": True, "removed": True}
-
-    monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
-    monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
-
-    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-one/project",
-        email=None,
-        password=None,
-        profile_dir=str(profile_dir),
-        headless=True,
-        use_patchright=False,
-        profile_lock_wait_seconds=0.2,
-    ))
-    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-two/project",
-        email=None,
-        password=None,
-        profile_dir=str(profile_dir),
-        headless=True,
-        use_patchright=False,
-        profile_lock_wait_seconds=0.2,
-    ))
-
     async def run_sequence():
-        list_task = asyncio.create_task(svc_a.list_project_sources())
-        while svc_a.browser_status().get("active_operation") != "list_project_sources":
-            await asyncio.sleep(0)
-        remove_result = await svc_b.remove_project_source(source_name="Notes", exact=True)
-        list_result = await list_task
-        return list_result, remove_result
+        list_started = asyncio.Event()
+
+        async def fake_list_project_sources(self, **kwargs):
+            events.append("list-start")
+            list_started.set()
+            await asyncio.sleep(0.03)
+            events.append("list-end")
+            return {"ok": True, "sources": []}
+
+        async def fake_remove_project_source(self, **kwargs):
+            events.append("remove-start")
+            return {"ok": True, "removed": True}
+
+        monkeypatch.setattr(ChatGPTAutomation, "list_project_sources", fake_list_project_sources)
+        monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
+
+        svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+            project_url="https://chatgpt.com/g/g-p-one/project",
+            email=None,
+            password=None,
+            profile_dir=str(profile_dir),
+            headless=True,
+            use_patchright=False,
+            profile_lock_wait_seconds=0.2,
+        ))
+        svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+            project_url="https://chatgpt.com/g/g-p-two/project",
+            email=None,
+            password=None,
+            profile_dir=str(profile_dir),
+            headless=True,
+            use_patchright=False,
+            profile_lock_wait_seconds=0.2,
+        ))
+
+        list_task = asyncio.create_task(svc_a.list_project_sources(), name="list_project_sources_fixture")
+        try:
+            await asyncio.wait_for(list_started.wait(), timeout=1.0)
+            assert svc_a.browser_status().get("active_operation") == "list_project_sources"
+            remove_result = await asyncio.wait_for(
+                svc_b.remove_project_source(source_name="Notes", exact=True),
+                timeout=1.0,
+            )
+            list_result = await asyncio.wait_for(list_task, timeout=1.0)
+            return list_result, remove_result
+        except Exception:
+            if not list_task.done():
+                list_task.cancel()
+            with contextlib.suppress(BaseException):
+                await list_task
+            raise
 
     list_result, remove_result = asyncio.run(run_sequence())
 

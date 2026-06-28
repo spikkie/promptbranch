@@ -30,6 +30,7 @@ forbidden_entries:
   - "__pycache__/"
   - "*.pyc"
   - ".pytest_cache/"
+  - "debug_artifacts/"
   - "*.zip"
   - "*.log"
   - ".env"
@@ -161,6 +162,16 @@ def test_forbidden_cache_file_fails_guard(tmp_path: Path) -> None:
     result = _guard(tmp_path, archive)
     assert "forbidden_entry_present" in _failure_classes(result)
     assert result["checks"]["forbidden_entries"] == "failed"
+
+def test_forbidden_debug_artifacts_fails_guard(tmp_path: Path) -> None:
+    _write_policy(tmp_path)
+    entries = _valid_entries() | {"debug_artifacts/project_source_trace.json": "{}"}
+    archive = _make_zip(tmp_path / "chatgpt_claudecode_workflow-2_v0.1.78.zip", entries, executable={"run.sh"})
+    result = _guard(tmp_path, archive)
+    assert result["ok"] is False
+    assert result["checks"]["forbidden_entries"] == "failed"
+    assert "forbidden_entry_present" in _failure_classes(result)
+    assert any(item.get("path") == "debug_artifacts/project_source_trace.json" for item in result["failures"])
 
 
 def test_artifact_name_mismatch_fails_guard(tmp_path: Path) -> None:
