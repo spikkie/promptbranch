@@ -83,12 +83,14 @@ from promptbranch_orchestration import (
 )
 from promptbranch_loop import (
     build_loop_action_walkthrough_payload,
+    build_loop_read_only_command_execution_payload,
     build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
     build_loop_read_only_execution_payload,
     build_loop_state_only_payload,
     plan_loop_target_file,
     render_loop_action_walkthrough_text,
+    render_loop_read_only_command_execution_text,
     render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
     render_loop_plan_text,
@@ -7573,7 +7575,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json", "--proof"],
-        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report"],
+        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8057,10 +8059,10 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
             print(render_loop_plan_text(payload), end="")
         return 0 if payload.get("ok") else 1
     if loop_command == "run":
-        # The loop runner remains dry-run/stubbed only. ``--state-only`` is a
-        # presentation mode over the same planned states; it does not execute
-        # actions, commands, tests, deployment, Project Source mutation, or
-        # artifact adoption.
+        # The loop runner remains gated. Presentation modes remain dry-run;
+        # v0.1.100 adds exactly one explicit allowlisted read-only validation
+        # command execution path behind --read-only-execution --evidence-gate
+        # --execute-read-only-validation.
         payload = plan_loop_target_file(target, execute_stubbed=True)
         payload["dry_run"] = True
         selected_modes = [
@@ -8080,6 +8082,12 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if getattr(args, "evidence_report", False) and getattr(args, "evidence_gate", False):
             print("error: --evidence-report and --evidence-gate are mutually exclusive", file=sys.stderr)
             return 2
+        if getattr(args, "execute_read_only_validation", False) and not (getattr(args, "read_only_execution", False) and getattr(args, "evidence_gate", False)):
+            print("error: --execute-read-only-validation requires --read-only-execution --evidence-gate", file=sys.stderr)
+            return 2
+        if getattr(args, "execute_read_only_validation", False) and getattr(args, "evidence_report", False):
+            print("error: --execute-read-only-validation cannot be combined with --evidence-report", file=sys.stderr)
+            return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
@@ -8089,7 +8097,11 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
             if getattr(args, "evidence_report", False):
                 payload = build_loop_read_only_evidence_report(payload)
             elif getattr(args, "evidence_gate", False):
-                payload = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(payload))
+                gate = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(payload))
+                if getattr(args, "execute_read_only_validation", False):
+                    payload = build_loop_read_only_command_execution_payload(payload, gate, repo_root=Path.cwd())
+                else:
+                    payload = gate
         if getattr(args, "json", False):
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         elif getattr(args, "state_only", False):
@@ -8099,6 +8111,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         elif getattr(args, "read_only_execution", False):
             if getattr(args, "evidence_report", False):
                 print(render_loop_read_only_evidence_report_text(payload), end="")
+            elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False):
+                print(render_loop_read_only_command_execution_text(payload), end="")
             elif getattr(args, "evidence_gate", False):
                 print(render_loop_read_only_evidence_gate_text(payload), end="")
             else:
@@ -23960,14 +23974,15 @@ def make_parser() -> argparse.ArgumentParser:
     loop_plan.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
     loop_plan.add_argument("--json", action="store_true", help="Emit dry-run plan as JSON.")
 
-    loop_run = loop_subparsers.add_parser("run", help="Run the stubbed loop control flow. MVP-1 remains dry-run only and can print states or planned actions.")
+    loop_run = loop_subparsers.add_parser("run", help="Run the gated loop control flow. Presentation modes remain dry-run; explicit read-only validation execution is allowlisted.")
     loop_run.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")
-    loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. MVP-1 loop runs remain dry-run/stubbed only.")
+    loop_run.add_argument("--dry-run", action="store_true", default=True, help="Accepted for clarity. Presentation modes remain dry-run; command execution requires explicit read-only validation flags.")
     loop_run.add_argument("--state-only", action="store_true", help="Print only the planned loop state names; no actions are executed.")
     loop_run.add_argument("--planned-actions", action="store_true", help="Print one dry-run planned action and validation gate per state; no actions are executed.")
     loop_run.add_argument("--read-only-execution", action="store_true", help="Inspect allowed paths and validation command declarations without executing commands or mutating state.")
     loop_run.add_argument("--evidence-report", action="store_true", help="With --read-only-execution, emit the compact read-only execution evidence report only.")
-    loop_run.add_argument("--evidence-gate", action="store_true", help="With --read-only-execution, emit a pass/block gate over the compact read-only evidence report only.")
+    loop_run.add_argument("--evidence-gate", action="store_true", help="With --read-only-execution, emit a pass/block gate over the compact read-only evidence report.")
+    loop_run.add_argument("--execute-read-only-validation", action="store_true", help="With --read-only-execution --evidence-gate, execute exactly one allowlisted read-only validation command and capture command evidence.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

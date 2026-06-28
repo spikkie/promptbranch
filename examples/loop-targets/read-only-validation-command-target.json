@@ -1,0 +1,34 @@
+{
+  "schema": "promptbranch.loop.target",
+  "schema_version": "1.0",
+  "target_id": "read-only-json-tool-validation",
+  "goal": "Execute the first controlled read-only validation command against a repo-local JSON fixture without file mutation, deployment, Project Source mutation, or artifact adoption.",
+  "allowed_paths": [
+    "examples/loop-targets/read-only-validation-command-target.json"
+  ],
+  "forbidden_actions": [
+    "project_delete",
+    "project_source_mutation",
+    "artifact_adoption",
+    "kubernetes_apply",
+    "docker_push",
+    "helm_release",
+    "destructive_filesystem_change"
+  ],
+  "validation": {
+    "commands": [
+      "python3 -m json.tool examples/loop-targets/read-only-validation-command-target.json"
+    ]
+  },
+  "human_required_when": [
+    "command_not_allowlisted",
+    "validation_command_fails",
+    "mutation_detected",
+    "outside_allowed_paths"
+  ],
+  "deployment": {
+    "requested": false,
+    "allowed": false
+  },
+  "max_iterations": 1
+}

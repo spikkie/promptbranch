@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import fnmatch
+import hashlib
 import json
+import shlex
+import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +47,8 @@ LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA = "promptbranch.loop.read_only_evidence_re
 LOOP_READ_ONLY_EVIDENCE_REPORT_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA = "promptbranch.loop.read_only_evidence_gate"
 LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA = "promptbranch.loop.read_only_command_execution"
+LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -520,8 +527,13 @@ def build_loop_read_only_execution_payload(
     repo_root: str | Path | None = None,
 ) -> dict[str, Any]:
     root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
-    allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
-    validation_commands = [str(item) for item in plan.get("validation_commands") or []]
+    checks = plan.get("checks") if isinstance(plan.get("checks"), dict) else {}
+    if checks:
+        allowed_paths = [str(item.get("path")) for item in checks.get("allowed_paths") or [] if isinstance(item, dict) and item.get("path")]
+        validation_commands = [str(item.get("command")) for item in checks.get("validation_commands") or [] if isinstance(item, dict) and item.get("command")]
+    else:
+        allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
+        validation_commands = [str(item) for item in plan.get("validation_commands") or []]
     path_checks = [_classify_allowed_path(pattern, repo_root=root) for pattern in allowed_paths]
     unsafe_paths = [item for item in path_checks if not item.get("safe")]
     command_checks = [
@@ -579,6 +591,278 @@ def build_loop_read_only_execution_payload(
     payload["evidence_report"] = build_loop_read_only_evidence_report(payload)
     return payload
 
+
+
+def _path_matches_allowed_patterns(rel_path: str, patterns: list[str]) -> bool:
+    normalized = rel_path.replace("\\", "/").strip("/")
+    for pattern in patterns:
+        candidate = str(pattern).replace("\\", "/").strip("/")
+        if not candidate:
+            continue
+        if candidate == normalized:
+            return True
+        if candidate.endswith("/**"):
+            prefix = candidate[:-3].rstrip("/")
+            if normalized == prefix or normalized.startswith(prefix + "/"):
+                return True
+        if _path_has_glob(candidate) and fnmatch.fnmatch(normalized, candidate):
+            return True
+    return False
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _safe_stat_snapshot(path: Path, *, repo_root: Path) -> dict[str, Any]:
+    try:
+        rel = str(path.resolve().relative_to(repo_root))
+        stat = path.stat()
+        return {
+            "path": rel,
+            "exists": True,
+            "is_file": path.is_file(),
+            "size": stat.st_size,
+            "sha256": _sha256_file(path) if path.is_file() else None,
+        }
+    except Exception as exc:  # pragma: no cover - defensive evidence path
+        return {"path": str(path), "exists": False, "error": str(exc)}
+
+
+def _classify_read_only_validation_command(command: str, *, repo_root: Path, allowed_paths: list[str]) -> dict[str, Any]:
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_command_parse_error",
+            "reason": str(exc),
+            "argv": [],
+        }
+    if len(argv) != 4 or argv[:3] != ["python3", "-m", "json.tool"]:
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_not_allowlisted",
+            "reason": "v0.1.100 allows only: python3 -m json.tool <repo-relative-json-file>",
+            "argv": argv,
+        }
+    target_arg = argv[3]
+    target_path = Path(target_arg)
+    if target_path.is_absolute() or ".." in target_path.parts or target_arg.startswith("~") or _path_has_glob(target_arg):
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_unsafe_path_argument",
+            "reason": "command target must be a literal repo-relative path without parent traversal, home prefix, or glob",
+            "argv": argv,
+            "path_argument": target_arg,
+        }
+    resolved = (repo_root / target_arg).resolve()
+    try:
+        rel_path = str(resolved.relative_to(repo_root))
+    except ValueError:
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_path_outside_repo",
+            "reason": "command target resolved outside repo root",
+            "argv": argv,
+            "path_argument": target_arg,
+        }
+    if resolved.suffix.lower() != ".json":
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_non_json_target",
+            "reason": "python3 -m json.tool target must be a .json file",
+            "argv": argv,
+            "path_argument": rel_path,
+        }
+    if not resolved.is_file():
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_missing_target",
+            "reason": "command target file does not exist",
+            "argv": argv,
+            "path_argument": rel_path,
+        }
+    if not _path_matches_allowed_patterns(rel_path, allowed_paths):
+        return {
+            "command": command,
+            "allowed": False,
+            "status": "blocked_outside_allowed_paths",
+            "reason": "command target is not covered by target.allowed_paths",
+            "argv": argv,
+            "path_argument": rel_path,
+        }
+    return {
+        "command": command,
+        "allowed": True,
+        "status": "allowlisted_read_only_json_tool",
+        "reason": "exact read-only JSON syntax validation command is allowlisted",
+        "argv": argv,
+        "path_argument": rel_path,
+        "target_path": str(resolved),
+    }
+
+
+def build_loop_read_only_command_execution_payload(
+    plan: dict[str, Any],
+    gate: dict[str, Any],
+    *,
+    repo_root: str | Path | None = None,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    """Execute the first tightly allowlisted read-only validation command.
+
+    v0.1.100 intentionally supports exactly one low-risk command class:
+    ``python3 -m json.tool <repo-relative-json-file>``.  The command is run
+    only after the existing read-only evidence gate has passed.  It captures
+    command evidence and proves the command input file was not modified.
+    """
+    root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
+    checks = plan.get("checks") if isinstance(plan.get("checks"), dict) else {}
+    if checks:
+        allowed_paths = [str(item.get("path")) for item in checks.get("allowed_paths") or [] if isinstance(item, dict) and item.get("path")]
+        validation_commands = [str(item.get("command")) for item in checks.get("validation_commands") or [] if isinstance(item, dict) and item.get("command")]
+    else:
+        allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
+        validation_commands = [str(item) for item in plan.get("validation_commands") or []]
+    gate_passed = bool(gate.get("ok")) and gate.get("status") == "gate_passed"
+    command_evidence: list[dict[str, Any]] = []
+    blocked_reasons: list[str] = []
+    commands_executed = 0
+    mutation_detected = False
+
+    if not gate_passed:
+        blocked_reasons.append("evidence_gate_not_passed")
+    for command in validation_commands:
+        classification = _classify_read_only_validation_command(command, repo_root=root, allowed_paths=allowed_paths)
+        evidence: dict[str, Any] = {
+            "command": command,
+            "declared": True,
+            "allowlisted": bool(classification.get("allowed")),
+            "classification_status": classification.get("status"),
+            "classification_reason": classification.get("reason"),
+            "argv": classification.get("argv") or [],
+            "execution_status": "blocked_before_execution",
+            "executed": False,
+            "exit_code": None,
+            "duration_seconds": 0.0,
+            "stdout": "",
+            "stderr": "",
+            "side_effects_performed": False,
+            "mutation_detected": False,
+        }
+        if classification.get("path_argument"):
+            evidence["path_argument"] = classification.get("path_argument")
+        if not gate_passed:
+            evidence["blocked_reason"] = "evidence_gate_not_passed"
+            command_evidence.append(evidence)
+            continue
+        if not classification.get("allowed"):
+            evidence["blocked_reason"] = classification.get("status")
+            blocked_reasons.append(str(classification.get("status") or "blocked_not_allowlisted"))
+            command_evidence.append(evidence)
+            continue
+        target_path = Path(str(classification["target_path"]))
+        before = _safe_stat_snapshot(target_path, repo_root=root)
+        start = time.monotonic()
+        try:
+            result = subprocess.run(
+                list(classification.get("argv") or []),
+                cwd=root,
+                text=True,
+                capture_output=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+            duration = time.monotonic() - start
+            after = _safe_stat_snapshot(target_path, repo_root=root)
+            changed = before != after
+            mutation_detected = mutation_detected or changed
+            commands_executed += 1
+            evidence.update({
+                "execution_status": "executed_read_only_validation_passed" if result.returncode == 0 and not changed else "executed_read_only_validation_failed",
+                "executed": True,
+                "exit_code": result.returncode,
+                "duration_seconds": round(duration, 6),
+                "stdout": result.stdout[:4000],
+                "stderr": result.stderr[:4000],
+                "before": before,
+                "after": after,
+                "mutation_detected": changed,
+                "side_effects_performed": changed,
+            })
+            if result.returncode != 0:
+                blocked_reasons.append("read_only_validation_command_failed")
+            if changed:
+                blocked_reasons.append("read_only_validation_mutation_detected")
+        except subprocess.TimeoutExpired as exc:
+            duration = time.monotonic() - start
+            commands_executed += 1
+            evidence.update({
+                "execution_status": "executed_read_only_validation_timeout",
+                "executed": True,
+                "exit_code": None,
+                "duration_seconds": round(duration, 6),
+                "stdout": (exc.stdout or "")[:4000] if isinstance(exc.stdout, str) else "",
+                "stderr": (exc.stderr or "")[:4000] if isinstance(exc.stderr, str) else "",
+                "before": before,
+                "after": _safe_stat_snapshot(target_path, repo_root=root),
+            })
+            blocked_reasons.append("read_only_validation_timeout")
+        command_evidence.append(evidence)
+
+    executed_failures = [item for item in command_evidence if item.get("executed") and item.get("execution_status") != "executed_read_only_validation_passed"]
+    blocked_commands = [item for item in command_evidence if not item.get("executed")]
+    ok = gate_passed and commands_executed == 1 and not blocked_commands and not executed_failures and not mutation_detected
+    return {
+        "ok": ok,
+        "schema": LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA_VERSION,
+        "action": "loop_read_only_command_execution",
+        "status": "read_only_validation_executed" if ok else "read_only_validation_blocked",
+        "mode": "read_only_command_execution",
+        "execution_mode": "local_allowlisted_read_only_validation",
+        "target_id": plan.get("target_id"),
+        "target_path": plan.get("target_path"),
+        "loop_id": plan.get("loop_id"),
+        "executed_state": "TEST_STUB",
+        "final_state": plan.get("final_state"),
+        "source_gate_status": gate.get("status"),
+        "summary": {
+            "declared_command_count": len(validation_commands),
+            "allowlisted_command_count": sum(1 for item in command_evidence if item.get("allowlisted")),
+            "blocked_command_count": len(blocked_commands),
+            "commands_executed": commands_executed,
+            "passed_command_count": sum(1 for item in command_evidence if item.get("execution_status") == "executed_read_only_validation_passed"),
+            "failed_command_count": len(executed_failures),
+            "mutation_detected": mutation_detected,
+        },
+        "command_evidence": command_evidence,
+        "blocked_reasons": sorted(set(blocked_reasons)),
+        "dry_run": False,
+        "side_effects_performed": mutation_detected,
+        "safety": {
+            "side_effects_performed": mutation_detected,
+            "mutation_allowed": False,
+            "commands_executed": commands_executed,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "operator_instruction": "First controlled read-only validation command execution. Only one exact allowlisted JSON syntax command may run; file mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion remain forbidden.",
+    }
 
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
@@ -640,7 +924,8 @@ def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, A
                 "command": item.get("command"),
                 "declared": bool(item.get("declared")),
                 "execution_status": item.get("execution_status"),
-                "executed": False,
+                "executed": bool(item.get("executed", False)),
+                "exit_code": item.get("exit_code"),
                 "side_effects_performed": bool(item.get("side_effects_performed")),
             }
             for item in validation_commands
@@ -767,6 +1052,32 @@ def build_loop_read_only_evidence_gate(report: dict[str, Any]) -> dict[str, Any]
         "operator_instruction": "Evidence gate only. It makes a continue/block decision from existing read-only evidence and performs no commands, file mutation, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.",
     }
 
+
+
+def render_loop_read_only_command_execution_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"commands_executed={summary.get('commands_executed', 0)}",
+        f"blocked_command_count={summary.get('blocked_command_count', 0)}",
+        f"mutation_detected={str(bool(summary.get('mutation_detected'))).lower()}",
+    ]
+    for item in payload.get("command_evidence") or []:
+        lines.append(
+            "command_evidence={command} status={status} executed={executed} exit_code={exit_code}".format(
+                command=item.get("command"),
+                status=item.get("execution_status"),
+                executed=str(bool(item.get("executed"))).lower(),
+                exit_code=item.get("exit_code"),
+            )
+        )
+    for reason in payload.get("blocked_reasons") or []:
+        lines.append(f"blocked_reason={reason}")
+    lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
+    return "\n".join(lines) + "\n"
 
 def render_loop_read_only_evidence_report_text(payload: dict[str, Any]) -> str:
     lines = [

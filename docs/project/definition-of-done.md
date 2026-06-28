@@ -364,3 +364,6 @@ Done when `project_source_add_text` can recover a committed-but-stale-inflight t
 | DOD-133 | Rolling slice horizon and architecture-decision protocol are documented, machine-readable, and validated before first command execution | focused_candidate | `docs/project/architecture.md`, `docs/project/slice-horizon.md`, `docs/project/plan-state.json`, `pb project next-slice --json`, `tests/test_project_control_surface.py` | v0.1.99 |
 
 | DOD-134 | Docker build-context freshness is repaired without advancing v0.1.99 scope | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `Dockerfile`, `docker-compose.chatgpt-service.yml`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.99.1.md` | v0.1.99.1 |
+
+
+| DOD-135 | First controlled read-only validation command execution runs exactly one allowlisted JSON syntax command after evidence gate approval and proves no file mutation | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `examples/loop-targets/read-only-validation-command-target.json`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.100.md` | v0.1.100 |
