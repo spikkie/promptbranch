@@ -3,8 +3,10 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import shutil
 import shlex
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +55,8 @@ LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA = "promptbranch.loop.read_only_command_d
 LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA = "promptbranch.loop.read_only_correction_plan"
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION = "1.0"
+LOOP_SANDBOX_FILE_MUTATION_SCHEMA = "promptbranch.loop.sandbox_file_mutation"
+LOOP_SANDBOX_FILE_MUTATION_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -348,6 +352,7 @@ def build_loop_plan(target: LoopTarget, *, execute_stubbed: bool = False) -> dic
         "allowed_paths": list(target.allowed_paths),
         "forbidden_actions": list(target.forbidden_actions),
         "validation_commands": list(target.validation_commands),
+        "sandbox_mutation": target.raw.get("sandbox_mutation") if isinstance(target.raw.get("sandbox_mutation"), dict) else None,
         "deployment": {
             "requested": target.deployment_requested,
             "allowed_by_target": target.deployment_allowed,
@@ -1200,6 +1205,217 @@ def build_loop_read_only_correction_plan_payload(diagnosis_payload: dict[str, An
         "operator_instruction": "Correction-plan generation only. It proposes bounded operator review steps from diagnosis evidence; it does not write files, retry commands, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.",
     }
 
+
+def _classify_sandbox_fixture_path(fixture_path: str, *, repo_root: Path, allowed_paths: list[str]) -> dict[str, Any]:
+    raw = str(fixture_path or "").strip()
+    if not raw:
+        return {"allowed": False, "status": "blocked_missing_sandbox_fixture_path", "reason": "sandbox_mutation.fixture_path is required"}
+    path = Path(raw)
+    if path.is_absolute() or ".." in path.parts or raw.startswith("~") or _path_has_glob(raw):
+        return {
+            "allowed": False,
+            "status": "blocked_unsafe_sandbox_fixture_path",
+            "reason": "sandbox fixture path must be literal repo-relative without parent traversal, home prefix, or glob",
+            "path_argument": raw,
+        }
+    normalized = raw.replace("\\", "/").strip("/")
+    if not (normalized == "examples/loop-sandbox" or normalized.startswith("examples/loop-sandbox/")):
+        return {
+            "allowed": False,
+            "status": "blocked_non_sandbox_fixture_path",
+            "reason": "v0.1.103 allows mutation only under examples/loop-sandbox/",
+            "path_argument": normalized,
+        }
+    resolved = (repo_root / normalized).resolve()
+    try:
+        rel_path = str(resolved.relative_to(repo_root))
+    except ValueError:
+        return {
+            "allowed": False,
+            "status": "blocked_sandbox_fixture_outside_repo",
+            "reason": "sandbox fixture resolved outside repo root",
+            "path_argument": normalized,
+        }
+    if not resolved.is_file():
+        return {
+            "allowed": False,
+            "status": "blocked_missing_sandbox_fixture",
+            "reason": "sandbox fixture file does not exist",
+            "path_argument": rel_path,
+        }
+    if not _path_matches_allowed_patterns(rel_path, allowed_paths):
+        return {
+            "allowed": False,
+            "status": "blocked_sandbox_fixture_outside_allowed_paths",
+            "reason": "sandbox fixture is not covered by target.allowed_paths",
+            "path_argument": rel_path,
+        }
+    return {
+        "allowed": True,
+        "status": "allowlisted_sandbox_fixture_path",
+        "reason": "sandbox fixture path is repo-relative, under examples/loop-sandbox/, and covered by allowed_paths",
+        "path_argument": rel_path,
+        "target_path": str(resolved),
+    }
+
+
+def _copy_fixture_to_temporary_sandbox(source: Path, *, repo_root: Path, sandbox_root: Path) -> Path:
+    rel = source.resolve().relative_to(repo_root)
+    destination = sandbox_root / rel
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
+def build_loop_sandbox_file_mutation_payload(
+    plan: dict[str, Any],
+    correction_payload: dict[str, Any],
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Perform the first controlled file mutation inside a temporary sandbox only.
+
+    v0.1.103 deliberately limits write capability to a copied fixture under a
+    temporary workspace.  The repository fixture is snapshotted before/after and
+    must remain unchanged.  No correction retry, Project Source mutation,
+    artifact adoption, deployment, or ChatGPT Project deletion is performed.
+    """
+    root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
+    source_schema_ok = correction_payload.get("schema") == LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA
+    source_plan_generated = bool((correction_payload.get("summary") or {}).get("correction_plan_generated"))
+    sandbox_config = plan.get("sandbox_mutation") if isinstance(plan.get("sandbox_mutation"), dict) else {}
+    checks = plan.get("checks") if isinstance(plan.get("checks"), dict) else {}
+    if checks:
+        allowed_paths = [str(item.get("path")) for item in checks.get("allowed_paths") or [] if isinstance(item, dict) and item.get("path")]
+    else:
+        allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
+
+    blocked_reasons: list[str] = []
+    operation = str(sandbox_config.get("operation") or "").strip()
+    replacement_contents = sandbox_config.get("replacement_contents")
+    fixture_path = str(sandbox_config.get("fixture_path") or "")
+    classification = _classify_sandbox_fixture_path(fixture_path, repo_root=root, allowed_paths=allowed_paths)
+
+    if not source_schema_ok:
+        blocked_reasons.append("correction_plan_source_schema_invalid")
+    if not source_plan_generated:
+        blocked_reasons.append("correction_plan_not_generated")
+    if operation != "replace_contents":
+        blocked_reasons.append("sandbox_mutation_operation_not_allowlisted")
+    if not isinstance(replacement_contents, str) or not replacement_contents:
+        blocked_reasons.append("sandbox_mutation_replacement_contents_missing")
+    if isinstance(replacement_contents, str) and len(replacement_contents.encode("utf-8")) > 4096:
+        blocked_reasons.append("sandbox_mutation_replacement_too_large")
+    if not classification.get("allowed"):
+        blocked_reasons.append(str(classification.get("status") or "sandbox_fixture_not_allowlisted"))
+
+    repo_before: dict[str, Any] | None = None
+    repo_after: dict[str, Any] | None = None
+    sandbox_before: dict[str, Any] | None = None
+    sandbox_after: dict[str, Any] | None = None
+    sandbox_deleted = False
+    mutation_performed = False
+    sandbox_rel_path = classification.get("path_argument") or fixture_path
+    sandbox_workspace: str | None = None
+    expected_before_sha = str(sandbox_config.get("expected_before_sha256") or "").strip()
+    actual_before_sha: str | None = None
+
+    if not blocked_reasons:
+        source_path = Path(str(classification["target_path"]))
+        repo_before = _safe_stat_snapshot(source_path, repo_root=root)
+        actual_before_sha = str(repo_before.get("sha256") or "")
+        if expected_before_sha and actual_before_sha != expected_before_sha:
+            blocked_reasons.append("sandbox_fixture_expected_hash_mismatch")
+
+    if not blocked_reasons:
+        source_path = Path(str(classification["target_path"]))
+        sandbox_dir = tempfile.mkdtemp(prefix="promptbranch-loop-sandbox-")
+        sandbox_workspace = sandbox_dir
+        try:
+            sandbox_root = Path(sandbox_dir)
+            sandbox_file = _copy_fixture_to_temporary_sandbox(source_path, repo_root=root, sandbox_root=sandbox_root)
+            sandbox_before = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+            sandbox_file.write_text(str(replacement_contents), encoding="utf-8")
+            mutation_performed = True
+            sandbox_after = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+            repo_after = _safe_stat_snapshot(source_path, repo_root=root)
+            if repo_before != repo_after:
+                blocked_reasons.append("repository_fixture_changed")
+        finally:
+            shutil.rmtree(sandbox_dir, ignore_errors=True)
+            sandbox_deleted = True
+    elif classification.get("target_path"):
+        source_path = Path(str(classification["target_path"]))
+        repo_before = _safe_stat_snapshot(source_path, repo_root=root)
+        repo_after = _safe_stat_snapshot(source_path, repo_root=root)
+
+    ok = not blocked_reasons and mutation_performed and repo_before == repo_after and sandbox_before != sandbox_after
+    return {
+        "ok": ok,
+        "schema": LOOP_SANDBOX_FILE_MUTATION_SCHEMA,
+        "schema_version": LOOP_SANDBOX_FILE_MUTATION_SCHEMA_VERSION,
+        "action": "loop_sandbox_file_mutation",
+        "status": "sandbox_file_mutation_applied" if ok else "sandbox_file_mutation_blocked",
+        "mode": "sandbox_file_mutation",
+        "execution_mode": "local_temporary_sandbox_fixture_mutation",
+        "source_schema": correction_payload.get("schema"),
+        "source_status": correction_payload.get("status"),
+        "source_result_classification": correction_payload.get("source_result_classification"),
+        "target_id": plan.get("target_id"),
+        "target_path": plan.get("target_path"),
+        "loop_id": plan.get("loop_id"),
+        "executed_state": "ACT_STUB",
+        "source_executed_state": correction_payload.get("executed_state"),
+        "final_state": plan.get("final_state"),
+        "decision": "stop_after_sandbox_mutation_evidence" if ok else "stop_for_operator_review",
+        "blocked_reasons": sorted(set(blocked_reasons)),
+        "sandbox_mutation_request": {
+            "operation": operation,
+            "fixture_path": fixture_path,
+            "allowlist_status": classification.get("status"),
+            "allowlist_reason": classification.get("reason"),
+            "expected_before_sha256": expected_before_sha or None,
+            "actual_before_sha256": actual_before_sha,
+        },
+        "evidence": {
+            "repository_fixture_before": repo_before,
+            "repository_fixture_after": repo_after,
+            "sandbox_fixture_before": sandbox_before,
+            "sandbox_fixture_after": sandbox_after,
+            "sandbox_workspace": sandbox_workspace,
+            "sandbox_workspace_deleted_after_evidence": sandbox_deleted,
+            "sandbox_relative_path": sandbox_rel_path,
+        },
+        "summary": {
+            "sandbox_mutation_performed": mutation_performed,
+            "sandbox_file_mutated": mutation_performed,
+            "repository_file_mutated": bool(repo_before != repo_after) if repo_before is not None and repo_after is not None else False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "deployment_performed": False,
+            "commands_executed": 0,
+            "files_mutated": mutation_performed,
+        },
+        "dry_run": False,
+        "side_effects_performed": mutation_performed,
+        "safety": {
+            "side_effects_performed": mutation_performed,
+            "mutation_allowed": True,
+            "sandbox_file_mutation_performed": mutation_performed,
+            "repository_file_mutation_performed": bool(repo_before != repo_after) if repo_before is not None and repo_after is not None else False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+            "correction_plan_required": True,
+            "correction_plan_source_required": True,
+            "sandbox_only": True,
+        },
+        "operator_instruction": "First controlled file mutation in a temporary sandbox fixture only. The repository fixture is copied, the sandbox copy is mutated, before/after hashes are recorded, and the repository file must remain unchanged. No correction retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion is performed.",
+    }
+
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
     allowed_paths = list(checks.get("allowed_paths") or [])
@@ -1445,6 +1661,28 @@ def render_loop_read_only_command_diagnosis_text(payload: dict[str, Any]) -> str
     lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
     return "\n".join(lines) + "\n"
 
+
+
+def render_loop_sandbox_file_mutation_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    request = payload.get("sandbox_mutation_request") if isinstance(payload.get("sandbox_mutation_request"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"source_status={payload.get('source_status')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"operation={request.get('operation') or 'none'}",
+        f"fixture_path={request.get('fixture_path') or 'none'}",
+        f"allowlist_status={request.get('allowlist_status') or 'none'}",
+        f"sandbox_mutation_performed={str(bool(summary.get('sandbox_mutation_performed'))).lower()}",
+        f"repository_file_mutated={str(bool(summary.get('repository_file_mutated'))).lower()}",
+        f"commands_executed={summary.get('commands_executed', 0)}",
+    ]
+    for reason in payload.get("blocked_reasons") or []:
+        lines.append(f"blocked_reason={reason}")
+    lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
+    return "\n".join(lines) + "\n"
 
 def render_loop_read_only_correction_plan_text(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}

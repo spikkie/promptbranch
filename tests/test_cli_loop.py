@@ -450,3 +450,47 @@ def test_loop_run_generate_correction_plan_requires_diagnosis_flag(capsys):
     captured = capsys.readouterr()
     assert rc == 2
     assert "--generate-correction-plan requires --diagnose-read-only-result" in captured.err
+
+
+def test_loop_run_execute_sandbox_mutation_cli_json_mutates_temp_fixture_only(capsys):
+    before = Path("examples/loop-sandbox/invalid-json-fixture.json").read_text(encoding="utf-8")
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--diagnose-read-only-result",
+        "--generate-correction-plan",
+        "--execute-sandbox-mutation",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "promptbranch.loop.sandbox_file_mutation"
+    assert payload["status"] == "sandbox_file_mutation_applied"
+    assert payload["summary"]["sandbox_mutation_performed"] is True
+    assert payload["summary"]["repository_file_mutated"] is False
+    assert payload["safety"]["sandbox_file_mutation_performed"] is True
+    assert payload["safety"]["repository_file_mutation_performed"] is False
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert Path("examples/loop-sandbox/invalid-json-fixture.json").read_text(encoding="utf-8") == before
+
+
+def test_loop_run_execute_sandbox_mutation_requires_correction_plan(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--diagnose-read-only-result",
+        "--execute-sandbox-mutation",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "--execute-sandbox-mutation requires --generate-correction-plan" in captured.err

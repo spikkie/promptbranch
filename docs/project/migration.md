@@ -691,3 +691,10 @@ The next planned normal slice after `v0.1.101` acceptance is `v0.1.102` — Corr
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a proposal-only correction-plan schema and CLI flag that consume read-only command diagnosis evidence. Generated correction plans are evidence only; they contain no file changes, write actions, immediate command retries, patch/diff artifacts, Project Source mutation, artifact adoption, deployment, or ChatGPT Project deletion.
 
 The next planned normal slice after `v0.1.102` acceptance is `v0.1.103` — First controlled file mutation in sandboxed fixture only.
+
+
+## v0.1.103 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a sandbox-only mutation schema and CLI flag that copy an explicit fixture into a temporary workspace, mutate the copy, and record before/after evidence while keeping the repository fixture unchanged.
+
+The next planned normal slice after `v0.1.103` acceptance is `v0.1.104` — Sandbox mutation verification and rollback evidence gate.

@@ -429,3 +429,5 @@ Acceptance criteria:
 Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.102.md`.
 
 Last release: v0.1.102
+
+| DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103 |

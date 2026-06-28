@@ -528,3 +528,93 @@ def test_loop_read_only_correction_plan_for_passed_result_requires_no_correction
     assert correction["summary"]["correction_plan_generated"] is False
     assert correction["summary"]["no_correction_required_count"] == 1
     assert correction["safety"]["files_mutated"] is False
+
+
+def test_loop_sandbox_file_mutation_mutates_temp_fixture_only(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_execution_payload,
+        build_loop_sandbox_file_mutation_payload,
+    )
+
+    fixture = tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text('{"status": "broken",\n', encoding="utf-8")
+    before_text = fixture.read_text(encoding="utf-8")
+    target = tmp_path / "target.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "sandbox-mutation-test",
+                "goal": "Mutate only a temporary sandbox copy.",
+                "allowed_paths": ["examples/loop-sandbox/invalid-json-fixture.json"],
+                "validation": {"commands": ["python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"]},
+                "sandbox_mutation": {
+                    "operation": "replace_contents",
+                    "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
+                    "expected_before_sha256": __import__("hashlib").sha256(before_text.encode("utf-8")).hexdigest(),
+                    "replacement_contents": '{"status":"fixed_in_sandbox_only"}\n',
+                },
+                "human_required_when": ["repository_fixture_changed"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+
+    mutation = build_loop_sandbox_file_mutation_payload(plan, correction, repo_root=tmp_path)
+
+    assert mutation["ok"] is True
+    assert mutation["schema"] == "promptbranch.loop.sandbox_file_mutation"
+    assert mutation["status"] == "sandbox_file_mutation_applied"
+    assert mutation["summary"]["sandbox_mutation_performed"] is True
+    assert mutation["summary"]["repository_file_mutated"] is False
+    assert mutation["safety"]["sandbox_only"] is True
+    assert mutation["safety"]["project_source_mutation_performed"] is False
+    assert mutation["safety"]["artifact_adoption_performed"] is False
+    assert mutation["evidence"]["sandbox_fixture_before"] != mutation["evidence"]["sandbox_fixture_after"]
+    assert mutation["evidence"]["repository_fixture_before"] == mutation["evidence"]["repository_fixture_after"]
+    assert mutation["evidence"]["sandbox_workspace_deleted_after_evidence"] is True
+    assert fixture.read_text(encoding="utf-8") == before_text
+
+
+def test_loop_sandbox_file_mutation_blocks_non_sandbox_path(tmp_path: Path):
+    from promptbranch_loop import build_loop_sandbox_file_mutation_payload
+
+    readme = tmp_path / "README.md"
+    readme.write_text("do not mutate\n", encoding="utf-8")
+    plan = {
+        "ok": True,
+        "target_id": "bad-sandbox-path",
+        "loop_id": "loop-bad-sandbox-path",
+        "target_path": "target.json",
+        "final_state": "SOLVED",
+        "allowed_paths": ["README.md"],
+        "sandbox_mutation": {
+            "operation": "replace_contents",
+            "fixture_path": "README.md",
+            "replacement_contents": "changed\n",
+        },
+    }
+    correction = {
+        "schema": "promptbranch.loop.read_only_correction_plan",
+        "status": "correction_plan_generated_failed_result",
+        "summary": {"correction_plan_generated": True},
+    }
+
+    mutation = build_loop_sandbox_file_mutation_payload(plan, correction, repo_root=tmp_path)
+
+    assert mutation["ok"] is False
+    assert mutation["status"] == "sandbox_file_mutation_blocked"
+    assert "blocked_non_sandbox_fixture_path" in mutation["blocked_reasons"]
+    assert mutation["summary"]["sandbox_mutation_performed"] is False
+    assert readme.read_text(encoding="utf-8") == "do not mutate\n"
