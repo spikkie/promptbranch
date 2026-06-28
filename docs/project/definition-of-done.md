@@ -402,3 +402,14 @@ Evidence required: `chatgpt_claudecode_workflow-2_v0.1.100.3.zip` contains no `d
 
 Last release: v0.1.100.3
 
+
+
+## DOD-139 — v0.1.101 read-only command result diagnosis
+
+Status: focused_candidate.
+
+Done when `pb loop run --read-only-execution --evidence-gate --execute-read-only-validation --diagnose-read-only-result --json` emits `promptbranch.loop.read_only_command_diagnosis`, classifies read-only command evidence as `passed`, `blocked`, or `failed`, preserves reason codes for blocked/failed outcomes, and proves no correction plan, file mutation, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion occurred.
+
+Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.101.md`.
+
+Last release: v0.1.101

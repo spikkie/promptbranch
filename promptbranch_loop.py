@@ -49,6 +49,8 @@ LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA = "promptbranch.loop.read_only_evidence_gate
 LOOP_READ_ONLY_EVIDENCE_GATE_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA = "promptbranch.loop.read_only_command_execution"
 LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA = "promptbranch.loop.read_only_command_diagnosis"
+LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -864,6 +866,145 @@ def build_loop_read_only_command_execution_payload(
         "operator_instruction": "First controlled read-only validation command execution. Only one exact allowlisted JSON syntax command may run; file mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion remain forbidden.",
     }
 
+
+
+def _diagnose_single_read_only_command(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Classify one read-only command evidence record without proposing fixes.
+
+    v0.1.101 is diagnostic only.  It turns the v0.1.100 command evidence
+    into a stable passed/blocked/failed classification while preserving the
+    no-correction/no-mutation boundary.
+    """
+    command = str(evidence.get("command") or "")
+    status = str(evidence.get("execution_status") or "")
+    executed = bool(evidence.get("executed"))
+    mutation_detected = bool(evidence.get("mutation_detected"))
+    exit_code = evidence.get("exit_code")
+    if not executed:
+        result_classification = "blocked"
+        reason = str(evidence.get("blocked_reason") or evidence.get("classification_status") or "blocked_before_execution")
+        operator_action = "review_blocked_read_only_command_evidence"
+    elif mutation_detected:
+        result_classification = "failed"
+        reason = "read_only_validation_mutation_detected"
+        operator_action = "stop_for_operator_review"
+    elif status == "executed_read_only_validation_timeout":
+        result_classification = "failed"
+        reason = "read_only_validation_timeout"
+        operator_action = "stop_for_operator_review"
+    elif exit_code not in (0, "0"):
+        result_classification = "failed"
+        reason = "read_only_validation_command_failed"
+        operator_action = "review_command_stdout_stderr"
+    elif status == "executed_read_only_validation_passed":
+        result_classification = "passed"
+        reason = "read_only_validation_passed"
+        operator_action = "continue_to_next_planned_slice_after_acceptance"
+    else:
+        result_classification = "blocked"
+        reason = status or "unknown_read_only_result_status"
+        operator_action = "review_unclassified_read_only_command_evidence"
+    return {
+        "command": command,
+        "result_classification": result_classification,
+        "reason": reason,
+        "source_execution_status": status,
+        "executed": executed,
+        "exit_code": exit_code,
+        "mutation_detected": mutation_detected,
+        "blocked_reason": evidence.get("blocked_reason"),
+        "classification_status": evidence.get("classification_status"),
+        "stdout_present": bool(evidence.get("stdout")),
+        "stderr_present": bool(evidence.get("stderr")),
+        "operator_action": operator_action,
+        "correction_plan_generated": False,
+        "file_mutation_performed": False,
+    }
+
+
+def build_loop_read_only_command_diagnosis_payload(execution_payload: dict[str, Any]) -> dict[str, Any]:
+    """Diagnose read-only command execution evidence without corrections.
+
+    The function is intentionally evidence-only.  It does not execute another
+    command, generate a correction plan, write files, mutate Project Sources,
+    adopt artifacts, or deploy anything.  Its job is to make blocked vs failed
+    outcomes machine-readable for the next release slice.
+    """
+    evidence_items = [item for item in execution_payload.get("command_evidence") or [] if isinstance(item, dict)]
+    diagnoses = [_diagnose_single_read_only_command(item) for item in evidence_items]
+    classifications = [item["result_classification"] for item in diagnoses]
+    blocked_count = classifications.count("blocked")
+    failed_count = classifications.count("failed")
+    passed_count = classifications.count("passed")
+    if failed_count:
+        result_classification = "failed"
+        status = "diagnosis_failed_result"
+        decision = "stop_for_operator_review"
+    elif blocked_count:
+        result_classification = "blocked"
+        status = "diagnosis_blocked_result"
+        decision = "stop_for_operator_review"
+    elif passed_count and passed_count == len(diagnoses):
+        result_classification = "passed"
+        status = "diagnosis_passed_result"
+        decision = "continue_to_next_planned_slice_after_acceptance"
+    else:
+        result_classification = "blocked"
+        status = "diagnosis_no_command_evidence"
+        decision = "stop_for_operator_review"
+    source_schema_ok = execution_payload.get("schema") == LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA
+    if not source_schema_ok:
+        result_classification = "blocked"
+        status = "diagnosis_blocked_source_schema"
+        decision = "stop_for_operator_review"
+    return {
+        "ok": True,
+        "schema": LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA_VERSION,
+        "action": "loop_read_only_command_diagnosis",
+        "status": status,
+        "mode": "read_only_command_diagnosis",
+        "execution_mode": "local_read_only_result_diagnosis",
+        "source_schema": execution_payload.get("schema"),
+        "source_status": execution_payload.get("status"),
+        "target_id": execution_payload.get("target_id"),
+        "target_path": execution_payload.get("target_path"),
+        "loop_id": execution_payload.get("loop_id"),
+        "executed_state": "DIAGNOSE_STUB",
+        "source_executed_state": execution_payload.get("executed_state"),
+        "final_state": execution_payload.get("final_state"),
+        "result_classification": result_classification,
+        "decision": decision,
+        "summary": {
+            "diagnosed_command_count": len(diagnoses),
+            "passed_command_count": passed_count,
+            "blocked_command_count": blocked_count,
+            "failed_command_count": failed_count,
+            "mutation_detected": any(bool(item.get("mutation_detected")) for item in diagnoses),
+            "correction_plan_generated": False,
+            "files_mutated": False,
+        },
+        "diagnoses": diagnoses,
+        "blocked_reasons": sorted({str(item.get("reason")) for item in diagnoses if item.get("result_classification") == "blocked"}),
+        "failed_reasons": sorted({str(item.get("reason")) for item in diagnoses if item.get("result_classification") == "failed"}),
+        "correction_plan": None,
+        "dry_run": False,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "commands_executed": int((execution_payload.get("summary") or {}).get("commands_executed") or 0),
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+            "correction_plan_generated": False,
+            "files_mutated": False,
+        },
+        "operator_instruction": "Read-only command result diagnosis only. It classifies existing command evidence as passed, blocked, or failed; it does not generate corrections, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.",
+    }
+
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
     allowed_paths = list(checks.get("allowed_paths") or [])
@@ -1076,6 +1217,36 @@ def render_loop_read_only_command_execution_text(payload: dict[str, Any]) -> str
         )
     for reason in payload.get("blocked_reasons") or []:
         lines.append(f"blocked_reason={reason}")
+    lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
+    return "\n".join(lines) + "\n"
+
+
+def render_loop_read_only_command_diagnosis_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"result_classification={payload.get('result_classification')}",
+        f"decision={payload.get('decision')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"diagnosed_command_count={summary.get('diagnosed_command_count', 0)}",
+        f"passed_command_count={summary.get('passed_command_count', 0)}",
+        f"blocked_command_count={summary.get('blocked_command_count', 0)}",
+        f"failed_command_count={summary.get('failed_command_count', 0)}",
+        f"mutation_detected={str(bool(summary.get('mutation_detected'))).lower()}",
+        f"correction_plan_generated={str(bool(summary.get('correction_plan_generated'))).lower()}",
+        f"files_mutated={str(bool(summary.get('files_mutated'))).lower()}",
+    ]
+    for item in payload.get("diagnoses") or []:
+        lines.append(
+            "diagnosis={command} classification={classification} reason={reason} action={action}".format(
+                command=item.get("command"),
+                classification=item.get("result_classification"),
+                reason=item.get("reason"),
+                action=item.get("operator_action"),
+            )
+        )
     lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
     return "\n".join(lines) + "\n"
 

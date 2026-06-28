@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-accepted/current version: v0.1.99.1
-last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
-last completed repair: v0.1.99.1 — Docker build-context freshness repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-active candidate version: v0.1.100.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
-next normal slice: v0.1.100 — First controlled read-only validation command execution
-next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+accepted/current version: v0.1.100.3
+last completed normal slice: v0.1.100 — First controlled read-only validation command execution
+last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
+active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
+active candidate version: v0.1.101
+next normal target: chatgpt_claudecode_workflow-2_v0.1.101.zip
+next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
 ```
 
 ## Plan summary
@@ -25,19 +25,19 @@ Keep release slices narrow and KISS-first. v0.1.98 is accepted/current and made 
 The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
 
 ```text
-v0.1.99 — Rolling slice horizon and architecture-decision protocol
-v0.1.100 — First controlled read-only validation command execution
 v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 v0.1.102 — Correction-plan generation without file mutation
 v0.1.103 — First controlled file mutation in sandboxed fixture only
+v0.1.104 — Sandbox mutation verification and rollback evidence gate
+v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 
-## Active normal slice — v0.1.100 First controlled read-only validation command execution
+## Active normal slice — v0.1.101 Read-only command result diagnosis and blocked/failed classification
 
-`v0.1.100` introduces the first real loop command execution, limited to exactly one allowlisted read-only validation command class: `python3 -m json.tool <repo-relative-json-file>`. The command may run only after the existing read-only evidence gate passes, must target a repo-relative JSON file covered by `target.allowed_paths`, must capture stdout/stderr/exit code/duration, and must prove the command input file was not modified.
+`v0.1.101` classifies the existing `v0.1.100` read-only command execution payload as `passed`, `blocked`, or `failed`. The diagnosis layer is evidence-only: it reads command evidence, produces machine-readable reason codes and operator actions, and explicitly does not generate a correction plan, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.
 
-Out of scope remains correction planning, file mutation, broad shell execution, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
+Out of scope remains correction planning, file mutation, broad shell execution expansion, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
 
 
 ## Release / slice plan
@@ -1581,7 +1581,7 @@ Expected validation:
 
 Release: v0.1.100
 Type: normal
-Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip`
+Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.100.3.zip`
 
 Scope:
 - Execute exactly one allowlisted read-only validation command after the read-only evidence gate passes.
@@ -1600,7 +1600,24 @@ Out of scope:
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 
-Planned after v0.1.100. This slice classifies read-only command results without correction or file mutation.
+Release: v0.1.101
+Type: normal
+Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.100.3.zip`
+
+Scope:
+- Diagnose a `promptbranch.loop.read_only_command_execution` payload.
+- Classify command evidence as `passed`, `blocked`, or `failed`.
+- Preserve blocked reason codes for allowlist/path/evidence-gate blocks.
+- Preserve failed reason codes for non-zero exit, timeout, or mutation detection.
+- Emit no correction plan and perform no file writes.
+
+Out of scope:
+- no correction-plan generation before v0.1.102
+- no file writes or generated patches
+- no command retry or broad shell expansion
+- no deployment or Kubernetes mutation
+- no Project Source mutation/adoption behavior changes
+- no ChatGPT Project deletion
 
 ## v0.1.102 — Correction-plan generation without file mutation
 
@@ -1610,7 +1627,7 @@ Planned after v0.1.101. This slice produces a bounded correction plan from diagn
 
 Planned after v0.1.102. This slice performs the first file mutation only inside an explicit sandbox fixture with before/after evidence.
 
-## Repair definition — v0.1.100.3
+## Historical repair definition — v0.1.100.3
 
 ```text
 Release: v0.1.100.3

@@ -3,12 +3,12 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-accepted/current version: v0.1.99.1
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-active candidate version: v0.1.100.3
-next normal slice: v0.1.100 — First controlled read-only validation command execution
-next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+accepted/current version: v0.1.100.3
+active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
+active candidate version: v0.1.101
+next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
 ```
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
@@ -35,6 +35,9 @@ next planned slice after acceptance: v0.1.101 — Read-only command result diagn
 | v0.1.73.4 | repair | Focused scheduler test isolation | accepted_current | operator-provided `pb artifact current --all --json` adoption evidence; full-test evidence not included in adoption block | DOD-026 done; DOD-010 baseline evidence updated | a76aa4292bb8aba31c8223ae5342b6e9a731b4aef3a5505581d719d263fa1858 |
 | v0.1.74 | normal | Release validation suite coverage manifest | repair_required | release-control failed because required pytest groups used installed Promptbranch runtime Python without pytest | DOD-027 done but candidate needs repair | pending |
 | v0.1.74.1 | repair | Release-validation pytest runner isolation | repair_required | release-control failed in release-lifecycle plan tests due ambient profile state | DOD-028 done; DOD-029 required | pending |
+
+| v0.1.100.3 | repair | ZIP hygiene repair for packaged debug artifacts | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-138 done; no normal slice advanced beyond v0.1.100 | 30fec4b55b123ed6f5f8a290124993b7278e6918779b9a334b65acc9e7d84007 |
+| v0.1.101 | normal | Read-only command result diagnosis and blocked/failed classification | candidate | focused validation pending full release-control/adoption | DOD-139 focused_candidate | pending |
 
 ## ZIP status values
 
@@ -297,8 +300,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.97.1 | repair | Text-source add post-commit reconciliation repair | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-131 done; no normal slice advanced | accepted/current `chatgpt_claudecode_workflow-2_v0.1.97.1.zip` |
 
 | v0.1.98 | normal | Plan authority and anti-drift control-surface gate | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-132 done; control-surface gate active | accepted/current `chatgpt_claudecode_workflow-2_v0.1.98.zip` |
-| v0.1.99 | normal | Rolling slice horizon and architecture-decision protocol | accepted/current via repair | full release-control/adoption completed through v0.1.99.1 | DOD-133 done; first command execution deferred to v0.1.100 | accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip` |
-| v0.1.99.1 | repair | Docker build-context freshness repair for v0.1.99 | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-134 done; no normal slice advanced | accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip` |
+| v0.1.99 | normal | Rolling slice horizon and architecture-decision protocol | accepted/current via repair | full release-control/adoption completed through v0.1.99.1 | DOD-133 done; first command execution deferred to v0.1.100 | accepted/current via v0.1.99.1 evidence |
+| v0.1.99.1 | repair | Docker build-context freshness repair for v0.1.99 | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-134 done; no normal slice advanced | accepted/current via v0.1.99.1 evidence |
 | v0.1.100 | normal | First controlled read-only validation command execution | candidate | focused loop/CLI/control-surface validation pending full release-control/adoption | DOD-135 focused; first allowlisted JSON validation command execution | pending adoption evidence |
 
 Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip

@@ -365,3 +365,47 @@ def test_loop_run_execute_read_only_validation_requires_evidence_gate(capsys):
     captured = capsys.readouterr()
     assert rc == 2
     assert "--execute-read-only-validation requires --read-only-execution --evidence-gate" in captured.err
+
+
+def test_loop_run_diagnose_read_only_result_cli_json_classifies_passed_result():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "promptbranch_cli.py",
+            "loop",
+            "run",
+            "--target",
+            "examples/loop-targets/read-only-validation-command-target.json",
+            "--read-only-execution",
+            "--evidence-gate",
+            "--execute-read-only-validation",
+            "--diagnose-read-only-result",
+            "--json",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema"] == "promptbranch.loop.read_only_command_diagnosis"
+    assert payload["status"] == "diagnosis_passed_result"
+    assert payload["result_classification"] == "passed"
+    assert payload["summary"]["correction_plan_generated"] is False
+    assert payload["safety"]["files_mutated"] is False
+
+
+def test_loop_run_diagnose_read_only_result_requires_execution_flag(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/read-only-validation-command-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--diagnose-read-only-result",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "--diagnose-read-only-result requires --execute-read-only-validation" in captured.err

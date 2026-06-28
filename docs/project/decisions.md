@@ -401,3 +401,12 @@ Rationale: `debug_artifacts/` is operator/runtime diagnostic state, not reposito
 
 Scope control: preserve `v0.1.100`, `v0.1.100.1`, and `v0.1.100.2` behavior; do not advance to `v0.1.101`.
 
+
+
+## ADR-PROJ-108 — v0.1.101 diagnoses read-only command results without correction
+
+Decision: add a diagnostic layer over `promptbranch.loop.read_only_command_execution` that classifies command evidence as `passed`, `blocked`, or `failed`.
+
+Rationale: `v0.1.100` proved that one allowlisted read-only JSON validation command can execute safely. The next safe capability is not correction; it is stable diagnosis of outcomes, with blocked vs failed reason codes that later slices can consume.
+
+Consequence: `v0.1.101` may read existing command evidence and emit diagnosis metadata, but it must not generate correction plans, retry commands, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.102` remains the first planned correction-plan slice.

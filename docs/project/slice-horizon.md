@@ -8,11 +8,11 @@ The rolling slice horizon keeps the main Promptbranch goal visible without prete
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.100 | First controlled read-only validation command execution | active | Execute one allowlisted read-only JSON validation command with command evidence and mutation guards | correction, file writes, deployment, Kubernetes, adoption |
-| v0.1.101 | Read-only command result diagnosis and blocked/failed classification | planned_after_acceptance | Classify read-only command outcomes without correction or file mutation | correction, file writes, deployment |
-| v0.1.102 | Correction-plan generation without file mutation | planned | Produce a bounded correction plan from diagnosis evidence without writing files | file mutation, deployment, adoption |
+| v0.1.101 | Read-only command result diagnosis and blocked/failed classification | active | Classify read-only command outcomes without correction or file mutation | correction, file writes, deployment |
+| v0.1.102 | Correction-plan generation without file mutation | planned_after_acceptance | Produce a bounded correction plan from diagnosis evidence without writing files | file mutation, deployment, adoption |
 | v0.1.103 | First controlled file mutation in sandboxed fixture only | planned | Perform the first mutation only inside an explicit sandbox fixture with before/after evidence | production files, deployment, Kubernetes |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned | Verify sandbox mutation result evidence and define rollback/stop gates before broader correction workflows | production mutation, deployment |
+| v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled correction workflows without deployment | production mutation, deployment |
 
 ## Deferred slice
 

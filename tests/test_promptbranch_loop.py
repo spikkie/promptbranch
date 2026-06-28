@@ -309,3 +309,107 @@ def test_loop_read_only_command_execution_blocks_json_tool_outside_allowed_paths
     assert payload["summary"]["commands_executed"] == 0
     assert "blocked_outside_allowed_paths" in payload["blocked_reasons"]
     assert payload["command_evidence"][0]["executed"] is False
+
+
+def test_loop_read_only_command_diagnosis_classifies_passed_result():
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    plan = plan_loop_target_file("examples/loop-targets/read-only-validation-command-target.json", execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=Path.cwd())
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+
+    assert diagnosis["ok"] is True
+    assert diagnosis["schema"] == "promptbranch.loop.read_only_command_diagnosis"
+    assert diagnosis["status"] == "diagnosis_passed_result"
+    assert diagnosis["result_classification"] == "passed"
+    assert diagnosis["summary"]["passed_command_count"] == 1
+    assert diagnosis["summary"]["correction_plan_generated"] is False
+    assert diagnosis["summary"]["files_mutated"] is False
+    assert diagnosis["safety"]["project_source_mutation_performed"] is False
+    assert diagnosis["safety"]["artifact_adoption_performed"] is False
+
+
+def test_loop_read_only_command_diagnosis_classifies_blocked_result(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    target = tmp_path / "blocked-command.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "blocked-command",
+                "goal": "Classify a non-allowlisted command as blocked without corrections.",
+                "allowed_paths": ["sample.json"],
+                "validation": {"commands": ["pytest -q tests/test_promptbranch_loop.py"]},
+                "human_required_when": ["command_not_allowlisted"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+
+    assert diagnosis["ok"] is True
+    assert diagnosis["status"] == "diagnosis_blocked_result"
+    assert diagnosis["result_classification"] == "blocked"
+    assert diagnosis["summary"]["blocked_command_count"] == 1
+    assert diagnosis["blocked_reasons"] == ["blocked_not_allowlisted"]
+    assert diagnosis["diagnoses"][0]["correction_plan_generated"] is False
+    assert diagnosis["side_effects_performed"] is False
+
+
+def test_loop_read_only_command_diagnosis_classifies_failed_result(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    (tmp_path / "bad.json").write_text("{not-json\n", encoding="utf-8")
+    target = tmp_path / "failed-command.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "failed-command",
+                "goal": "Classify a failed read-only JSON validation command without corrections.",
+                "allowed_paths": ["bad.json"],
+                "validation": {"commands": ["python3 -m json.tool bad.json"]},
+                "human_required_when": ["validation_failed"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+
+    assert execution["ok"] is False
+    assert diagnosis["ok"] is True
+    assert diagnosis["status"] == "diagnosis_failed_result"
+    assert diagnosis["result_classification"] == "failed"
+    assert diagnosis["summary"]["failed_command_count"] == 1
+    assert diagnosis["failed_reasons"] == ["read_only_validation_command_failed"]
+    assert diagnosis["correction_plan"] is None
+    assert diagnosis["safety"]["files_mutated"] is False
