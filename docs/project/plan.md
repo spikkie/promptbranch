@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-accepted/current version: v0.1.100.3
-last completed normal slice: v0.1.100 — First controlled read-only validation command execution
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
+accepted/current version: v0.1.101
+last completed normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
-active candidate version: v0.1.101
-next normal target: chatgpt_claudecode_workflow-2_v0.1.101.zip
-next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
-next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
+active candidate version: v0.1.102
+next normal target: chatgpt_claudecode_workflow-2_v0.1.102.zip
+next normal slice: v0.1.102 — Correction-plan generation without file mutation
+next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 ## Plan summary
@@ -25,20 +25,25 @@ Keep release slices narrow and KISS-first. v0.1.98 is accepted/current and made 
 The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
 
 ```text
-v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 v0.1.102 — Correction-plan generation without file mutation
 v0.1.103 — First controlled file mutation in sandboxed fixture only
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
+v0.1.106 — Controlled correction promotion decision record
 ```
 
 
-## Active normal slice — v0.1.101 Read-only command result diagnosis and blocked/failed classification
+## Active normal slice — v0.1.102 Correction-plan generation without file mutation
 
-`v0.1.101` classifies the existing `v0.1.100` read-only command execution payload as `passed`, `blocked`, or `failed`. The diagnosis layer is evidence-only: it reads command evidence, produces machine-readable reason codes and operator actions, and explicitly does not generate a correction plan, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.
+`v0.1.102` generates bounded correction-plan evidence from the `v0.1.101` read-only command diagnosis payload. The plan is proposal-only: it may explain operator review steps for blocked or failed command evidence, but it must not write files, retry commands, deploy, mutate Project Sources, adopt artifacts, delete ChatGPT Projects, or emit patch/diff artifacts.
 
-Out of scope remains correction planning, file mutation, broad shell execution expansion, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
+Acceptance scope:
 
+- Add a machine-readable correction-plan schema for read-only command diagnosis results.
+- Generate plan entries for `blocked` and `failed` classifications with reason codes and operator-review actions.
+- Generate a `no_correction_required` result for passed diagnosis evidence.
+- Keep file mutation deferred to `v0.1.103` sandbox-only execution.
+- Preserve the single allowlisted JSON validation command path from `v0.1.100` and diagnosis layer from `v0.1.101`.
 
 ## Release / slice plan
 
@@ -1597,6 +1602,26 @@ Out of scope:
 - no Project Source mutation/adoption behavior changes
 - no ChatGPT Project deletion
 
+
+## v0.1.102 — Correction-plan generation without file mutation
+
+Release: v0.1.102
+
+Scope:
+
+- Build proposal-only correction-plan evidence from read-only command diagnosis results.
+- Classify plans as `bounded_operator_correction_plan` or `no_correction_required`.
+- Include reason-specific operator review steps for blocked and failed evidence.
+- Ensure generated plans contain no write actions, no file changes, no immediate commands, no Project Source mutation, no artifact adoption, and no deployment.
+
+Out of scope:
+
+- Writing files or applying corrections.
+- Retrying validation commands automatically.
+- Creating patch/diff artifacts.
+- Deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion.
+
+Planned after v0.1.102 acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only.
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 

@@ -3,12 +3,12 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-accepted/current version: v0.1.100.3
-active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
-active candidate version: v0.1.101
-next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
-next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
+accepted/current version: v0.1.101
+active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
+active candidate version: v0.1.102
+next normal slice: v0.1.102 — Correction-plan generation without file mutation
+next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
@@ -37,7 +37,8 @@ next planned slice after acceptance: v0.1.102 — Correction-plan generation wit
 | v0.1.74.1 | repair | Release-validation pytest runner isolation | repair_required | release-control failed in release-lifecycle plan tests due ambient profile state | DOD-028 done; DOD-029 required | pending |
 
 | v0.1.100.3 | repair | ZIP hygiene repair for packaged debug artifacts | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-138 done; no normal slice advanced beyond v0.1.100 | 30fec4b55b123ed6f5f8a290124993b7278e6918779b9a334b65acc9e7d84007 |
-| v0.1.101 | normal | Read-only command result diagnosis and blocked/failed classification | candidate | focused validation pending full release-control/adoption | DOD-139 focused_candidate | pending |
+| v0.1.101 | normal | Read-only command result diagnosis and blocked/failed classification | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-139 done | 32bb18838bc52f4e494562ca8fb7a9327d714c1598d22ef6b386ea688cb09a57 |
+| v0.1.102 | normal | Correction-plan generation without file mutation | candidate | focused validation pending full release-control/adoption | DOD-140 focused_candidate | pending |
 
 ## ZIP status values
 

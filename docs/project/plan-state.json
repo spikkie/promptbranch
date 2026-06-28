@@ -2,34 +2,34 @@
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
   "repo_id": "chatgpt_claudecode_workflow-2",
-  "accepted_current_version": "v0.1.100.3",
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.100.3.zip",
+  "accepted_current_version": "v0.1.101",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.101.zip",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
   "architecture_goal": "controlled problem-solving loop",
-  "last_completed_normal_slice_version": "v0.1.100",
-  "last_completed_normal_slice": "First controlled read-only validation command execution",
+  "last_completed_normal_slice_version": "v0.1.101",
+  "last_completed_normal_slice": "Read-only command result diagnosis and blocked/failed classification",
   "last_completed_repair_version": "v0.1.100.3",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "active_candidate_version": "v0.1.101",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.101.zip",
-  "active_slice": "Read-only command result diagnosis and blocked/failed classification",
-  "next_normal_version": "v0.1.101",
-  "next_normal_slice": "Read-only command result diagnosis and blocked/failed classification",
-  "next_planned_version_after_acceptance": "v0.1.102",
-  "next_planned_slice_after_acceptance": "Correction-plan generation without file mutation",
+  "active_candidate_version": "v0.1.102",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
+  "active_slice": "Correction-plan generation without file mutation",
+  "next_normal_version": "v0.1.102",
+  "next_normal_slice": "Correction-plan generation without file mutation",
+  "next_planned_version_after_acceptance": "v0.1.103",
+  "next_planned_slice_after_acceptance": "First controlled file mutation in sandboxed fixture only",
   "scope_advance_allowed": true,
   "repair_must_not_advance_scope": true,
   "release_mode": "normal",
   "out_of_scope": [
-    "correction planning before v0.1.102",
-    "file mutation",
+    "file mutation before v0.1.103",
     "deployment",
     "Kubernetes mutation",
     "Project Source behavior change",
     "artifact adoption behavior change",
     "ChatGPT Project deletion",
     "broad shell execution beyond the single allowlisted JSON validation command",
-    "automatic retry or correction after diagnosis"
+    "automatic retry or correction execution after diagnosis",
+    "patch/diff artifact generation"
   ],
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -53,23 +53,16 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.101",
-      "slice": "Read-only command result diagnosis and blocked/failed classification",
-      "status": "active",
-      "release_mode": "normal",
-      "scope": "classify read-only command outcomes as passed, blocked, or failed without correction or file mutation"
-    },
-    {
       "version": "v0.1.102",
       "slice": "Correction-plan generation without file mutation",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "release_mode": "normal",
       "scope": "produce a bounded correction plan from diagnosis evidence without writing files"
     },
     {
       "version": "v0.1.103",
       "slice": "First controlled file mutation in sandboxed fixture only",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "release_mode": "normal",
       "scope": "perform the first mutation only inside an explicit sandbox fixture with before/after evidence"
     },
@@ -86,6 +79,13 @@
       "status": "planned",
       "release_mode": "normal",
       "scope": "decide whether sandbox-only correction evidence is ready for broader controlled correction workflows without deployment"
+    },
+    {
+      "version": "v0.1.106",
+      "slice": "Controlled correction promotion decision record",
+      "status": "planned",
+      "release_mode": "normal",
+      "scope": "record whether correction workflows may move beyond sandbox fixtures based on accumulated evidence"
     }
   ],
   "replan_rules": [

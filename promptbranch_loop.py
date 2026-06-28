@@ -51,6 +51,8 @@ LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA = "promptbranch.loop.read_only_command_e
 LOOP_READ_ONLY_COMMAND_EXECUTION_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA = "promptbranch.loop.read_only_command_diagnosis"
 LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA_VERSION = "1.0"
+LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA = "promptbranch.loop.read_only_correction_plan"
+LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -1005,6 +1007,199 @@ def build_loop_read_only_command_diagnosis_payload(execution_payload: dict[str, 
         "operator_instruction": "Read-only command result diagnosis only. It classifies existing command evidence as passed, blocked, or failed; it does not generate corrections, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.",
     }
 
+
+def _bounded_correction_steps_for_diagnosis(diagnosis: dict[str, Any]) -> list[dict[str, Any]]:
+    classification = str(diagnosis.get("result_classification") or "blocked")
+    reason = str(diagnosis.get("reason") or "unknown_read_only_result")
+    command = str(diagnosis.get("command") or "")
+    if classification == "blocked":
+        if reason == "blocked_not_allowlisted":
+            operator_focus = "replace the validation command with an allowlisted read-only command"
+        elif reason in {"blocked_outside_allowed_paths", "blocked_unsafe_path_argument", "blocked_path_outside_repo", "blocked_missing_target", "blocked_non_json_target"}:
+            operator_focus = "repair the target path declaration or allowed_paths coverage"
+        elif reason == "evidence_gate_not_passed":
+            operator_focus = "repair read-only evidence-gate inputs before command execution"
+        else:
+            operator_focus = "inspect blocked command evidence and tighten target declarations"
+        return [
+            {
+                "step": 1,
+                "action": "inspect_blocked_read_only_command_evidence",
+                "reason": reason,
+                "command": command,
+                "mutation_allowed": False,
+                "operator_intent": operator_focus,
+            },
+            {
+                "step": 2,
+                "action": "prepare_target_declaration_adjustment_for_human_review",
+                "reason": reason,
+                "mutation_allowed": False,
+                "writes_files": False,
+                "future_slice_required_for_mutation": True,
+            },
+            {
+                "step": 3,
+                "action": "rerun_read_only_evidence_gate_after_operator_approval",
+                "mutation_allowed": False,
+                "commands_to_run": [
+                    "pb loop run --target <target.json> --read-only-execution --evidence-gate --json",
+                ],
+            },
+        ]
+    if classification == "failed":
+        if reason == "read_only_validation_command_failed":
+            operator_focus = "inspect stdout/stderr and identify the validation input defect"
+        elif reason == "read_only_validation_timeout":
+            operator_focus = "inspect timeout evidence and reduce command scope before retrying"
+        elif reason == "read_only_validation_mutation_detected":
+            operator_focus = "stop immediately because a read-only command changed file evidence"
+        else:
+            operator_focus = "inspect failed command evidence before any correction"
+        return [
+            {
+                "step": 1,
+                "action": "inspect_failed_read_only_command_evidence",
+                "reason": reason,
+                "command": command,
+                "mutation_allowed": False,
+                "operator_intent": operator_focus,
+            },
+            {
+                "step": 2,
+                "action": "draft_non_mutating_correction_hypothesis",
+                "reason": reason,
+                "mutation_allowed": False,
+                "writes_files": False,
+                "future_slice_required_for_mutation": True,
+            },
+            {
+                "step": 3,
+                "action": "request_operator_review_before_any_file_change",
+                "mutation_allowed": False,
+                "commands_to_run": [],
+            },
+        ]
+    return [
+        {
+            "step": 1,
+            "action": "no_correction_required",
+            "reason": reason,
+            "command": command,
+            "mutation_allowed": False,
+            "operator_intent": "continue only after release acceptance and next-slice authorization",
+        }
+    ]
+
+
+def build_loop_read_only_correction_plan_payload(diagnosis_payload: dict[str, Any]) -> dict[str, Any]:
+    """Generate a bounded correction plan from diagnosis evidence without mutation.
+
+    v0.1.102 may create a proposal-only correction plan.  It does not run new
+    commands, retry validation, write files, mutate Project Sources, adopt
+    artifacts, deploy, or delete ChatGPT Projects.  File mutation remains
+    deferred to a later sandbox-only slice.
+    """
+    source_schema_ok = diagnosis_payload.get("schema") == LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA
+    diagnoses = [item for item in diagnosis_payload.get("diagnoses") or [] if isinstance(item, dict)]
+    result_classification = str(diagnosis_payload.get("result_classification") or "blocked")
+    source_status = str(diagnosis_payload.get("status") or "")
+    plan_entries: list[dict[str, Any]] = []
+    if source_schema_ok:
+        for index, item in enumerate(diagnoses, start=1):
+            classification = str(item.get("result_classification") or "blocked")
+            entry = {
+                "index": index,
+                "command": item.get("command"),
+                "source_classification": classification,
+                "source_reason": item.get("reason"),
+                "plan_type": "no_correction_required" if classification == "passed" else "bounded_operator_correction_plan",
+                "steps": _bounded_correction_steps_for_diagnosis(item),
+                "mutation_allowed": False,
+                "writes_files": False,
+                "executes_commands": False,
+                "project_source_mutation_allowed": False,
+                "artifact_adoption_allowed": False,
+                "deployment_allowed": False,
+            }
+            plan_entries.append(entry)
+    correction_required_count = sum(1 for item in plan_entries if item.get("plan_type") == "bounded_operator_correction_plan")
+    no_correction_count = sum(1 for item in plan_entries if item.get("plan_type") == "no_correction_required")
+    if not source_schema_ok:
+        ok = False
+        status = "correction_plan_blocked_source_schema"
+        decision = "stop_for_operator_review"
+    elif not plan_entries:
+        ok = True
+        status = "correction_plan_blocked_no_diagnosis_evidence"
+        decision = "stop_for_operator_review"
+    elif correction_required_count:
+        ok = True
+        status = f"correction_plan_generated_{result_classification}_result"
+        decision = "operator_review_required_before_mutation"
+    else:
+        ok = True
+        status = "correction_plan_not_required"
+        decision = "continue_to_next_planned_slice_after_acceptance"
+    return {
+        "ok": ok,
+        "schema": LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA,
+        "schema_version": LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION,
+        "action": "loop_read_only_correction_plan",
+        "status": status,
+        "mode": "read_only_correction_plan",
+        "execution_mode": "local_proposal_only_correction_planning",
+        "source_schema": diagnosis_payload.get("schema"),
+        "source_status": source_status,
+        "source_result_classification": result_classification,
+        "target_id": diagnosis_payload.get("target_id"),
+        "target_path": diagnosis_payload.get("target_path"),
+        "loop_id": diagnosis_payload.get("loop_id"),
+        "executed_state": "CORRECT_STUB",
+        "source_executed_state": diagnosis_payload.get("executed_state"),
+        "final_state": diagnosis_payload.get("final_state"),
+        "decision": decision,
+        "summary": {
+            "diagnosed_command_count": len(diagnoses),
+            "correction_plan_entry_count": len(plan_entries),
+            "correction_required_count": correction_required_count,
+            "no_correction_required_count": no_correction_count,
+            "correction_plan_generated": correction_required_count > 0,
+            "commands_executed": 0,
+            "files_mutated": False,
+            "mutation_allowed": False,
+            "deployment_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+        },
+        "correction_plan": {
+            "schema": "promptbranch.loop.correction_plan.proposal",
+            "schema_version": "1.0",
+            "plan_scope": "proposal_only_no_file_mutation",
+            "entries": plan_entries,
+            "write_actions": [],
+            "file_changes": [],
+            "commands_to_execute_now": [],
+            "future_slice_required_for_file_mutation": True,
+        } if plan_entries else None,
+        "dry_run": False,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "mutation_allowed": False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+            "correction_plan_generated": correction_required_count > 0,
+            "files_mutated": False,
+            "correction_plan_only": True,
+        },
+        "operator_instruction": "Correction-plan generation only. It proposes bounded operator review steps from diagnosis evidence; it does not write files, retry commands, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects.",
+    }
+
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
     allowed_paths = list(checks.get("allowed_paths") or [])
@@ -1247,6 +1442,43 @@ def render_loop_read_only_command_diagnosis_text(payload: dict[str, Any]) -> str
                 action=item.get("operator_action"),
             )
         )
+    lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
+    return "\n".join(lines) + "\n"
+
+
+def render_loop_read_only_correction_plan_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"source_result_classification={payload.get('source_result_classification')}",
+        f"decision={payload.get('decision')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"correction_plan_entry_count={summary.get('correction_plan_entry_count', 0)}",
+        f"correction_required_count={summary.get('correction_required_count', 0)}",
+        f"correction_plan_generated={str(bool(summary.get('correction_plan_generated'))).lower()}",
+        f"commands_executed={summary.get('commands_executed', 0)}",
+        f"files_mutated={str(bool(summary.get('files_mutated'))).lower()}",
+    ]
+    plan = payload.get("correction_plan") if isinstance(payload.get("correction_plan"), dict) else {}
+    for entry in plan.get("entries") or []:
+        lines.append(
+            "correction_plan_entry={command} classification={classification} reason={reason} type={plan_type}".format(
+                command=entry.get("command"),
+                classification=entry.get("source_classification"),
+                reason=entry.get("source_reason"),
+                plan_type=entry.get("plan_type"),
+            )
+        )
+        for step in entry.get("steps") or []:
+            lines.append(
+                "correction_step={step} action={action} mutation_allowed={mutation}".format(
+                    step=step.get("step"),
+                    action=step.get("action"),
+                    mutation=str(bool(step.get("mutation_allowed"))).lower(),
+                )
+            )
     lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
     return "\n".join(lines) + "\n"
 
