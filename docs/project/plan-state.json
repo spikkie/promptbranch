@@ -2,33 +2,34 @@
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
   "repo_id": "chatgpt_claudecode_workflow-2",
-  "accepted_current_version": "v0.1.101",
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.101.zip",
+  "accepted_current_version": "v0.1.102",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
   "architecture_goal": "controlled problem-solving loop",
-  "last_completed_normal_slice_version": "v0.1.101",
-  "last_completed_normal_slice": "Read-only command result diagnosis and blocked/failed classification",
+  "last_completed_normal_slice_version": "v0.1.102",
+  "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_repair_version": "v0.1.100.3",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "active_candidate_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
-  "active_slice": "Correction-plan generation without file mutation",
-  "next_normal_version": "v0.1.102",
-  "next_normal_slice": "Correction-plan generation without file mutation",
-  "next_planned_version_after_acceptance": "v0.1.103",
-  "next_planned_slice_after_acceptance": "First controlled file mutation in sandboxed fixture only",
+  "active_candidate_version": "v0.1.103",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.zip",
+  "active_slice": "First controlled file mutation in sandboxed fixture only",
+  "next_normal_version": "v0.1.103",
+  "next_normal_slice": "First controlled file mutation in sandboxed fixture only",
+  "next_planned_version_after_acceptance": "v0.1.104",
+  "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "scope_advance_allowed": true,
   "repair_must_not_advance_scope": true,
   "release_mode": "normal",
   "out_of_scope": [
-    "file mutation before v0.1.103",
+    "sandbox mutation verification and rollback gate before v0.1.104",
+    "mutation of repository fixture files",
     "deployment",
     "Kubernetes mutation",
     "Project Source behavior change",
     "artifact adoption behavior change",
     "ChatGPT Project deletion",
-    "broad shell execution beyond the single allowlisted JSON validation command",
-    "automatic retry or correction execution after diagnosis",
+    "broad shell execution beyond allowlisted JSON validation and controlled sandbox fixture mutation",
+    "automatic retry or correction execution outside the temporary sandbox",
     "patch/diff artifact generation"
   ],
   "architecture_invariants": [
@@ -53,23 +54,16 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.102",
-      "slice": "Correction-plan generation without file mutation",
-      "status": "active",
-      "release_mode": "normal",
-      "scope": "produce a bounded correction plan from diagnosis evidence without writing files"
-    },
-    {
       "version": "v0.1.103",
       "slice": "First controlled file mutation in sandboxed fixture only",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "release_mode": "normal",
-      "scope": "perform the first mutation only inside an explicit sandbox fixture with before/after evidence"
+      "scope": "perform the first mutation only inside an explicit temporary sandbox fixture with before/after evidence while repository fixtures remain unchanged"
     },
     {
       "version": "v0.1.104",
       "slice": "Sandbox mutation verification and rollback evidence gate",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "release_mode": "normal",
       "scope": "verify sandbox mutation result evidence and define rollback/stop gates before broader correction workflows"
     },
@@ -86,6 +80,13 @@
       "status": "planned",
       "release_mode": "normal",
       "scope": "record whether correction workflows may move beyond sandbox fixtures based on accumulated evidence"
+    },
+    {
+      "version": "v0.1.107",
+      "slice": "Controlled correction execution envelope design",
+      "status": "planned",
+      "release_mode": "normal",
+      "scope": "define the future execution envelope for controlled corrections without enabling repository-wide mutation"
     }
   ],
   "replan_rules": [

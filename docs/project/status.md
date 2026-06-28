@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
-accepted/current version: v0.1.101
-last completed normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
+accepted/current version: v0.1.102
+last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
-active candidate version: v0.1.102
-next normal target: chatgpt_claudecode_workflow-2_v0.1.102.zip
-next normal slice: v0.1.102 — Correction-plan generation without file mutation
-next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.zip
+active candidate version: v0.1.103
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.zip
+next normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.103 — First controlled file mutation
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
-active plan slice: v0.1.102 — Correction-plan generation without file mutation
+last accepted/current slice: v0.1.102 — Correction-plan generation without file mutation
+active plan slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 repair mode: false
 scope advance allowed: true
 ```
@@ -29,9 +29,9 @@ scope advance allowed: true
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.101.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip candidate once packaged
-release status: v0.1.102 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip candidate once packaged
+release status: v0.1.103 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -50,29 +50,29 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.102` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- `v0.1.103` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
 - Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.102` may generate bounded correction-plan evidence but must not mutate files, retry commands, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
-- File mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
+- `v0.1.103` may mutate only a temporary sandbox copy of an explicit fixture and must not mutate repository fixtures, retry commands outside the sandbox, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
+- Sandbox verification/rollback gates, repository file mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
 
 - What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
 - Whether live ChatGPT file-source indexing will become visible within the extended post-commit readback window in release-control.
 - Whether future lifecycle scripts should delegate their install ZIP checks to `pb artifact guard` in AG-005 or an earlier slice.
-- Which sandbox fixture boundaries should be used for `v0.1.103` first controlled file mutation after correction-plan evidence is accepted/current.
+- Whether the first sandbox mutation evidence should gain rollback verification in `v0.1.104`.
 
 ## Next safe action
 
 ```text
-Validate and package v0.1.102 as the correction-plan generation without file mutation slice from accepted/current v0.1.101.
+Validate and package v0.1.103 as the first controlled file mutation in sandboxed fixture only slice from accepted/current v0.1.102.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.102.zip
-ver=v0.1.102
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.zip
+ver=v0.1.103
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
@@ -747,3 +747,10 @@ Operator-provided release-control evidence accepted `chatgpt_claudecode_workflow
 `v0.1.97.1` repairs only the failed `v0.1.97` text-source Project Source validation path. The `v0.1.97` release ZIP was visible in Project Source, but the `project_source_add_text` validation step reached `commit_seen_with_stale_inflight_not_verified_present` and could not prove the expected text source after the Sources surface failed to refresh.
 
 This repair adapts the visibility reconciliation pattern used by the spikkies-site lifecycle to text sources: after a text-source commit is observed, Promptbranch re-reads the Project Sources surface and accepts recovery only when the expected text-source identity or content anchor is visible. A nearby unrelated source or a release ZIP source card does not satisfy text-source proof. The `v0.1.97` read-only evidence gate behavior is unchanged and no loop action executes commands or mutates files.
+
+
+## v0.1.103 candidate status
+
+`v0.1.103` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.102.zip`. It adds the first controlled file mutation path for MVP-1, but only against a copied fixture inside a temporary sandbox workspace. The repository fixture is snapshotted before and after and must remain unchanged.
+
+This slice does not verify rollback, mutate repository files, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.104` remains the first planned sandbox mutation verification and rollback evidence gate.

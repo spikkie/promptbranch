@@ -1665,3 +1665,28 @@ Preserved scope: v0.1.100 read-only command execution, v0.1.100.1 text-source st
 Out of scope: v0.1.101 diagnosis behavior, correction planning, file mutation, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
 ```
 
+
+
+## v0.1.103 — First controlled file mutation in sandboxed fixture only
+
+Release: v0.1.103
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.zip
+Next after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+
+Scope:
+
+- Add a sandbox-only file mutation step after read-only execution, diagnosis, and proposal-only correction-plan generation.
+- Mutate only a temporary copy of an explicit fixture under `examples/loop-sandbox/`.
+- Record repository fixture before/after hashes and sandbox fixture before/after hashes.
+- Require the repository fixture to remain unchanged.
+- Add CLI flag `--execute-sandbox-mutation`, gated behind `--generate-correction-plan`.
+
+Out of scope:
+
+- mutation of repository files
+- rollback verification or rollback execution before v0.1.104
+- automatic retry outside the sandbox
+- patch/diff artifact generation
+- deployment or Kubernetes mutation
+- Project Source mutation/adoption behavior changes
+- ChatGPT Project deletion

@@ -1,0 +1,41 @@
+{
+  "schema": "promptbranch.loop.target",
+  "schema_version": "1.0",
+  "target_id": "sandboxed-file-mutation-fixture",
+  "goal": "Run a read-only JSON validation that fails, diagnose it, generate a correction plan, and mutate only a temporary sandbox copy of the fixture with before/after evidence.",
+  "allowed_paths": [
+    "examples/loop-sandbox/invalid-json-fixture.json",
+    "examples/loop-targets/sandboxed-file-mutation-target.json"
+  ],
+  "forbidden_actions": [
+    "project_delete",
+    "project_source_mutation",
+    "artifact_adoption",
+    "kubernetes_apply",
+    "docker_push",
+    "helm_release",
+    "destructive_filesystem_change"
+  ],
+  "validation": {
+    "commands": [
+      "python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"
+    ]
+  },
+  "sandbox_mutation": {
+    "operation": "replace_contents",
+    "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
+    "expected_before_sha256": "d14fbc90f8e9f61051c3c47254fe91b8002ce6c211a84012ebabc41d51f1ce67",
+    "replacement_contents": "{\n  \"status\": \"fixed_in_temporary_sandbox_only\",\n  \"mutation_scope\": \"temporary_sandbox_fixture\"\n}\n"
+  },
+  "human_required_when": [
+    "sandbox_fixture_not_allowlisted",
+    "repository_fixture_changed",
+    "correction_plan_not_generated",
+    "sandbox_mutation_fails"
+  ],
+  "deployment": {
+    "requested": false,
+    "allowed": false
+  },
+  "max_iterations": 1
+}

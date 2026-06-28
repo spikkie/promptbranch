@@ -3,12 +3,12 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
-accepted/current version: v0.1.101
-active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
-active candidate version: v0.1.102
-next normal slice: v0.1.102 — Correction-plan generation without file mutation
-next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
+accepted/current version: v0.1.102
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.zip
+active candidate version: v0.1.103
+next normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
@@ -38,7 +38,9 @@ next planned slice after acceptance: v0.1.103 — First controlled file mutation
 
 | v0.1.100.3 | repair | ZIP hygiene repair for packaged debug artifacts | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-138 done; no normal slice advanced beyond v0.1.100 | 30fec4b55b123ed6f5f8a290124993b7278e6918779b9a334b65acc9e7d84007 |
 | v0.1.101 | normal | Read-only command result diagnosis and blocked/failed classification | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-139 done | 32bb18838bc52f4e494562ca8fb7a9327d714c1598d22ef6b386ea688cb09a57 |
-| v0.1.102 | normal | Correction-plan generation without file mutation | candidate | focused validation pending full release-control/adoption | DOD-140 focused_candidate | pending |
+| v0.1.102 | normal | Correction-plan generation without file mutation | accepted/current | operator-provided full release-control/adoption evidence: all_tests_final_verdict=GO and artifact-current alignment | DOD-140 done | 0240a51fa2bbdd7b5a56ec69d54df45ffc32eb25e6cbb9c35b7c90ae98001c09 |
+| v0.1.103 | normal | First controlled file mutation in sandboxed fixture only | candidate | focused validation pending full release-control/adoption | DOD-141 focused_candidate | pending |
+| v0.1.104 | normal | Sandbox mutation verification and rollback evidence gate | planned | pending v0.1.103 acceptance | pending | pending |
 
 ## ZIP status values
 
@@ -311,3 +313,5 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 `v0.1.100.3` must install from a ZIP that contains no `debug_artifacts/` entries and must pass Artifact Guardian before any release-control adoption can occur. It remains a candidate until full release-control and `pb artifact current --json` prove accepted/current alignment.
 
+
+| v0.1.103 | normal | First controlled file mutation in sandboxed fixture only | candidate | Built from accepted/current v0.1.102; full release-control/adoption pending. |
